@@ -15,12 +15,10 @@ public sealed unsafe partial class AlloyRenderer
     {
         var lines = new List<string>();
         var ear = new ExtenderLog { Tap = lines.Add };
-        bool gate = ExtenderLog.Enabled;
         ExtenderLog? renderer = _log, shim = RspShim._log;
-        ExtenderLog.Enabled = true;
         _log = ear; RspShim._log = ear;
         try { body(); }
-        finally { _log = renderer; RspShim._log = shim; ExtenderLog.Enabled = gate; }
+        finally { _log = renderer; RspShim._log = shim; }
         return lines;
     }
 

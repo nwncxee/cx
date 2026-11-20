@@ -1,0 +1,10 @@
+<!-- The mutant runner's overlay (tools/selfcheck/mutants.py): each .cs under $(CxOverlay)/managed/, laid out like managed/ (the analyzers grant files by that path),
+     replaces the file of the same path, and a file with no counterpart is added. Only the runner's own build
+     passes -p:CxOverlay, so no staged build carries a mutant. -->
+<Project>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'cx_managed' and '$(CxOverlay)' != ''">
+    <CxOverlayFile Include="$(CxOverlay)/managed/**/*.cs" />
+    <Compile Remove="@(CxOverlayFile->'%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Compile Include="@(CxOverlayFile)" />
+  </ItemGroup>
+</Project>

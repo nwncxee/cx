@@ -217,6 +217,7 @@ internal static unsafe class FacadeSelfCheck
     private static void RecordRiderScene(nint self, nint name, nint data)
     {
         var probe = (SceneEventProbe*)data;
+        if (probe == null) return;
         probe->Seen = SceneDb.ObjScene[probe->Rider].Value;
         probe->Calls++;
         if (!probe->Kill.IsNull) ObjectSlots.DestroyRecord(probe->Kill);
@@ -292,6 +293,175 @@ internal static unsafe class FacadeSelfCheck
             if (!cam.IsNull) DbCamera.Destroy(cam);
             if (!panel.IsNull) DbScene.Destroy(panel);
             if (!view.IsNull) DbScene.Destroy(view);
+        }
+    }
+
+    /// <summary>A rider attached between two game listeners is carried between them, newest first; detached or
+    /// destroyed, it leaves nothing on its parent's list. Oracle: <c>CAurBehaviorAttach</c> @0x4a2d50 registers
+    /// <c>UpdateScenesAttach</c> @0x49fc70 on the parent at attach, and <c>Gob::DoEvent</c> walks newest first.</summary>
+    private static void SceneEventInterleave(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        DbId page = default, rider = default, grand = default, panel = default;
+        nint ps = 0, older = 0, newer = 0;
+        try
+        {
+            page = UnreadableModelScope.Mint();
+            rider = UnreadableModelScope.Mint();
+            ps = Facade.ObjectShell(page);
+            nint rs = Facade.ObjectShell(rider);
+            panel = DbScene.Create("sceneGUI_cx_evmix_panel");
+            ObjectSlots.JoinScene(page, ps, panel, 0);
+            var before = new SceneEventProbe { Rider = rider.Index };
+            var after = new SceneEventProbe { Rider = rider.Index };
+            var fn = (nint)(delegate* unmanaged<nint, nint, nint, void>)&RecordRiderScene;
+            fixed (byte* n = "UpdateScenes\0"u8)
+            {
+                older = CallbackList.Add(ps, fn, (nint)n, (nint)(&before));
+                int listed = new Gob(ps).CallbackArray.Count;
+                ObjectSlots.AttachAt(rider, rs, page, -1, 0);
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a seam attach registers its rider's listener on the parent");
+                newer = CallbackList.Add(ps, fn, (nint)n, (nint)(&after));
+                check.Expect(SceneDb.ObjScene[rider.Index].Value == panel.Value, "the rider inherits its page's scene");
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(after.Calls == 1 && after.Seen == panel.Value,
+                    "the listener registered after the attach fires before the rider is carried");
+                check.Expect(before.Calls == 1 && before.Seen == 0,
+                    "the listener registered before the attach fires after the rider is carried");
+
+                ObjectSlots.Detach(rider);
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a detach takes its rider's listener off the parent");
+                ObjectSlots.AttachAt(rider, rs, page, -1, 0);
+
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, default, 0);
+                fixed (byte* other = "Animate\0"u8) ObjectSlots.FireEvent(ps, (nint)other, 0);
+                check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "an event other than UpdateScenes carries no rider");
+
+                grand = UnreadableModelScope.Mint();
+                ObjectSlots.AttachAt(grand, Facade.ObjectShell(grand), rider, -1, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                before = new SceneEventProbe { Rider = grand.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == 0, "a rider's own rider is carried in that rider's turn, depth first");
+
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                SceneDb.SetAttachTo(rider.Index, default);
+                before = new SceneEventProbe { Rider = rider.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == panel.Value, "a listener left behind by a re-filed rider carries nothing");
+                SceneDb.SetAttachTo(rider.Index, page);
+                ObjectSlots.Detach(grand);
+
+                void* beh = NativeMemory.AllocZeroed(0x100);   // not-an-offset: a stand-in behaviour block, Kind Unknown
+                try
+                {
+                    ObjectSlots.JoinScene(page, ps, panel, 0);
+                    new Gob(rs).Behavior = (nint)beh;
+                    before = new SceneEventProbe { Rider = rider.Index };
+                    after = new SceneEventProbe { Rider = rider.Index };
+                    DbScene.Leave(panel, page);
+                    Facade.SetSceneWord(ps, 0);
+                    ObjectSlots.FireEvent(ps, (nint)n, 0);
+                    check.Expect(before.Seen == panel.Value && after.Seen == panel.Value,
+                        "a rider with a game behaviour is not carried by the seam's listener ahead of the game's");
+                    check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "...and is still carried out with its page afterwards");
+                }
+                finally { new Gob(rs).Behavior = 0; NativeMemory.Free(beh); }
+
+                ObjectSlots.DestroyRecord(rider);
+                rider = default;
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a destroyed rider takes its listener off the parent");
+            }
+        }
+        finally
+        {
+            if (older != 0) CallbackList.Remove(ps, older);
+            if (newer != 0) CallbackList.Remove(ps, newer);
+            if (!grand.IsNull) ObjectSlots.DestroyRecord(grand);
+            if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+        }
+    }
+
+    /// <summary>A tree attached to a parent already in a scene joins it in the engine's order. Oracle: the literal
+    /// order p, r, b, b1, a, a1 -- <c>Gob::AttachToObject</c> @0x43e0e0 ends in <c>Gob::SetScene</c> @0x43e020,
+    /// which appends, then fires UpdateScenes newest first, each rider carrying its own riders in its turn.</summary>
+    private static void InheritOrder(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        var ids = new DbId[6];
+        DbId panel = default;
+        try
+        {
+            for (int k = 0; k < ids.Length; k++) ids[k] = UnreadableModelScope.Mint();
+            DbId p = ids[0], r = ids[1], a = ids[2], a1 = ids[3], b = ids[4], b1 = ids[5];
+            panel = DbScene.Create("sceneGUI_cx_inherit");
+            ObjectSlots.JoinScene(p, Facade.ObjectShell(p), panel, 0);
+            ObjectSlots.AttachAt(a, Facade.ObjectShell(a), r, -1, 0);
+            ObjectSlots.AttachAt(a1, Facade.ObjectShell(a1), a, -1, 0);
+            ObjectSlots.AttachAt(b, Facade.ObjectShell(b), r, -1, 0);
+            ObjectSlots.AttachAt(b1, Facade.ObjectShell(b1), b, -1, 0);
+            ObjectSlots.AttachAt(r, Facade.ObjectShell(r), p, -1, 0);
+            DbList m = DbScene.Members(panel);
+            DbId[] want = [p, r, b, b1, a, a1];
+            bool same = m.Count == want.Length;
+            for (int k = 0; same && k < want.Length; k++) same = m[k] == want[k];
+            check.Expect(same, "a tree attached to an in-scene parent joins newest rider first, each with its own riders");
+        }
+        finally
+        {
+            for (int k = ids.Length - 1; k >= 0; k--) if (!ids[k].IsNull) ObjectSlots.DestroyRecord(ids[k]);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+        }
+    }
+
+    /// <summary>A text rider deleted while attached, and one of two riders detached, each take only their own
+    /// listener off the parent. Oracle: the parent's callback count before the attaches, and the survivor's shell.</summary>
+    private static void TextRiderDeath(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        DbId page = default, other = default, text = default;
+        nint ts = 0;
+        try
+        {
+            page = UnreadableModelScope.Mint();
+            other = UnreadableModelScope.Mint();
+            nint ps = Facade.ObjectShell(page), os = Facade.ObjectShell(other);
+            int listed = new Gob(ps).CallbackArray.Count;
+            text = TextObjects.Create(default, 1);
+            ts = text.IsNull ? 0 : Facade.Mint(FacadeKind.String, text);
+            ObjectSlots.Detach(text);
+            TextSlots.AttachToObject(text, page, -1, 5);
+            ObjectSlots.LinkText(text, page);
+            check.Expect(new Gob(ps).CallbackArray.Count == listed, "a text attached with mode 5, which installs no behaviour, listens on nothing");
+            ObjectSlots.Detach(text);
+            TextSlots.AttachToObject(text, page, -1, 0);
+            ObjectSlots.LinkText(text, page);
+            ObjectSlots.AttachAt(other, os, page, -1, 0);
+            check.Expect(new Gob(ps).CallbackArray.Count == listed + 2, "a text rider and an object rider each listen on the page");
+            ObjectSlots.Detach(other);
+            ExoArray list = new Gob(ps).CallbackArray;
+            check.Expect(list.Count == listed + 1 && new CallBack(list[list.Count - 1]).SeamData == ts,
+                "detaching one rider leaves the other rider's listener on the page");
+            TextSlots.Destruct(text);
+            Facade.Retire(ts);
+            text = default;
+            check.Expect(new Gob(ps).CallbackArray.Count == listed, "a text rider deleted while attached takes its listener off the page");
+        }
+        finally
+        {
+            if (!text.IsNull) { TextSlots.Destruct(text); if (ts != 0) Facade.Retire(ts); }
+            if (!other.IsNull) ObjectSlots.DestroyRecord(other);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
         }
     }
 
@@ -507,6 +677,9 @@ internal static unsafe class FacadeSelfCheck
         Factory(check);
         Riders(check);
         SceneEventOrder(check);
+        SceneEventInterleave(check);
+        InheritOrder(check);
+        TextRiderDeath(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);

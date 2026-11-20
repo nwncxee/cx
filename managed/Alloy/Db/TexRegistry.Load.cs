@@ -46,6 +46,9 @@ internal static unsafe partial class TexRegistry
         public bool Chained;
         /// <summary>This texture cuts a surface: <see cref="TexRegistry.Acquire"/> says so.</summary>
         public bool Cuts;
+        /// <summary>The <c>.txi</c> says <c>data 1</c> (<see cref="ParseTxi"/>): its bytes go up as the file holds them,
+        /// with no coverage scan and no rebuilt chain.</summary>
+        public bool DataTexture;
         public int W, H, Levels, Channels;
         /// <summary>The GL internal format and the (format, type) pair of an uncompressed upload.</summary>
         public uint GlFmt;
@@ -95,10 +98,10 @@ internal static unsafe partial class TexRegistry
         => txi != null && txi.Contains("envmaptexture", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the generation
-    /// it uploaded against, and either a name and handle or the reason there is none.</summary>
+    /// it uploaded against, and either a name and handle or the reason there is none, and whether asking again may fix it.</summary>
     private readonly record struct Landed(int Slot, uint Gen, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
-                                         bool Preview = false, string? CovWhy = null);
+                                         bool Preview = false, string? CovWhy = null, bool Retry = false);
 
     private static readonly Queue<Job> _in = new(), _out = new();
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
@@ -369,10 +372,14 @@ internal static unsafe partial class TexRegistry
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             ReadOnlySpan<byte> sheet = new(px, r.Bytes);
-            j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
-            j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
+            if (j.DataTexture) DataVerdict(j, "TGA");
+            else
+            {
+                j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
+                j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
+            }
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
-            if (j.Cuts && !j.EnvMap && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
+            if (j.Cuts && !j.EnvMap && !j.DataTexture && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
             {
                 NativeMemory.Free(px);
                 j.Data = px = built; j.Chained = true; j.Bytes = chainBytes;
@@ -390,15 +397,26 @@ internal static unsafe partial class TexRegistry
         j.Data = chain; j.W = info.W; j.H = info.H; j.Levels = info.Present;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
-        byte[] sc = _covScratch ?? Array.Empty<byte>();
         Span<byte> stored = new(chain, checked((int)info.ChainBytes));
-        j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
-                                    info.W, info.H, info.Format, ref sc);
-        j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
-        _covScratch = sc;
+        if (j.DataTexture) DataVerdict(j, $"DDS {info.Format}");
+        else
+        {
+            byte[] sc = _covScratch ?? Array.Empty<byte>();
+            j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
+                                        info.W, info.H, info.Format, ref sc);
+            j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
+            _covScratch = sc;
+        }
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
-        if (j.Cuts && !j.EnvMap) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+        if (j.Cuts && !j.EnvMap && !j.DataTexture) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+    }
+
+    /// <summary>A data texture's coverage, answered without a scan: its alpha holds values, so nothing in it cuts.</summary>
+    private static void DataVerdict(Job j, string container)
+    {
+        j.Cov = TexCoverage.Opaque;
+        j.CovWhy = $"{container} marked data by its .txi -> Opaque, unscanned (its bytes go up as stored)";
     }
 
     /// <summary>The fast pass's preview: the DDS's own mips from the first one at or under <see cref="PreviewSide"/>
@@ -589,7 +607,7 @@ internal static unsafe partial class TexRegistry
         if (stale) return;
         if (j.Why != null) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, j.Why)); return; }
         uint name = Upload(j, out string? why);
-        if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
+        if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload", Retry: true)); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
         FileArturo(j);
@@ -631,7 +649,7 @@ internal static unsafe partial class TexRegistry
                 continue;
             }
             _pend[l.Slot] = PendNone;
-            if (l.Why != null) Fail(l.Slot, l.Why);
+            if (l.Why != null) Fail(l.Slot, l.Why, l.Retry);
             else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov); Enqueue(l.Slot); }
             else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
         }
@@ -653,9 +671,9 @@ internal static unsafe partial class TexRegistry
     {
         why = null;
         uint n = VkTextures.NewName();
-        MirrorJob(n, j);
-        if (VkTextures.Has(n)) return n;
-        why = $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
+        why = MirrorJob(n, j);
+        if (why == null && VkTextures.Has(n)) return n;
+        why ??= "the image was made and then gone";
         return 0;
     }
 
@@ -745,13 +763,15 @@ internal static unsafe partial class TexRegistry
     }
 
     /// <summary>The load failed. Loud once per resref, counted after that, and the slot keeps the white
-    /// stand-in as an explicit state -- never a quiet hole. Game thread.</summary>
-    internal static void Fail(int i, string why)
+    /// stand-in as an explicit state -- never a quiet hole. A <paramref name="retry"/> failure (the upload, not the
+    /// file) loads again when asked for after <see cref="RetryMs"/>. Game thread.</summary>
+    internal static void Fail(int i, string why, bool retry = false)
     {
         string name; TexKind kind;
         lock (_lock)
         {
             _state[i] = TexState.Failed;
+            _retryAt[i] = retry ? Environment.TickCount64 + RetryMs : 0;
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;
@@ -760,7 +780,8 @@ internal static unsafe partial class TexRegistry
         }
         if (LoudOnce($"tex:{name}"))
             _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
-                + "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)");
+                + (retry ? "Until it loads when asked for again, a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"
+                         : "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"));
     }
 
     // ---- handles ----

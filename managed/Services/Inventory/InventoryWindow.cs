@@ -9,7 +9,7 @@ namespace CX.Services.Inventory;
 
 /// <summary>What the player asked the inventory to do; the service turns each into an engine send (or a
 /// <see cref="ServerPolicy"/> route).</summary>
-internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot }
+internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target }
 
 /// <summary>One request out of the window. <see cref="Mask"/> is an equip-slot bitmask (a Drop's source slot, 0 from the
 /// backpack), <see cref="X"/>/<see cref="Y"/> a backpack cell (global row; a Put's is a container cell, a Take's
@@ -63,6 +63,12 @@ internal sealed partial class InventoryWindow
     public readonly InventoryModel Model = new();
     /// <summary>Where requests go (the service; the self-check's recorder).</summary>
     public Action<InvAction>? Act;
+    /// <summary>Whether the engine's target cursor is up (a spell, power or item waiting for its target). The service asks the
+    /// engine; the self-check sets its own.</summary>
+    public Func<bool> Targeting = static () => false;
+    /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
+    /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
+    public Action<uint>? HoverItem;
     /// <summary>An item's display name, cold (tooltip, search). The service asks the engine.</summary>
     public Func<uint, string>? NameOf;
     /// <summary>A strref's TLK text, cold (the layout's words). The self-check supplies its own.</summary>
@@ -110,12 +116,12 @@ internal sealed partial class InventoryWindow
     private readonly Box[] _slots = new Box[InventoryModel.Slots.Length];
 
     // ---- interaction ----
-    private bool _press, _drag, _moving, _scrolling, _dragFromLoot;
+    private bool _press, _drag, _moving, _scrolling, _dragFromLoot, _passedRight;
     private float _pressX, _pressY, _moveDx, _moveDy;
     private uint _dragOid;
     private int _dragFromSlot = -1, _dragW = 1, _dragH = 1, _grabCx, _grabCy;
     private float _mx = -1f, _my = -1f;
-    private uint _lastClickOid = InventoryModel.Invalid;
+    private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
     private long _lastClickAt;
     private readonly Tooltip _tip = new();
     private readonly HashSet<uint> _dim = new();
@@ -131,6 +137,14 @@ internal sealed partial class InventoryWindow
     public void Hide()
     {
         Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Cut();
+        Hovered(InventoryModel.Invalid);
+    }
+
+    private void Hovered(uint oid)
+    {
+        if (oid == _hovered) return;
+        _hovered = oid;
+        HoverItem?.Invoke(oid);
     }
 
     /// <summary>Recompute every rect: <paramref name="scale"/> = UI scale × the size knob, shrunk so the window fits
@@ -309,6 +323,11 @@ internal sealed partial class InventoryWindow
 
     // ---- input ----
 
+    /// <summary>A drop released over an open store's item box sells, as the stock box's <c>ProcessItemDrop</c> does with no
+    /// confirm. Backpack items only: which stock drag sources reach that sell for a worn or looted item is not read yet.</summary>
+    internal static bool SellsOn(in InvAction drop, bool overStoreBox)
+        => overStoreBox && drop.Mask == 0 && drop.Other == 0;
+
     /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state. Consumed when over the window, or
     /// while a gesture it started is live.</summary>
     public bool MouseButton(bool down, int button, float px, float py, int mods)
@@ -321,6 +340,16 @@ internal sealed partial class InventoryWindow
         InvHit h = HitTest(px, py);
         if (h.Kind != InvHitKind.Search) SearchFocused = false;
         uint oid = ItemUnder(h);
+
+        if (Targeting())
+        {
+            if (button == ButtonRight) { _passedRight = true; return false; }
+            if (button == ButtonLeft && oid != InventoryModel.Invalid)
+            {
+                Act?.Invoke(new InvAction(InvActKind.Target, oid));
+                return true;
+            }
+        }
 
         if (button == ButtonRight)
         {
@@ -401,7 +430,7 @@ internal sealed partial class InventoryWindow
             if (HitTest(px, py) is { Kind: InvHitKind.Tab } t && t.Index != Page) SetPage(t.Index);
             return Contains(px, py);   // outside, the engine hovers as usual: the quickbar button and world object light up
         }
-        if (!Contains(px, py)) { _tip.Leave(); return false; }
+        if (!Contains(px, py)) { _tip.Leave(); Hovered(InventoryModel.Invalid); return false; }
         HoverTip(px, py);
         return true;
     }
@@ -427,6 +456,7 @@ internal sealed partial class InventoryWindow
     public bool Key(uint key, int mods = 0)
     {
         if (!Open) return false;
+        if (key == KeyEscape && Targeting() && !SearchFocused) return false;
         if (key == KeyEscape)
         {
             if (_drag || _press) { _drag = _press = false; return true; }
@@ -454,6 +484,7 @@ internal sealed partial class InventoryWindow
 
     private bool Release(int button, float px, float py)
     {
+        if (button == ButtonRight && _passedRight) { _passedRight = false; return false; }
         if (button != ButtonLeft) return Contains(px, py);
         if (_moving) { _moving = false; return true; }
         if (_scrolling) { _scrolling = false; return true; }
@@ -574,6 +605,7 @@ internal sealed partial class InventoryWindow
     {
         InvHit h = HitTest(px, py);
         uint oid = ItemUnder(h);
+        Hovered(h.Kind is InvHitKind.Cell or InvHitKind.Slot ? oid : InventoryModel.Invalid);
         if (oid != InventoryModel.Invalid)
         {
             if (_tip.Key is uint k && k == oid) return;

@@ -213,6 +213,7 @@ public static unsafe partial class HitTestCheck
     {
         bool ok = true;
         const int rx = 400, ry = 560, rw = 80, rh = 24;
+        const int ExitCx = 400, ExitCy = 440;   // not-an-offset: the Exit quad's centre in its own frame, in panel pixels
         const float k = 0.01f;   // not-an-offset: the fixture's world units per panel pixel
         DbId row = TextObjects.Create(w.Scene, 1);
         if (row.IsNull) return Fail(log, "the text record for the list-row pick could not be made");
@@ -259,7 +260,7 @@ public static unsafe partial class HitTestCheck
         if (doc == null) ok = Fail(log, "the list row has no document to hang a line model on");
         else
         {
-            float ax = (rx + rw / 2 - 400) * k - SceneDb.ObjPos[ri].X, ay = (ry - 440) * k - SceneDb.ObjPos[ri].Y;
+            float ax = (rx + rw / 2 - ExitCx) * k - SceneDb.ObjPos[ri].X, ay = (ry - ExitCy) * k - SceneDb.ObjPos[ri].Y;
             doc.PublishedQuads = new QuadList { Attached = [(rider, ax, ay)], AttachedCount = 1 };
             DbId PickAt(int px)
             {
@@ -275,6 +276,25 @@ public static unsafe partial class HitTestCheck
                 ok = Fail(log, "a pick on a row with a line model, off the model, did not answer the row");
             if (PickAt(rx + rw * 3 / 4) == rider)
                 ok = Fail(log, "a line model answered a pick outside its row's quad -- the engine never casts there");
+
+            float lx = (rx - rw / 2 - 20 - ExitCx) * k - SceneDb.ObjPos[ri].X;
+            doc.PublishedQuads = new QuadList { Attached = [(rider, lx, ay)], AttachedCount = 1 };
+            const int portrait = rx - rw / 2 - 30;
+            if (PickAt(portrait) == rider)
+                ok = Fail(log, "a line model left of a quad with no hit margin answered a pick -- the engine never casts there");
+            ((TextDisplayInfo*)doc.InfoBuf)->HitMargin = 0.4f;
+            TextSlots.SyncDisplayInfo(row);
+            HitBounds.Refresh(ri);
+            if (PickAt(portrait) != rider)
+                ok = Fail(log, "a pick on a chat line's portrait, left of its text but inside the hit margin the chat "
+                             + "window writes through the display block, did not answer the portrait");
+            if (PickAt(rx - rw / 2 - 50) == rider)
+                ok = Fail(log, "a line model answered a pick past the hit margin -- the quad must be hit first");
+            float rxm = (rx + rw / 2 + 20 - ExitCx) * k - SceneDb.ObjPos[ri].X;
+            doc.PublishedQuads = new QuadList { Attached = [(rider, rxm, ay)], AttachedCount = 1 };
+            if (PickAt(rx + rw / 2 + 30) != rider)
+                ok = Fail(log, "a pick right of the text, inside the hit margin, did not answer the line model there "
+                             + "-- the margin widens the quad on both sides");
             doc.ResetQuads();
         }
 
@@ -655,6 +675,30 @@ public static unsafe partial class HitTestCheck
         else if (MathF.Abs((bare - r.Point.X) - wantMove) > 0.02f)
             ok = Fail(log, $"the box expansion moved the hit by {bare - r.Point.X:F3}m, want {wantMove:F3} "
                          + "(it must be added after the scale, not before)");
+        q.BoxExpand = default;
+
+        // A mouse pick reaches the cast through the seam, which must carry the engine's margin onto a box pick:
+        // without it a small or sunk object loses the click area the stock client gives it.
+        byte* rec = stackalloc byte[EngineLayout.SizeOfHitInfo];
+        for (int i = 0; i < EngineLayout.SizeOfHitInfo; i++) rec[i] = 0;
+        var hi = new CHitInfo((nint)rec);
+        hi.SafeIndex = -1;
+        hi.BoxOnly = 1;
+        var seam = CX.Alloy.Seam.SeamHit.Query(world.Scene, new Vector3(120, 0, 0.5f), new Vector3(180, 0, 0.5f),
+                                               (nint)rec, new ulong[(SceneDb.MaxObjects + 63) / 64], new Vector3(0.5f));
+        if (!HitTest.Cast(seam, out r)) ok = Fail(log, "a box pick through the seam missed");
+        else if (MathF.Abs((bare - r.Point.X) - wantMove) > 0.02f)
+            ok = Fail(log, $"a box pick through the seam moved the hit by {bare - r.Point.X:F3}m, want {wantMove:F3} "
+                         + "(the engine's g_HitCheckBoxExpansion margin)");
+
+        // The margin reaches a ray that passes just OUTSIDE the exact box -- which is the whole point of it -- so
+        // the object's sphere and box rejects must not drop that ray before the widened part box is tested.
+        // The spun 3x cube's world box tops out at z 2.0; a pick at z 2.2 misses it bare and hits it widened.
+        q = HitQuery.Pick(world.Scene, new Vector3(120, 0, 2.2f), new Vector3(180, 0, 2.2f));
+        if (HitTest.Cast(q, out r) && r.Obj == world.Spun) ok = Fail(log, "a bare box pick hit 0.2m above the box");
+        q.BoxExpand = new Vector3(0.5f);
+        if (!HitTest.Cast(q, out r) || r.Obj != world.Spun)
+            ok = Fail(log, "a box pick 0.2m above the box missed with a 0.5m margin (an object reject ran unwidened)");
         q.BoxExpand = default;
 
         // The walkmesh part: box-only must NOT apply to it. The engine's PartAABB::HitCheckGeom does not read

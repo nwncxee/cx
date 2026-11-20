@@ -511,7 +511,8 @@ internal static unsafe class CameraSlots
         _log?.Info($"[dbpick] {(world ? "world" : "gui")} px=({px},{py}) scene={scene.Index} "
                    + $"\"{SceneDb.SceneName[scene.Index]}\" rect=({rx},{ry},{rw},{rh}) "
                    + $"from=({from.X:F2},{from.Y:F2},{from.Z:F2}) to=({to.X:F2},{to.Y:F2},{to.Z:F2}) "
-                   + $"kind={(int)kind} hit={(at != null ? $"({at->X:F2},{at->Y:F2},{at->Z:F2})" : "-")} {who}");
+                   + $"kind={(int)kind} hit={(at != null ? $"({at->X:F2},{at->Y:F2},{at->Z:F2})" : "-")} {who} "
+                   + $"margin={SeamHit.BoxMargin.X:F3}");
         if (!world) Under(scene, from);
     }
 

@@ -167,6 +167,27 @@ internal sealed partial class InventoryWindow
             w.MouseButton(true, 1, SlotX("head"), SlotY("head"), 0);
             w.MouseMove(5000f, 4000f); w.MouseButton(false, 1, 5000f, 4000f, 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Drop, 104, 0x1, 5000, 4000), "a worn item dropped outside names its slot (no barter from a slot)");
+            check.Expect(SellsOn(new InvAction(InvActKind.Drop, 101, 0, 5000, 5000), true), "a backpack item released over a store's item box sells");
+            check.Expect(!SellsOn(new InvAction(InvActKind.Drop, 101, 0, 5000, 5000), false), "released anywhere else it does not");
+            check.Expect(!SellsOn(acts[0], true), "a worn item released over the store box does not sell");
+            check.Expect(!SellsOn(new InvAction(InvActKind.Drop, 201, 0, 5000, 5000, Other: 0x500), true), "nor does a looted one");   // not-an-offset: the container
+
+            // the player's own item under the pointer goes to an open store, once per change, as the stock hover prices it
+            var hovers = new List<uint>();
+            w.HoverItem = hovers.Add;
+            w.MouseMove(Cx(0), Cy(0)); w.MouseMove(Cx(0), Cy(1));
+            w.MouseMove(SlotX("head"), SlotY("head"));
+            w.MouseMove(Cx(1), Cy(5));
+            w.MouseMove(5000f, 5000f); w.MouseMove(5001f, 5000f);
+            check.Expect(hovers.Count == 3 && hovers[0] == 101 && hovers[1] == 104 && hovers[2] == InventoryModel.Invalid,
+                         "hover: the sword once over its three cells, the worn helmet, then nothing over an empty cell; leaving the window says nothing more");
+            w.MouseMove(Cx(2), Cy(0)); hovers.Clear();
+            w.MouseMove(5000f, 5000f);
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: leaving the window from an item clears it");
+            w.MouseMove(Cx(2), Cy(0)); hovers.Clear();
+            w.Hide();
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: closing the window clears it");
+            w.Show();
 
             // clicks
             acts.Clear();
@@ -178,6 +199,33 @@ internal sealed partial class InventoryWindow
             acts.Clear();
             w.MouseButton(true, 3, Cx(0), Cy(0), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Radial, 101, X: (int)Cx(0), Y: (int)Cy(0)), "a right-click opens the item radial at the click");
+            now += Stopwatch.Frequency;
+
+            // the engine's target cursor up (a spell, power or item waiting for its target): the window answers it like the
+            // stock panel's cells, and leaves the cursor's own cancels to the engine
+            w.Targeting = static () => true;
+            acts.Clear();
+            check.Expect(w.MouseButton(true, 1, Cx(2), Cy(0), 0) && acts.Count == 1 && acts[0] == new InvAction(InvActKind.Target, 102),
+                         "targeting: a click on a backpack item fires the cursor at it");
+            w.MouseButton(false, 1, Cx(2), Cy(0), 0);
+            w.MouseButton(true, 1, Cx(2), Cy(0), 0); w.MouseMove(Cx(6), Cy(0)); w.MouseButton(false, 1, Cx(6), Cy(0), 0);
+            check.Expect(!w.Dragging && acts.Count == 2 && acts[1].Kind == InvActKind.Target, "targeting: a press is never a drag, a second click never a double-click use");
+            acts.Clear();
+            w.MouseButton(true, 1, SlotX("head"), SlotY("head"), 0); w.MouseButton(false, 1, SlotX("head"), SlotY("head"), 0);
+            check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Target, 104), "targeting: a click on a worn item fires the cursor at it");
+            acts.Clear();
+            check.Expect(w.MouseButton(true, 1, Cx(1), Cy(5), 0) && acts.Count == 0, "targeting: a click on an empty cell is the window's and fires nothing");
+            w.MouseButton(false, 1, Cx(1), Cy(5), 0);
+            w.MouseButton(true, 2, Cx(0), Cy(0), 0); w.MouseButton(false, 2, Cx(0), Cy(0), 0);
+            check.Expect(acts.Count == 0, "targeting: only the left button fires the cursor");
+            check.Expect(!w.MouseButton(true, 3, Cx(0), Cy(0), 0) && !w.MouseButton(false, 3, Cx(0), Cy(0), 0) && acts.Count == 0,
+                         "targeting: a right-click passes to the engine, which cancels the cursor, and opens no radial");
+            check.Expect(!w.Key(0x1B) && acts.Count == 0 && w.Open, "targeting: Esc passes to the engine, which cancels the cursor; the window stays open");   // not-an-offset: SDLK_ESCAPE
+            w.SearchFocused = true;
+            check.Expect(w.Key(0x1B) && !w.SearchFocused && w.Open, "targeting: Esc in the focused search box only leaves the box");   // not-an-offset: SDLK_ESCAPE
+            w.Targeting = static () => false;
+            check.Expect(w.MouseButton(true, 3, Cx(0), Cy(0), 0) && acts.Count == 1 && acts[0].Kind == InvActKind.Radial, "no cursor up: a right-click opens the radial again");
+            check.Expect(w.MouseButton(false, 3, Cx(0), Cy(0), 0), "no cursor up: the right release is the window's again");
             acts.Clear();
             w.MouseButton(true, 1, Cx(0), Cy(0), 0x40); w.MouseButton(false, 1, Cx(0), Cy(0), 0);   // not-an-offset: KMOD_LCTRL
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Equip, 101, 0x10), "ctrl-click equips to the first empty slot that takes it");   // not-an-offset: slot mask
@@ -310,6 +358,10 @@ internal sealed partial class InventoryWindow
             w.Layout(1f, false, true, 4000, 4000);
             w.X = 0f;
 
+            w.MouseMove(Cx(0), Cy(0)); hovers.Clear();
+            w.MouseMove(Lx(0), Ly(0));
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: a looted item is not the player's to price");
+            w.HoverItem = null;
             acts.Clear();
             w.MouseButton(true, 1, Lx(0), Ly(0), 0); w.MouseMove(Lx(2), Ly(0)); w.MouseMove(Cx(5), Cy(3)); w.MouseButton(false, 1, Cx(5), Cy(3), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Take, 201, X: 5, Y: 3, Other: 0x500), "loot dragged to a backpack cell: a Take there");   // not-an-offset: the container

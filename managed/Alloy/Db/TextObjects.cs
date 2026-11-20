@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using CX.Engine;
 
 namespace CX.Alloy.Db;
 
@@ -173,15 +175,41 @@ public sealed class TextDoc
 
     /// <summary><c>+0x4f8</c>/<c>+0x4fc</c>: 0 left/top, 0.5 centre, 1 right/bottom.</summary>
     public float AlignH, AlignV;
+    /// <summary>The display block <c>StringGob+0x528</c>, which slot 24 hands the game and the game reads and WRITES
+    /// in place (<c>CGuiLabel::LoadGffData</c> the box, the chat window the hit margin, <c>EnablePixelScrolling</c>
+    /// the mode). It is the one home of the words below, as in the engine. Never freed: the game caches the pointer,
+    /// and a document is pooled by index for the session (<see cref="TextObjects.Docs"/>).</summary>
+    internal readonly nint InfoBuf = TextObjects.NewBlock();
+
+    private unsafe TextDisplayInfo* Block => (TextDisplayInfo*)InfoBuf;
+
     /// <summary><c>+0x534</c>/<c>+0x538</c>: 0 width = unbounded; height <c>&lt;= -5e-06</c> = unbounded.</summary>
-    public float MaxWidth, MaxHeight = -1e-5f;
-    /// <summary><c>+0x53c</c>: every line's height summed. <c>+0x540</c>: the visible lines' heights summed.</summary>
-    public float TotalHeight, VisibleHeight;
-    /// <summary><c>+0x528</c>/<c>+0x52c</c>/<c>+0x530</c>: the display block <c>GetDisplayInfo</c> hands out.</summary>
-    public int TopLine, VisibleLines, ScrollBudget;
-    /// <summary><c>+0x544</c>: scroll inside the top line; <c>+0x548</c>: pixel-scroll mode.</summary>
-    public float SubLineScroll;
-    public bool PixelScroll;
+    public unsafe float MaxWidth { get => Block->Width; set => Block->Width = value; }
+    /// <inheritdoc cref="MaxWidth"/>
+    public unsafe float MaxHeight { get => Block->Height; set => Block->Height = value; }
+    /// <summary><c>+0x53c</c>: every line's height summed.</summary>
+    public unsafe float TotalHeight { get => Block->TotalHeight; set => Block->TotalHeight = value; }
+    /// <summary><c>+0x540</c>: the visible lines' heights summed.</summary>
+    public unsafe float VisibleHeight { get => Block->VisibleHeight; set => Block->VisibleHeight = value; }
+    /// <summary><c>+0x528</c>: the first visible line.</summary>
+    public unsafe int TopLine { get => Block->TopLine; set => Block->TopLine = value; }
+    /// <summary><c>+0x52c</c>: the lines that fit.</summary>
+    public unsafe int VisibleLines { get => Block->VisibleLines; set => Block->VisibleLines = value; }
+    /// <summary><c>+0x530</c>: the scroll range in lines.</summary>
+    public unsafe int ScrollBudget { get => Block->ScrollBudget; set => Block->ScrollBudget = value; }
+    /// <summary><c>+0x544</c>: scroll inside the top line.</summary>
+    public unsafe float SubLineScroll { get => Block->SubLineScroll; set => Block->SubLineScroll = value; }
+    /// <summary><c>+0x548</c>: pixel-scroll mode, one byte the engine tests for zero.</summary>
+    public unsafe bool PixelScroll { get => Block->PixelScroll != 0; set => Block->PixelScroll = value ? (byte)1 : (byte)0; }
+    /// <summary><c>+0x54c</c>: how far the hit quad reaches past the box on each side horizontally. Only
+    /// <c>StringGob::HitCheck</c> reads it, and only the game writes it, through the display block.</summary>
+    public unsafe float HitMargin { get => Block->HitMargin; set => Block->HitMargin = value; }
+    /// <summary><c>+0x550</c>: the font height in design pixels, which <c>SetFont</c> writes for the game to read.</summary>
+    public unsafe float FontHeight { get => Block->FontHeight; set => Block->FontHeight = value; }
+
+    /// <summary>The box and margin the last change gate saw, so a game write through the block that no gate saw
+    /// marks the record (<see cref="TextSlots.ApplyDisplayInfo"/>): the hit bounds and quads read them.</summary>
+    internal float SeenW, SeenH = -1e-5f, SeenMargin;
 
     /// <summary>Slot 50's handed-out item array: native storage, one entry per line, holding the line's
     /// 1-based index as a sentinel rather than a pointer. The engine's two sort routines permute this array
@@ -189,14 +217,6 @@ public sealed class TextDoc
     /// the next slot call. Grow-only, owned by the document; <c>ItemCount</c> is 0 while none is outstanding.</summary>
     internal nint ItemBuf;
     internal int ItemCap, ItemCount;
-
-    /// <summary>Slot 24's handed-out display block (<c>StringGob+0x528</c>): native, one per document, because the
-    /// game WRITES through it -- <c>CGuiLabel::LoadGffData</c> @0x68a4c0 sets the box at <c>+0xc</c>/<c>+0x10</c>
-    /// and calls nothing. <see cref="TextSlots.SyncDisplayInfo"/> adopts a write on the next slot call;
-    /// <c>InfoW</c>/<c>InfoH</c> are what the block held last, so a later <c>SetMaxWidth</c> is not undone.</summary>
-    internal nint InfoBuf;
-    internal bool InfoOut;
-    internal float InfoW, InfoH;
 
     public TextCaret Caret;
     public bool CaretVisible;
@@ -362,6 +382,22 @@ public static class TextObjects
         return id;
     }
 
+    /// <summary>A display block in the state <c>StringGob</c>'s ctor leaves it: zeroed, the height unbounded.</summary>
+    internal static unsafe nint NewBlock()
+    {
+        nint p = (nint)NativeMemory.Alloc((nuint)sizeof(TextDisplayInfo));
+        ResetBlock(p);
+        return p;
+    }
+
+    /// <summary>Zero <paramref name="p"/>'s display block and set the ctor's unbounded height.</summary>
+    private static unsafe void ResetBlock(nint p)
+    {
+        var b = (TextDisplayInfo*)p;
+        *b = default;
+        b->Height = -1e-5f;
+    }
+
     /// <summary>Return a document to its just-constructed state, keeping its buffers.</summary>
     private static void Reset(TextDoc d, int maxLines)
     {
@@ -373,17 +409,14 @@ public static class TextObjects
         if (d.Colours.Length < 4) d.Colours = new float[4];
         d.Colours[0] = d.Colours[1] = d.Colours[2] = d.Colours[3] = 1f;
         d.AlignH = d.AlignV = 0f;
-        d.MaxWidth = 0f; d.MaxHeight = -1e-5f;
-        d.TotalHeight = d.VisibleHeight = 0f;
-        d.TopLine = d.VisibleLines = d.ScrollBudget = 0;
-        d.SubLineScroll = 0f; d.PixelScroll = false;
+        ResetBlock(d.InfoBuf);
+        d.SeenW = 0f; d.SeenH = d.MaxHeight; d.SeenMargin = 0f;
         d.Caret = default; d.Caret.Glyph = (byte)'_';
         d.CaretVisible = false;
         d.CaretR = 0.5f; d.CaretG = 1f; d.CaretB = 1f;
         d.SelAnchor = -1;
         d.ResetQuads(); d.QuadEpoch = -1; d.QuadsStale = true;
         d.Layouts = 0; d.Builds = 0;
-        d.InfoOut = false;
         d.ItemCount = 0;   // a recycled index must not read the previous tenant's sort array back
     }
 
@@ -405,17 +438,8 @@ public static class TextObjects
     internal static void Stale(TextDoc d)
     {
         d.QuadsStale = true;
-        if (d.InfoOut) TextSlots.FillDisplayInfo(d);
+        d.SeenW = d.MaxWidth; d.SeenH = d.MaxHeight; d.SeenMargin = d.HitMargin;
         SceneDb.Touch(d.Owner, Dirty.Text);
-    }
-
-    /// <summary>The slot-layer spelling of <see cref="Stale"/>, for a record whose handle the caller already has.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void MarkText(DbId id, TextDoc d)
-    {
-        d.QuadsStale = true;
-        if (d.InfoOut) TextSlots.FillDisplayInfo(d);
-        SceneDb.Touch(id, Dirty.Text);
     }
 
     // ---- layout: the port ----
@@ -793,6 +817,7 @@ public static class TextObjects
     public static void SetFont(TextDoc d, TextFont? f)
     {
         d.Font = f;
+        if (f != null) d.FontHeight = f.FontHeight / UnitPerPixel;
         // The engine answers -1 and returns BEFORE RecalcDisplayData when the font did not load; only a font
         // that resolved re-lays out.
         if (f != null) Relayout(d);

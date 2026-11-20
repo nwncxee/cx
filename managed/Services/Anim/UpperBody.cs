@@ -102,15 +102,28 @@ internal static unsafe class UpperBody
         return new Vector2(Vector3.Dot(axis, right), Vector3.Dot(axis, fwd)) * (peak * Omega * HitLaunch);
     }
 
+    /// <summary>Travel dead ahead, for <see cref="LeanTarget"/>.</summary>
+    internal static readonly Vector2 Ahead = new(1f, 0f);
+
     /// <summary>The lean target (R, F) for a character at <paramref name="speed"/> m/s turning at
     /// <paramref name="yawRate"/> rad/s (positive = left), accelerating at <paramref name="accel"/> m/s^2 up a
-    /// <paramref name="slope"/> (rise per unit of travel).</summary>
-    internal static Vector2 LeanTarget(float speed, float yawRate, float accel, float slope, bool moving)
+    /// <paramref name="slope"/> (rise per unit of travel). The speeding-up and slope pitch tips the top along
+    /// <paramref name="travel"/> (unit, along the facing then along the right; zero for none).</summary>
+    internal static Vector2 LeanTarget(float speed, float yawRate, float accel, float slope, bool moving, Vector2 travel)
     {
         float roll = Math.Clamp(MathF.Atan(speed * yawRate / Gravity) * TurnGain, -MaxRoll, MaxRoll);
         float pitch = MathF.Min(MathF.Atan(MathF.Max(accel, 0f) / Gravity) * AccelGain, MaxPitch);
         if (moving) pitch += Math.Clamp(MathF.Atan(slope) * SlopeGain, -MaxSlope, MaxSlope);
-        return new Vector2(-pitch, -roll);
+        return new Vector2(-pitch * travel.X, pitch * travel.Y - roll);
+    }
+
+    /// <summary>The unit direction of the eased travel along the facing and the right, or zero below the least
+    /// travel speed.</summary>
+    private static Vector2 TravelDir(in PoseService.Slot s)
+    {
+        float len = s.Vel.Length();
+        if (!(len > PoseService.MinTravel)) return Vector2.Zero;
+        return new Vector2(s.Vel.X * s.Fwd.X + s.Vel.Y * s.Fwd.Y, s.Vel.X * s.Right.X + s.Vel.Y * s.Right.Y) / len;
     }
 
     /// <summary>Advances the lean, aim and flinch springs. <paramref name="hip"/> is the root part's height over
@@ -120,7 +133,7 @@ internal static unsafe class UpperBody
     {
         float lean = AnimKnobs.Lean.V / 100f;
         Vector2 leanT = gated || !(lean > 0f) ? Vector2.Zero
-            : LeanTarget(groundSpeed, s.PathRate, s.Cue, s.Slope, s.Moving > 0f) * lean;
+            : LeanTarget(groundSpeed, s.PathRate, s.Cue, s.Slope, s.Moving > 0f, TravelDir(s)) * lean;
         float aimT = s.AimPitch, aimW = 0f;
         if (!gated && AnimKnobs.Aim.V && _aimReady && creature != IntPtr.Zero)
         {

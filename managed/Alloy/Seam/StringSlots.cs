@@ -184,7 +184,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         // Gob::AttachToObject @0x43e0e0 answers 0 and leaves the placement alone when a NAMED part does not resolve;
         // CGuiPanel::CloseLayoutFile @0x589fd0 relies on that 0 to fall back to AttachCornersToObjects(text0, text1).
         if (!target.IsNull && part < 0 && !string.IsNullOrEmpty(name)) { UnresolvedAttach++; return 0; }
-        ObjectSlots.UnlinkText(id);
+        ObjectSlots.Detach(id);
         nint r = TextSlots.AttachToObject(id, target, part, mode);
         ObjectSlots.LinkText(id, target);
         return r;
@@ -197,7 +197,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         if (id.IsNull) return 0;
         DbId target = to == 0 ? default : Facade.Object(to, SeamVtables.Logical(T, 3));
         int idx = PartShell.Resolve(part, out _, out int p) ? p : -1;
-        ObjectSlots.UnlinkText(id);
+        ObjectSlots.Detach(id);
         nint r = TextSlots.AttachToPart(id, target, idx, mode);
         ObjectSlots.LinkText(id, target);
         return r;
@@ -209,7 +209,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         DbId id = Id(self, 4);
         if (id.IsNull) return 0;
         DbId target = to == 0 ? default : Facade.Object(to, SeamVtables.Logical(T, 4));
-        ObjectSlots.UnlinkText(id);
+        ObjectSlots.Detach(id);
         int r = TextSlots.AttachCornersToObjects(id, target, Marshal.PtrToStringUTF8(a) ?? "", Marshal.PtrToStringUTF8(b) ?? "");
         ObjectSlots.LinkText(id, target);
         return r;
@@ -369,14 +369,14 @@ public sealed unsafe class StringSlots : ISeamProvider
     }
 
     /// <summary>Slot 24 returns a <c>CAurStringDisplayInfo*</c> the caller reads and writes in place: the
-    /// document's own block (<see cref="TextSlots.GetDisplayInfo"/>), or a zeroed scratch one with no record.</summary>
+    /// document's own block (<see cref="TextSlots.GetDisplayInfo"/>), or a scratch one in the ctor state with no record.</summary>
     [UnmanagedCallersOnly]
     private static nint GetDisplayInfo(nint self)
     {
         DbId id = Id(self, 24);
         nint p = id.IsNull ? 0 : TextSlots.GetDisplayInfo(id);
         if (p != 0) return p;
-        if (_noInfo == 0) _noInfo = (nint)NativeMemory.AllocZeroed(TextSlots.DisplayInfoSize);
+        if (_noInfo == 0) _noInfo = TextObjects.NewBlock();
         return _noInfo;
     }
 

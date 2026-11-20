@@ -49,10 +49,16 @@ jobs:
             .github/workflows/ci.yml
             'tools/engine/*'
             'tools/analyzers/*'
+            'tools/anim/*'
             'tools/gates/*'
             tools/build-openal.sh
             tools/approved-examples.sh
             tools/no-loaded-runtime.sh
+            tools/codehash.py
+            tools/keep-staged.sh
+            tools/stub-host.sh
+            tools/where.sh
+            'tools/selfcheck/*'
             tools/live/session-log.sh
             tools/live/docks_run.sh
             tools/live/keymap.py
@@ -114,7 +120,16 @@ jobs:
           nix develop .#ci --command bash -c '
             set -euo pipefail
             ./build.sh
-            CX_NO_BUILD=1 ./run-demo.sh
+            CX_NO_BUILD=1 ./run-demo.sh | tee demo.out
+            # The fast self-check path must run what the AOT image runs: the same verdict and the same suites. Not
+            # tools/selfcheck/fast_approved_examples.sh: that one needs a systemd user manager and a timing bound.
+            tools/selfcheck/run.sh | tee fast.out
+            want=$(grep -E "^>> [0-9]+ SelfCheck lines" demo.out)
+            got=$(grep -E "^>> [0-9]+ SelfCheck lines" fast.out)
+            [ "$want" = "$got" ] || { echo "fast self-checks: \"$got\", run-demo.sh: \"$want\""; exit 1; }
+            demolog=$(sed -n "s/^>> \(.*cx\.log\) (written from C#):\$/\1/p" demo.out)
+            suites() { grep -o "\[cx\] [A-Za-z0-9_.]*SelfCheck[ :A-Z]*" "$1" | sort | uniq -c; }
+            diff <(suites "$demolog") <(suites build/selfcheck/cx.log)
           '
 
   windows:

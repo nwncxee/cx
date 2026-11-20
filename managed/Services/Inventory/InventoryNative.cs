@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 using CX.Services.Radial;
 
 namespace CX.Services.Inventory;
@@ -120,7 +121,7 @@ internal static unsafe class InventoryNative
         }
         if (show != 0)
         {
-            if (ExtenderLog.Enabled) _log?.Info($"[inv] stock panel shown (0x{oid:x})");
+            _log?.Info($"[inv] stock panel shown (0x{oid:x})");
             InventoryService.Yield();
         }
         _hooks.VisibleOrig(panel, show, notify, oid);
@@ -144,7 +145,7 @@ internal static unsafe class InventoryNative
         if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && !new CGuiPanel(panel).Shown && !FamiliarRefused())
         {
             if (_hooks.LevelingUp) return;
-            if (ExtenderLog.Enabled) _log?.Info(_hooks.KeyDown ? "[inv] key toggles the CX window" : "[inv] stock show call reaches the CX window");
+            _log?.Info(_hooks.KeyDown ? "[inv] key toggles the CX window" : "[inv] stock show call reaches the CX window");
             InventoryService.OnSetVisible(show: true, notify: _hooks.KeyDown);
             return;
         }
@@ -172,7 +173,7 @@ internal static unsafe class InventoryNative
     /// <summary>Shut the CX window, telling the server, as a stock caller shuts a shown stock panel.</summary>
     private static void CloseFor(string why)
     {
-        if (ExtenderLog.Enabled) _log?.Info(why);
+        _log?.Info(why);
         InventoryService.OnSetVisible(show: false, notify: true);
     }
 
@@ -207,7 +208,7 @@ internal static unsafe class InventoryNative
     {
         if (oid != InventoryModel.Invalid)
         {
-            if (ExtenderLog.Enabled) _log?.Info($"[inv] add oid=0x{oid:x} x={x} y={y} ghost={ghost} stack={StackOf(oid)}");
+            _log?.Info($"[inv] add oid=0x{oid:x} x={x} y={y} ghost={ghost} stack={StackOf(oid)}");
             IntPtr panel = MyPanel();
             bool bag = panel != IntPtr.Zero && box == new CPanelInventory(panel).BackpackGrid.Ptr;
             if (bag && (uint)(y / InventoryModel.Rows) < InventoryModel.Pages) _bagPageSeq[y / InventoryModel.Rows] = ++_bagSeq;
@@ -245,7 +246,7 @@ internal static unsafe class InventoryNative
             if (it != IntPtr.Zero && new CNWCItem(it).RepoY / InventoryModel.Rows == page && n < _drop.Length) _drop[n++] = oid;
         }
         for (int i = 0; i < n; i++) _seen.Remove(_drop[i]);
-        if (n > 0 && ExtenderLog.Enabled) _log?.Info($"[inv] bag page {page}: {n} item(s) the server no longer sends, dropped");
+        if (n > 0) _log?.Info($"[inv] bag page {page}: {n} item(s) the server no longer sends, dropped");
     }
 
     private static int StackOf(uint oid)
@@ -272,7 +273,7 @@ internal static unsafe class InventoryNative
         if (_pagenumOpening) { _pagenumOpening = false; return; }
         var p = new CPanelInventory(panel);
         _arrivals++; _arrivalOid = p.ContainerOid; _arrivalPage = p.ContainerGrid.Page;
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] loot page {_arrivalPage} arrived (0x{_arrivalOid:x}, {count} pages)");
+        _log?.Info($"[inv] loot page {_arrivalPage} arrived (0x{_arrivalOid:x}, {count} pages)");
     }
 
     // ---- lookups ----
@@ -310,6 +311,16 @@ internal static unsafe class InventoryNative
         return new CGameObject(go).AsNWCItem();
     }
 
+    /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
+    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
+    public static void FireTarget(uint oid)
+    {
+        IntPtr app = App(), mode = TargetFire.Live();
+        if (app == IntPtr.Zero || mode == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return;
+        CNWCObject obj = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
+        if (!obj.IsNull) TargetFire.Fire(mode, obj.Ptr);
+    }
+
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;
 
     // ---- the per-frame copy ----
@@ -342,7 +353,7 @@ internal static unsafe class InventoryNative
         if (sig != _statSig)
         {
             _statSig = sig; _labelsStale = true;
-            if (ExtenderLog.Enabled) _log?.Info($"[inv] worn/stat change gold={c.Gold} weight={c.CarriedWeight} chest=0x{worn[1]:x}");
+            _log?.Info($"[inv] worn/stat change gold={c.Gold} weight={c.CarriedWeight} chest=0x{worn[1]:x}");
         }
 
         int n = 0, dropped = 0;
@@ -410,7 +421,7 @@ internal static unsafe class InventoryNative
             m.Title = Label(p.ContainerTitle);
             m.Pages = LootPages(m, p);
             if (m.Pages > 1) m.Ask(0, now);
-            if (ExtenderLog.Enabled) _log?.Info($"[inv] loot open 0x{oid:x} '{m.Title}' pages={p.ContainerPages} bag={m.IsItem}");
+            _log?.Info($"[inv] loot open 0x{oid:x} '{m.Title}' pages={p.ContainerPages} bag={m.IsItem}");
         }
         if (!m.Open) return;
         CGuiContainer g = p.ContainerGrid;
@@ -489,7 +500,7 @@ internal static unsafe class InventoryNative
     public static void CloseContainer(IntPtr panel)
     {
         if (!ContainerMode(panel)) return;
-        if (ExtenderLog.Enabled) _log?.Info("[inv] loot close (inventory closed over it)");
+        _log?.Info("[inv] loot close (inventory closed over it)");
         new CPanelInventory(panel).InvSetContainerGuiVisible(0, 1, 0, InventoryModel.Invalid);
     }
 
@@ -571,14 +582,14 @@ internal static unsafe class InventoryNative
     /// <summary>The <c>GuiInventory_Status</c> the stock panel owes the server, sent from the CX window in its place.</summary>
     public static void Status(bool visible)
     {
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] status open={visible}");
+        _log?.Info($"[inv] status open={visible}");
         IntPtr msg = Msg();
         if (msg != IntPtr.Zero) EngineFn.SendGuiInvStatus(msg, visible ? 1 : 0, PlayerId());
     }
 
     public static void SelectPanel(int page)
     {
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] select page={page}");
+        _log?.Info($"[inv] select page={page}");
         IntPtr msg = Msg();
         if (msg != IntPtr.Zero) EngineFn.SendGuiInvSelectPanel(msg, (byte)page, 1);
     }
@@ -689,7 +700,7 @@ internal static unsafe class InventoryNative
                    : default;
         // A gob hit links the record into the gob's SafePointer list: unlink it now, not when the gob dies.
         EngineFn.HitInfoReset((IntPtr)_hit, 0, HitMask, 0);
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] pick ({sx},{sy}) -> {r.Kind} oid=0x{r.Oid:x} type={r.Type} at {r.Point}");
+        _log?.Info($"[inv] pick ({sx},{sy}) -> {r.Kind} oid=0x{r.Oid:x} type={r.Type} at {r.Point}");
         return r;
     }
 
@@ -745,6 +756,37 @@ internal static unsafe class InventoryNative
 
     /// <summary><c>SetButtonItem</c>'s property argument as the stock item drop passes it.</summary>
     private const int QuickItemProp = 0xff00ff;   // not-an-offset: the stock drop's "no property" word
+
+    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag.</summary>
+    private const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
+
+    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) is an open store's
+    /// item box, where the stock drag sells.</summary>
+    public static bool StoreBoxAt(int sx, int sy)
+    {
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero) return false;
+        var man = new CGuiMan(gm);
+        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
+        return obj != IntPtr.Zero && new CGuiObject(obj).GetGuiObjType() == StoreBoxTag;
+    }
+
+    /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the
+    /// stock inventory's hover writes it; nothing when no store is open.</summary>
+    public static void PriceInStore(uint oid)
+    {
+        IntPtr slot = Native.Sym(SymbolMap.ActiveStorePanel);
+        IntPtr panel = slot == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)slot;
+        if (panel != IntPtr.Zero && EngineFn.StoreMouseoverInventoryItem != null) EngineFn.StoreMouseoverInventoryItem(panel, oid);
+    }
+
+    /// <summary><c>Store_RequestSell</c>, as the stock store box's drop sends it: no confirm.</summary>
+    public static void Sell(uint oid)
+    {
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendStoreRequestSell != null) EngineFn.SendStoreRequestSell(msg, oid);
+    }
 
     /// <summary>Send <see cref="DropVerb"/>'s action: <c>Inventory_Drop</c> at the point, <c>Input_UseItem</c> on the player, or
     /// <c>BarterStartBarter</c>.</summary>

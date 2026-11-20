@@ -119,6 +119,16 @@ public static partial class UiHost
         return best;
     }
 
+    /// <summary>A pointer-capturing CX window drawn over the engine's GUI panels (any layer but
+    /// <see cref="UiLayer.UnderGui"/>) is the topmost window at the point: a press there is its to take or decline before
+    /// any engine GUI object beneath it, since it is what the player sees on top.</summary>
+    public static bool OverGuiAt(float px, float py) => HitTest(px, py) is { Layer: not UiLayer.UnderGui, CapturesPointer: true };
+
+    /// <summary>Offer a press over the engine GUI to the CX window under the pointer alone: one that declines it leaves it
+    /// to the engine object beneath, and no other window, though it would take any press, is asked.</summary>
+    public static bool OfferOverGui(bool down, int button, int x, int y)
+        => HitTest(x, y) is Window w && new ButtonOffer(down, button, x, y).Offer(w);
+
     /// <summary>Topmost FOCUSABLE window under the point: non-focusable windows are skipped for focus, so a
     /// click passes through an overlay to the focusable window beneath it.</summary>
     public static Window? HitTestFocusable(float px, float py)

@@ -197,9 +197,8 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   `cx.log` names the held count when the hold lifts. The one arm that outlives the hold is the
   first run's, where there was no file to keep; off-device the write stands down entirely, because
   there the path is the real user's.
-- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
-  `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
-  inside `Settings.Load`.
+- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`)
+  with **no legacy read** of the flat name.
 - **Restart rows** show `V` with the `↻ restart` badge, amber when `V != Boot`.
 - **Retired:** `cx-camera/chat/combattext/dialog/nameplate/quickbar/ui.cfg` writers and their
   `ToText`/`Parse` round-trips; `ConfigFile.Load/Save/Baseline`. Surviving: `ForEachPair`,
@@ -299,10 +298,9 @@ its own, and *no CX* is an uninstall."
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
-| general.logs | Write cx.log for bug reports | T | on | A | L | — | Writes what CX is doing to cx.log, in the game's logs folder (beside nwn.ini, or wherever nwn.ini's [Alias] moves LOGS), from now on; restart to capture the launch lines too. Attach cx.log and cx.1.log to a bug report. |
 | general.hookdebug / pin / resizeat / frametimes | — | T, S | as declared | C | R, `frametimes` L | — | funchook trace, main-thread affinity, the timed window resize, and the per-frame time list in the log |
 
-`general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
+cx.log is always written: no setting turns it off, and a key an older CX wrote for that is dropped when cx.cfg is read.
 
 **About** — group `about` (110), no master, no value row. `PanelStatus` (and `Status`) =
 `Product.About`: product name + version (`AssemblyInformationalVersion`), author, contact, from
@@ -815,6 +813,7 @@ ChatOnly master alone, so it has no submenu.
 |---|---|---|---|---|---|---|---|
 | anim.enabled | Procedural animations | T | on | U | L | — | Corrections on top of the game's own animation: feet that stand on the floor that is drawn, strides that match the pace, leaning, body weight and hit reactions. Off, every correction below reads off and characters animate exactly as the stock game plays them. |
 | anim.distance / footik / footik_max / footik_tilt / footik_lift / stride / footsteps / syncattach / lookbody / diagonal / pivot / blend / crossfade / curves / lean / mass / follow / aim / hitreact | — | T, S | each defaults on / at its tuned value | C | L | Feet, Body | the individual corrections; one reads on only while both it and the master are |
+| anim.record | Record leg frames | T | off | C | L | Developer | Writes each frame's leg-solve inputs to a `cx-legs-<time>.cxlegs` file in the logs folder, for `tools/anim/replay.sh` to grade offline. Only characters the procedural animations are correcting are recorded: it needs Procedural animations on, and a character in range. Switching it off, or Procedural animations off, closes the file. |
 | dangly.enabled | Swaying cloaks and hair | T | on | **C** | L | — | cfg-only: cloaks, hair, banners and other swaying parts move with wind and their own weight. Off, they go rigid -- nothing else sways them. |
 | dangly.motion | Motion | D | automatic / stock · automatic | U | L | — | Automatic moves each part the way its own model asks to be moved -- leaves and cloth sway and ring, cloaks swing, hair jiggles. Stock moves every part the way the unmodified game does. |
 | dangly.windgain | Wind response | S | 0–3 step 0.05 · 1 | U | L | Forces | How hard moving air pushes a part -- the wind, and the air a moving character runs through. 0 = none. |

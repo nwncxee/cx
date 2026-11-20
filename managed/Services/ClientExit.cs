@@ -8,7 +8,7 @@ namespace CX.Services;
 
 /// <summary>The client quitting (<c>RenderInterface::Shutdown</c>, after the frame loop): the Vulkan swapchain and
 /// surface are released there, so the driver's exit handler finds nothing to clean against a display SDL has closed.
-/// From then on a crash ends the process at once instead of re-entering the engine's crash handler.</summary>
+/// From then on a crash ends the process at once instead of re-entering the engine's crash handler. A leg recording is closed here too.</summary>
 public sealed unsafe class ClientExit : IExtenderService
 {
     /// <summary>The shutdown hook's trampoline and the log.</summary>
@@ -41,6 +41,7 @@ public sealed unsafe class ClientExit : IExtenderService
         ClientExitState s = _s;
         s.Log?.Always("ClientExit: the renderer shuts down -- the client is quitting");
         if (OperatingSystem.IsLinux()) cx_crash_quitting();
+        CX.Services.Anim.LegRecorder.Quit();
         AlloyDevice.VulkanMade?.ReleaseWindow();
         s.Orig(final);
     }

@@ -132,6 +132,7 @@ public sealed unsafe partial class DialogService : IExtenderService
         _window = new Window(0, 0, 0, 0)
         {
             Focusable = false,
+            CapturesPointer = true,
             DrawContent = Draw,
             OnMouseButton = OnMouseButton,
             OnMouseMotion = OnMouseMotion,

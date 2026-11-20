@@ -2,13 +2,16 @@
 """CX-200: refuse self-check assertions that cannot fail, and skip paths that pass silently.
 
 Scope: every `*SelfCheck*.cs` and `*ApprovedExamples*.cs` under managed/, plus the body of any method elsewhere whose name
-contains "SelfCheck". Inside that scope four shapes are refused:
+contains "SelfCheck". Inside that scope five shapes are refused:
 
   1. an Expect(...) whose condition is a compile-time constant (literal arithmetic only);
   2. an Expect(...) comparing a `const` against a plain literal, over == != < > <= >=. The const may be
      named bare (declared in the same file) or as Type.CONST (declared anywhere under managed/);
   3. an Expect(...) whose two operands across a comparison are syntactically identical;
-  4. a hand-written "SKIPPED" log line -- a skip goes through Checker.Skip, which counts it.
+  4. a hand-written "SKIPPED" log line -- a skip goes through Checker.Skip, which counts it;
+  5. in a whole `*SelfCheck*`/`*ApprovedExamples*` file, an `if (...) return true;` among the statements of a `bool` method whose name an
+     Expect(...) in that file reads: the check passes without asserting whenever the condition holds (a setting the
+     machine can change, say), and a pass nothing checked is worse than none. Take the condition out of the check.
 
 `-v` lists each hit with its file and line. Exit 1 when a shape other than 2 is refused; the standing
 instances of 2 are a shrink-only baseline instead (`--census` feeds ratchet.sh), so one may be removed
@@ -19,6 +22,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if "--root" in sys.argv:
+    ROOT = Path(sys.argv[sys.argv.index("--root") + 1]).resolve()
 MANAGED = ROOT / "managed"
 
 CASTS = {
@@ -285,11 +290,38 @@ def qualified_consts():
     return table
 
 
+BOOL_METHOD = re.compile(r"\bbool\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*\{")
+EARLY_TRUE = re.compile(r"\bif\s*\([^;{}]*\)\s*(?:\{\s*)?return\s+true\s*;")
+
+
+def early_passes(masked: str, read):
+    """(offset, method) of each `if (...) return true;` in a bool method named in `read`."""
+    out = []
+    for m in BOOL_METHOD.finditer(masked):
+        if m.group(1) not in read:
+            continue
+        depth, e = 0, m.end() - 1
+        while e < len(masked):
+            if masked[e] == "{":
+                depth += 1
+            elif masked[e] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            e += 1
+        for t in EARLY_TRUE.finditer(masked, m.end(), e):
+            # only a statement of the method's own block: the `if` that is a loop's body (`foreach (...) if (found) return true;`) is the answer, not a bypass
+            before = masked[m.end():t.start()].rstrip()
+            if masked.count("{", m.end(), t.start()) == masked.count("}", m.end(), t.start()) and (not before or before[-1] in "{};"):
+                out.append((t.start(), m.group(1)))
+    return out
+
+
 def scan(path: Path, qualified=None):
     src = path.read_text(encoding="utf-8", errors="replace")
     # Cheap pre-filter before the character walk: nothing to say about a file with no self-check in it,
     # or one whose self-check asserts nothing and logs no skip.
-    if ("SelfCheck" not in src and "ApprovedExamples" not in path.name) or ("Expect(" not in src and "SKIPPED" not in src):
+    if ("SelfCheck" not in src and "SelfCheck" not in path.name and "ApprovedExamples" not in path.name) or ("Expect(" not in src and "SKIPPED" not in src):
         return []
     masked = mask(src)
     # Strings kept, so two calls that differ only in a string argument are not read as one text.
@@ -303,6 +335,14 @@ def scan(path: Path, qualified=None):
 
     def line_of(off):
         return src.count("\n", 0, off) + 1
+
+    if "SelfCheck" in path.name or "ApprovedExamples" in path.name:
+        read = set()
+        for m in re.finditer(r"(?<![A-Za-z0-9_.])(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?Expect\s*\(", masked):
+            cond, _ = first_arg(masked, m.end() - 1)
+            read.update(IDENT.findall(cond or ""))
+        for off, name in early_passes(masked, read):
+            hits.append((line_of(off), f"{name} returns true early, so its Expect passes without asserting", " ".join(src[off:off + 60].split()), "hard"))
 
     for lo, hi in regs:
         window = masked[lo:hi]

@@ -29,19 +29,10 @@ LOG="$(logs_of "$DEMOHOME")/cx.log"
 # #457: rot stands the WHOLE extender down, before discovery, keyed on the host's .note.gnu.build-id.
 # /usr/bin/env is by definition a wrong build, so a demo that ran in it would prove the refusal and nothing
 # else -- and every SelfCheck suite lives inside a service's Initialize. So the demo links a do-nothing host
-# carrying a known build's id and runs in that. The key comes from the build files, never a second copy.
-BID=$(awk -F'\t' '$1 == "linux" { print $2; exit }' managed/Framework/Builds/*.tsv)
-[ -n "$BID" ] || { echo ">> FAIL: no linux key in managed/Framework/Builds/*.tsv"; exit 1; }
+# carrying a known build's id (tools/stub-host.sh) and runs in that.
 # Named nwmain-*: the bootstrap loads into nothing else (the Steam runtime preloads its helpers too).
 STUB="$DEMOHOME/nwmain-demo"
-# CX-55: NwSyncReader resolves sqlite3/zstd out of the GLOBAL scope (dlsym(NULL)), so linking the system copies
-# into the stub is what lets its self-check really build a store and read it from two threads at once. Not every
-# box has the two -devel packages; there the check says SKIPPED, and this says which of the two ran.
-if ! echo 'int main(void){return 0;}' | cc -x c - -o "$STUB" -Wl,--build-id=0x"$BID" \
-       -Wl,--no-as-needed -lsqlite3 -lzstd 2>/dev/null; then
-  echo ">> no libsqlite3/libzstd to link: NwSyncReader.SelfCheck will SKIP (install them to run it)"
-  echo 'int main(void){return 0;}' | cc -x c - -o "$STUB" -Wl,--build-id=0x"$BID"
-fi
+bash tools/stub-host.sh "$STUB" || exit 1
 
 echo ">> launching the demo host with the extender preloaded..."
 HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
@@ -50,26 +41,8 @@ echo
 echo ">> $LOG (written from C#):"
 cat "$LOG"
 
-# The gate: the SelfCheck suites assert real invariants, and until #157 the log could say FAILED
-# all day and CI still went green. Six spellings exist across the call sites -- FAILED, FAIL, both
-# colon forms, and "had FAILURES" -- so match the suite name and the word loosely rather than
-# enumerating them. A log with no SelfCheck line at all is also a failure: the services never ran.
-echo
-if ! grep -q 'SelfCheck' "$LOG"; then
-  echo ">> FAIL: no SelfCheck lines in $LOG -- services never ran"; exit 1
-fi
-if grep -qE 'SelfCheck.*FAIL' "$LOG"; then
-  echo ">> FAIL: a SelfCheck suite failed:"; grep -E 'SelfCheck.*FAIL' "$LOG"; exit 1
-fi
-# A suite that THROWS takes its service's whole Initialize with it and prints no FAILED line -- #673 lost 29
-# SelfCheck lines to an ArgumentOutOfRange and the gate above went green.
-if grep -q 'init threw' "$LOG"; then
-  echo ">> FAIL: a service's Initialize threw:"; grep 'init threw' "$LOG"; exit 1
-fi
-# A suite that stood down is neither a pass nor a failure, and it is named here so "none failed" cannot
-# be read as "all ran" (CX-200: every skip goes through Checker.Skip and says SKIPPED).
-echo ">> $(grep -c 'SelfCheck' "$LOG") SelfCheck lines, none failed, $(grep -c 'SelfCheck.*SKIPPED' "$LOG") SKIPPED."
-grep -E 'SelfCheck.*SKIPPED' "$LOG" | sed 's/^/>>   /' || true
+# The verdict, shared with the fast self-check run (tools/selfcheck/run.sh) so the two end on the same lines.
+sh tools/selfcheck/verdict.sh "$LOG" || exit 1
 
 # Given a game build CX does not support
 # When the player starts the game
@@ -93,7 +66,7 @@ if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTLOG"; then
 fi
 echo ">> rot: extender stood down whole, nothing discovered."
 
-# Given Write cx.log for bug reports is off and a cx.log from the last launch
+# Given cx.cfg still holds general.logs=0 from an older CX, and a cx.log from the last launch
 # When the client launches
 # Then cx.log holds this launch's lines and cx.1.log holds the last launch's
 OFFHOME="${TMPDIR:-/tmp}/cx-demo-logs-off"
@@ -104,10 +77,10 @@ mkdir -p "$OFFLOGS"
 echo "the last launch" > "$OFFLOGS/cx.log"
 HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 echo
-if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || [ ! -s "$OFFLOGS/cx.log" ]; then
-  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFLOGS)"; exit 1
+if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || ! grep -q 'KnobFile.SelfCheck: passed' "$OFFLOGS/cx.log"; then
+  echo ">> FAIL: with an old general.logs=0, a launch did not write cx.log and rotate the last one into cx.1.log ($OFFLOGS)"; exit 1
 fi
-echo ">> logs off: the launch rotated cx.log."
+echo ">> old general.logs=0: the launch wrote cx.log and rotated the last one."
 
 echo
 echo "Attach to the real client with the launcher:"

@@ -354,7 +354,7 @@ internal static unsafe partial class PostStack
         // ponytail: one context and one history, so only the full-window world view; a second or orthographic view
         // draws unsmoothed. Per-view contexts if those views ever matter.
         if (fovY <= 0f || vk.FrameSize != (dw, dh)) return false;
-        if (vk.FsrReady(rw, rh, dw, dh) is string why) { Fsr.Refuse(why, log); return false; }
+        if (vk.FsrReady(rw, rh, dw, dh) is string why) { if (why != VkBackend.Settling) Fsr.Refuse(why, log); return false; }
         if (s.FsrOut.IsNull || s.FsrW != dw || s.FsrH != dh)
         {
             vk.Destroy(s.FsrOut);

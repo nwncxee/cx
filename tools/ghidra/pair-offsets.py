@@ -10,7 +10,7 @@ file adds hand-anchored pairs for the classes MSVC does not export by name, one 
     CNWCCreature::ShowFeedbackBubbleText <TAB> 14080b240
 
 Every row of the output is a CANDIDATE, never a verified offset. Confirm each against live
-memory with a boot-time probe under general.logs=1 before any code reads it.
+memory with a boot-time probe in cx.log before any code reads it.
 """
 import argparse, collections, csv
 

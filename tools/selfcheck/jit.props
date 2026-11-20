@@ -1,0 +1,13 @@
+<!-- The fast self-check build (tools/selfcheck/run.sh): the same managed project compiled to IL for a JIT host,
+     into its own folders so it never touches the NativeAOT publish's obj/ or output. Imported only when the run
+     passes -p:DirectoryBuildPropsPath, so a normal ./build.sh never reads it. -->
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'cx_managed'">
+    <BaseIntermediateOutputPath>$(CxJitOut)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(CxJitOut)/bin/</BaseOutputPath>
+    <!-- a library loaded through hostfxr needs its runtimeconfig.json -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- the AOT build's own obj/ and bin/ stay under managed/, and their generated sources are not ours to compile -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

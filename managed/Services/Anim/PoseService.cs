@@ -36,7 +36,7 @@ public sealed unsafe class PoseService : IExtenderService
     /// twice the smoothing the speed does or the lean pitch shivers.</summary>
     private const float AccelTime = 0.3f;
     /// <summary>World units/s of travel under which the path has no heading to turn (standing, turning on the spot).</summary>
-    private const float MinTravel = 0.3f;
+    internal const float MinTravel = 0.3f;
 
     /// <summary>Animations whose name starts with one of these (NUL-separated) get no correction: sitting,
     /// lying, knockdown and getting up, death, kneeling emotes, mounting, flying in/out and the module-defined
@@ -90,11 +90,8 @@ public sealed unsafe class PoseService : IExtenderService
         public Vector3 Fwd, Right;
         /// <summary>Measured horizontal velocity (world units/s), averaged like the speed: which way a walk-back drifts.</summary>
         public Vector2 Vel;
-        /// <summary><see cref="Diagonal"/>: the hips' turn off the facing (radians, positive = left) and its spring
-        /// velocity; whether the body has hips to turn, <see cref="Swaps"/>'s last answer (the diagonal it plays is
-        /// the straight cycle), and the facing's
-        /// yaw it was last measured against (<c>anim.pivot</c> leaves a change of it on the hips).</summary>
-        public float Turn, TurnV, Heading;
+        /// <summary><see cref="Diagonal"/>: whether the body has hips to turn, and <see cref="Swaps"/>'s last answer
+        /// (the diagonal it plays is the straight cycle).</summary>
         public bool Hips, Swapped;
         /// <summary><see cref="Transition"/>: last frame's anim id, whether a blend runs and seconds into it, and per bone
         /// (<see cref="BoneIndex"/> order) the animation layer's last output (w-first) with its angular velocity
@@ -125,9 +122,9 @@ public sealed unsafe class PoseService : IExtenderService
         /// exact one on a path or a drive, and the measured <see cref="Accel"/> where there is no path at all
         /// (world units per second squared, signed).</summary>
         public float Cue;
-        /// <summary>Foot placement: the offset springs, the floor slopes under each foot toward the toe (F) and
-        /// to the right (S), the stairs weight, and which slope is re-cast this frame.</summary>
-        public float OffR, VelR, OffL, VelL, FR, VFR, SR, VSR, FL, VFL, SL, VSL, W, VW;
+        /// <summary>The leg solve's own state (<see cref="Legs"/>).</summary>
+        public LegState Leg;
+        /// <summary>Foot placement: which slope is re-cast this frame.</summary>
         public int Phase;
         /// <summary>Each foot's cached floor cast (<see cref="FootPlacement.FootCast"/>), and where a swinging one lands.</summary>
         public FootPlacement.FootCast R, L, NextR, NextL;
@@ -136,28 +133,10 @@ public sealed unsafe class PoseService : IExtenderService
         public bool Loco;
         public float RateNext;
         public RunRates Rates;
-        /// <summary><see cref="StrideWarp"/>: each foot's plant, whether the walk has been blended in to plant them, and the
-        /// clip they were last timed by.</summary>
-        public StrideWarp.Anchor AnchorR, AnchorL;
-        public bool Planting;
+        /// <summary><see cref="StrideWarp"/>: the clip the plants were last timed by, and the walk run last put in step,
+        /// so it is seeded once.</summary>
         public CX.Alloy.Mdl.AnimDef? PlantClip;
-        /// <summary><see cref="StrideWarp"/>: the pelvis drop held at the stride's deepest need, and its easing spring.</summary>
-        public float DropHold, Drop, DropV;
-        /// <summary><see cref="StrideWarp"/>: the walk run last put in step, so it is seeded once.</summary>
         public long Seeded;
-        /// <summary><see cref="StrideWarp"/>: each foot in the air's landing is predicted this frame, and where it lands.</summary>
-        public bool Landing;
-        public StrideWarp.Ahead AheadR, AheadL;
-        /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, a turn and not a stop, still turning, stepping
-        /// at once, the leftovers folded; the stage, its clock, the step's lift and length; the step's start and the weighted
-        /// foot's held world point; each foot's leftover easing out.</summary>
-        public bool SettleLoco, SettleRight, SettleTurn, SettleSpin, SettleNow, SettleFolded;
-        public byte SettleStage;
-        public float SettleT, SettleLift, SettleStep;
-        public Vector3 SettleFrom, SettleHold;
-        public Vector2 SettleOff, SettleOffV, SettleOffO, SettleOffOV;
-        /// <summary>Each ankle's stride-warp offset last frame (world), which a stop's settle takes the feet over from.</summary>
-        public Vector3 WarpR, WarpL;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
         public bool Shuffling;
         /// <summary>Footfall: the seconds since the last step played.</summary>
@@ -167,9 +146,6 @@ public sealed unsafe class PoseService : IExtenderService
         /// <summary>Upper body: the lean, aim and flinch springs, (R, F) radians.</summary>
         public Vector2 Lean, LeanV, Hit, HitV;
         public float AimPitch, AimV, AimW, AimWV;
-        /// <summary><see cref="Mass"/>: the pelvis dip (world units, negative is down) and its spring velocity, and the
-        /// eased vertical speed (world units/s) and its change, the landing's load.</summary>
-        public float Dip, DipV, Climb, ClimbA;
         /// <summary>The look share's spring: the head's turn past the deadzone, (yaw, pitch) radians.</summary>
         public Vector2 Look, LookV;
         /// <summary><see cref="Follow"/>: the torso's turn off the animation as last measured and the frame before
@@ -656,7 +632,7 @@ public sealed unsafe class PoseService : IExtenderService
         Vector3 rootL = PoseRig.Pos(root);
         Quaternion adj = rootWq * Quaternion.Conjugate(Local(root));
         Vector3 adjPos = rootW - Vector3.Transform(rootL * scale, adj);
-        Axes(adj, out _, out Vector3 fwdH, out Vector3 right);
+        Legs.Axes(adj, out _, out Vector3 fwdH, out Vector3 right);
 
         bool snap = s.Root != root || Vector3.DistanceSquared(adjPos, s.LastPos) > Teleport * Teleport;
         Vector3 moved = snap ? Vector3.Zero : adjPos - s.LastPos;
@@ -678,63 +654,64 @@ public sealed unsafe class PoseService : IExtenderService
         Weight.Step(ref s, !tracked, dt);
         bool blending = Transition.Begin(ref s, anim, tracked, dt);
         s.Hips = bones.Pelvis != IntPtr.Zero;
-        bool turned = Diagonal.Step(ref s, anim, fwdH, right, snap, tracked, dt);
+        LegFrame f = default;
+        f.Dt = dt; f.Snap = snap; f.Gated = gated; f.Tracked = tracked; f.Scale = scale;
+        f.Since = since / (float)System.Diagnostics.Stopwatch.Frequency;
+        f.Knobs = Knobs();
+        f.Origin = adjPos; f.Facing = adj; f.FwdH = fwdH; f.Right = right;
+        f.Anim = anim; f.Swapped = s.Swapped; f.Hips = s.Hips; f.Vel = s.Vel;
+        Legs.Turn(ref s.Leg, f, out LegPose p);
         // the animation layer goes first, over the engine's own values: every correction below reads its pose
-        bool saved = blending || turned;
+        bool saved = blending || p.Turned;
         if (saved) Save(ref s, root, bones);
         Transition.Pose(ref s, bones, blending, tracked, dt);
-        Quaternion legs = adj;
-        if (turned)
+        if (p.Turned)
         {
-            Diagonal.Write(bones, s.Turn);
-            legs *= Quaternion.CreateFromAxisAngle(Vector3.UnitZ, s.Turn);
+            Diagonal.Write(bones, p.Turn);
             _turned++;
         }
-        Axes(legs, out Vector3 legFwd, out Vector3 legFwdH, out Vector3 legRight);
 
-        World(bones.RFoot, out Vector3 rAnkle, out _);
-        World(bones.LFoot, out Vector3 lAnkle, out _);
-        Quaternion toModel = Quaternion.Conjugate(legs);
-        Vector3 mr = Vector3.Transform(rAnkle - adjPos, toModel) / scale, ml = Vector3.Transform(lAnkle - adjPos, toModel) / scale;
+        World(bones.RFoot, out f.RAnkle, out _);
+        World(bones.LFoot, out f.LAnkle, out _);
+        World(bones.RThigh, out f.RThigh, out _);
+        World(bones.LThigh, out f.LThigh, out _);
+        Quaternion toModel = Quaternion.Conjugate(p.Legs);
+        Vector3 mr = Vector3.Transform(f.RAnkle - adjPos, toModel) / scale, ml = Vector3.Transform(f.LAnkle - adjPos, toModel) / scale;
         // the engine's own speed, not the drawn step: exact where the whole-millisecond clock leaves the measured one
         // +/-14 % a frame -- a shuffle's gap over its countdown, a path's or a drive's rate times its factor
-        float ground = s.Shuffling ? Skating.Speed(creature, s.Speed) : s.Gait != GaitMode.None ? s.GaitSpeed : s.Speed;
-        StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap, dt,
-                        out Vector3 warpR, out Vector3 warpL, out float drop);
-        bool standing = s.Hips && s.Moving <= 0f && !s.Shuffling && Transition.Movement(anim) && !IsLocomotion(anim);
-        // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were drawn
-        if (s.SettleLoco && !s.Loco) { warpR = s.WarpR; warpL = s.WarpL; }
-        s.WarpR = warpR; s.WarpL = warpL;
-        Vector3 rStance = rAnkle + warpR, lStance = lAnkle + warpL;
-        if (Settle.Wants(s, standing, s.YawRate)) Settle.Stance(gob, bones, legs, adjPos, scale, ref rStance, ref lStance);
-        Settle.Feet(ref s, AnimKnobs.Stride.V && PoseRig.Db && !gated && !snap && dt > 0f, rAnkle + warpR, lAnkle + warpL,
-                    rStance, lStance, Settle.Fade(Gait.Driven(gob)), standing, s.YawRate, scale, dt, out Vector3 setR, out Vector3 setL);
-        warpR += setR;
-        warpL += setL;
+        f.Ground = s.Shuffling ? Skating.Speed(creature, s.Speed) : s.Gait != GaitMode.None ? s.GaitSpeed : s.Speed;
+        f.Loco = s.Loco; f.Paced = s.Loco || s.Shuffling; f.YawRate = s.YawRate;
+        StrideWarp.Gather(ref s, gob, bones, ref f, mr, ml);
+        f.Standing = s.Hips && s.Moving <= 0f && !s.Shuffling && Transition.Movement(anim) && !IsLocomotion(anim);
+        f.HasStance = Settle.Wants(s.Leg, s.Loco, f.Standing, s.YawRate)
+                      && Settle.Stance(gob, bones, p.Legs, adjPos, scale, out f.StanceR, out f.StanceL);
+        f.Fade = Settle.Fade(Gait.Driven(gob));
+        Legs.Stride(ref s.Leg, f, ref p);
+        s.RateNext = p.RateNext;
+        s.Touchdown = p.Touchdown;
+        s.Unvoiced = p.Unvoiced;
 
-        FootPlacement.Compute(ref s, scene, gob, rAnkle + warpR, lAnkle + warpL, adjPos.Z, legFwdH, legRight, scale, weight, gated, snap, dt, out var feet);
+        FootPlacement.Cast(ref s, scene, gob, ref f, p);
+        f.Weight = weight; f.Cue = s.Cue; f.Rise = moved.Z;
+        Legs.Place(ref s.Leg, f, ref p);
+        LegRecorder.Frame(gob, f);
         Footfall.Step(ref s, creature, snap, dt);
         UpperBody.Step(ref s, creature, rootW, rootW.Z - adjPos.Z, scale, s.Speed, gated, snap, dt);
         UpperBody.Rotations(s, gated, out Vector2 torsoRot, out Vector2 neckRot);
 
-        float body = MathF.Min(feet.OffR, feet.OffL) + Mass.Step(ref s, moved.Z, scale, gated, snap, dt) - drop;
-        bool ik = !gated && (MathF.Abs(feet.OffR - body) + MathF.Abs(feet.OffL - body) > FootPlacement.MinLift
-                             || !feet.TiltR.IsIdentity || !feet.TiltL.IsIdentity
-                             || warpR.LengthSquared() + warpL.LengthSquared() > FootPlacement.MinLift * FootPlacement.MinLift);
         bool upper = bones.Torso != IntPtr.Zero && torsoRot.LengthSquared() + neckRot.LengthSquared() > 1e-8f;
         bool look = UpperBody.LookStep(ref s, bones, !gated && AnimKnobs.LookBody.V && PoseRig.LookingAt(gob), snap, dt);
         bool follow = Follow.Step(ref s, anim, gated, !tracked, scale, dt);
-        if (!saved && MathF.Abs(body) < FootPlacement.MinLift && !ik && !upper && !look && !follow) return;
+        if (!saved && MathF.Abs(p.Body) < FootPlacement.MinLift && !p.Ik && !upper && !look && !follow) return;
 
         if (!saved) Save(ref s, root, bones);
         s.Applied = true;
         _gobs++;
-        PoseRig.SetPos(root, rootL + Vector3.Transform(new Vector3(0f, 0f, body / scale), toModel));
-        if (ik)
+        PoseRig.SetPos(root, rootL + Vector3.Transform(new Vector3(0f, 0f, p.Body / scale), toModel));
+        if (p.Ik)
         {
-            float cap = AnimKnobs.Lift.V * scale;
-            Leg(bones.RThigh, bones.RShin, bones.RFoot, warpR + new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap)), legFwd, feet.TiltR);
-            Leg(bones.LThigh, bones.LShin, bones.LFoot, warpL + new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap)), legFwd, feet.TiltL);
+            Leg(bones.RThigh, bones.RShin, bones.RFoot, p.DeltaR, p.LegFwd, p.TiltR, p.YawR);
+            Leg(bones.LThigh, bones.LShin, bones.LFoot, p.DeltaL, p.LegFwd, p.TiltL, p.YawL);
         }
         if (look) UpperBody.ShareLook(bones, s.Look.X, s.Look.Y);
         if (upper) UpperBody.Write(bones.Torso, bones.Neck, fwdH, right, torsoRot, neckRot);
@@ -743,15 +720,18 @@ public sealed unsafe class PoseService : IExtenderService
         if (follow) Follow.Write(ref s, bones, fwdH, right, dt);
     }
 
-    /// <summary>The model's forward in the world, its horizontal unit, and the horizontal right, for the gob-frame
-    /// rotation <paramref name="adj"/>.</summary>
-    private static void Axes(Quaternion adj, out Vector3 fwd, out Vector3 fwdH, out Vector3 right)
+    /// <summary>The knob values the leg solve reads this frame: the stride warp only on the scene database's rig, the
+    /// diagonal only with its name hook in.</summary>
+    private static LegKnobs Knobs() => new()
     {
-        fwd = Vector3.Transform(Vector3.UnitY, adj);
-        fwdH = new Vector3(fwd.X, fwd.Y, 0f);
-        fwdH = fwdH.LengthSquared() > 1e-8f ? Vector3.Normalize(fwdH) : Vector3.UnitY;
-        right = new Vector3(fwdH.Y, -fwdH.X, 0f);
-    }
+        Stride = AnimKnobs.Stride.V && PoseRig.Db,
+        FootIk = AnimKnobs.FootIk.V,
+        MaxSlope = MathF.Tan(AnimKnobs.Tilt.V * (MathF.PI / 180f)),
+        Lift = AnimKnobs.Lift.V,
+        Mass = AnimKnobs.Mass.V,
+        Diagonal = AnimKnobs.Diagonal.V && Diagonal.Hooked,
+        Pivot = AnimKnobs.Pivot.V,
+    };
 
     /// <summary>Eases the measured motion: ground speed, yaw rate and signed slope over <see cref="MotionTime"/>,
     /// forward acceleration over <see cref="AccelTime"/>. A snap zeroes the rates rather than reading a teleport as a sprint.</summary>
@@ -800,7 +780,7 @@ public sealed unsafe class PoseService : IExtenderService
             Motion(ref s, new Vector3(0f, 4f * dt, 0f), new Vector3(-MathF.Sin(yaw), MathF.Cos(yaw), 0f), i == 0, dt);
             worst = MathF.Max(worst, MathF.Abs(s.PathRate));
         }
-        bool straight = worst < 0.05f && MathF.Abs(UpperBody.LeanTarget(s.Speed, s.PathRate, 0f, 0f, true).Y) < 0.01f;
+        bool straight = worst < 0.05f && MathF.Abs(UpperBody.LeanTarget(s.Speed, s.PathRate, 0f, 0f, true, UpperBody.Ahead).Y) < 0.01f;
         Slot c = default;
         for (int i = 0; i < 180; i++)
         {
@@ -831,12 +811,13 @@ public sealed unsafe class PoseService : IExtenderService
     }
 
     /// <summary>Moves one ankle by <paramref name="delta"/> world units: two-bone IK in world space, written back as
-    /// locals. The foot keeps its animated world orientation, turned by <paramref name="tilt"/> about the ankle.
-    /// A chain whose parents are not thigh-&gt;shin-&gt;foot is left alone.</summary>
-    private static void Leg(IntPtr thigh, IntPtr shin, IntPtr foot, Vector3 delta, Vector3 fwd, Quaternion tilt)
+    /// locals. The foot keeps its animated world orientation, turned <paramref name="yaw"/> radians about the world
+    /// vertical and then by <paramref name="tilt"/>. A chain whose parents are not thigh-&gt;shin-&gt;foot is left alone.</summary>
+    private static void Leg(IntPtr thigh, IntPtr shin, IntPtr foot, Vector3 delta, Vector3 fwd, Quaternion tilt, float yaw = 0f)
     {
         bool moves = delta.LengthSquared() >= FootPlacement.MinLift * FootPlacement.MinLift;
-        if (!moves && tilt.IsIdentity) return;
+        bool turns = MathF.Abs(yaw) >= FootPlacement.MinLift;
+        if (!moves && !turns && tilt.IsIdentity) return;
         IntPtr hip = PoseRig.Parent(thigh);
         if (hip == IntPtr.Zero || PoseRig.Parent(shin) != thigh || PoseRig.Parent(foot) != shin) return;
         World(shin, out Vector3 k, out Quaternion qs);
@@ -853,6 +834,7 @@ public sealed unsafe class PoseService : IExtenderService
                 SetLocal(shin, Quaternion.Conjugate(qt2) * qs);
             }
         }
+        if (turns) tilt *= Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yaw);
         SetLocal(foot, Quaternion.Conjugate(qs) * tilt * qf);
     }
 
@@ -951,10 +933,11 @@ public sealed unsafe class PoseService : IExtenderService
         Vector3 turned = Vector3.Transform(Vector3.UnitY, UpperBody.Turn(Vector3.UnitZ, Vector3.UnitX, 0.3f, 0.2f));
         check.Expect(turned.X < -0.2f && turned.Z > 0.1f,
                      "look share: a positive yaw turns the chest left (as the head's own yaw reads), a positive pitch raises it");
-        Vector2 left = UpperBody.LeanTarget(4f, 1f, 0f, 0f, true), speedUp = UpperBody.LeanTarget(2f, 0f, 3f, 0f, true);
+        Vector2 left = UpperBody.LeanTarget(4f, 1f, 0f, 0f, true, UpperBody.Ahead), speedUp = UpperBody.LeanTarget(2f, 0f, 3f, 0f, true, UpperBody.Ahead);
         Vector3 topL = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, left.X, left.Y));
         Vector3 topA = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, speedUp.X, speedUp.Y));
         check.Expect(topL.X < -0.05f && topA.Y > 0.03f, "lean: a left turn tips the top left, speeding up tips it forward");
+        UpperBodyLeanCheck.Run(log);
         Vector3 chest = Vector3.Transform(Vector3.UnitY, Tip(Vector3.UnitX, Vector3.UnitY, 20f * MathF.PI / 180f, 0f));
         check.Expect(chest.Z > 0.3f, "aim: a positive pitch (target above) raises the chest's forward");
         Vector2 hx = Vector2.Zero, hv = UpperBody.Launch(-Vector3.UnitY, Vector3.UnitY, Vector3.UnitX, 0.14f);
@@ -972,7 +955,8 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
         check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, a run caught mid-stride steps both feet at once onto their stance spots and holds them there through the fade, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
-        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot, never under half the engine's rate, so a body held to a crawl by a wall keeps stepping; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
+        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot, never under half the engine's rate, so a body held to a crawl by a wall keeps stepping; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one, and a foot on the ground moves only lifted");
+        check.Expect(Legs.FootCheck(), "foot hold: a landed foot keeps its world point and heading; past its hold, its twist or the leg's reach it is let go and steps, lifted, onto the animation; a swing eases its lift-off offset out before it lands");
         check.Expect(Stride.SelfCheck(), "an attachment whose clip runs another length than its body's keeps its own clock, so it never loops at the body's end; one of the body's length takes the body's time less the lead, wrapping only a loop");
         check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
@@ -982,14 +966,17 @@ public sealed unsafe class PoseService : IExtenderService
                          "the hips and arms match by their _g bone names only");
         check.Expect(Transition.SelfCheck(), "movement changes: the old movement carries on and crossfades into the new one, continuous where it starts, a reversal slows through zero instead of flipping");
         check.Expect(Mass.SelfCheck(), "mass: a start, a stop and the bottom of a drop dip the pelvis and it settles back a little past neutral; steady walking and a steady descent carry no dip; the chest's lean overshoots a step by under a fifth");
-        check.Expect(Diagonal.SelfCheck(), "diagonals: the sideways diagonal plays the straight walk or run, turned so it faces the travel; walking back diagonally leads with its back; the hips come round within a quarter second, without overshoot, and a swapped diagonal is no movement change");
+        check.Expect(Diagonal.SelfCheck(), "diagonals: the sideways diagonal plays the straight walk or run, turned so it faces the travel; walking back diagonally leads with its back; the hips come round over one step of the gait, without overshoot, and a swapped diagonal is no movement change");
+        check.Expect(Legs.SelfCheck(), "leg core: a walk stepped at its own pace on flat ground draws every ankle where it is animated and leaves the pelvis where it is: no correction");
+        check.Expect(Legs.PelvisCheck(), "pelvis: a leg reaches a target past its stretch by the drop the leg triangle gives, never past its cap; a long stride's drop comes and goes each step, back up before the next and gone once the stride is");
+        Legs.Examples(log);
         check.Expect(Diagonal.LagCheck(), "heading changes: the hips keep their world heading as the facing turns, never past the twist cap, and come round without overshoot; a steady bend trails by a bounded lag");
         check.Expect(PathTurnCheck(), "a walker whose FACING swings round at a waypoint while its travel goes straight on reads no path turn and leans by nothing; a steady curve reads its own rate");
         check.Expect(Follow.SelfCheck(), "follow-through: a turn on the spot swings the arms behind, then they swing through; a stop swings them forward; either settles to a tenth of its swing within 1.2 s, the lag is capped, and an action eases it out; the neck keeps a shake off the head but not the sway, and carries it along past its cap");
         check.Expect(Weight.SelfCheck(), "weight cues: a cruise on a path loads nothing; the engine's ramp and a drive's ease each dip the pelvis by the rate's worth of load and pitch the lean into the travel and none out of it; a drive at full speed carries no cue at all, a body off any path falls back to the measured acceleration, and no cue passes the running stop's");
         string[] stockNodes = ["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"];
         string[] ownNodes = ["root", "Bip_R_Thigh", "Bip_R_Calf", "Bip_R_Foot", "Bip_L_Thigh", "Bip_L_Calf", "Bip_L_Foot"];
-        check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, and the restore puts the animation's values back -- root height and every bone");
+        check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, a foot turned about the vertical turns where it stands, and the restore puts the animation's values back -- root height and every bone");
         check.Expect(RigMapCheck(out byte[][] mapped), "rig map: a supermodel's row names the limbs, a blank cell names no bone, the appearance names the head, and a chain with no row keeps the stock names");
         check.Expect(DbRigCheck(ownNodes, mapped, out legs) && legs && DbRigCheck(ownNodes, st, out bool unmapped) && !unmapped,
                      "rig map: a skeleton with its own bone names gets foot IK when the map names its legs, and none on the stock names alone");
@@ -1080,8 +1067,9 @@ public sealed unsafe class PoseService : IExtenderService
     }
 
     /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side, named
-    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives. <paramref name="legs"/>
-    /// says the rig found all six; with fewer there is nothing to drive, and it passes. Leaves the table as it found it.</summary>
+    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives, a foot turned 0.5 rad about the
+    /// world vertical where it stands. <paramref name="legs"/> says the rig found all six; with fewer there is nothing to
+    /// drive, and it passes. Leaves the table as it found it.</summary>
     private static bool DbRigCheck(string[] names, byte[][] rig, out bool legs)
     {
         legs = false;
@@ -1112,6 +1100,11 @@ public sealed unsafe class PoseService : IExtenderService
             PoseRig.World(b.RFoot, out Vector3 foot1, out _);
             ok &= PoseRig.TakeWrote() && MathF.Abs(foot1.Z - foot0.Z - 0.15f) < 2e-3f
                   && Quaternion.Dot(PoseRig.Local(b.RShin), shin0) < 0.9999f;
+            PoseRig.World(b.LFoot, out Vector3 left0, out Quaternion turn0);
+            Leg(b.LThigh, b.LShin, b.LFoot, Vector3.Zero, Vector3.UnitY, Quaternion.Identity, 0.5f);
+            PoseRig.World(b.LFoot, out Vector3 left1, out Quaternion turn1);
+            ok &= Vector3.Distance(left0, left1) < 1e-4f
+                  && MathF.Abs(Quaternion.Dot(turn1, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.5f) * turn0)) > 0.9999f;
             Restore(ref s, b);
             PoseRig.World(b.RFoot, out Vector3 foot2, out _);
             ok &= Vector3.Distance(foot2, foot0) < 1e-4f && PoseRig.Pos(root) == Vector3.Zero

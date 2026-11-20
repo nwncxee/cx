@@ -141,6 +141,110 @@ internal static partial class ContentStage
         return new string(c);
     }
 
+    /// <summary>The name a stage's own local or parameter <c>FragmentColor</c> takes, so it no longer hides the global.</summary>
+    internal const string ShadowName = "cxOwnFragmentColor";
+
+    /// <summary>The name <see cref="Unshadow"/> renames where the stage declares it itself.</summary>
+    private const string Shadowed = "FragmentColor";
+
+    /// <summary>The GLSL types a <c>FragmentColor</c> of the stage's own is declared with.</summary>
+    private const string ShadowTypes = @"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])";
+
+    /// <summary>A declaration of <c>FragmentColor</c> as a local or a parameter: after its type, or after a comma in a
+    /// declaration (<see cref="DeclStatement"/> says which commas are), then what may follow the name.</summary>
+    private static readonly Regex ShadowDecl = new(@"(?:\b" + ShadowTypes + @"\s+|,\s*)" + Shadowed + @"\b(?=\s*[=;,)\[])",
+                                                   RegexOptions.Compiled);
+
+    /// <summary><paramref name="text"/>'s fragment output written to the global working colour, <c>FragmentColor</c>: its own
+    /// local or parameter of that name renamed first (<see cref="Unshadow"/>), so the output cannot land on it.</summary>
+    internal static string ToWorkingColour(string text) => VanillaShader.FragOut.Replace(Unshadow(text), Shadowed);
+
+    /// <summary>A statement that opens with a type, its qualifiers before it: a declaration.</summary>
+    private static readonly Regex DeclStatement = new(@"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + ShadowTypes + @"\s+\w",
+                                                      RegexOptions.Compiled);
+
+    /// <summary>A use of the name, not a member of the same name (<c>l.FragmentColor</c>).</summary>
+    private static readonly Regex FragmentColorUse = new(@"(?<!\.)\b" + Shadowed + @"\b", RegexOptions.Compiled);
+
+    /// <summary><paramref name="text"/> with every local or parameter it names <c>FragmentColor</c> renamed <see cref="ShadowName"/>
+    /// through its scope, so the rename of <c>gl_FragColor</c> onto the global cannot land on the stage's own variable. Text whose
+    /// braces do not balance is returned unchanged.</summary>
+    internal static string Unshadow(string text)
+    {
+        string blank = Blank(text);
+        if (blank.Count(c => c == '{') != blank.Count(c => c == '}')) return text;
+        var scopes = new List<(int From, int To)>();
+        foreach (Match m in ShadowDecl.Matches(blank))
+        {
+            if (blank[m.Index] == ',' && !InDeclaration(blank, m.Index)) continue;
+            if (ShadowScope(blank, m.Index) is not (int end, bool param)) continue;
+            int name = m.Index + m.Length - Shadowed.Length;
+            scopes.Add((name, name));
+            scopes.Add((param ? name : DeclaratorEnd(blank, name), end));
+        }
+        if (scopes.Count == 0) return text;
+        var sb = new StringBuilder(text.Length + 32 * scopes.Count);
+        int cursor = 0;
+        foreach (Match u in FragmentColorUse.Matches(blank))
+        {
+            if (!scopes.Exists(s => u.Index >= s.From && u.Index <= s.To)) continue;
+            sb.Append(text, cursor, u.Index - cursor).Append(ShadowName);
+            cursor = u.Index + u.Length;
+        }
+        return sb.Append(text, cursor, text.Length - cursor).ToString();
+    }
+
+    /// <summary>Where a local declared at <paramref name="name"/> comes into scope: the comma or semicolon ending its
+    /// declarator, so its own initialiser still reads the global.</summary>
+    private static int DeclaratorEnd(string blank, int name)
+    {
+        int depth = 0;
+        for (int i = name; i < blank.Length; i++)
+        {
+            char c = blank[i];
+            if (c is '(' or '[') depth++;
+            else if (c is ')' or ']') depth--;
+            else if (depth == 0 && c is ',' or ';') return i;
+        }
+        return blank.Length;
+    }
+
+    /// <summary>Where the variable declared at <paramref name="at"/> goes out of scope: the brace closing the block it is
+    /// declared in, or for a parameter (<c>Param</c>) the one closing its function's body. Null for a global or a prototype's parameter.</summary>
+    private static (int End, bool Param)? ShadowScope(string blank, int at)
+    {
+        var open = new Stack<int>();
+        int paren = 0;
+        for (int i = 0; i < at; i++)
+        {
+            char c = blank[i];
+            if (c == '{') open.Push(i);
+            else if (c == '}' && open.Count > 0) open.Pop();
+            else if (open.Count == 0 && c == '(') paren++;
+            else if (open.Count == 0 && c == ')') paren--;
+        }
+        if (open.Count > 0) return StructBody(blank, open.Peek()) ? null : (Matching(blank, open.Peek()), false);
+        if (paren <= 0) return null;
+        int close = at;
+        for (int depth = paren; close < blank.Length && depth > 0; close++)
+            depth += blank[close] == '(' ? 1 : blank[close] == ')' ? -1 : 0;
+        int body = close;
+        while (body < blank.Length && char.IsWhiteSpace(blank[body])) body++;
+        return body < blank.Length && blank[body] == '{' ? (Matching(blank, body), true) : null;
+    }
+
+    /// <summary>Is the comma at <paramref name="comma"/> between two names of one declaration, not two arguments of a call?</summary>
+    private static bool InDeclaration(string blank, int comma)
+    {
+        int start = blank.LastIndexOfAny([';', '{', '}'], comma) + 1;
+        string head = blank[start..comma];
+        return DeclStatement.IsMatch(head) && head.Count(c => c == '(') == head.Count(c => c == ')');
+    }
+
+    /// <summary>Does the brace at <paramref name="open"/> open a struct's members rather than a block?</summary>
+    private static bool StructBody(string blank, int open)
+        => Regex.IsMatch(blank[..open], @"\bstruct\s+\w+\s*$");
+
     /// <summary>The brace closing the one at <paramref name="open"/>, or -1.</summary>
     private static int Matching(string blank, int open)
     {

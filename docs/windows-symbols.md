@@ -560,8 +560,7 @@ provenance, not a row.
 
 No debugger on the tester's side: `cx.log` (in `Documents\Neverwinter Nights\`, beside `nwn.ini`)
 has to answer "which symbol is wrong" on its own. `cx.cfg` goes beside `nwn.ini` (the engine may use a
-`Neverwinter Nights.0` instance folder; `cx.log` always lands in the unsuffixed one). `general.logs=1` must be set **before launch**
--- the gate closes at `settings:` and everything after is silent except the stand-down lines.
+`Neverwinter Nights.0` instance folder; `cx.log` always lands in the unsuffixed one).
 
 | Line | Meaning |
 |---|---|

@@ -37,21 +37,24 @@ public static class Settings
         Loaded = true;
         // ReadTextNow, ungated: waiting for the engine user dir here would mean the capability gates never
         // see their own settings.
-        ConfigFile.ForEachPair(ConfigFile.ReadTextNow(FileName, log, out _path), (k, v) => _values[k] = v);
+        Read(ConfigFile.ReadTextNow(FileName, log, out _path));
         if (_values.Count > 0) log?.Info($"settings: {_values.Count} key(s) from {_path}");
         // On-device only: off-device the path is the real user's, and the demo never writes it.
         if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.ArmFirstRun();
-        // Off-device (run-demo: no engine symbols resolve) the log stays open -- it is the self-check gate.
-        // general.logs is General.Logs's key, read here before any knob exists (spec §2): the launch lines.
-        bool logs = LogsAtBoot(Raw("general.logs"), Native.Sym(SymbolMap.AppManager) != IntPtr.Zero);
-        if (!logs) log?.Info($"settings: general.logs=0 -- silent from here; set general.logs=1 in {_path} (or /general logs 1) for diagnostics");
-        ExtenderLog.Enabled = logs;
     }
 
-    /// <summary>Whether cx.log is open for the launch lines: the stored <c>general.logs</c>, or its declared default
-    /// when the key is absent or unreadable; always open off-device, where the log is the self-check gate.</summary>
-    internal static bool LogsAtBoot(string? raw, bool onDevice)
-        => !onDevice || (raw is string r && KnobCodec<bool>.Parse!(r) is (true, bool v) ? v : General.LogsDefault);
+    /// <summary>Keys an older CX wrote for a setting that is gone: dropped on read, so the next write leaves them out.</summary>
+    private static readonly string[] RetiredKeys = ["general.logs"];
+
+    /// <summary>Take every pair of <paramref name="text"/>, in <c>cx.cfg</c>'s own format, into the loaded table,
+    /// less the <see cref="RetiredKeys"/>.</summary>
+    internal static void Read(string text) => ConfigFile.ForEachPair(text, (k, v) =>
+    {
+        if (Array.FindIndex(RetiredKeys, r => string.Equals(r, k, StringComparison.OrdinalIgnoreCase)) < 0) _values[k] = v;
+    });
+
+    /// <summary>Drop <paramref name="key"/> from the loaded table: a self-check takes back what it fed <see cref="Read"/>.</summary>
+    internal static void Forget(string key) => _values.Remove(key);
 
     /// <summary>The value as loaded, or null when unset. The knob registry's bind: a <see cref="Knob{T}"/>
     /// parses this itself.</summary>
@@ -85,11 +88,6 @@ public static class Settings
             "a prefixed read keeps the value's case and folds the key");
         _values.Remove("cx-selfcheck-pfx.Mixed");
         check.Expect(Raw("cx-selfcheck-pfx.Mixed") == null, "the check leaves no probe behind");
-
-        check.Expect(LogsAtBoot(null, onDevice: true), "a cx.cfg with no general.logs key writes cx.log, as the panel shows");
-        check.Expect(LogsAtBoot("1", onDevice: true), "general.logs=1 writes cx.log");
-        check.Expect(!LogsAtBoot("0", onDevice: true), "general.logs=0 keeps cx.log silent");
-        check.Expect(LogsAtBoot("0", onDevice: false), "off-device the log stays open whatever cx.cfg says");
 
         log.Info(check.Ok ? "Settings.SelfCheck: passed" : "Settings.SelfCheck: FAILED");
     }

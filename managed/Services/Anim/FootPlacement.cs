@@ -7,7 +7,7 @@ using static CX.Services.Anim.PoseMath;
 namespace CX.Services.Anim;
 
 /// <summary>
-/// Foot placement on uneven floors, a <see cref="PoseService"/> module. Each foot casts one segment down through
+/// Foot placement on uneven floors, a <see cref="PoseService"/> module. Each foot casts segments down under its sole through
 /// <c>Scene::HitCheck</c> (<see cref="SceneRay"/>: tile render triangles, then placeable ones) over
 /// <c>[rendered height +- footik_max]</c>; the root part's local Z takes the lower foot's offset, the two-bone IK lifts
 /// the other ankle by the difference, and <c>anim.footik_tilt</c> lays each foot on its slope. Casts are cached per foot.
@@ -18,11 +18,17 @@ internal static unsafe class FootPlacement
     private const int MaxCasts = 3;
     /// <summary>Seconds the offset springs take to settle (critically damped).</summary>
     private const float SmoothTime = 0.12f;
+    /// <summary>Seconds a swinging foot's offset spring takes: quick enough to be down on a falling slope as it lands.</summary>
+    private const float SwingTime = 0.05f;
     /// <summary>Ankle moves below this are no move: the IK is skipped.</summary>
     internal const float MinLift = 1e-4f;
     /// <summary>World units (times the gob's scale) from a foothold to the cast that measures its slope: about
     /// half a sole, so a stair riser is past it rather than read as a slope.</summary>
     private const float ProbeReach = 0.1f;
+    /// <summary>World units (times scale) along the foot's forward from the ankle to the toe-ward and the heel-ward sole
+    /// samples: the toe is one probe reach out (the sole's far half), the heel half that back, the sole being longer ahead
+    /// of the ankle than behind.</summary>
+    private const float ToeReach = ProbeReach, HeelReach = -0.5f * ProbeReach;
     /// <summary>Walkmesh rise per unit of travel past which a MOVING character is on stairs (or a ramp that
     /// steep): foot placement drops to <see cref="StairWeight"/> there. The walk cycle is wide and runs at full
     /// speed up a steep flight, so no foothold per frame matches it.</summary>
@@ -50,47 +56,53 @@ internal static unsafe class FootPlacement
         public Quaternion TiltR, TiltL;
     }
 
-    /// <summary>Casts, eases and weighs this frame's footholds into <paramref name="feet"/>. With the knob off or
-    /// the animation gated the targets are 0, so a correction in place eases out rather than popping.
-    /// <paramref name="refZ"/> is the rendered height -- the root part's world position less its own local offset,
-    /// i.e. <c>Gob::GetAdjustedPosition</c> including a script's <c>SetObjectVisualTransform</c> translation.</summary>
-    internal static void Compute(ref PoseService.Slot s, IntPtr scene, IntPtr gob, Vector3 rAnkle, Vector3 lAnkle,
-                                 float refZ, Vector3 fwdH, Vector3 right, float scale, float weight, bool gated,
-                                 bool snap, float dt, out Feet feet)
+    /// <summary>Casts this frame's floor samples into <paramref name="f"/>: under each drawn foot, under where a swinging one
+    /// lands, and one of the four slopes in turn, each only once its foot's floor was re-cast. Engine side; casts are cached
+    /// per foot. Nothing with foot placement off or the animation gated.</summary>
+    internal static void Cast(ref PoseService.Slot s, IntPtr scene, IntPtr gob, ref LegFrame f, in LegPose p)
     {
-        bool on = AnimKnobs.FootIk.V && !gated;
-        float max = AnimKnobs.Max.V;
-        float tr = 0f, tl = 0f;
-        bool hr = false, hl = false;
-        if (on)
+        if (!Legs.Placing(f)) return;
+        float refZ = f.Origin.Z, max = AnimKnobs.Max.V, scale = f.Scale;
+        float tol = FootFloor.Agree * scale;
+        Sole(ref s.R, ref f.FloorR, scene, gob, p.FootR, p.LegFwdH, p.AheadR.Swing, refZ, max, scale, tol, f.Snap, f.Dt);
+        Sole(ref s.L, ref f.FloorL, scene, gob, p.FootL, p.LegFwdH, p.AheadL.Swing, refZ, max, scale, tol, f.Snap, f.Dt);
+        f.FloorR.Land = Landing(ref s.NextR, p.AheadR, scene, gob, refZ, max, scale, f.Snap, f.Dt);
+        f.FloorL.Land = Landing(ref s.NextL, p.AheadL, scene, gob, refZ, max, scale, f.Snap, f.Dt);
+        if (!Legs.Tilting(f)) return;
+        Legs.Targets(f, p, out bool hr, out float tr, out bool hl, out float tl);
+        float maxSlope = f.Knobs.MaxSlope, reach = ProbeReach * scale;
+        switch (s.Phase++ & 3)
         {
-            hr = Floor(ref s.R, scene, gob, rAnkle, refZ, max, scale, snap, dt, out tr);
-            hl = Floor(ref s.L, scene, gob, lAnkle, refZ, max, scale, snap, dt, out tl);
-            // a foot with no floor in range borrows the other foot's: "none" is not "at the walkmesh"
-            if (!hr && hl) tr = tl; else if (hr && !hl) tl = tr;
-            tr = Landing(ref s.NextR, s.AheadR, scene, gob, refZ, max, scale, snap, dt, tr);
-            tl = Landing(ref s.NextL, s.AheadL, scene, gob, refZ, max, scale, snap, dt, tl);
+            // a slope is re-measured only after its foot's floor was (a foot that has not moved stands on
+            // the slope it stood on)
+            case 0: if (s.R.Slopes > 0) { s.R.Slopes--; f.FloorR.NewF = true; f.FloorR.SlopeF = Slope(scene, gob, p.FootR, p.LegFwdH, hr, refZ + tr, reach, maxSlope); } break;
+            case 1: if (s.R.Slopes > 0) { s.R.Slopes--; f.FloorR.NewS = true; f.FloorR.SlopeS = Slope(scene, gob, p.FootR, p.LegRight, hr, refZ + tr, reach, maxSlope); } break;
+            case 2: if (s.L.Slopes > 0) { s.L.Slopes--; f.FloorL.NewF = true; f.FloorL.SlopeF = Slope(scene, gob, p.FootL, p.LegFwdH, hl, refZ + tl, reach, maxSlope); } break;
+            default: if (s.L.Slopes > 0) { s.L.Slopes--; f.FloorL.NewS = true; f.FloorL.SlopeS = Slope(scene, gob, p.FootL, p.LegRight, hl, refZ + tl, reach, maxSlope); } break;
         }
-        // a walk whose feet are planted and landed ahead of time stands each on its own stair
-        if (s.Landing) weight = 1f;
+    }
 
-        float maxSlope = MathF.Tan(AnimKnobs.Tilt.V * (MathF.PI / 180f));
-        float reach = ProbeReach * scale;
+    /// <summary>Eases and weighs this frame's footholds into <paramref name="feet"/>, from the floors in <paramref name="f"/>.
+    /// With placement off or the animation gated the targets are 0, so a correction in place eases out rather than popping.
+    /// The offsets are from the rendered height, the gob's adjusted position including a visual transform's translation.</summary>
+    internal static void Ease(ref LegState s, in LegFrame f, in LegPose p, out Feet feet)
+    {
+        Legs.Targets(f, p, out _, out float tr, out _, out float tl);
+        // a walk whose feet are planted and landed ahead of time stands each on its own stair
+        float weight = p.Landing ? 1f : f.Weight;
         float tfr = s.FR, tsr = s.SR, tfl = s.FL, tsl = s.SL;
-        if (on && maxSlope > 1e-4f)
-            switch (s.Phase++ & 3)
-            {
-                // a slope is re-measured only after its foot's floor was (a foot that has not moved stands on
-                // the slope it stood on)
-                case 0: if (s.R.Slopes > 0) { s.R.Slopes--; tfr = Slope(scene, gob, rAnkle, fwdH, hr, refZ + tr, reach, maxSlope); } break;
-                case 1: if (s.R.Slopes > 0) { s.R.Slopes--; tsr = Slope(scene, gob, rAnkle, right, hr, refZ + tr, reach, maxSlope); } break;
-                case 2: if (s.L.Slopes > 0) { s.L.Slopes--; tfl = Slope(scene, gob, lAnkle, fwdH, hl, refZ + tl, reach, maxSlope); } break;
-                default: if (s.L.Slopes > 0) { s.L.Slopes--; tsl = Slope(scene, gob, lAnkle, right, hl, refZ + tl, reach, maxSlope); } break;
-            }
+        if (Legs.Tilting(f))
+        {
+            if (f.FloorR.NewF) tfr = f.FloorR.SlopeF;
+            if (f.FloorR.NewS) tsr = f.FloorR.SlopeS;
+            if (f.FloorL.NewF) tfl = f.FloorL.SlopeF;
+            if (f.FloorL.NewS) tsl = f.FloorL.SlopeS;
+        }
         else tfr = tsr = tfl = tsl = 0f;
 
         if (weight < 1f) Stairs++;
-        if (snap)
+        float dt = f.Dt;
+        if (f.Snap)
         {
             s.W = weight; s.VW = 0f;
             s.OffR = tr; s.OffL = tl; s.FR = tfr; s.SR = tsr; s.FL = tfl; s.SL = tsl;
@@ -98,7 +110,10 @@ internal static unsafe class FootPlacement
         }
         else
         {
-            Smooth(ref s.OffR, ref s.VelR, tr, dt, SmoothTime); Smooth(ref s.OffL, ref s.VelL, tl, dt, SmoothTime);
+            // the offsets ease in the world: the reference height's own rise this frame is no move of a foot's floor
+            if (Legs.Placing(f)) { s.OffR -= f.Rise; s.OffL -= f.Rise; }
+            Smooth(ref s.OffR, ref s.VelR, tr, dt, p.AheadR.Swing ? SwingTime : SmoothTime);
+            Smooth(ref s.OffL, ref s.VelL, tl, dt, p.AheadL.Swing ? SwingTime : SmoothTime);
             Smooth(ref s.FR, ref s.VFR, tfr, dt, SmoothTime); Smooth(ref s.SR, ref s.VSR, tsr, dt, SmoothTime);
             Smooth(ref s.FL, ref s.VFL, tfl, dt, SmoothTime); Smooth(ref s.SL, ref s.VSL, tsl, dt, SmoothTime);
             Smooth(ref s.W, ref s.VW, weight, dt, FadeTime);
@@ -107,18 +122,18 @@ internal static unsafe class FootPlacement
         float w = Math.Clamp(s.W, 0f, 1f);
         feet.OffR = s.OffR * w;
         feet.OffL = s.OffL * w;
-        feet.TiltR = FootTilt(fwdH, right, s.FR * w, s.SR * w);
-        feet.TiltL = FootTilt(fwdH, right, s.FL * w, s.SL * w);
+        feet.TiltR = FootTilt(p.LegFwdH, p.LegRight, s.FR * w, s.SR * w);
+        feet.TiltL = FootTilt(p.LegFwdH, p.LegRight, s.FL * w, s.SL * w);
     }
 
-    /// <summary>A swinging foot's floor offset <paramref name="under"/> it, moved toward the floor where it lands
-    /// (<paramref name="next"/>, cast into <paramref name="cast"/>) as its swing goes on; a foot on the ground keeps its own.</summary>
-    private static float Landing(ref FootCast cast, StrideWarp.Ahead next, IntPtr scene, IntPtr gob, float refZ, float max,
-                                 float scale, bool snap, float dt, float under)
+    /// <summary>The floor under where a swinging foot lands (<paramref name="next"/>, cast into <paramref name="cast"/>);
+    /// none for a foot on the ground.</summary>
+    private static FloorSample Landing(ref FootCast cast, StrideWarp.Ahead next, IntPtr scene, IntPtr gob, float refZ, float max,
+                                       float scale, bool snap, float dt)
     {
-        if (!next.Swing || !Floor(ref cast, scene, gob, new Vector3(next.At.X, next.At.Y, refZ), refZ, max, scale, snap, dt, out float land))
-            return under;
-        return SwingTarget(under, land, next.U);
+        if (!next.Swing) return default;
+        bool hit = Floor(ref cast, scene, gob, new Vector3(next.At.X, next.At.Y, refZ), refZ, max, scale, snap, dt, out float land);
+        return new FloorSample(hit, land);
     }
 
     /// <summary>The floor a swinging foot aims at, <paramref name="u"/> through its swing: up to a higher landing floor
@@ -134,35 +149,78 @@ internal static unsafe class FootPlacement
 
     /// <summary>World units (times scale) a foot must move, or the reference height change, before its floor
     /// is cast again; and the seconds a cached floor is trusted at most. A character standing still casts
-    /// nothing, where every foot used to cast every frame.</summary>
+    /// nothing.</summary>
     private const float Recast = 0.03f, RecastHeight = 0.02f, RecastAge = 0.5f;
 
-    /// <summary>One foot's cached floor: where it was cast from, the floor's world height (NaN = none in range),
+    /// <summary>One foot's cached floor: where it was cast from, the floors' world heights (NaN = none in range),
     /// how old it is, and how many of its two slopes still want re-measuring.</summary>
     internal struct FootCast
     {
         public Vector2 At;
-        public float RefZ, FloorZ, Age;
+        public float RefZ, FloorZ, ToeZ, HeelZ, Age;
         public bool Valid;
-        public int Slopes;
+        /// <summary>Slopes still to re-measure, and how many of the sole's samples (under the ankle, toe-ward, heel-ward) the cache holds.</summary>
+        public int Slopes, Count;
     }
 
-    /// <summary>The floor offset under <paramref name="ankle"/>, from the cache while the foot and the
-    /// reference height hold still (<see cref="Recast"/>), else cast.</summary>
-    private static bool Floor(ref FootCast c, IntPtr scene, IntPtr gob, Vector3 ankle, float refZ, float max,
-                              float scale, bool snap, float dt, out float off)
+    /// <summary>Whether the cache for a foot at <paramref name="ankle"/> is out of date (<see cref="Recast"/>, or <paramref name="force"/>); when it is, it
+    /// is restamped for the cast the caller now makes.</summary>
+    private static bool Stale(ref FootCast c, Vector3 ankle, float refZ, float scale, bool snap, float dt, bool force = false)
     {
         c.Age += dt;
         Vector2 at = new(ankle.X, ankle.Y);
         float move = Recast * scale;
-        if (snap || !c.Valid || c.Age > RecastAge || Vector2.DistanceSquared(at, c.At) > move * move
-            || MathF.Abs(refZ - c.RefZ) > RecastHeight * scale)
+        if (!(force || snap || !c.Valid || c.Age > RecastAge || Vector2.DistanceSquared(at, c.At) > move * move
+              || MathF.Abs(refZ - c.RefZ) > RecastHeight * scale)) return false;
+        c.At = at; c.RefZ = refZ; c.Age = 0f; c.Valid = true; c.Slopes = 2;
+        return true;
+    }
+
+    /// <summary>One cached floor height as a sample off <paramref name="refZ"/>; NaN is no floor in range.</summary>
+    private static FloorSample Sample(float z, float refZ, float max)
+    {
+        float off = float.IsNaN(z) ? 0f : z - refZ;
+        return new FloorSample(!float.IsNaN(z) && MathF.Abs(off) <= max, off);
+    }
+
+    private static float CastZ(IntPtr scene, IntPtr gob, Vector3 at, float refZ, float max)
+        => FloorOffset(scene, gob, at, refZ, max, out float cast) ? refZ + cast : float.NaN;
+
+    /// <summary>The floor under a landing <paramref name="ankle"/>, from the cache while the foot and the reference height
+    /// hold still (<see cref="Recast"/>), else cast: one ray down, no sole.</summary>
+    private static bool Floor(ref FootCast c, IntPtr scene, IntPtr gob, Vector3 ankle, float refZ, float max,
+                              float scale, bool snap, float dt, out float off)
+    {
+        if (Stale(ref c, ankle, refZ, scale, snap, dt)) c.FloorZ = CastZ(scene, gob, ankle, refZ, max);
+        FloorSample s = Sample(c.FloorZ, refZ, max);
+        off = s.Off;
+        return s.Hit;
+    }
+
+    /// <summary>Adds the floor samples under a drawn foot to <paramref name="floor"/>: under the ankle and toe-ward
+    /// (<see cref="ToeReach"/>), and heel-ward (<see cref="HeelReach"/>) only when those two disagree by <paramref name="tol"/>.
+    /// A swinging foot takes the ankle alone: it is on no floor and its landing is cast apart. Cached with the foot.</summary>
+    private static void Sole(ref FootCast c, ref FootFloor floor, IntPtr scene, IntPtr gob, Vector3 ankle, Vector3 fwd,
+                             bool swinging, float refZ, float max, float scale, float tol, bool snap, float dt)
+    {
+        if (Stale(ref c, ankle, refZ, scale, snap, dt, force: !swinging && c.Count == 1))
         {
-            c.FloorZ = FloorOffset(scene, gob, ankle, refZ, max, out float cast) ? refZ + cast : float.NaN;
-            c.At = at; c.RefZ = refZ; c.Age = 0f; c.Valid = true; c.Slopes = 2;
+            c.FloorZ = CastZ(scene, gob, ankle, refZ, max);
+            c.Count = 1;
+            if (!swinging)
+            {
+                c.ToeZ = CastZ(scene, gob, ankle + fwd * (ToeReach * scale), refZ, max);
+                c.Count = 2;
+                if (FootFloor.Disagree(Sample(c.FloorZ, refZ, max), Sample(c.ToeZ, refZ, max), tol))
+                {
+                    c.HeelZ = CastZ(scene, gob, ankle + fwd * (HeelReach * scale), refZ, max);
+                    c.Count = 3;
+                }
+            }
         }
-        off = float.IsNaN(c.FloorZ) ? 0f : c.FloorZ - refZ;
-        return !float.IsNaN(c.FloorZ) && MathF.Abs(off) <= max;
+        floor.Add(Sample(c.FloorZ, refZ, max));
+        if (c.Count > 1) floor.Add(Sample(c.ToeZ, refZ, max));
+        if (c.Count > 2) floor.Add(Sample(c.HeelZ, refZ, max));
     }
 
     /// <summary>The weight foot placement should have: <see cref="StairWeight"/> while the character moves

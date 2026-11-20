@@ -114,6 +114,18 @@ internal static unsafe class CallbackList
         }
     }
 
+    /// <summary>Remove the callback calling <paramref name="fn"/> with <paramref name="data"/>, if there is one.</summary>
+    internal static void RemoveListener(nint shell, nint fn, nint data)
+    {
+        ExoArray list = new Gob(shell).CallbackArray;
+        if (shell == 0 || list.Data == 0) return;
+        for (int i = 0; i < list.Count; i++)
+        {
+            nint cb = list[i];
+            if (cb != 0 && new CallBack(cb).SeamFn == fn && new CallBack(cb).SeamData == data) { Remove(shell, cb); return; }
+        }
+    }
+
     /// <summary>Dispatch as <c>Gob::DoEvent</c> does, every rule load-bearing: the count is snapshotted before
     /// the walk (a callback registered during dispatch is not seen); the walk runs backward, newest first; a
     /// callback fires on an empty name, a <c>'*'</c> prefix or a whole <c>strcasecmp</c> match; the <c>void*</c>

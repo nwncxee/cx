@@ -408,8 +408,8 @@ on the box, not the mutant.
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two
   clients on one GPU make every timing number meaningless, and the box is shared with build agents.
-- **Everything it grades on is a CX log line**, so the harness writes `general.logs=1` into the
-  throwaway `cx.cfg`. A change that breaks CX logging reads as a FAIL regardless of what it drew.
+- **Everything it grades on is a CX log line.** A change that breaks CX logging reads as a FAIL
+  regardless of what it drew.
 - **It cannot tell you the picture is right.** It proves the client reached an area, kept presenting
   and did not fall over. Whether the frame looks correct is a human (or an image-diff) judgement on
   the screenshots; `/alloy snap` via `--keys` writes the frame's scene colour as one `vkscene.pfm`, which

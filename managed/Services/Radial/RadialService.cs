@@ -259,7 +259,7 @@ public sealed unsafe partial class RadialService : IExtenderService
 
 
     /// <summary>Close the cascade, drop the modal gate and every per-level handle, tear the held tree down. Idempotent;
-    /// the reason is the <c>logs=1</c> close line (leaf / esc / away / area / reenter / off / font).</summary>
+    /// the reason is the cx.log close line (leaf / esc / away / area / reenter / off / font).</summary>
     private static void Close(string reason)
     {
         bool wasOpen = _menu.Open;
@@ -445,7 +445,7 @@ public sealed unsafe partial class RadialService : IExtenderService
     /// creator-only descent prints no invoke line).</summary>
     private static bool Invoke(IntPtr m, int level, int slot, string label)
     {
-        if (_log != null && ExtenderLog.Enabled)
+        if (_log != null)
         {
             RadialSlot s = RadialTree.ReadSlot(m, slot);
             if (s.Fn != IntPtr.Zero)
@@ -975,12 +975,12 @@ public sealed unsafe partial class RadialService : IExtenderService
         if (l < _menu.Depth && (uint)r < (uint)_menu.Level(l).Items.Length) Descend(l, r);
     }
 
-    /// <summary>The verification lines for a live session under <c>logs=1</c>: one per open, one per slot. The
+    /// <summary>The verification lines for a live session in cx.log: one per open, one per slot. The
     /// event-object and ctor-counter words are the §9.2/§9.1 live probes (should read 0 / a small per-open delta).</summary>
     private static void LogTree(IntPtr menu)
     {
         var log = _log;
-        if (log == null || !ExtenderLog.Enabled) return;
+        if (log == null) return;
         RootKind kind = RadialTree.Classify(menu);
         var (x, y) = RadialTree.Position(menu);
         int ctor = RadialTree.CtorCounter;

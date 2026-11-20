@@ -491,6 +491,100 @@ def matching(b, open_at):
     return -1
 
 
+SHADOW_NAME = "cxOwnFragmentColor"
+SHADOWED = "FragmentColor"
+# Mirrors VanillaShader.FragOut: the fragment outputs the engine's GLSL writes.
+FRAG_OUT = re.compile(r"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]")
+SHADOW_TYPES = r"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])"
+SHADOW_DECL = re.compile(r"(?:\b" + SHADOW_TYPES + r"\s+|,\s*)" + SHADOWED + r"\b(?=\s*[=;,)\[])")
+DECL_STATEMENT = re.compile(r"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + SHADOW_TYPES + r"\s+\w")
+
+
+def to_working_colour(text):
+    """Mirrors ContentStage.ToWorkingColour: the fragment output written to the global FragmentColor, the stage's own
+    local or parameter of that name renamed first."""
+    return FRAG_OUT.sub(SHADOWED, unshadow(text))
+
+
+def unshadow(text):
+    """Mirrors ContentStage.Unshadow: a local or parameter named FragmentColor renamed through its scope, so the
+    gl_FragColor rename cannot land on it; text whose braces do not balance comes back unchanged."""
+    b = blank(text)
+    if b.count("{") != b.count("}"):
+        return text
+    scopes = []
+    for m in SHADOW_DECL.finditer(b):
+        if b[m.start()] == "," and not in_declaration(b, m.start()):
+            continue
+        found = shadow_scope(b, m.start())
+        if found is None:
+            continue
+        end, param = found
+        name = m.end() - len(SHADOWED)
+        scopes += [(name, name), (name if param else declarator_end(b, name), end)]
+    if not scopes:
+        return text
+    out, cursor = [], 0
+    for u in re.finditer(r"(?<!\.)\b" + SHADOWED + r"\b", b):
+        if any(f <= u.start() <= t for f, t in scopes):
+            out.append(text[cursor:u.start()] + SHADOW_NAME)
+            cursor = u.end()
+    return "".join(out) + text[cursor:]
+
+
+def in_declaration(b, comma):
+    """Mirrors ContentStage.InDeclaration: the comma separates two names of one declaration, not two arguments."""
+    start = max(b.rfind(";", 0, comma), b.rfind("{", 0, comma), b.rfind("}", 0, comma)) + 1
+    head = b[start:comma]
+    return bool(DECL_STATEMENT.match(head)) and head.count("(") == head.count(")")
+
+
+def struct_body(b, open_at):
+    """Mirrors ContentStage.StructBody: the brace opens a struct's members, not a block."""
+    return bool(re.search(r"\bstruct\s+\w+\s*$", b[:open_at]))
+
+
+def declarator_end(b, name):
+    """Mirrors ContentStage.DeclaratorEnd: the comma or semicolon ending the declarator, where the local comes into scope."""
+    depth = 0
+    for i in range(name, len(b)):
+        c = b[i]
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+        elif depth == 0 and c in ",;":
+            return i
+    return len(b)
+
+
+def shadow_scope(b, at):
+    """Mirrors ContentStage.ShadowScope: the brace closing the declaration's block, or its function's body for a
+    parameter; None for a global or a prototype's parameter."""
+    opens, paren = [], 0
+    for i, c in enumerate(b[:at]):
+        if c == "{":
+            opens.append(i)
+        elif c == "}" and opens:
+            opens.pop()
+        elif not opens and c == "(":
+            paren += 1
+        elif not opens and c == ")":
+            paren -= 1
+    if opens:
+        return None if struct_body(b, opens[-1]) else (matching(b, opens[-1]), False)
+    if paren <= 0:
+        return None
+    close, depth = at, paren
+    while close < len(b) and depth > 0:
+        depth += 1 if b[close] == "(" else -1 if b[close] == ")" else 0
+        close += 1
+    body = close
+    while body < len(b) and b[body].isspace():
+        body += 1
+    return (matching(b, body), True) if body < len(b) and b[body] == "{" else None
+
+
 def skip(b, s, e):
     while s < e:
         while s < e and b[s].isspace():
@@ -711,7 +805,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
                 undef.append(o)
     text = MAIN_FN.sub(f"void {PRE_FN if fragment else VERTEX_FN}()", text)
     if fragment:
-        text = re.sub(r"\bgl_FragColor\b", "FragmentColor", text)
+        text = to_working_colour(text)
     text = PLT_DECL.sub("", text)
     text = indexed(text, PLT_OPEN, "CxPltScheme(vDraw, " if fragment else "CxPltScheme(cxConDraw, ")
     text = BONES_DECL.sub("", text)
@@ -798,6 +892,14 @@ FIXTURE = {
     "cx_fixnocall": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
                      "    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n"),
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+    "cx_fixshadowlocal": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowparam": "#include \"inc_standard\"\nvoid Hand(vec4 FragmentColor)\n{\n    gl_FragColor = FragmentColor;\n}\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Hand(vec4(0.25, 0.5, 0.75, 1.0));\n}\n",
+    "cx_fixshadowblock": "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowstruct": "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; float w; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = FragmentColor;\n    l.w = 1.0;\n    gl_FragColor = l.FragmentColor * l.w;\n}\n",
+    "cx_fixshadowmulti": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 tint = vec4(1.0), FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor * tint;\n}\n",
+    "cx_fixshadowinit": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowcall": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 c = mix(vec4(0.0), FragmentColor, 0.5);\n    gl_FragColor = c;\n}\n",
+    "cx_fixshadowmember": "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    vec4 FragmentColor = l.FragmentColor;\n    gl_FragColor = FragmentColor;\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
     "cx_fixeng": ('#define SHADER_TYPE 2\n#include "inc_standard"\nconst int MAX_WINDS = 128;\n'
@@ -1005,4 +1107,37 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
        or stock_shaped(STOCK_FS.replace('#include "inc_standard"', '#include "my_inc"'), True) \
        or stock_shaped(STOCK_FS.replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), True):
         bad.append("stock shape is misread")
+    local = translate("cx_fixshadowlocal", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if local.refused or f"vec4 {SHADOW_NAME} = vec4(0.25, 0.5, 0.75, 1.0);" not in local.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in local.host or "FragmentColor = FragmentColor;" in local.host:
+        bad.append(f"a local FragmentColor's hand-off does not reach the part: {local.refused}")
+    param = translate("cx_fixshadowparam", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if param.refused or f"void Hand(vec4 {SHADOW_NAME})" not in param.host or f"FragmentColor = {SHADOW_NAME};" not in param.host:
+        bad.append(f"a parameter FragmentColor's hand-off does not reach the part: {param.refused}")
+    block = translate("cx_fixshadowblock", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if block.refused or f"        FragmentColor = {SHADOW_NAME};" not in block.host \
+       or "    }\n    FragmentColor = FragmentColor;" not in block.host:
+        bad.append(f"a branch's own FragmentColor is not kept to its branch: {block.refused}")
+    member = translate("cx_fixshadowstruct", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if member.refused or "struct Layer { vec4 FragmentColor; float w; };" not in member.host \
+       or "FragmentColor = l.FragmentColor * l.w;" not in member.host:
+        bad.append(f"a struct member named FragmentColor is renamed or its hand-off lost: {member.refused}")
+    multi = translate("cx_fixshadowmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if multi.refused or f"vec4 tint = vec4(1.0), {SHADOW_NAME} = vec4(0.25, 0.5, 0.75, 1.0);" not in multi.host \
+       or f"FragmentColor = {SHADOW_NAME} * tint;" not in multi.host:
+        bad.append(f"a FragmentColor declared second in a declaration does not reach the part: {multi.refused}")
+    init = translate("cx_fixshadowinit", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if init.refused or f"vec4 {SHADOW_NAME} = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);" not in init.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in init.host:
+        bad.append(f"a local FragmentColor's initialiser does not read the stock colour: {init.refused}")
+    call = translate("cx_fixshadowcall", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if call.refused or "vec4 c = mix(vec4(0.0), FragmentColor, 0.5);" not in call.host or SHADOW_NAME in call.host:
+        bad.append(f"a call's FragmentColor argument is taken for a declaration: {call.refused}")
+    in_scope = translate("cx_fixshadowmember", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if in_scope.refused or f"vec4 {SHADOW_NAME} = l.FragmentColor;" not in in_scope.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in in_scope.host:
+        bad.append(f"a member read beside a local FragmentColor is renamed: {in_scope.refused}")
+    unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n}\n}\n"
+    if unshadow(unbalanced) != unbalanced:
+        bad.append("a stage whose braces do not balance is rewritten")
     return bad

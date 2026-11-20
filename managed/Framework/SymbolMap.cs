@@ -360,6 +360,8 @@ internal static unsafe class SymbolMap
     public const string HiliteNeutral = "g_vCreatureNeutralHighlight";
     public const string HilitePlaceable = "g_vPlaceableHighlight";
     public const string HiliteDoor = "g_vDoorHighlight";
+    /// <summary>The box-pick margin (a Vector), <c>g_HitCheckBoxExpansion</c> @0x19da638; Windows exports it by name.</summary>
+    public const string HitCheckBoxExpansion = "g_HitCheckBoxExpansion";
     /// <summary><c>CExoMoviePlayerInternal::ShowFrame(int frameW, int frameH, int texW, int texH)</c> @0x1165e30 --
     /// the movie's whole DRAW and nothing else: a colour clear plus one letterboxed textured quad. Its one caller
     /// <c>UpdateMovie</c> @0x1168210 has already decoded the frame and uploaded it into the player's own GL texture
@@ -1095,7 +1097,7 @@ internal static unsafe class SymbolMap
     //      weathertypes.2da "Model" when density > 0 -- so forwarding density 0 IS the vanilla-emitter silence.
     //      CNWCArea::Update ramps it: (target, (fade-left)/fade*100) up, (current, left/fade*100) down, then
     //      (target, target ? 100 : 0) once at the end. StartWeather/StopWeather @0x704de0/@0x704e20 only set the
-    //      target byte (+0x2f1) and the 6000ms ramp (+0x2ec) and cue the rain sound; hooked for the edge log.
+    //      target byte (+0x2f1) and the 6000ms ramp (+0x2ec) and cue the rain sound; not hooked: Windows inlines them into LoadArea, which is the area edge.
     /// <summary>CNWCArea::SetWeather(unsigned char type, float density). ABI: <c>(CNWCArea*, uchar, float)</c>
     /// -- Linux <c>rdi, esi, xmm0</c>; Win64 <c>rcx, dl, xmm2</c>. Returns int (1 = applied).</summary>
     [Fn("int(CNWCArea this, byte kind, float density)")]
@@ -2423,6 +2425,17 @@ internal static unsafe class SymbolMap
     /// major 12 minor 9 -- a move inside the backpack or between backpack and container.</summary>
     [Fn("void(IntPtr msg, uint item, byte x, byte globalY, uint target)")]
     public const string SendInvRepositoryMove = "_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj";
+    /// <summary><c>..._Store_RequestSell(uint item)</c> @0x804790 (rva 0x7c3d00), major 7 minor 2 -- what the stock store box
+    /// sends for an inventory item dropped on it (<c>CGuiStoreInvBox::ProcessItemDrop</c>), with no confirm.</summary>
+    [Fn("void(IntPtr msg, uint item)")]
+    public const string SendStoreRequestSell = "_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj";
+    /// <summary><c>CPanelStore::s_pActiveStorePanel</c>: the open store's panel, null when none. <c>OnActivate</c> stores
+    /// <c>this</c> and <c>OnDeactivate</c> zeroes it on both builds (Windows rva 0x1428d58, beside the store's own two clears).</summary>
+    public const string ActiveStorePanel = "_ZN11CPanelStore19s_pActiveStorePanelE";
+    /// <summary><c>CPanelStore::HandleMouseoverInventoryItem(uint item)</c> @0x9c5a20 (rva 0x97bc20): the store panel's line
+    /// for an inventory item, its name and sell price (TLK 61619), or blank for an id that is no item.</summary>
+    [Fn("void(IntPtr panel, uint item)")]
+    public const string StoreMouseoverInventoryItem = "_ZN11CPanelStore28HandleMouseoverInventoryItemEj";
     /// <summary><c>..._Drop(uint item, float x, float y, float z)</c> @0x800b20 (rva 0x7c0c90), major 12 minor 3.
     /// The world point for "at my feet" is the player creature's own position,
     /// <see cref="EngineLayout.ObjPosition"/> (<c>new CNWCObject(playerCreature).Position</c>).</summary>
@@ -3096,6 +3109,7 @@ internal static unsafe class SymbolMap
         [PartGetIsOpaque] = Nm("?GetIsOpaque@PartTriMesh@@QEAA_NXZ"),
         [PartGetWorld] = Nm("?GetWorld@Part@@UEAAXAEAVVector@@AEAVQuaternion@@@Z"),
         [PltOnGpu] = Nm("?g_bGeneratePLTOnGPU@@3HA"),
+        [HitCheckBoxExpansion] = Nm("?g_HitCheckBoxExpansion@@3VVector@@A"),
         [PrimTypeTranslationTable] = At(),   // the {0,1,3,4,5,6,2} run in .rdata; RenderVertexData leas it three times
         [ProjectionAlpha] = Nm("?projectionalpha@@3MA"),
         [QuickbarReposition] = At(),
@@ -3339,6 +3353,9 @@ internal static unsafe class SymbolMap
         [SendInvEquip]           = At(),   // 12 / 1
         [SendInvUnequip]         = At(),   // 12 / 7
         [SendInvRepositoryMove]  = At(),   // 12 / 9
+        [SendStoreRequestSell]   = At(),   // 7 / 2: the one 7 / 2 send; sets the item's sell flag (+0x240) first, as Linux (+0x260)
+        [ActiveStorePanel]       = At(),   // OnDeactivate zeroes it, then the store's +0x178 and panel +0x170 (Linux +0x198, +0x190)
+        [StoreMouseoverInventoryItem] = At(), // TLK 61619, the 33-char name cut, markup +0x17c/+0x180, cap +0x18c, label +0x468
         [SendInvDrop]            = At(),   // 12 / 3
         [SendGuiInvStatus]       = At(),   // 13 / 1
         [SendGuiInvSelectPanel]  = At(),   // 13 / 2

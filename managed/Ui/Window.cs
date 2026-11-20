@@ -60,9 +60,9 @@ public sealed class Window
     /// engine keyboard gate); a chord-suppressing window still lets unconsumed keys reach gameplay.</summary>
     public bool SuppressChords;
 
-    /// <summary>A modal window that owns EVERY press and wheel notch while up, ahead of the engine's own GUI -- the
-    /// radial cascade opens over HUD chrome and its click-away must reach it. The pump runs a capture-only dispatch
-    /// before the NUI/vanilla-GUI yield for these windows and nothing else.</summary>
+    /// <summary>A press on this window's hit area is offered to it before any engine GUI object beneath (it is drawn on
+    /// top); declined, the engine object takes it. With <see cref="SuppressChords"/> as well it is modal: it is asked
+    /// first for every press and wheel notch, ahead of NUI too, as the radial cascade's click-away needs.</summary>
     public bool CapturesPointer;
 
     /// <summary>Content input slots. The framework's raw-input layer routes captured events here in z-order; each

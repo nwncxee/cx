@@ -154,8 +154,7 @@ internal static unsafe class RspShim
     internal static void Period()
     {
         if (++_frames < AlloyRenderer.LogEvery) return;
-        if (ExtenderLog.Enabled)
-            _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
+        _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
                  + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), "
                  + $"borrowed {OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0){OwnedTextures.BorrowNote()}"
                  // The ported light tick has no other visible surface: `moved` counting down to a handful

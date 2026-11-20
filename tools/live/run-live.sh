@@ -295,9 +295,7 @@ if [ -n "$SHOWCASE" ]; then
 fi
 
 # ---- cx.cfg -------------------------------------------------------------------------------------
-# general.logs=1 is not a nicety: every marker this harness grades on is a CX log line.
 {
-    echo "general.logs=1"
     # --aniso is Alloy's sampler level too, not only the engine's option; an explicit --cfg line after it wins.
     [ -n "$ANISO" ] && echo "post.aniso=$ANISO"
     for l in ${CFG_LINES+"${CFG_LINES[@]}"}; do echo "$l"; done

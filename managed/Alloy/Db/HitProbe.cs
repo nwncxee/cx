@@ -248,7 +248,7 @@ internal static unsafe class HitProbe
     }
 
     /// <summary>Close the period without building its line.</summary>
-    internal static void ResetPeriod()
+    private static void ResetPeriod()
     {
         Array.Clear(_calls); Array.Clear(_hits); Array.Clear(_ticks); Array.Clear(_worst); Array.Clear(_nodes);
     }

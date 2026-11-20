@@ -30,6 +30,8 @@ user-visible, not renamed (#530).
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
     ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
+    tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host, inside a 2G cap; adds to
+                            # run-demo.sh, never replaces it. tools/selfcheck/mutants.py: hand mutants, one compile
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session
                             # PASS/FAIL + screenshots; nothing reaches the desktop, nothing of the user's
@@ -50,6 +52,9 @@ the libraries out from under a running client; a build in another checkout or wo
 its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
+A tree whose code fingerprint (`tools/codehash.py`: comments lexed out of C#, Markdown outside `third_party/` left out) matches the staged
+build's keeps it after the gates and approved examples, and `where.sh` calls it CURRENT, so a comment-only commit
+skips the AOT publish.
 Every report of work that sits in a worktree or a branch the user has not checked out ends with the output of
 `tools/where.sh <checkout>`: its absolute path, whether its `cx-linux-x64/` is the build of that commit
 (`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
@@ -183,7 +188,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`, or in
   `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
-  fails.
+  fails; a key `Settings.RetiredKeys` lists (cx.cfg drops it on read) is named on purpose and passes.
 - `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
   that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
   feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
@@ -224,7 +229,9 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `selfcheck.sh`: inside a `*SelfCheck*` or `*ApprovedExamples*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
-  comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing
+  comparison -- and so does a hand-written `SKIPPED` log line, and an `if (...) return true;` among the statements of a `bool`
+  method in a `*SelfCheck*` file that an `Expect` there reads (the check passes unasserted whenever the condition holds;
+  `tools/selfcheck_gate_regression.sh` plants it). The const-against-literal shape's standing
   instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
 
   The independent-oracle rule and the rest of the testing rules live in `TESTING_STANDARDS.md`.

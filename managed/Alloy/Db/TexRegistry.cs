@@ -64,6 +64,10 @@ internal static unsafe partial class TexRegistry
     private static readonly ulong[] _key = new ulong[MaxSlots];
     private static readonly uint[] _gen = new uint[MaxSlots];
     private static readonly TexState[] _state = new TexState[MaxSlots];
+    /// <summary>When a slot whose upload failed may load again, on <see cref="Environment.TickCount64"/>; 0 when it never may.</summary>
+    private static readonly long[] _retryAt = new long[MaxSlots];
+    /// <summary>The least time between two tries of a failed upload, in milliseconds.</summary>
+    private const long RetryMs = 1000;
     private static readonly TexKind[] _kind = new TexKind[MaxSlots];
     private static readonly int[] _refs = new int[MaxSlots];
     /// <summary>The GL name and its resident bindless handle; 0 until the upload lands.</summary>
@@ -281,6 +285,8 @@ internal static unsafe partial class TexRegistry
                 // whatever its state says, so re-asking for it has to re-offer it.
                 if ((_name[hit] == 0 || _preview[hit]) && _state[hit] != TexState.Failed && _pend[hit] == PendNone)
                 { _state[hit] = TexState.Loading; offer = true; TableSerial++; }
+                else if (_state[hit] == TexState.Failed && _retryAt[hit] != 0 && Environment.TickCount64 >= _retryAt[hit] && _pend[hit] == PendNone)
+                { _state[hit] = TexState.Loading; _retryAt[hit] = 0; offer = true; TableSerial++; }
                 // CX-188 (review): NOT on the plain cache hit. A hit changes nothing a record reads -- the
                 // name, handle, kind and env bit are all where they were -- and callers acquire every frame
                 // (EmitterSim's per-emitter texture, the text atlas, the radial's PLT), so bumping here busted

@@ -49,10 +49,35 @@ internal sealed unsafe partial class VkBackend
     [DllImport("cxfsr")] private static extern ulong cxfsr_vram(nint ctx);
     [DllImport("cxfsr")] private static extern void cxfsr_destroy(nint ctx);
 
+    /// <summary>Frames running a new size is asked for before a DoF or FSR context is replaced for it.</summary>
+    private const int SettleFrames = 8;
+
+    /// <summary>What <see cref="DofReady"/> and <see cref="FsrReady"/> answer while the size a replacement context is for
+    /// has not held yet: nothing to draw with this frame, and no refusal.</summary>
+    internal const string Settling = "the window is changing size";
+
+    /// <summary>The size a replacement context waits on, and the frames running it has been asked for.</summary>
+    private sealed class SizeSettle
+    {
+        private (int, int, int, int) _want;
+        private int _held;
+
+        /// <summary>Has <paramref name="size"/> now been asked for <see cref="SettleFrames"/> frames running?</summary>
+        public bool Held((int, int, int, int) size)
+        {
+            if (size != _want) { _want = size; _held = 0; }
+            return ++_held >= SettleFrames;
+        }
+
+        /// <summary>The context's own size was asked for: a size passed through on the way starts from nothing.</summary>
+        public void Clear() => _held = 0;
+    }
+
     /// <summary>The device's FSR context and the sizes it was made for; a refusal holds for the device's life.</summary>
     private sealed class FsrState
     {
         public nint Ctx;
+        public readonly SizeSettle Settle = new();
         public int MaxW, MaxH, DisplayW, DisplayH;
         public string? Refused;
         /// <summary>The timeline value each of the last ring's worth of dispatches finishes at, by dispatch number: FSR's
@@ -65,14 +90,15 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Is FSR ready on this device for frames up to <paramref name="maxW"/> x <paramref name="maxH"/> upscaled
     /// to <paramref name="displayW"/> x <paramref name="displayH"/>? Null when it is; otherwise why not. A new size
-    /// replaces the context, the old one freed once no submit can reach it.</summary>
+    /// replaces the context once it has held, the old one freed once no submit can reach it.</summary>
     internal string? FsrReady(int maxW, int maxH, int displayW, int displayH)
     {
         FsrState f = _fsr;
         if (f.Refused != null) return f.Refused;
-        if (f.Ctx != 0 && f.MaxW == maxW && f.MaxH == maxH && f.DisplayW == displayW && f.DisplayH == displayH) return null;
+        if (f.Ctx != 0 && f.MaxW == maxW && f.MaxH == maxH && f.DisplayW == displayW && f.DisplayH == displayH) { f.Settle.Clear(); return null; }
         if (f.Ctx != 0)
         {
+            if (!f.Settle.Held((maxW, maxH, displayW, displayH))) return Settling;
             nint old = f.Ctx;
             Later(() => cxfsr_destroy(old));
             f.Ctx = 0;

@@ -91,6 +91,7 @@ public static class ServiceHost
         CX.Graphics.ShaderCache.SelfCheck(log);   // ...and which blob the folder retires beside the one this driver reads
         UserFoldersApprovedExamples.SelfCheck(log);   // CX's caches, logs and dumps follow the game's own folders
         UserFoldersRegression.SelfCheck(log);   // ...while settings and the shader dump stay beside nwn.ini
+        StaleLogsApprovedExamples.SelfCheck(log);   // the logs an older CX left beside nwn.ini and in the home folder go
         CX.Graphics.CacheFilesApprovedExamples.SelfCheck(log);   // a damaged cache file never changes what is drawn
         CX.Graphics.CacheFileRegression.SelfCheck(log);   // ...a clean one says nothing, an older release's is rebuilt once
         CX.Graphics.CacheFileEdges.SelfCheck(log);   // ...a zeroed one is named, and the report waits for the damage to stop
@@ -143,6 +144,7 @@ public static class ServiceHost
         TextList.SelfCheck(log);
         KnobFile.SelfCheck(log);
         KnobFileBootApprovedExamples.SelfCheck(log);   // boot's own sets are held: cx.cfg is not rewritten at boot
+        LogsAlwaysApprovedExamples.SelfCheck(log);   // no setting turns cx.log off
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the

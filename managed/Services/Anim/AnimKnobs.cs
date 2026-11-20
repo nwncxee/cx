@@ -29,6 +29,8 @@ internal static class AnimKnobs
     internal static readonly Gated<bool> Mass;
     internal static readonly Gated<bool> Aim;
     internal static readonly Gated<float> Hit;
+    /// <summary><c>anim.record</c>: writes each corrected body's leg-solve inputs to a recording file for the offline replay.</summary>
+    internal static readonly Gated<bool> Record;
 
     static AnimKnobs()
     {
@@ -50,7 +52,7 @@ internal static class AnimKnobs
         Lift = G.Slider("footik_lift", "Highest knee lift", 0.05f, 0.6f, 0.05f, 0.25f, "m", tier: Tier.ChatOnly,
             help: "How much higher one foot may be set than the other. A steep step past this leaves the foot in the step rather than folding the leg up to it.");
         Stride = new(G.Toggle("stride", "Match stride to speed", true, tier: Tier.ChatOnly,
-            help: "A character moving faster or slower than its walk or run was animated for takes quicker and longer steps, or slower and shorter ones, instead of playing the animation faster or slower, and each foot stays where it landed until the animation lifts it; on stopping or turning on the spot, the feet stay put and step round one at a time. The pace and the footfalls are read from the animation itself; one that is not a walk -- a swim, a crawl or a float -- is left as the game plays it."), false);
+            help: "A character moving faster or slower than its walk or run was animated for takes quicker and longer steps, or slower and shorter ones, instead of playing the animation faster or slower, and each foot stays where it landed until the animation lifts it, or until holding it would overstretch or twist the leg, when it lets go and steps back under the body; on stopping or turning on the spot, the feet stay put and step round one at a time. The pace and the footfalls are read from the animation itself; one that is not a walk -- a swim, a crawl or a float -- is left as the game plays it."), false);
         Footsteps = new(G.Toggle("footsteps", "Footsteps on contact", true, tier: Tier.ChatOnly,
             help: "A walk or run animation that has no footstep sounds of its own plays one each time a foot lands (with Match stride to speed on). An animation that has its own keeps them, as the game plays them."), false);
         SyncAttach = new(G.Toggle("syncattach", "Keep cloaks in step", true, tier: Tier.ChatOnly,
@@ -78,6 +80,9 @@ internal static class AnimKnobs
             help: "During an attack the upper body bends toward the target's height: a bow shot at a creature on a ledge or a swing at a giant tilts up, a strike at a rat tilts down."), false);
         Hit = new(G.Slider("hitreact", "Hit reactions", 0f, 200f, 10f, 100f, "%", tier: Tier.ChatOnly,
             help: "A landed hit knocks the upper body away from the blow, harder for more damage and for a critical hit, on top of the engine's own flinch. 0 turns it off."), 0f);
+        G.Section("Developer");
+        Record = new(G.Toggle("record", "Record leg frames", false, tier: Tier.ChatOnly,
+            help: "Writes what the leg solve is given, each frame, to a cx-legs file in the logs folder, for a developer to replay offline and grade. Only characters the procedural animations are correcting are recorded: it needs Procedural animations on, and a character in range. Off by default; switching it off, or Procedural animations off, closes the file."), false);
         G.Status = PoseService.Report;
     }
 

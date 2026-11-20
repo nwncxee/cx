@@ -82,7 +82,7 @@ public sealed unsafe partial class InventoryService
         if (UiHost.HitTest(x, y) != null) return;
         WorldHit w = InventoryNative.PickWorld(x, y);
         if (!InventoryNative.GoldTarget(w, out uint target)) return;
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] gold {amount} -> 0x{target:x} at {w.Point}");
+        _log?.Info($"[inv] gold {amount} -> 0x{target:x} at {w.Point}");
         if (!Routed("inventory.gold", target, 0, amount, w)) return;
         InventoryNative.SendGold(target, amount, w);
     }
@@ -103,6 +103,11 @@ public sealed unsafe partial class InventoryService
             return;
         }
         if (over != null) return;   // the CX bar but no button under the point (its grip): not a drop on the world
+        if (InventoryWindow.SellsOn(a, InventoryNative.StoreBoxAt(a.X, a.Y)))
+        {
+            if (Routed("inventory.sell", a.Oid, a.Mask, 0, default)) InventoryNative.Sell(a.Oid);
+            return;
+        }
         if (!InventoryKnobs.DragDrop.V) return;
         WorldHit w = InventoryNative.PickWorld(a.X, a.Y);
         string? verb = InventoryNative.DropVerb(a.Oid, a.Mask != 0 || a.Other != 0, w);
