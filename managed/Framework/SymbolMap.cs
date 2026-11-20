@@ -2425,6 +2425,10 @@ internal static unsafe class SymbolMap
     /// major 12 minor 9 -- a move inside the backpack or between backpack and container.</summary>
     [Fn("void(IntPtr msg, uint item, byte x, byte globalY, uint target)")]
     public const string SendInvRepositoryMove = "_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj";
+    /// <summary><c>..._Store_RequestSell(uint item)</c> @0x804790 (rva 0x7c3d00), major 7 minor 2 -- what the stock store box
+    /// sends for an inventory item dropped on it (<c>CGuiStoreInvBox::ProcessItemDrop</c>), with no confirm.</summary>
+    [Fn("void(IntPtr msg, uint item)")]
+    public const string SendStoreRequestSell = "_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj";
     /// <summary><c>..._Drop(uint item, float x, float y, float z)</c> @0x800b20 (rva 0x7c0c90), major 12 minor 3.
     /// The world point for "at my feet" is the player creature's own position,
     /// <see cref="EngineLayout.ObjPosition"/> (<c>new CNWCObject(playerCreature).Position</c>).</summary>
@@ -3342,6 +3346,7 @@ internal static unsafe class SymbolMap
         [SendInvEquip]           = At(),   // 12 / 1
         [SendInvUnequip]         = At(),   // 12 / 7
         [SendInvRepositoryMove]  = At(),   // 12 / 9
+        [SendStoreRequestSell]   = At(),   // 7 / 2: the one 7 / 2 send; sets the item's sell flag (+0x240) first, as Linux (+0x260)
         [SendInvDrop]            = At(),   // 12 / 3
         [SendGuiInvStatus]       = At(),   // 13 / 1
         [SendGuiInvSelectPanel]  = At(),   // 13 / 2

@@ -417,6 +417,7 @@ global using unsafe GetBaseItemFn = delegate* unmanaged<nint, int, nint>;
 global using unsafe SendInvEquipFn = delegate* unmanaged<nint, uint, uint, uint, void>;
 global using unsafe SendInvUnequipFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe SendInvRepositoryMoveFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
+global using unsafe SendStoreRequestSellFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe SendInvDropFn = delegate* unmanaged<nint, uint, float, float, float, void>;
 global using unsafe SendGuiInvStatusFn = delegate* unmanaged<nint, int, uint, void>;
 global using unsafe SendGuiInvSelectPanelFn = delegate* unmanaged<nint, byte, int, void>;
@@ -1585,6 +1586,10 @@ public readonly unsafe partial struct CGuiObject(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.GuiObjectFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.GuiObjectFlags);
+    /// <inheritdoc cref="EngineLayout.GuiObjTypeSlot"/>
+    public int GetGuiObjType() => ((delegate* unmanaged<IntPtr, int>)GetGuiObjTypeFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.GuiObjTypeSlot"/>
+    public IntPtr GetGuiObjTypeFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GuiObjTypeSlot);
     /// <inheritdoc cref="EngineLayout.GuiObjectModel"/>
     public ref IntPtr Model => ref *(IntPtr*)(Ptr + EngineLayout.GuiObjectModel);
 }
@@ -5676,6 +5681,10 @@ public static unsafe class EngineFn
     private static bool _SendInvRepositoryMoveDone;
     /// <inheritdoc cref="SymbolMap.SendInvRepositoryMove"/>
     public static SendInvRepositoryMoveFn SendInvRepositoryMove => (SendInvRepositoryMoveFn)(_SendInvRepositoryMoveDone ? _SendInvRepositoryMove : Resolve(ref _SendInvRepositoryMove, ref _SendInvRepositoryMoveDone, SymbolMap.SendInvRepositoryMove));
+    private static IntPtr _SendStoreRequestSell;
+    private static bool _SendStoreRequestSellDone;
+    /// <inheritdoc cref="SymbolMap.SendStoreRequestSell"/>
+    public static SendStoreRequestSellFn SendStoreRequestSell => (SendStoreRequestSellFn)(_SendStoreRequestSellDone ? _SendStoreRequestSell : Resolve(ref _SendStoreRequestSell, ref _SendStoreRequestSellDone, SymbolMap.SendStoreRequestSell));
     private static IntPtr _SendInvDrop;
     private static bool _SendInvDropDone;
     /// <inheritdoc cref="SymbolMap.SendInvDrop"/>
@@ -8326,6 +8335,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SendInvRepositoryMove"/>; returns the slot holding the next layer, or null.</summary>
     public static SendInvRepositoryMoveFn* ChainSendInvRepositoryMove(this HookService h, SendInvRepositoryMoveFn handler, int priority) =>
         (SendInvRepositoryMoveFn*)h.Chain(SymbolMap.SendInvRepositoryMove, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SendStoreRequestSell"/>; returns the original, or null.</summary>
+    public static SendStoreRequestSellFn InstallSendStoreRequestSell(this HookService h, SendStoreRequestSellFn handler) =>
+        (SendStoreRequestSellFn)h.Install(SymbolMap.SendStoreRequestSell, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SendStoreRequestSell"/>; returns the slot holding the next layer, or null.</summary>
+    public static SendStoreRequestSellFn* ChainSendStoreRequestSell(this HookService h, SendStoreRequestSellFn handler, int priority) =>
+        (SendStoreRequestSellFn*)h.Chain(SymbolMap.SendStoreRequestSell, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SendInvDrop"/>; returns the original, or null.</summary>
     public static SendInvDropFn InstallSendInvDrop(this HookService h, SendInvDropFn handler) =>
         (SendInvDropFn)h.Install(SymbolMap.SendInvDrop, (IntPtr)handler);

@@ -312,6 +312,11 @@ internal sealed partial class InventoryWindow
 
     // ---- input ----
 
+    /// <summary>A drop released over an open store's item box sells, as the stock box's <c>ProcessItemDrop</c> does with no
+    /// confirm. Backpack items only: which stock drag sources reach that sell for a worn or looted item is not read yet.</summary>
+    internal static bool SellsOn(in InvAction drop, bool overStoreBox)
+        => overStoreBox && drop.Mask == 0 && drop.Other == 0;
+
     /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state. Consumed when over the window, or
     /// while a gesture it started is live.</summary>
     public bool MouseButton(bool down, int button, float px, float py, int mods)

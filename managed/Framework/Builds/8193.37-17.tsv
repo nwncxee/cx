@@ -494,6 +494,7 @@ offset	CNWCItem	guiIcon	0x258	0x238	# ItemGuiIcon
 offset	CNWCItem	vtbl.Delete	0x8	0x0	# ItemDeleteSlot
 offset	CGameObject	type	0xc	0xc	# GameObjType
 offset	CGameObject	vtbl.AsNWCItem	0x70	0x68	# GameObjAsNWCItemSlot
+offset	CGuiObject	vtbl.GetGuiObjType	0x28	0x20	# GuiObjTypeSlot
 offset	CNWCObject	bubble	0xb8	0xb8	# ObjBubble
 offset	CNWCObject	retired	0x104	0x104	# ObjRetired
 offset	CNWCObject	materialParams	0x170	0x150	# ObjMaterialParams
@@ -913,6 +914,7 @@ rva	_ZN8CNWCItem7GetNameEi	0x83d8a0	# ItemGetName
 rva	_ZN11CNWCMessage33SendPlayerToServerInventory_EquipEjjj	0x7c0d70	# SendInvEquip (12/1)
 rva	_ZN11CNWCMessage35SendPlayerToServerInventory_UnequipEjhhj	0x7c1100	# SendInvUnequip (12/7)
 rva	_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj	0x7c1030	# SendInvRepositoryMove (12/9)
+rva	_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj	0x7c3d00	# SendStoreRequestSell (7/2)
 rva	_ZN11CNWCMessage32SendPlayerToServerInventory_DropEjfff	0x7c0c90	# SendInvDrop (12/3)
 rva	_ZN11CNWCMessage37SendPlayerToServerGuiInventory_StatusEij	0x7be110	# SendGuiInvStatus (13/1)
 rva	_ZN11CNWCMessage42SendPlayerToServerGuiInventory_SelectPanelEhi	0x7be060	# SendGuiInvSelectPanel (13/2)

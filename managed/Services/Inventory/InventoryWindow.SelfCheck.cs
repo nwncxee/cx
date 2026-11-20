@@ -167,6 +167,10 @@ internal sealed partial class InventoryWindow
             w.MouseButton(true, 1, SlotX("head"), SlotY("head"), 0);
             w.MouseMove(5000f, 4000f); w.MouseButton(false, 1, 5000f, 4000f, 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Drop, 104, 0x1, 5000, 4000), "a worn item dropped outside names its slot (no barter from a slot)");
+            check.Expect(SellsOn(new InvAction(InvActKind.Drop, 101, 0, 5000, 5000), true), "a backpack item released over a store's item box sells");
+            check.Expect(!SellsOn(new InvAction(InvActKind.Drop, 101, 0, 5000, 5000), false), "released anywhere else it does not");
+            check.Expect(!SellsOn(acts[0], true), "a worn item released over the store box does not sell");
+            check.Expect(!SellsOn(new InvAction(InvActKind.Drop, 201, 0, 5000, 5000, Other: 0x500), true), "nor does a looted one");   // not-an-offset: the container
 
             // clicks
             acts.Clear();
