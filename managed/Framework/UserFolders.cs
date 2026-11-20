@@ -60,6 +60,7 @@ internal static class UserFolders
         if (logs == null) return false;
         string cache = Folder(alias("CACHE")) ?? Path.Combine(userDir, CacheName);
         Carry("funchook.log", fromLogs, logs, log);
+        RemoveOldLogs(logs, userDir, home, log);
         _st = new UserFoldersState { Logs = logs, Cache = Path.Combine(cache, Own), Removal = RemoveRetired(userDir, log) };
         follow?.Invoke(logs);
         return true;
@@ -89,6 +90,48 @@ internal static class UserFolders
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             log.Info($"UserFolders: {name} stays in {from} -- {e.Message}");
+        }
+    }
+
+    /// <summary>Delete the logs an older CX wrote outside the logs folder, saying once what went: cx.log and its parts beside
+    /// nwn.ini and in <paramref name="home"/> when their first line is a CX line, and funchook.log beside nwn.ini. A
+    /// place that is the logs folder now keeps everything.</summary>
+    private static void RemoveOldLogs(string logs, string userDir, string? home, ExtenderLog log)
+    {
+        var gone = new List<string>();
+        foreach (string dir in home == null ? [userDir] : new[] { userDir, home })
+        {
+            if (Same(dir, logs)) continue;
+            for (int i = 0; i < LogParts.MaxParts; i++)
+            {
+                string path = Path.Combine(dir, i == 0 ? "cx.log" : $"cx.{i}.log");
+                if (WrittenByCx(path) && Delete(path, log)) gone.Add(path);
+            }
+        }
+        string trace = Path.Combine(userDir, "funchook.log");
+        if (!Same(userDir, logs) && File.Exists(trace) && Delete(trace, log)) gone.Add(trace);
+        if (gone.Count > 0) log.Info($"UserFolders: removed the logs an older CX left outside {logs}: {string.Join(", ", gone)}");
+    }
+
+    /// <summary>Whether <paramref name="path"/> is a log CX wrote: its first line carries CX's <c>[cx]</c> tag.</summary>
+    private static bool WrittenByCx(string path)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            using var f = new StreamReader(path);
+            return f.ReadLine()?.Contains(" [cx] ", StringComparison.Ordinal) == true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool Delete(string path, ExtenderLog log)
+    {
+        try { File.Delete(path); return true; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.Info($"UserFolders: the older CX log {path} could NOT be removed -- {e.Message}");
+            return false;
         }
     }
 

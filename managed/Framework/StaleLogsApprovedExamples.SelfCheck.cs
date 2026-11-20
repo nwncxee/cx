@@ -89,9 +89,11 @@ internal static class StaleLogsApprovedExamples
             ud = Fresh("Neverwinter Nights"); home = Fresh("home");
             File.WriteAllText(Path.Combine(ud, "cx.log"), OldLine);
             File.WriteAllText(Path.Combine(ud, "cx.1.log"), OldLine);
+            File.WriteAllText(Path.Combine(ud, "funchook.log"), "[funchook] this launch's trace\n");
             UserFolders.Settle(UserFoldersApprovedExamples.Aliases(ud, ("LOGS", ud)), ud, Path.Combine(ud, "logs"), log, home: home);
             check.Expect(UserFoldersApprovedExamples.Read(Path.Combine(ud, "cx.log")) == OldLine, "S5 with LOGS beside nwn.ini, cx.log there stays");
             check.Expect(UserFoldersApprovedExamples.Read(Path.Combine(ud, "cx.1.log")) == OldLine, "S5 with LOGS beside nwn.ini, cx.1.log there stays");
+            check.Expect(File.Exists(Path.Combine(ud, "funchook.log")), "with LOGS beside nwn.ini, this launch's funchook.log there stays");
             UserFolders.Reset();
 
             // Given a file named cx.log in the home folder whose first line is not a CX log line
