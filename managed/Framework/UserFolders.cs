@@ -41,7 +41,7 @@ internal static class UserFolders
     {
         if (_st.Logs != null) return true;
         string? user = Native.UserDirectory();
-        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo))
+        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo, HostEnv.Home))
         {
             log.Info($"UserFolders: the game's folders are not readable yet{(user == null ? " (no user directory)" : " (no LOGS alias)")}; logs stay in {Logs}, caches in {Cache}");
             return false;
@@ -50,11 +50,11 @@ internal static class UserFolders
         return true;
     }
 
-    /// <summary>Settle the folders from <paramref name="alias"/> (the engine's alias list, which always answers LOGS
-    /// once loaded) for the user directory <paramref name="userDir"/>: carry funchook.log over from
-    /// <paramref name="fromLogs"/>, hand the logs folder to <paramref name="follow"/> (the log that moves there), and
-    /// start the removal of the folders an older CX left.</summary>
-    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log, Action<string>? follow = null)
+    /// <summary>Settle the folders from <paramref name="alias"/> (the engine's aliases) for <paramref name="userDir"/>:
+    /// carry funchook.log over from <paramref name="fromLogs"/>, hand the logs folder to <paramref name="follow"/>, and
+    /// clear what an older CX left beside nwn.ini and in <paramref name="home"/> (null: the home folder is not read).</summary>
+    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log, Action<string>? follow = null,
+                                string? home = null)
     {
         string? logs = Folder(alias("LOGS"));
         if (logs == null) return false;
