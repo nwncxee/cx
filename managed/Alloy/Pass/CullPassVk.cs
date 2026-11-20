@@ -510,7 +510,7 @@ internal static class CullPassVk
     private static bool MirrorPhase(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
     {
         bool asked = _s.MirrorAsked;
-        try { return MirrorRuns(vk, check, src, sph, ref b); }
+        try { return MirrorBornSmall(vk, check, src, sph, ref b) && MirrorRuns(vk, check, src, sph, ref b); }
         finally
         {
             // The live state is the session's: a fixture that left the ask latched would buy every session a
@@ -519,6 +519,32 @@ internal static class CullPassVk
             vk.Destroy(_s.Cmd[Mirror]); vk.Destroy(_s.Slot[Mirror]); vk.Destroy(_s.Cnt[Mirror]);
             _s.Cmd[Mirror] = default; _s.Slot[Mirror] = default; _s.Cnt[Mirror] = default;
         }
+    }
+
+    /// <summary>The fixture's short list: its first four draws, in two batches.</summary>
+    private const int ShortDraws = 4, ShortGroups = 2;
+
+    /// <summary>A mirror first asked on a frame with fewer draws and batches than an earlier frame had, then a frame
+    /// back at the full list. Oracle: hand-worked -- the mirror set holds all ten commands and three counts, and with no
+    /// clip plane and the frame's own view it keeps what the colour set keeps, 2, 3, 3.</summary>
+    private static bool MirrorBornSmall(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
+    {
+        CommandList cl = _s.Cmds!;
+        cl.Reset();
+        _s.MirrorAsked = true;
+        bool born = Upload(vk, cl, ShortGroups, ShortDraws, src) && vk.Submit(cl);
+        check.Expect(born && !_s.Cmd[Mirror].IsNull, "a mirror that asks on a shorter list has its set from that upload on");
+        if (!born) return false;
+        var col = new uint[3];
+        var mir = new uint[3];
+        CullBlock m = b;
+        if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
+        check.Expect(mir[0] == 2 && mir[1] == 3 && mir[2] == 3,
+            $"back on the full list the mirror set counts all three batches: 2, 3, 3 (got {mir[0]}, {mir[1]}, {mir[2]})");
+        var cmd = new DrawCmdRec[src.Length];
+        bool whole = vk.ReadBack(_s.Cmd[Mirror], MemoryMarshal.AsBytes(cmd.AsSpan()));
+        check.Expect(whole, $"the mirror set holds a command for each of the {src.Length} draws an indirect draw reads");
+        return whole;
     }
 
     /// <inheritdoc cref="MirrorPhase"/>
