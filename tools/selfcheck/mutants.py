@@ -14,7 +14,7 @@ reads which mutant is on from a file in the same folder, so a staged build carri
 The unmutated run goes first and must pass; then each mutant is booted in turn. A mutant whose switch does not
 compile (a declaration, say) is compiled on its own instead, and the report says so.
 
-Prints one line per mutant: `killed <name> <the first FAIL line>`, with up to five more FAIL lines under it as
+Prints one line per mutant: `killed <name> <the first FAIL line>`, with every other FAIL line under it as
 `also <line>`, or `SURVIVED <name>`. Exit 0 when every mutant was
 killed, 1 when one survived, 2 when the list is refused or the unmutated tree fails. Run it inside nix develop, and
 under cap.sh on a shared machine. Linux-only, like the rest of the developer tooling.
@@ -142,7 +142,7 @@ def verdict(m, rc, output):
     if rc == 1:
         line = fails[0] if fails else output.strip().splitlines()[-1]
         print(f'killed   {m.name:<20} {re.sub(r"^.*?\[cx\] ", "", line)}', flush=True)
-        for more in fails[1:6]:
+        for more in fails[1:]:
             print(f'           also {re.sub(r"^.*?\[cx\] ", "", more)}', flush=True)
         return True
     if rc == 0:
