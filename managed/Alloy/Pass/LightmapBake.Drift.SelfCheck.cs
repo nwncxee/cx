@@ -14,7 +14,8 @@ internal static unsafe partial class LightmapBake
     internal static bool DriftSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LightmapBake.DriftSelfCheck");
-        ExtenderLog? live = _log; _log = null;   // the close logs as evidence: a headless one must not open every cx.log
+        var heard = new System.Collections.Generic.List<string>();
+        ExtenderLog? live = _log; _log = new ExtenderLog { Tap = heard.Add };   // the close's lines are evidence, heard here and not in cx.log
         int rectWas = _rectN;
         if (_rectN == 0) _rectN = 1;   // Produces: a page can exist, so a static light is the bake's
         var lamp = (IntPtr)0x557;
@@ -27,9 +28,12 @@ internal static unsafe partial class LightmapBake
         Area(); Walk(lamp, at, Reach, white, true);
         check.Expect(_closed && _setN == 1 && _setCol[0] == white, "the set closed on the walk past LoadArea with the lamp's first reading");
         ulong closedOn = SetHash;
+        heard.Clear();
         Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, dim, true);
         check.Expect(_setN == 1 && _setCol[0] == dim,
                      $"a static light recoloured after the close is baked in its new colour, not the close's ({_setCol[0]})");
+        check.Expect(Heard("db light 557 changed after the close -- r 5000.0 -> 5000.0, colour (1.000,1.000,1.000) -> (0.050,0.040,0.030)") == 1,
+                     "...and cx.log names the light once, with its close-time and current reach and colour");
         check.Expect(SetHash != closedOn && _rekeyPending, "...under a new set hash, so every rect it touches re-keys and re-bakes");
 
         // a set light a looping colour track starts driving in place is no longer static: lit live, not baked white
@@ -58,6 +62,11 @@ internal static unsafe partial class LightmapBake
         ulong lit = SetHash;
         Empty(); Empty();
         check.Expect(_setN == 0 && SetHash != lit, $"a set light gone from the walk is still baked ({_setN} set lights)");
+        Area(); Walk2(white, white); Walk2(white, white);   // the second walk is a closed one, and meets both
+        heard.Clear();
+        Walk(lamp, at, Reach, white, true); Walk(lamp, at, Reach, white, true);
+        check.Expect(_setN == 1 && Heard("db light 558 left the set") == 1 && Heard("db light 557 left") == 0,
+                     $"a second lamp switched off leaves the set and cx.log names it, not the lamp still lit ({_setN} set lights)");
 
         // the same light a hair off is the same light
         Area(); Walk(lamp, at, Reach, white, true);
@@ -92,6 +101,7 @@ internal static unsafe partial class LightmapBake
 
         // a light recoloured every other walk re-closes eight times in an area, then the set stands
         Area(); Walk(lamp, at, Reach, white, true);
+        heard.Clear();
         int reclosed = 0;
         for (int k = 0; k < 40; k++)
         {
@@ -100,6 +110,13 @@ internal static unsafe partial class LightmapBake
             if (SetHash != was) reclosed++;
         }
         check.Expect(reclosed == 8, $"a light that never stops changing re-closed the set {reclosed} times, not 8");
+        check.Expect(Heard("keep changing after the close") == 1, "...and cx.log says once that the set stays as it stands");
+        // the eight are per area: past an area edge a recolour re-closes again
+        _edgePending = true; _loadArmed = true;
+        Walk(lamp, at, Reach, white, true);
+        if (_rectN == 0) _rectN = 1;
+        Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, dim, true);
+        check.Expect(_setN == 1 && _setCol[0] == dim, $"after an area edge a recolour no longer re-closes the set ({_setCol[0]})");
 
         // a light of the set that starts moving leaves it: lit live, with no baked copy left where it stood
         Area(); Walk(lamp, at, Reach, white, true);
@@ -120,6 +137,13 @@ internal static unsafe partial class LightmapBake
             _clsArea = 1; _edgePending = false; _areaChanged = false; _loadArmed = true; SetHash = 0; _setN = 0;
             _drift = new(); Reopen();
             if (_rectN == 0) _rectN = 1;   // a case that re-closed on no light repacked, and a repack forgets every rect
+        }
+
+        int Heard(string text)
+        {
+            int n = 0;
+            foreach (string line in heard) if (line.Contains(text, StringComparison.Ordinal)) n++;
+            return n;
         }
 
         void Walk2(Vector3 c1, Vector3 c2)

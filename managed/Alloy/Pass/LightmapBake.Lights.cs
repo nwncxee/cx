@@ -154,7 +154,12 @@ internal static unsafe partial class LightmapBake
         CensusStatic = CensusDynamic = CensusUnsettled = 0;
         if (areaPtr != _clsArea || _edgePending) { _clsArea = areaPtr; _edgePending = false; _areaChanged = true; _regCountSeen = -1; _drift = new(); Reopen(); }
         if (_reopen) { _reopen = false; Reopen(); }
-        if (_closed) return;
+        if (_closed)
+        {
+            if (_drift.Met.Length < _stN) _drift.Met = new bool[_stPosR.Length];
+            Array.Clear(_drift.Met, 0, _stN);
+            return;
+        }
         // open, every walk is the whole set again: the lights the engine re-sets after the edge must not leave
         // their first reading in the set beside their real one
         _seen.Clear(); _seenPtr.Clear(); _stN = 0;
@@ -199,7 +204,7 @@ internal static unsafe partial class LightmapBake
         // set, which Gone re-closes without it at the walk's end
         if (_seen.TryGetValue(key, out int at) && (isStatic || !_closed))
         {
-            if (_closed) Drifted(id, at, pos, adjR, color);
+            if (_closed) { _drift.Met[at] = true; Drifted(id, at, pos, adjR, color); }
             CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
         }
         if (_closed)
@@ -208,6 +213,7 @@ internal static unsafe partial class LightmapBake
             // simulation) is still the light the bake holds; a far move is a scripted move
             if (isStatic && _seenPtr.TryGetValue(id, out at) && Near(_stPosR[at], pos, adjR))
             {
+                _drift.Met[at] = true;
                 Drifted(id, at, pos, adjR, color);
                 CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
             }
@@ -242,7 +248,26 @@ internal static unsafe partial class LightmapBake
     private static void Gone()
     {
         if (!Produces || CensusStatic >= _stN || !Reclose()) return;
-        _log?.Info($"LightmapBake: {_stN - CensusStatic} of the set's {_stN} static lights left it after the close (moved, animated, off, hidden or black) -- the set re-closes without them");
+        int named = 0;
+        for (int i = 0; i < _stN && named < MaxGoneNamed; i++)
+        {
+            if (_drift.Met[i]) continue;
+            named++;
+            Vector4 p = _stPosR[i]; Vector3 c = _stCol[i];
+            _log?.Info($"LightmapBake: static light db light {IdOf(i):x} left the set after the close (moved, animated, off, hidden or black) -- "
+                     + $"at ({p.X:F1},{p.Y:F1},{p.Z:F1}) r {p.W:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}); the set re-closes without it");
+        }
+        if (_stN - CensusStatic > named) _log?.Info($"LightmapBake: ...and {_stN - CensusStatic - named} more static lights left the set");
+    }
+
+    /// <summary>Lights one re-close names by <see cref="Gone"/>; the rest are counted.</summary>
+    private const int MaxGoneNamed = 8;
+
+    /// <summary>The database light behind set entry <paramref name="i"/>. Cold: only a re-close's log line asks.</summary>
+    private static IntPtr IdOf(int i)
+    {
+        foreach (var kv in _seenPtr) if (kv.Value == i) return kv.Key;
+        return IntPtr.Zero;
     }
 
     /// <summary>Reopens the set for a re-close, once per walk, unless the area has spent <see cref="MaxDriftCloses"/>;
@@ -264,8 +289,9 @@ internal static unsafe partial class LightmapBake
     /// <summary>Re-closes an area's drift allows before the set is left as it stands.</summary>
     private const int MaxDriftCloses = 8;
 
-    /// <summary>The area's drift re-closes so far, and whether the cap has been said; replaced at an area edge.</summary>
-    private sealed class DriftState { public int Closes; public bool Said; }
+    /// <summary>The area's drift re-closes so far, whether the cap has been said, and which set entries the closed
+    /// walk has met; replaced at an area edge.</summary>
+    private sealed class DriftState { public int Closes; public bool Said; public bool[] Met = new bool[256]; }
     private static DriftState _drift = new();
 
     /// <summary>Within 1 u and 10% of reach of the set entry: the drift a static light is allowed after the close.</summary>
