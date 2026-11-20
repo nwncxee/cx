@@ -234,9 +234,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         SceneDb.ObjSeamLodModel2[i] = null;
         SceneDb.ObjSeamModelName[i] = null;
         SceneDb.ObjScene[i] = default;
-        DbId parent = SceneDb.ObjAttachTo[i];
-        if (SceneDb.Objects.Valid(parent)) Unlisten(Facade.ObjectShell(parent), Facade.ObjectShell(id));
-        SceneDb.SetAttachTo(i, default);
+        Detach(id);
         SceneDb.ObjSeamFlags[i] = 0;
     }
 
@@ -338,8 +336,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (!Live(self, 19, out DbId id, out nint shell)) return 0;
         DbId sc = scene == 0 ? default : Facade.Scene(scene, 19);
         if (scene != 0 && sc.IsNull) Facade.NoteOrphaningAttach(id, SceneDb.ObjScene[id.Index], scene);
-        // Through the engine's own Gob::SetScene @0x53e020 first: it tells the object's behaviour, and a
-        // CAurBehaviorCrossSceneAttach REMEMBERS the scene (+0x70, @0x68c250) -- how CGuiViewport::TakeModel
+        // Through the engine's own Gob::SetScene @0x43e020 first: it tells the object's behaviour, and a
+        // CAurBehaviorCrossSceneAttach REMEMBERS the scene (+0x70, @0x58c250) -- how CGuiViewport::TakeModel
         // keeps the server list in its viewport when the panel later activates. Its scene slots and the
         // UpdateScenes event land back in the seam; the direct join covers whatever it left undone.
         EngineFn.GobSetScene(shell, scene);
@@ -353,11 +351,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         return 1;
     }
 
-    /// <summary>Move <paramref name="id"/> into <paramref name="sc"/>: leave whatever scene it was in, join the
-    /// new one, and mirror the scene pointer at the shell's +0x88. <c>DbScene.Join</c> is what actually makes it
-    /// a MEMBER -- the object count word, the draw order, <c>Scene::GetObject</c>, the highlight set and the
-    /// scene destroy all read that list, so writing <c>ObjScene</c> alone leaves a scene that holds nothing.</summary>
-    internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
+    /// <summary>Move <paramref name="id"/> into <paramref name="sc"/> (leave, join, mirror +0x88) and carry its
+    /// riders. With <paramref name="raise"/>, a scene change raises <c>UpdateScenes</c> instead, as
+    /// <c>Gob::SetScene</c> does: the listeners run newest first and may destroy the object.
+    /// <c>DbScene.Join</c> makes it a MEMBER; <c>ObjScene</c> alone does not.</summary>
+    internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell, bool raise = false)
     {
         if (TileBuild.RefuseMove(id, sc, "JoinScene"))
         {
@@ -367,18 +365,14 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             return;
         }
         DbId was = SceneDb.ObjScene[id.Index];
-        if (!was.IsNull && was.Value != sc.Value) DbScene.Leave(was, id);
-        if (!sc.IsNull) { DbScene.Join(sc, id); Flag(id, SeamFlag.EverAttached, true); }
-        else SceneDb.ObjScene[id.Index] = default;
-        if (shell != 0) Facade.SetSceneWord(shell, sceneShell);
-        SceneDb.Touch(id, Dirty.Tree);
-        PropagateScene(id, shell, sc, sceneShell);
+        Rehome(id, shell, was, sc, sceneShell);
+        if (raise && shell != 0 && was.Value != sc.Value) FireEvent(shell, EventNames.UpdateScenes, 0);
+        else PropagateScene(id, shell, sc, sceneShell);
     }
 
-    /// <summary>Carry a scene change down the attachment tree. The engine did it through the <c>"UpdateScenes"</c>
-    /// event each <c>CAurBehaviorAttach</c> registers for; CX builds no behaviour object, so the walk is here, and
-    /// it must exist or a control tree attached before its panel was activated never learns the panel's scene. No
-    /// depth cap (a button list chains ~40 deep), on an explicit stack, re-entrant: each call works above the top.</summary>
+    /// <summary>Carry a scene change to the riders no <c>UpdateScenes</c> listener carried: a mode-less attach, a
+    /// rider filed on the shell list without the seam's attach, and the appended pieces. No depth cap (a button
+    /// list chains ~40 deep), on an explicit stack, re-entrant: each call works above the top.</summary>
     internal static void PropagateScene(DbId id, nint shell, DbId sc, nint sceneShell)
     {
         int floor = _carryTop, steps = 0;
@@ -398,7 +392,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                 if (SceneDb.RiderParent(k - 1).Value == pid.Value && SceneDb.Objects.LiveAt(k - 1))
                 {
                     DbId c = SceneDb.Objects.IdAt(k - 1);
-                    Carry(pid, c, Facade.ObjectShell(c), psc, pss);
+                    nint cs = Facade.ObjectShell(c);
+                    if (Move(pid, c, cs, psc, pss, out DbId t, out nint ts)) Push(c, cs, t, ts);
                 }
             // The shell list too, for a rider some engine path filed there without the seam's attach.
             ExoArray attached = new Gob(pshell).AttachArray;
@@ -406,7 +401,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             for (int i = 0; i < n && attached.Data != 0; i++)
             {
                 nint child = attached[i];
-                if (child != 0) Carry(pid, Facade.Object(child, 19), child, psc, pss);
+                if (child == 0) continue;
+                DbId c = Facade.Object(child, 19);
+                if (Move(pid, c, child, psc, pss, out DbId t, out nint ts)) Push(c, child, t, ts);
             }
             // The APPEND chain as well. Gob::Append's children ride a part rather than the attach list (CX makes
             // each a child object, where the engine grew one part range), so they are not in GobAttachList. A
@@ -414,17 +411,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             // only then places it -- so without this every body part stayed in scene 0 and never drew.
             foreach (DbId a in SceneDb.Pieces(pid))
             {
-                if (SceneDb.ObjScene[a.Index].Value != psc.Value)
-                {
-                    DbId was = SceneDb.ObjScene[a.Index];
-                    if (!was.IsNull) DbScene.Leave(was, a);
-                    if (!psc.IsNull) { DbScene.Join(psc, a); Flag(a, SeamFlag.EverAttached, true); }
-                    else SceneDb.ObjScene[a.Index] = default;
-                    nint ashell = Facade.ObjectShell(a);
-                    if (ashell != 0) Facade.SetSceneWord(ashell, pss);
-                    SceneDb.Touch(a, Dirty.Tree);
-                    Push(a, ashell, psc, pss);
-                }
+                DbId was = SceneDb.ObjScene[a.Index];
+                if (was.Value == psc.Value) continue;
+                nint ashell = Facade.ObjectShell(a);
+                Rehome(a, ashell, was, psc, pss);
+                Push(a, ashell, psc, pss);
             }
         }
     }
@@ -442,17 +433,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         _carry[_carryTop++] = new Carried { Id = id, Shell = shell, Scene = sc, SceneShell = sceneShell };
     }
 
-    /// <summary>One rider of <see cref="PropagateScene"/>: move <paramref name="c"/> to the scene its parent got
-    /// (or the one a cross-scene attach remembers) and queue it to carry on down. A rider already in its target
-    /// is not walked again, which is also what ends a cycle.</summary>
-    private static void Carry(DbId id, DbId c, nint child, DbId sc, nint sceneShell)
-    {
-        if (Move(id, c, child, sc, sceneShell, out DbId target, out nint targetShell))
-            Push(c, child, target, targetShell);
-    }
-
-    /// <summary>The move half of <see cref="Carry"/>: true when <paramref name="c"/> changed scene, with the
-    /// scene it went to.</summary>
+    /// <summary>Move rider <paramref name="c"/> to the scene its parent got (or the one a cross-scene attach
+    /// remembers): true when it changed scene, with the scene it went to. A rider already in its target is not
+    /// walked again, which is also what ends a cycle.</summary>
     private static bool Move(DbId id, DbId c, nint child, DbId sc, nint sceneShell, out DbId target, out nint targetShell)
     {
         target = sc;
@@ -471,16 +454,23 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         }
         DbId was = SceneDb.ObjScene[c.Index];
         if (was.Value == target.Value) return false;
-        if (!was.IsNull) DbScene.Leave(was, c);
-        if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
-        else SceneDb.ObjScene[c.Index] = default;
-        Facade.SetSceneWord(child, targetShell);
-        SceneDb.Touch(c, Dirty.Tree);
+        Rehome(c, child, was, target, targetShell);
         return true;
     }
 
+    /// <summary>Leave <paramref name="was"/>, join <paramref name="to"/> (or no scene), and mirror it at the
+    /// shell's +0x88: what every scene change of one object writes.</summary>
+    private static void Rehome(DbId id, nint shell, DbId was, DbId to, nint toShell)
+    {
+        if (!was.IsNull && was.Value != to.Value) DbScene.Leave(was, id);
+        if (!to.IsNull) { DbScene.Join(to, id); Flag(id, SeamFlag.EverAttached, true); }
+        else SceneDb.ObjScene[id.Index] = default;
+        if (shell != 0) Facade.SetSceneWord(shell, toShell);
+        SceneDb.Touch(id, Dirty.Tree);
+    }
+
     /// <summary>Put <paramref name="child"/>'s attach listener on <paramref name="parent"/>'s callback list, where
-    /// <c>CAurBehaviorAttach</c> @0x5a2d50 registers <c>UpdateScenesAttach</c> @0x59fc70 under "*" -- so a scene
+    /// <c>CAurBehaviorAttach</c> @0x4a2d50 registers <c>UpdateScenesAttach</c> @0x49fc70 under "*" -- so a scene
     /// change carries the rider in its own turn among the game's listeners, which a GUI scene draws in.</summary>
     private static void Listen(nint parent, nint child)
     {
@@ -494,7 +484,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static void Unlisten(nint parent, nint child) =>
         CallbackList.RemoveListener(parent, (nint)(delegate* unmanaged<nint, nint, nint, void>)&UpdateScenesAttach, child);
 
-    /// <summary><c>UpdateScenesAttach</c> @0x59fc70 for a seam rider: on <c>UpdateScenes</c> the rider follows its
+    /// <summary><c>UpdateScenesAttach</c> @0x49fc70 for a seam rider: on <c>UpdateScenes</c> the rider follows its
     /// parent (<c>Gob::SetScene</c>), which fires the rider's own <c>UpdateScenes</c> and so carries its subtree first.</summary>
     [UnmanagedCallersOnly]
     private static void UpdateScenesAttach(nint self, nint name, nint data)
@@ -555,7 +545,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         nint ps = Facade.ObjectShell(parent);
         JoinScene(id, shell, SceneDb.Objects.Valid(parent) ? SceneDb.ObjScene[parent.Index] : default,
-                  ps == 0 ? 0 : Facade.SceneWord(ps));
+                  ps == 0 ? 0 : Facade.SceneWord(ps), raise: true);
     }
 
     /// <summary>The engine's <c>Gob::AddAttachment</c> @0x5424a0, which only ever ran from a
@@ -601,19 +591,15 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     }
 
     /// <summary>The object half of a <c>CAurString</c> attach (that interface's slots 2 and 3, which
-    /// <see cref="TextSlots"/> answers for the record): unlink the text from its old parent's attach list and,
-    /// once the text record has taken its columns, link it into the new parent's list and inherit the parent's
-    /// scene, as the last line of <c>Gob::AttachToObject</c> does for any gob.</summary>
-    internal static void UnlinkText(DbId id) => Detach(id);
-
-    /// <inheritdoc cref="UnlinkText"/>
-    internal static void LinkText(DbId id, DbId parent, bool listen)
+    /// <see cref="TextSlots"/> answers for the record), after <see cref="Detach"/>: link the text into the new
+    /// parent's list and inherit its scene, as the last line of <c>Gob::AttachToObject</c> does for any gob.</summary>
+    internal static void LinkText(DbId id, DbId parent)
     {
         nint shell = Facade.ObjectShell(id);
         if (shell == 0 || !SceneDb.Objects.Valid(parent)) return;
         AddAttachment(Facade.ObjectShell(parent), shell);
         InheritScene(id, shell, parent);
-        if (listen) Listen(Facade.ObjectShell(parent), shell);
+        if (SceneDb.ObjAttachMode[id.Index] != SceneDb.AttachNone) Listen(Facade.ObjectShell(parent), shell);
     }
 
     /// <summary>Clear the attachment columns -- what <c>AttachToObject(NULL, "", 0)</c> does, and the first
@@ -635,7 +621,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// <summary>The <c>mode</c> argument of <c>Gob::AttachToObject</c> @0x43e0e0 as the column holds it: its
     /// switch has five arms (0 plain, 1 translate, 2 rotate, 3 no-orientation, 4 GUI-scale) and its default
     /// arm installs a NULL behaviour, which is <see cref="SceneDb.AttachNone"/> here.</summary>
-    private static byte Mode(int flags) => (byte)((uint)flags <= 4 ? flags : SceneDb.AttachNone);
+    internal static byte Mode(int flags) => (byte)((uint)flags <= 4 ? flags : SceneDb.AttachNone);
 
     /// <summary><c>Gob::AttachToPart(CAurObject*, CAurPart*, int)</c> @0x43e2a0: the same with the part given
     /// as the <c>CAurPart*</c> a previous <c>GetPart</c> handed out.</summary>
