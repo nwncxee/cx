@@ -32,6 +32,7 @@ internal static class Thing
 CS
   printf '// the stage\nvoid main() { gl_FragColor = vec4(1.0); }\n' > "$d/managed/Shaders/cx_thing.glsl"
   printf '# Notes\n\nSome notes.\n' > "$d/NOTES.md"
+  printf 'cx-linux-x64/\n' > "$d/.gitignore"
   (cd "$d" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm A) || exit 1
   : > "$d/cx-linux-x64/libcx.so"; : > "$d/cx-linux-x64/cx_managed.so"
   printf '#!/bin/sh\n' > "$d/cx-linux-x64/cx-launch"; chmod +x "$d/cx-linux-x64/cx-launch"
@@ -50,7 +51,7 @@ keeps() {
   out=$(cd "$1" && bash tools/keep-staged.sh 2>&1) || { echo "!! $2: keep-staged refused a comment-only change -- $out"; rc=1; return; }
   local where
   where=$(bash "$1/tools/where.sh" "$1" 2>&1)
-  local a; a=$(git -C "$1" rev-parse --short=8 HEAD~1)
+  local a; a=$(git -C "$1" rev-parse --short HEAD~1)
   case "$where" in *"build     CURRENT"*"$a"*"same code"*) ;; *) echo "!! $2: where.sh does not call it CURRENT, built from $a with the same code -- $where"; rc=1 ;; esac
 }
 

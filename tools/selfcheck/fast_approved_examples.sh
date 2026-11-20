@@ -79,9 +79,9 @@ diff <(suites "$tmp/demo.log" | grep -vE " (${drop:-^$})\$") <(suites "$fastlog"
 # When the developer runs the fast self-check command
 # Then it exits non-zero
 # And it prints the same FAIL line run-demo.sh prints for that check
-mkdir -p "$tmp/overlay/Framework"
-sed 's/s\[0\] != '"'"'#'"'"'/s[0] == '"'"'#'"'"'/' managed/Framework/HexColour.cs > "$tmp/overlay/Framework/HexColour.cs"
-cmp -s managed/Framework/HexColour.cs "$tmp/overlay/Framework/HexColour.cs" && { echo ">> E2's edit no longer applies to HexColour.cs" >&2; exit 2; }
+mkdir -p "$tmp/overlay/managed/Framework"
+sed 's/s\[0\] != '"'"'#'"'"'/s[0] == '"'"'#'"'"'/' managed/Framework/HexColour.cs > "$tmp/overlay/managed/Framework/HexColour.cs"
+cmp -s managed/Framework/HexColour.cs "$tmp/overlay/managed/Framework/HexColour.cs" && { echo ">> E2's edit no longer applies to HexColour.cs" >&2; exit 2; }
 capped tools/selfcheck/run.sh --out "$tmp/e2" --overlay "$tmp/overlay" > "$tmp/e2.out" 2>&1
 e2_rc=$?
 [ "$e2_rc" = 1 ] || fail "E2: a failing self-check exited $e2_rc, not 1 -- $(tail -5 "$tmp/e2.out")"

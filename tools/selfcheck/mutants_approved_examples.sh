@@ -33,9 +33,12 @@ e1_rc=$?
 [ "$e1_rc" = 1 ] || fail "E1: a list with a survivor exited $e1_rc, not 1 -- $(tail -5 "$tmp/e1.out")"
 n=$(grep -c '^>> compiling managed/ to IL' "$tmp/e1.out")
 [ "$n" = 1 ] || fail "E1: the runner compiled $n times for four mutants, not once"
-grep -qE '^killed +hash-check +.*HexColour\.SelfCheck FAIL: ' "$tmp/e1.out" || fail "E1: hash-check is not reported killed with its FAIL line"
-grep -qE '^killed +digit-guard +.*HexColour\.SelfCheck FAIL: ' "$tmp/e1.out" || fail "E1: digit-guard is not reported killed with its FAIL line"
-grep -qE '^killed +opaque +.*HexColour\.SelfCheck FAIL: #RRGGBB is opaque' "$tmp/e1.out" || fail "E1: opaque is not reported killed by '#RRGGBB is opaque'"
+# The lines a mutant's report holds: its killed line and the also lines under it.
+report() { awk -v n="$2" '$1 == "killed" || $1 == "SURVIVED" || $1 == "ERROR" { on = ($2 == n) } on' "$1"; }
+for m in hash-check digit-guard opaque; do
+  report "$tmp/e1.out" "$m" | grep -qE "^killed +$m +.*SelfCheck FAIL: " || fail "E1: $m is not reported killed with its FAIL line"
+done
+report "$tmp/e1.out" opaque | grep -q 'HexColour\.SelfCheck FAIL: #RRGGBB is opaque' || fail "E1: opaque's report does not hold '#RRGGBB is opaque'"
 grep -qE '^SURVIVED +same-shift' "$tmp/e1.out" || fail "E1: same-shift is not reported as survived"
 [ "$(tree_state)" = "$before" ] || fail "E3: a whole run changed the tree"
 

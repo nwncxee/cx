@@ -106,15 +106,11 @@ bash tools/ffx/prepare.sh python3 glslang
 if [ ! -f build/libcxfsr.a ] || [ native/ffx/cxfsr.cpp -nt build/libcxfsr.a ] || [ native/ffx/compat.h -nt build/libcxfsr.a ] \
    || [ build/ffx/shaders/.stamp -nt build/libcxfsr.a ]; then
   echo ">> building FSR 3.1 (libcxfsr.a)..."
-  F=build/ffx/sdk
+  . tools/ffx/cxxflags.sh
   mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o
   pids=()
   for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
-    # a 4-byte wchar_t outgrows the SDK's default context size; FFX_GCC drops its dllexport
-    c++ -std=c++17 -O2 -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -w -DNDEBUG -include native/ffx/compat.h -DFFX_GCC \
-      '-DFFX_SDK_DEFAULT_CONTEXT_SIZE=(1024 * 256)' -DFFX_FSR3UPSCALER -DFFX_DOF -Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include \
-      -I$F/include -I$F/include/FidelityFX/host -I$F/src/shared -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders \
-      -c "$src" -o "build/ffx/obj/$(basename "$src" .cpp).o" & pids+=($!)
+    c++ "${FFX_CXXFLAGS[@]}" -fvisibility=hidden -c "$src" -o "build/ffx/obj/$(basename "$src" .cpp).o" & pids+=($!)
   done
   for p in "${pids[@]}"; do wait "$p" || { echo "!! FSR 3.1 failed to compile (above)" >&2; exit 1; }; done
   rm -f build/libcxfsr.a && ar rcs build/libcxfsr.a build/ffx/obj/*.o
@@ -133,6 +129,11 @@ if [ "$1" != --no-gates ]; then
   bash tools/gates/run.sh
   bash tools/approved-examples.sh
 fi
+
+# CX-590: a tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build.
+# Taken before the publish, so an edit made while it runs is not stamped as built.
+CODE=$(python3 tools/codehash.py)
+bash tools/keep-staged.sh "$CODE" && exit 0
 
 echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
@@ -171,6 +172,6 @@ chmod +x "$OUT/cx-launch"
 
 python3 -c "import shutil; shutil.make_archive('$OUT', 'zip', '$OUT')"
 # Written after the zip, so it ships in nothing: tools/where.sh reads it to say which commit the folder runs.
-{ git rev-parse HEAD; [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ] && echo dirty; } > "$OUT/BUILT_FROM" 2>/dev/null || true
+{ git rev-parse HEAD; [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ] && echo dirty; echo "code $CODE"; } > "$OUT/BUILT_FROM" 2>/dev/null || true
 echo ">> artifacts ($OUT/, $OUT.zip):"
 ls -1 "$OUT"

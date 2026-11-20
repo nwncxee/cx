@@ -54,6 +54,9 @@ jobs:
             tools/build-openal.sh
             tools/approved-examples.sh
             tools/no-loaded-runtime.sh
+            tools/codehash.py
+            tools/keep-staged.sh
+            'tools/selfcheck/*'
             tools/live/session-log.sh
             tools/live/docks_run.sh
             tools/live/keymap.py
@@ -115,7 +118,12 @@ jobs:
           nix develop .#ci --command bash -c '
             set -euo pipefail
             ./build.sh
-            CX_NO_BUILD=1 ./run-demo.sh
+            CX_NO_BUILD=1 ./run-demo.sh | tee demo.out
+            # The fast self-check path must run what the AOT image runs: the same verdict line, or it has drifted.
+            tools/selfcheck/run.sh | tee fast.out
+            want=$(grep -E "^>> [0-9]+ SelfCheck lines" demo.out)
+            got=$(grep -E "^>> [0-9]+ SelfCheck lines" fast.out)
+            [ "$want" = "$got" ] || { echo "fast self-checks: \"$got\", run-demo.sh: \"$want\""; exit 1; }
           '
 
   windows:

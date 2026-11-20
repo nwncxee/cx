@@ -16,7 +16,18 @@ elif [ ! -f "$out/BUILT_FROM" ]; then
   built="UNKNOWN -- built before build.sh stamped its commit; rebuild to be sure"
 else
   from=$(sed -n 1p "$out/BUILT_FROM")
-  if [ "$from" != "$head" ]; then
+  stamped=$(sed -n 's/^code //p' "$out/BUILT_FROM")
+  # A stamped code fingerprint decides: equal means only comments or Markdown moved since the build (CX-590).
+  code=""; [ -z "$stamped" ] || code=$(python3 tools/codehash.py "$dir")
+  if [ -n "$stamped" ] && [ "$stamped" = "$code" ]; then
+    if [ "$from" = "$head" ]; then
+      built="CURRENT -- built from ${head:0:8}, same code as the tree"
+    else
+      built="CURRENT -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), same code as ${head:0:8} (only comments or Markdown differ)"
+    fi
+  elif [ -n "$stamped" ]; then
+    built="STALE -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), and the code changed since; rebuild"
+  elif [ "$from" != "$head" ]; then
     built="STALE -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), checkout is at ${head:0:8}; rebuild"
   elif grep -qx dirty "$out/BUILT_FROM"; then
     built="UNCOMMITTED -- built from ${head:0:8} plus uncommitted edits"
