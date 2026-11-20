@@ -63,12 +63,16 @@ internal static unsafe partial class TexRegistry
     // ---- slot columns (SoA: every walk reads two or three of them) ----
     private static readonly ulong[] _key = new ulong[MaxSlots];
     private static readonly uint[] _gen = new uint[MaxSlots];
+    // A reset replaces the image behind a live TexId. Workers keep this revision so pixels read before
+    // the reset cannot land on the replacement. The TexId's generation guards reuse by the next tenant.
+    private static readonly uint[] _imageRevision = new uint[MaxSlots];
     private static readonly TexState[] _state = new TexState[MaxSlots];
     /// <summary>When a slot whose upload failed may load again, on <see cref="Environment.TickCount64"/>; 0 when it never may.</summary>
     private static readonly long[] _retryAt = new long[MaxSlots];
     /// <summary>The least time between two tries of a failed upload, in milliseconds.</summary>
     private const long RetryMs = 1000;
     private static readonly TexKind[] _kind = new TexKind[MaxSlots];
+    private static readonly TexKind[] _requestedKind = new TexKind[MaxSlots];
     private static readonly int[] _refs = new int[MaxSlots];
     /// <summary>The GL name and its resident bindless handle; 0 until the upload lands.</summary>
     private static readonly uint[] _name = new uint[MaxSlots];
@@ -305,13 +309,13 @@ internal static unsafe partial class TexRegistry
                         + "stand-in. Every texture past this one does too until something is evicted");
                 return default;
             }
-            _key[i] = key; _state[i] = TexState.Loading; _kind[i] = kind; _refs[i] = 1;
+            _key[i] = key; _state[i] = TexState.Loading; _requestedKind[i] = kind; _refs[i] = 1;
+            _imageRevision[i] = 0;
             _name[i] = 0; _handle[i] = 0; _bytes[i] = 0; _preview[i] = false;
-            _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false; _cuts[i] = false;
-            _cov[i] = TexCoverage.Unknown; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
-            _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null; _artState.Slots[i] = null;
+            _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _cuts[i] = false;
+            _samplerOverrides[i] = default;
+            ResetImageProperties(i);
             CoverageSerial++; TableSerial++;
-            _nearest[i] = false; _mipmap[i] = true; _samplerWish[i] = false;
             _idleNext[i] = _idlePrev[i] = -1;
             if (free >= 0) _hash[free] = i;
             _live++;
@@ -336,7 +340,55 @@ internal static unsafe partial class TexRegistry
         }
     }
 
+    private static readonly HashSet<string> _resetNames = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The engine has applied or removed a runtime override. Several resets before a game tick
+    /// resolve once against the final resource table, including resets for a texture's atlas cells.</summary>
+    internal static void QueueReset(string source)
+    {
+        lock (_lock) _resetNames.Add(source);
+    }
+
+    private static void ResetImageProperties(int i)
+    {
+        _kind[i] = _requestedKind[i];
+        _retryAt[i] = 0; _meanOk[i] = false; _cov[i] = TexCoverage.Unknown;
+        _bumpyShiny[i] = false; _envMap[i] = false; _txiBlend[i] = 0; _txiDecal[i] = false;
+        _cycle[i] = null; _artState.Slots[i] = null; _samplerWish[i] = false;
+        if ((_samplerOverrides[i] & SamplerOverrides.Clamp) == 0) _clamp[i] = false;
+        if ((_samplerOverrides[i] & SamplerOverrides.Nearest) == 0) _nearest[i] = false;
+        if ((_samplerOverrides[i] & SamplerOverrides.Mipmap) == 0) _mipmap[i] = true;
+    }
+
+    /// <summary>Game thread, before filing any uploads. Recipes and visible parts keep their TexIds.
+    /// The normal upload queue resolves the original request again, with its original format rules.</summary>
+    private static void ApplyResets()
+    {
+        lock (_lock)
+        {
+            if (_resetNames.Count == 0) return;
+            for (int i = 1; i < _high; i++)
+            {
+                if (_resref[i] is not string name || _detached[i] || !_resetNames.Contains(name)) continue;
+                if (_refs[i] == 0) { Retire(i); continue; }
+                _imageRevision[i]++;
+                DropHandle(i);
+                if (_name[i] != 0) _graveyard.Enqueue(_name[i]);
+                _residentBytes -= _bytes[i];
+                _name[i] = 0; _bytes[i] = 0; _preview[i] = false;
+                ResetImageProperties(i);
+                _state[i] = TexState.Loading;
+                if (_pend[i] != PendWaiting)
+                {
+                    _pend[i] = PendWaiting;
+                    lock (_gate) _waiting.Enqueue(i);
+                }
+                CoverageSerial++; TableSerial++;
+                MarkDependents(i);
+            }
+            _resetNames.Clear();
+        }
+    }
     /// <summary>Drop one reference. The last one leaves the slot <see cref="TexState.Idle"/> -- resident, GL
     /// name and bytes kept, bindless handle released -- which is ADR 0023's decision, now without an engine
     /// delete funnel to filter. Eviction is <see cref="Tick"/>'s, oldest idle first, only past the budget.
@@ -442,6 +494,7 @@ internal static unsafe partial class TexRegistry
         int retired = 0, detached = 0;
         lock (_lock)
         {
+            _resetNames.Clear();
             while (_idleHead >= 0) { Retire(_idleHead); retired++; }
             for (int i = 1; i < _high; i++)
             {
@@ -544,6 +597,9 @@ internal static unsafe partial class TexRegistry
         {
             if (!Valid(id)) return false;
             int i = id.Index;
+            if (clamp.HasValue) _samplerOverrides[i] |= SamplerOverrides.Clamp;
+            if (nearest.HasValue) _samplerOverrides[i] |= SamplerOverrides.Nearest;
+            if (mipmap.HasValue) _samplerOverrides[i] |= SamplerOverrides.Mipmap;
             bool changed = false;
             if (clamp != null && _clamp[i] != clamp.Value) { _clamp[i] = clamp.Value; changed = true; }
             if (nearest != null && _nearest[i] != nearest.Value) { _nearest[i] = nearest.Value; changed = true; }
@@ -562,6 +618,9 @@ internal static unsafe partial class TexRegistry
     private static readonly bool[] _nearest = new bool[MaxSlots];
     private static readonly bool[] _mipmap = new bool[MaxSlots];
     private static readonly bool[] _samplerWish = new bool[MaxSlots];
+    [Flags]
+    private enum SamplerOverrides : byte { Clamp = 1, Nearest = 2, Mipmap = 4 }
+    private static readonly SamplerOverrides[] _samplerOverrides = new SamplerOverrides[MaxSlots];
     private static readonly Queue<int> _samplerQ = new();
     private static long _samplerAsks, _samplerDone;
 

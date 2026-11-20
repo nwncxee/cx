@@ -425,6 +425,8 @@ internal static unsafe partial class TexRegistry
         Expect(dj.Compressed && dj.Levels == 1, $"a one-level DDS was given {dj.Levels} level(s) -- the padding is sampled");
         DdsReader.FreePrepared(dj.Data);
 
+        ok &= RuntimeOverrideCheck(log);
+
         // a handle to an evicted slot resolves to nothing: the whole reason no holder needs a death notice
         Retire(a.Index);
         Expect(!Valid(a) && !Valid(b) && !TryResident(a, out _, out _),
@@ -458,4 +460,52 @@ internal static unsafe partial class TexRegistry
     /// <summary>A slot made without the resource manager: the REAL allocator, with the offer dropped. A hand
     /// copy of <see cref="Acquire"/> is a check of a second implementation (review r1 finding 19).</summary>
     private static TexId Insert(string resref, TexKind kind) => Alloc(resref, kind, 0, out _);
+
+    private static bool RuntimeOverrideCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "TexRegistry.RuntimeOverride.SelfCheck");
+        const string source = "cx_reset_floor";
+        TexId floor = Insert(source, TexKind.Auto);
+        TexId idleCell = Alloc(source, TexKind.Auto, 1, out _);
+        TexId alias = Insert("cx_reset_other", TexKind.Plain);
+        Land(floor, 10, 64, cov: TexCoverage.Opaque);
+        Land(idleCell, 11, 64);
+        Land(alias, 12, 64);
+        Release(idleCell);
+        var waiting = _waiting.ToArray();
+        long resident = _residentBytes, idle = _idleBytes;
+        uint oldRevision = _imageRevision[floor.Index];
+        var late = new Landed(floor, oldRevision, 40, 41, 64, TexCoverage.Opaque, false, false, null);
+        QueueReset("CX_RESET_FLOOR");
+        QueueReset(source);
+        ApplyResets();
+        check.Expect(Valid(floor) && !TryDrawable(floor, out _, out _) && Coverage(floor) == TexCoverage.Unknown,
+                     "a live floor still draws its old image, or its material lost its TexId");
+        check.Expect(!Valid(idleCell) && _idleBytes == idle - 64 && _residentBytes == resident - 64,
+                     "the idle atlas cell or its bytes survived the source reset");
+        check.Expect(TryResident(alias, out uint other, out _) && other == 12,
+                     "a different source lost its image in the same reset");
+        check.Expect(_waiting.Count == waiting.Length + 1, "repeated resets queued more than one reload");
+        FileArrival(late);
+        FileArrival(late with { Why = "obsolete failure", Name = 0, Handle = 0 });
+        check.Expect(StateOf(floor) == TexState.Loading && !TryDrawable(floor, out _, out _)
+                     && _graveyard.Contains(40) && _dyingHandles.Contains(41),
+                     "a stale upload or failure took over the slot, or its GPU allocation leaked");
+        FileArrival(late with { Revision = _imageRevision[floor.Index], Name = 20, Handle = 0, Cov = TexCoverage.Cutout });
+        check.Expect(TryResident(floor, out uint replacement, out _) && replacement == 20
+                     && Coverage(floor) == TexCoverage.Cutout, "the original TexId did not draw the replacement");
+        QueueReset(source);
+        ApplyResets();
+        Release(floor);
+        FileArrival(late with { Revision = _imageRevision[floor.Index], Why = "missing replacement", Name = 0, Handle = 0 });
+        check.Expect(!Valid(floor) && _idleHead != floor.Index && _idleTail != floor.Index,
+                     "a failed reload left an unreferenced texture in the idle list");
+        _waiting.Clear();
+        foreach (int slot in waiting) _waiting.Enqueue(slot);
+        if (Valid(floor)) Retire(floor.Index);
+        Retire(alias.Index);
+        if (Valid(idleCell)) Retire(idleCell.Index);
+        log.Info(check.Ok ? "TexRegistry.RuntimeOverride.SelfCheck: passed" : "TexRegistry.RuntimeOverride.SelfCheck: FAILED");
+        return check.Ok;
+    }
 }

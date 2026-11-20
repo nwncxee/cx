@@ -232,7 +232,7 @@ internal static unsafe partial class TexRegistry
         if (j.Ripple == null) { _artState.Unbuilt++; return; }
         lock (_lock)
         {
-            if ((_gen[j.Slot] & 0xFFF) != j.Gen) return;
+            if (!CurrentImage(j.Id, j.Revision)) return;
             _artState.Slots[j.Slot] = j.Ripple;
             if (!_artState.Running.Contains(j.Slot)) _artState.Running.Add(j.Slot);
         }

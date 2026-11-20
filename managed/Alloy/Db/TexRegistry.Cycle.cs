@@ -120,7 +120,7 @@ internal static unsafe partial class TexRegistry
         };
         lock (_lock)
         {
-            if ((_gen[j.Slot] & 0xFFF) != j.Gen) return;
+            if (!CurrentImage(j.Id, j.Revision)) return;
             _cycle[j.Slot] = c;
             if (!_cycling.Contains(j.Slot)) _cycling.Add(j.Slot);
         }

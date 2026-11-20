@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
@@ -21,6 +22,7 @@ public sealed unsafe class SeamService : IExtenderService
     {
         /// <summary>Alloy was requested and the seam stood down. Set on each refusal path, never while installing.</summary>
         internal bool StoodDown;
+        internal AurResetTextureFn ResetTexture;
     }
     private static readonly SeamBootState _boot = new();
 
@@ -32,6 +34,19 @@ public sealed unsafe class SeamService : IExtenderService
     public int InitOrder => -1;
 
     private static ExtenderLog? _log;
+
+    [UnmanagedCallersOnly]
+    private static void OnResetTexture(byte* name)
+    {
+        string? source = Renderer.On && name != null
+            ? Marshal.PtrToStringUTF8((IntPtr)name, ResRef.Of(name).Length) : null;
+        _boot.ResetTexture(name);
+        if (!string.IsNullOrEmpty(source))
+        {
+            TexRegistry.QueueReset(source);
+            _log?.Info($"TexRegistry: AurResetTexture(\"{source}\")");
+        }
+    }
 
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Assembly is rooted; nothing trimmed.")]
     [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Assembly is rooted; parameterless ctors preserved.")]
@@ -137,6 +152,9 @@ public sealed unsafe class SeamService : IExtenderService
             catch (Exception e) { log.Always($"seam: an AfterTablesBuilt action threw: {e.Message}"); }
         }
 
+        _boot.ResetTexture = hooks.InstallAurResetTexture(&OnResetTexture);
+        if (_boot.ResetTexture == null)
+            log.Always("TexRegistry: AurResetTexture is unavailable. A runtime texture override may keep its previous image.");
         int installed = 0;
         unsafe
         {
