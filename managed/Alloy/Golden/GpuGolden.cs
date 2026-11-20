@@ -38,6 +38,8 @@ internal static partial class GpuGolden
     /// <summary>Every golden on <paramref name="vk"/>, each cleaning up after itself.</summary>
     private static void Run(VkBackend vk, Checker check, ExtenderLog log)
     {
+        vk.ResizeHoldsTodaySelfCheck(check);
+        vk.ResizeApprovedExamplesSelfCheck(check);
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
         SsrJoinSelfCheck(vk, check, log);
