@@ -1,8 +1,15 @@
-# Tickets: Plane
+# Tickets: Plane inside, GitHub and Discord outside
 
-Tickets are Plane work items in project `CX`, named `CX-<n>`. Plane is the internal tracker, and every ticket an agent files goes there. Code, pull requests and releases stay on GitHub (`nwncxee/cx`).
+Two kinds of issue, two homes:
 
-Users reach us in two places: GitHub Issues on `nwncxee/cx`, and the `#bug-reports` channel on Discord. Neither is a tracker for our own work. When a user report needs work, file a `CX` ticket for it that links the GitHub issue or quotes the Discord report, and answer the user where they asked. An agent reads GitHub Issues with `gh issue view <n> --comments`. It can't read Discord, so a Discord report reaches an agent pasted into the conversation.
+- **Internal: Plane.** Our own work lives in Plane, project `CX`, as work items named `CX-<n>`. Every ticket, star chart and research note an agent files goes there.
+- **External: GitHub Issues and Discord.** Users report problems as GitHub Issues on `nwncxee/cx` or in Discord's `#bug-reports` channel. Neither one tracks our own work, so an agent files nothing there.
+
+When a user report needs work, file a `CX` ticket for it that links the GitHub issue or quotes the Discord report, and answer the user where they asked. An agent reads GitHub Issues with `gh issue view <n> --comments`. It can't read Discord, so a Discord report reaches an agent pasted into the conversation.
+
+Documentation goes to neither: it lives on the GitHub wiki ([domain.md](domain.md)). Code, pull requests and releases stay on GitHub.
+
+## The Plane CLI
 
 `bin/plane` is the Plane CLI. It needs Python 3 and your own `PLANE_API_KEY`, set in the environment or in the env file the CLI reads (`bin/plane --help`). Create the key in Plane under your profile's API tokens. `bin/plane whoami` confirms it. Fix a bug in the CLI at its source and copy the fixed file over this one by hand.
 
