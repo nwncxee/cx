@@ -198,6 +198,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);
+                    bool cxOver = UiHost.OverGuiAt(mx, my);
                     if (KeyDiag)
                         _log?.Info($"[keydiag] mouse btn={btn} at ({mx},{my}) owner={UiHost.AnyKeyboardOwner} kbmode={KeyboardModeActive()} gui=0x{gui:x} ({GuiTag(gui)}) menuOurs={ours}");
                     if (UiHost.DispatchMouseButton(true, btn, mx, my, captureOnly: true)) return 0;   // Window.CapturesPointer: ahead of the GUI yield
@@ -205,7 +206,15 @@ public sealed unsafe class UiInputService : IExtenderService
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
                     // otherwise have released our windows' focus.
                     if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.NuiItems.ItemDragService.OnPress(mx, my); CX.Services.Nui.NuiModelView.OnPress(); }
-                    if (NuiHovered() || (gui != IntPtr.Zero && !ours)) { UiHost.Blur(); break; }
+                    if (NuiHovered() || (gui != IntPtr.Zero && !ours && !cxOver)) { UiHost.Blur(); break; }
+                    // A CX window drawn over the engine GUI is offered the press first; one that declines it leaves it to the
+                    // engine object beneath, exactly as before.
+                    if (gui != IntPtr.Zero && !ours)
+                    {
+                        if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
+                        UiHost.Blur();
+                        break;
+                    }
                     if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
                     if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
                     if (ChordGateClear()) UiHost.FireMouseChords(btn, RawMods());
