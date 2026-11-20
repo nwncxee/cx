@@ -33,8 +33,10 @@ internal static unsafe partial class CasterGatherVk
         /// <summary>Command/count pairs rotated per view, <see cref="CasterGather.Rotation"/>'s argument.</summary>
         public readonly BufferId[] Cmd = new BufferId[Rotation], Cnt = new BufferId[Rotation],
                                    LyCmd = new BufferId[Rotation], LyCnt = new BufferId[Rotation];
-        public long CmdCap, LyCmdCap;
-        public int CntCap, LyCntCap, At, LyAt;
+        /// <summary>Each command/count buffer's own bytes: one remade alone is sized and grown on its own.</summary>
+        public readonly long[] CmdCap = new long[Rotation], CntCap = new long[Rotation],
+                               LyCmdCap = new long[Rotation], LyCntCap = new long[Rotation];
+        public int At, LyAt;
         public int DrawN, Groups, DynDrawN;
         /// <summary>A caller reported changed source bytes that have not reached the buffer yet.</summary>
         public bool SrcDirty = true;
@@ -113,7 +115,7 @@ internal static unsafe partial class CasterGatherVk
         if (slots <= 0) return;
         var s = _s;
         long bytes = (long)slots * sizeof(Sphere);
-        Grow(vk, ref s.Cast, ref s.CastCap, bytes, BufferUse.Storage, "gather caster bounds");
+        HeldBuffer.Grow(vk, ref s.Cast, ref s.CastCap, bytes, BufferUse.Storage, MemoryKind.Upload, "gather caster bounds");
         if (s.Cast.IsNull) return;
         cl.UpdateBuffer(s.Cast, 0, Native.Records(cast, slots));
     }
@@ -147,8 +149,7 @@ internal static unsafe partial class CasterGatherVk
         if (drawN <= 0 || groups <= 0) return false;
         if (!BoundsStanding || s.Cast.IsNull) return false;   // no published generation yet: nothing to cull against
         long bytes = (long)drawN * sizeof(CasterSrcRec);
-        bool grow = bytes > s.SrcCap;
-        Grow(vk, ref s.Src, ref s.SrcCap, bytes, BufferUse.Storage, "gather source");
+        bool grow = HeldBuffer.Grow(vk, ref s.Src, ref s.SrcCap, bytes, BufferUse.Storage, MemoryKind.Upload, "gather source");
         if (s.Src.IsNull) return false;
         if (grow || s.SrcDirty)
         {
@@ -157,16 +158,13 @@ internal static unsafe partial class CasterGatherVk
             CasterGather.Uploads++;
         }
         else CasterGather.UploadsSkipped++;
-        bool growCmd = drawN > s.CmdCap, growCnt = groups > s.CntCap;
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         for (int i = 0; i < Rotation; i++)
         {
-            Make(vk, cl, ref s.Cmd[i], growCmd, (long)drawN * CasterGather.CmdBytes, Out, "gather commands");
-            Make(vk, cl, ref s.Cnt[i], growCnt, CountBytes(groups), Out, "gather counts");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cmd[i], ref s.CmdCap[i], (long)drawN * CasterGather.CmdBytes, Out, "gather commands");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cnt[i], ref s.CntCap[i], CountBytes(groups), Out, "gather counts");
             if (s.Cmd[i].IsNull || s.Cnt[i].IsNull) return false;
         }
-        if (growCmd) s.CmdCap = drawN;
-        if (growCnt) s.CntCap = groups;
         s.DrawN = drawN; s.Groups = groups;
         return true;
     }
@@ -179,7 +177,7 @@ internal static unsafe partial class CasterGatherVk
         s.DynDrawN = 0;
         if (s.Prog.IsNull || drawN <= 0) return false;
         long bytes = (long)drawN * sizeof(CasterSrcRec);
-        Grow(vk, ref s.DynSrc, ref s.DynSrcCap, bytes, BufferUse.Storage, "gather dynamic source");
+        HeldBuffer.Grow(vk, ref s.DynSrc, ref s.DynSrcCap, bytes, BufferUse.Storage, MemoryKind.Upload, "gather dynamic source");
         if (s.DynSrc.IsNull) return false;
         cl.UpdateBuffer(s.DynSrc, 0, Native.Records(src, drawN));
         s.DynDrawN = drawN;
@@ -224,23 +222,20 @@ internal static unsafe partial class CasterGatherVk
         // a chunk already dispatched against would leave that dispatch naming a dead id in the same recording
         int wide = Math.Max(maxViews, viewN);
         long viewBytes = (long)viewN * sizeof(CasterViewRec);
-        Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage | BufferUse.CopySrc, "gather view table");
+        HeldBuffer.Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage | BufferUse.CopySrc, MemoryKind.Upload, "gather view table");
         if (s.ViewTbl.IsNull) return false;
         cl.UpdateBuffer(s.ViewTbl, 0, Native.Records(views, viewN));
 
         s.LyAt = (s.LyAt + 1) % Rotation;
         long cmds = (long)s.DrawN * wide;
-        bool growCmd = cmds > s.LyCmdCap, growCnt = s.Groups > s.LyCntCap;
         for (int i = 0; i < Rotation; i++)
         {
-            Make(vk, cl, ref s.LyCmd[i], growCmd, cmds * CasterGather.CmdBytes,
+            HeldBuffer.Zeroed(vk, cl, ref s.LyCmd[i], ref s.LyCmdCap[i], cmds * CasterGather.CmdBytes,
                  BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc, "gather layered commands");
-            Make(vk, cl, ref s.LyCnt[i], growCnt, CountBytes(s.Groups),
+            HeldBuffer.Zeroed(vk, cl, ref s.LyCnt[i], ref s.LyCntCap[i], CountBytes(s.Groups),
                  BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc, "gather layered counts");
             if (s.LyCmd[i].IsNull || s.LyCnt[i].IsNull) return false;
         }
-        if (growCmd) s.LyCmdCap = cmds;
-        if (growCnt) s.LyCntCap = s.Groups;
         CasterGather.Layer(ref s.Block, srcN, viewN, s.Groups, CullPassVk.PublishedSphereSlots,
                            cull >= 0 ? cull : CasterGather.Mode != 0 ? 1 : 0);
         cl.ZeroBuffer(s.LyCnt[s.LyAt], 0, CountBytes(s.Groups));
@@ -286,25 +281,5 @@ internal static unsafe partial class CasterGatherVk
         ];
         VkBindTally.Count(VkBindBy.Casters);
         cl.BindSet(0, new BindSet(ubo, layered, default, default));
-    }
-
-    /// <summary>Hold <paramref name="id"/> at <paramref name="bytes"/>, remade when <paramref name="grow"/> asks and
-    /// zeroed when new: an indirect command or count read out of uninitialised memory can hang the GPU.</summary>
-    private static void Make(VkBackend vk, CommandList cl, ref BufferId id, bool grow, long bytes, BufferUse use, string label)
-    {
-        if (!id.IsNull && !grow) return;
-        vk.Destroy(id);
-        id = vk.CreateBuffer(new BufferDesc(Math.Max(bytes, 4), use, MemoryKind.Device, label));
-        if (!id.IsNull) cl.ZeroBuffer(id);
-    }
-
-    /// <summary>An upload buffer at least <paramref name="bytes"/> long, remade larger when it is not.</summary>
-    private static void Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use, string label)
-    {
-        if (!id.IsNull && bytes <= cap) return;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, 4);
-        id = vk.CreateBuffer(new BufferDesc(cap, use, MemoryKind.Upload, label));
-        if (id.IsNull) cap = 0;
     }
 }

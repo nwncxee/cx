@@ -76,8 +76,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!faces.IsEmpty) cl.UpdateBuffer(g.Faces, faceAt, faces);
         ReadOnlySpan<byte> patches = MemoryMarshal.AsBytes(GrassField.VkPatches(f.Patches));
         ReadOnlySpan<byte> mats = MemoryMarshal.AsBytes(GrassField.VkMats(f.Mats));
-        if (!VkGrowBuf(vk, ref g.Patches, ref g.PatchCap, patches.Length, PipeFeatures.Grass + "patches")
-            || !VkGrowBuf(vk, ref g.Mats, ref g.MatCap, mats.Length, PipeFeatures.Grass + "materials")) return true;
+        if (!HeldBuffer.Doubled(vk, ref g.Patches, ref g.PatchCap, Math.Max(patches.Length, 64), BufferUse.Storage, MemoryKind.Upload, PipeFeatures.Grass + "patches")
+            || !HeldBuffer.Doubled(vk, ref g.Mats, ref g.MatCap, Math.Max(mats.Length, 64), BufferUse.Storage, MemoryKind.Upload, PipeFeatures.Grass + "materials")) return true;
         cl.UpdateBuffer(g.Patches, 0, patches);
         cl.UpdateBuffer(g.Mats, 0, mats);
         Span<uint> cmd = stackalloc uint[GrassField.VkCmds * 4];

@@ -19,7 +19,21 @@ public static class RhiSelfCheck
         Labels(check);
         FormatTraits(check);
         Blends(check);
+        Ranges(check);
         log.Info(check.Ok ? "Rhi.SelfCheck: passed" : "Rhi.SelfCheck: FAILED");
+    }
+
+    /// <summary>A range at the very end of its size is inside, one byte more is not, and a start near the largest value
+    /// is refused rather than wrapped back inside: the case the sum <c>at + n &gt; size</c> let through.</summary>
+    private static void Ranges(Checker check)
+    {
+        check.Expect(Bounds.Inside(96, 4, 100) && !Bounds.Inside(97, 4, 100), "4 from 96 ends at 100, inside; 4 from 97 does not");
+        check.Expect(Bounds.Inside(100, 0, 100) && !Bounds.Inside(101, 0, 100), "an empty range at the end is inside, past it is not");
+        check.Expect(!Bounds.Inside(long.MaxValue - 3, 8, 100), "a start whose sum wraps negative is refused, not let back in");
+        check.Expect(!Bounds.Inside(ulong.MaxValue - 3, 8ul, 100ul), "an unsigned start whose sum wraps to 4 is refused");
+        check.Expect(!Bounds.Inside(-4, 4, 100) && !Bounds.Inside(0, -1, 100), "a negative start or count lies nowhere");
+        check.Expect(Bounds.InWords(8, 16, 100) && !Bounds.InWords(2, 4, 100) && !Bounds.InWords(4, 6, 100),
+            "a word range on words is inside; one starting or ending off a word is not");
     }
 
     /// <summary>A freed handle goes stale, its slot comes back under a new generation, and null never resolves.</summary>

@@ -36,6 +36,15 @@ rule and the gates.
 - **A push-constant block is a named struct (CX0007).** `CommandList.PushConstants` staged from a span of ints,
   floats or bytes -- a collection expression, or `MemoryMarshal.AsBytes` of a primitive span -- is refused: declare
   the block's members and push `MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in x))`.
+- **A range is tested by `Bounds`, never by a sum (CX0010).** Under `managed/Graphics/` and `managed/Rhi/`, an
+  integer sum on either side of `<`, `<=`, `>` or `>=`, or a local declared as one, is refused: an offset near the
+  top of its type wraps `at + n > size` back inside and the device reads past the buffer. Use
+  `Bounds.Inside(at, n, size)`, or `Bounds.InWords` for a Vulkan buffer range, which also asks for whole words.
+  A sum tested against zero is a sign test and passes; self-checks are exempt.
+- **A pass's buffer grows through `HeldBuffer`, each to its own size (CX0011).** A method outside `HeldBuffer` that
+  takes a `ref BufferId` and calls `CreateBuffer` is refused, and so is a `HeldBuffer` call whose size field another
+  buffer in the method shares, or a buffer array's element held to anything but the same element of a size array. A
+  grow flag or a shared capacity remakes a late buffer at the size another was given, and the GPU reads past it.
 - **A Framework container holds layout, not logic.** No Framework method takes a layout offset, a stride or a
   header size as a parameter: the offset comes from the type (a field, `sizeof(T)`, a view row). An offset the
   memory itself stores, such as nuklear's command `next`, is data and may be passed.

@@ -351,7 +351,7 @@ public sealed class CommandList
     private Span<byte> Reserve(int bytes)
     {
         int padded = (bytes + Align - 1) & ~(Align - 1);
-        if (_len + padded > _buf.Length)
+        if (!Bounds.Inside(_len, padded, _buf.Length))
         {
             int size = Math.Max(_buf.Length * 2, _len + padded);
             Array.Resize(ref _buf, size);

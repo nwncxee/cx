@@ -69,8 +69,8 @@ public sealed unsafe partial class AlloyRenderer
         if (at == 0) return true;
         ReadOnlySpan<byte> recs = MemoryMarshal.AsBytes(Particles.VkRecords);
         ReadOnlySpan<byte> idx = MemoryMarshal.AsBytes(Particles.VkIndices(at));
-        if (!VkGrowBuf(vk, ref s.Recs, ref s.RecCap, recs.Length, "vk particle records")
-            || !VkGrowBuf(vk, ref s.Idx, ref s.IdxCap, idx.Length, "vk particle order")) return false;
+        if (!HeldBuffer.Doubled(vk, ref s.Recs, ref s.RecCap, Math.Max(recs.Length, 64), BufferUse.Storage, MemoryKind.Upload, "vk particle records")
+            || !HeldBuffer.Doubled(vk, ref s.Idx, ref s.IdxCap, Math.Max(idx.Length, 64), BufferUse.Storage, MemoryKind.Upload, "vk particle order")) return false;
         cl.UpdateBuffer(s.Recs, 0, recs);
         cl.UpdateBuffer(s.Idx, 0, idx);
         // the soft fade reads the depth as everything before this pass left it, the blended and water classes included
@@ -274,8 +274,4 @@ public sealed unsafe partial class AlloyRenderer
                      + "drawn on Vulkan this session");
         return p != null;
     }
-
-    /// <summary>A storage buffer of at least <paramref name="bytes"/>, grown by doubling.</summary>
-    private static bool VkGrowBuf(VkBackend vk, ref BufferId id, ref long cap, long bytes, string label)
-        => VkGrow(vk, ref id, ref cap, Math.Max(bytes, 64), label);
 }

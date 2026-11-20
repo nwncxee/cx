@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using CX.Rhi;
 
 namespace CX.Graphics.Rhi;
 
@@ -51,7 +52,7 @@ internal static class VkSpirv
         for (int i = HeaderWords; i < w.Length;)
         {
             int op = (int)(w[i] & 0xFFFF), n = (int)(w[i] >> 16);
-            if (n == 0 || i + n > w.Length) break;
+            if (n == 0 || !Bounds.Inside(i, n, w.Length)) break;
             ReadOnlySpan<uint> a = w.Slice(i + 1, n - 1);
             switch (op)
             {
