@@ -41,7 +41,7 @@ internal static class UserFolders
     {
         if (_st.Logs != null) return true;
         string? user = Native.UserDirectory();
-        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo))
+        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo, HostEnv.Home))
         {
             log.Info($"UserFolders: the game's folders are not readable yet{(user == null ? " (no user directory)" : " (no LOGS alias)")}; logs stay in {Logs}, caches in {Cache}");
             return false;
@@ -50,16 +50,17 @@ internal static class UserFolders
         return true;
     }
 
-    /// <summary>Settle the folders from <paramref name="alias"/> (the engine's alias list, which always answers LOGS
-    /// once loaded) for the user directory <paramref name="userDir"/>: carry funchook.log over from
-    /// <paramref name="fromLogs"/>, hand the logs folder to <paramref name="follow"/> (the log that moves there), and
-    /// start the removal of the folders an older CX left.</summary>
-    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log, Action<string>? follow = null)
+    /// <summary>Settle the folders from <paramref name="alias"/> (the engine's aliases) for <paramref name="userDir"/>:
+    /// carry funchook.log over from <paramref name="fromLogs"/>, hand the logs folder to <paramref name="follow"/>, and
+    /// clear what an older CX left beside nwn.ini and in <paramref name="home"/> (null: the home folder is not read).</summary>
+    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log, Action<string>? follow = null,
+                                string? home = null)
     {
         string? logs = Folder(alias("LOGS"));
         if (logs == null) return false;
         string cache = Folder(alias("CACHE")) ?? Path.Combine(userDir, CacheName);
         Carry("funchook.log", fromLogs, logs, log);
+        RemoveOldLogs(logs, userDir, home, log);
         _st = new UserFoldersState { Logs = logs, Cache = Path.Combine(cache, Own), Removal = RemoveRetired(userDir, log) };
         follow?.Invoke(logs);
         return true;
@@ -89,6 +90,48 @@ internal static class UserFolders
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             log.Info($"UserFolders: {name} stays in {from} -- {e.Message}");
+        }
+    }
+
+    /// <summary>Delete the logs an older CX wrote outside the logs folder, saying once what went: cx.log and its parts beside
+    /// nwn.ini and in <paramref name="home"/> when their first line is a CX line, and funchook.log beside nwn.ini. A
+    /// place that is the logs folder now keeps everything.</summary>
+    private static void RemoveOldLogs(string logs, string userDir, string? home, ExtenderLog log)
+    {
+        var gone = new List<string>();
+        foreach (string dir in home == null ? [userDir] : new[] { userDir, home })
+        {
+            if (Same(dir, logs)) continue;
+            for (int i = 0; i < LogParts.MaxParts; i++)
+            {
+                string path = Path.Combine(dir, i == 0 ? "cx.log" : $"cx.{i}.log");
+                if (WrittenByCx(path) && Delete(path, log)) gone.Add(path);
+            }
+        }
+        string trace = Path.Combine(userDir, "funchook.log");
+        if (!Same(userDir, logs) && File.Exists(trace) && Delete(trace, log)) gone.Add(trace);
+        if (gone.Count > 0) log.Info($"UserFolders: removed the logs an older CX left outside {logs}: {string.Join(", ", gone)}");
+    }
+
+    /// <summary>Whether <paramref name="path"/> is a log CX wrote: its first line carries CX's <c>[cx]</c> tag.</summary>
+    private static bool WrittenByCx(string path)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            using var f = new StreamReader(path);
+            return f.ReadLine()?.Contains(" [cx] ", StringComparison.Ordinal) == true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool Delete(string path, ExtenderLog log)
+    {
+        try { File.Delete(path); return true; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.Info($"UserFolders: the older CX log {path} could NOT be removed -- {e.Message}");
+            return false;
         }
     }
 
