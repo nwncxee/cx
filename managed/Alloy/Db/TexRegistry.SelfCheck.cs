@@ -426,6 +426,7 @@ internal static unsafe partial class TexRegistry
         DdsReader.FreePrepared(dj.Data);
 
         ok &= RuntimeOverrideCheck(log);
+        ok &= SamplerOverrideCheck(log);
 
         // a handle to an evicted slot resolves to nothing: the whole reason no holder needs a death notice
         Retire(a.Index);
@@ -461,6 +462,8 @@ internal static unsafe partial class TexRegistry
     /// copy of <see cref="Acquire"/> is a check of a second implementation (review r1 finding 19).</summary>
     private static TexId Insert(string resref, TexKind kind) => Alloc(resref, kind, 0, out _);
 
+    /// <summary>A server's texture override reloads the slots that name it in place, and a reload read before the
+    /// override never lands on the replacement.</summary>
     private static bool RuntimeOverrideCheck(ExtenderLog log)
     {
         var check = new Checker(log, "TexRegistry.RuntimeOverride.SelfCheck");
@@ -506,6 +509,48 @@ internal static unsafe partial class TexRegistry
         Retire(alias.Index);
         if (Valid(idleCell)) Retire(idleCell.Index);
         log.Info(check.Ok ? "TexRegistry.RuntimeOverride.SelfCheck: passed" : "TexRegistry.RuntimeOverride.SelfCheck: FAILED");
+        return check.Ok;
+    }
+
+    /// <summary>An object's sampler request outlives the texture's own <c>.txi</c> read again at a reload, and a
+    /// sampler copy that a reset or the last release overtook is freed rather than drawn.</summary>
+    private static bool SamplerOverrideCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "TexRegistry.SamplerOverride.SelfCheck");
+        const string source = "cx_reset_sampler";
+        var queued = _samplerQ.ToArray();
+        var waiting = _waiting.ToArray();
+        TexId t = Insert(source, TexKind.Auto);
+        int i = t.Index;
+        Land(t, 50, 64);
+        RequestSampler(t, true, null, null);
+        TxiSampler(i, "clamp 0\nmipmap 0\n");
+        check.Expect(_clamp[i] && !_mipmap[i], $"the .txi overwrote the requested clamp, or lost its own mipmap word (clamp {_clamp[i]}, mipmap {_mipmap[i]})");
+        QueueReset(source);
+        ApplyResets();
+        check.Expect(_clamp[i] && _mipmap[i], $"a reset dropped the requested clamp, or kept the old .txi's mipmap (clamp {_clamp[i]}, mipmap {_mipmap[i]})");
+
+        Land(t, 51, 64);
+        bool took = PublishClone(i, 51, 52, 53);
+        check.Expect(took && _name[i] == 52 && _handle[i] == 53 && _graveyard.Contains(51),
+                     "a sampler copy of a live slot did not replace its image, or the old image leaked");
+        QueueReset(source);
+        ApplyResets();
+        bool late = PublishClone(i, 52, 54, 55);
+        check.Expect(!late && _name[i] == 0 && _graveyard.Contains(54) && _dyingHandles.Contains(55),
+                     "a sampler copy finished after a reset took over the reloading slot, or its copy leaked");
+        Land(t, 56, 64);
+        Release(t);
+        bool idle = PublishClone(i, 56, 57, 58);
+        check.Expect(!idle && _name[i] == 56 && _graveyard.Contains(57) && _dyingHandles.Contains(58),
+                     "a sampler copy of an idle slot was drawn, or its copy leaked");
+
+        if (Valid(t)) Retire(i);
+        _samplerQ.Clear();
+        foreach (int q in queued) _samplerQ.Enqueue(q);
+        _waiting.Clear();
+        foreach (int w in waiting) _waiting.Enqueue(w);
+        log.Info(check.Ok ? "TexRegistry.SamplerOverride.SelfCheck: passed" : "TexRegistry.SamplerOverride.SelfCheck: FAILED");
         return check.Ok;
     }
 }

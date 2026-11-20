@@ -785,7 +785,8 @@ internal static unsafe class SymbolMap
     /// <c>AurTextureMakeCurrent</c>, <c>RefreshAll</c> and <c>AurResetTexture</c>.</summary>
     [Fn("void()")]
     public const string AurTextureBuildAndStoreAll = "_Z26AurTextureBuildAndStoreAllv";
-    /// <summary>The resource manager has changed which image this source name resolves to.</summary>
+    /// <summary><c>AurResetTexture(char const*)</c> @0x48fa90 (Windows: exported by name) -- called by
+    /// <c>CNWCMessage::HandleServerToPlayerResman</c> after a server sets or clears a texture override.</summary>
     [Fn("void(byte* name)")]
     public const string AurResetTexture = "_Z15AurResetTexturePKc";
     /// <summary><c>AurTextureRefreshAll()</c> @0x48f050 (Windows: exported by name) -- <c>AurInitFont</c>, then

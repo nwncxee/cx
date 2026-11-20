@@ -63,8 +63,8 @@ internal static unsafe partial class TexRegistry
     // ---- slot columns (SoA: every walk reads two or three of them) ----
     private static readonly ulong[] _key = new ulong[MaxSlots];
     private static readonly uint[] _gen = new uint[MaxSlots];
-    // A reset replaces the image behind a live TexId. Workers keep this revision so pixels read before
-    // the reset cannot land on the replacement. The TexId's generation guards reuse by the next tenant.
+    /// <summary>Which image a live slot holds: a reset moves it on, so pixels read before the reset cannot land on
+    /// the replacement. The generation guards reuse by the next tenant; this guards a reload by the same one.</summary>
     private static readonly uint[] _imageRevision = new uint[MaxSlots];
     private static readonly TexState[] _state = new TexState[MaxSlots];
     /// <summary>When a slot whose upload failed may load again, on <see cref="Environment.TickCount64"/>; 0 when it never may.</summary>
@@ -72,6 +72,8 @@ internal static unsafe partial class TexRegistry
     /// <summary>The least time between two tries of a failed upload, in milliseconds.</summary>
     private const long RetryMs = 1000;
     private static readonly TexKind[] _kind = new TexKind[MaxSlots];
+    /// <summary>The kind the slot was asked for. <see cref="_kind"/> is what the resource tables resolved it to,
+    /// and a reset resolves again from this.</summary>
     private static readonly TexKind[] _requestedKind = new TexKind[MaxSlots];
     private static readonly int[] _refs = new int[MaxSlots];
     /// <summary>The GL name and its resident bindless handle; 0 until the upload lands.</summary>
@@ -340,15 +342,18 @@ internal static unsafe partial class TexRegistry
         }
     }
 
+    /// <summary>The names the engine reset since the last tick, resolved together by <see cref="ApplyResets"/>.</summary>
     private static readonly HashSet<string> _resetNames = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The engine has applied or removed a runtime override. Several resets before a game tick
-    /// resolve once against the final resource table, including resets for a texture's atlas cells.</summary>
+    /// resolve once against the final resource table, including resets for a texture's atlas cells. Game thread.</summary>
     internal static void QueueReset(string source)
     {
         lock (_lock) _resetNames.Add(source);
     }
 
+    /// <summary>Every column that describes the image rather than the request, back to what a fresh slot has; a
+    /// sampler axis <see cref="RequestSampler"/> set keeps its value. Caller holds <see cref="_lock"/>.</summary>
     private static void ResetImageProperties(int i)
     {
         _kind[i] = _requestedKind[i];
@@ -364,9 +369,9 @@ internal static unsafe partial class TexRegistry
     /// The normal upload queue resolves the original request again, with its original format rules.</summary>
     private static void ApplyResets()
     {
+        if (_resetNames.Count == 0) return;
         lock (_lock)
         {
-            if (_resetNames.Count == 0) return;
             for (int i = 1; i < _high; i++)
             {
                 if (_resref[i] is not string name || _detached[i] || !_resetNames.Contains(name)) continue;
@@ -389,6 +394,7 @@ internal static unsafe partial class TexRegistry
             _resetNames.Clear();
         }
     }
+
     /// <summary>Drop one reference. The last one leaves the slot <see cref="TexState.Idle"/> -- resident, GL
     /// name and bytes kept, bindless handle released -- which is ADR 0023's decision, now without an engine
     /// delete funnel to filter. Eviction is <see cref="Tick"/>'s, oldest idle first, only past the budget.
@@ -618,8 +624,11 @@ internal static unsafe partial class TexRegistry
     private static readonly bool[] _nearest = new bool[MaxSlots];
     private static readonly bool[] _mipmap = new bool[MaxSlots];
     private static readonly bool[] _samplerWish = new bool[MaxSlots];
+    /// <summary>The sampler axes an object set through <see cref="RequestSampler"/>, which the texture's own
+    /// <c>.txi</c> does not overwrite when the slot loads again.</summary>
     [Flags]
     private enum SamplerOverrides : byte { Clamp = 1, Nearest = 2, Mipmap = 4 }
+    /// <summary>Per slot: which axes <see cref="RequestSampler"/> has set. Cleared when the slot is made.</summary>
     private static readonly SamplerOverrides[] _samplerOverrides = new SamplerOverrides[MaxSlots];
     private static readonly Queue<int> _samplerQ = new();
     private static long _samplerAsks, _samplerDone;

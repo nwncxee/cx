@@ -585,24 +585,29 @@ internal static unsafe partial class TexRegistry
             }
             VkTextures.Clone(name, target, VkSampler(clamp, nearest, mip));
             ulong fresh = MintHandle(target, _resref[i] ?? "");
-            lock (_lock)
-            {
-                // The game thread may have reset the source while the bracket was cloning its sampler.
-                if (_name[i] != name || _refs[i] == 0) { DropValue(fresh); _graveyard.Enqueue(target); continue; }
-                DropHandle(i);
-                _graveyard.Enqueue(name);
-                _name[i] = target; _handle[i] = fresh;
-                _samplerDone++; TableSerial++; if (fresh != 0) _mints++;
-            }
+            lock (_lock) if (!PublishClone(i, name, target, fresh)) continue;
             lock (_gate) _reminted.Enqueue(i);
         }
+    }
+
+    /// <summary>Moves slot <paramref name="i"/> from <paramref name="name"/> to its sampler copy, unless a reset or
+    /// the last release reached the slot while the copy was made: then the copy is freed. Caller holds <see cref="_lock"/>.</summary>
+    private static bool PublishClone(int i, uint name, uint target, ulong fresh)
+    {
+        if (_name[i] != name || _refs[i] == 0) { DropValue(fresh); _graveyard.Enqueue(target); return false; }
+        DropHandle(i);
+        _graveyard.Enqueue(name);
+        _name[i] = target; _handle[i] = fresh;
+        _samplerDone++; TableSerial++; if (fresh != 0) _mints++;
+        return true;
     }
 
     /// <summary>The anisotropy every linear mipmapped texture gets: the player's <c>post.aniso</c> level, bound at
     /// launch because a sampler is minted with its texture. Sampler creation clamps it to the device's ceiling.</summary>
     internal static int Aniso => Post.Aniso.Boot;
 
-    // Caller holds _lock. A TexId can outlive several images when SetTextureOverride changes its source.
+    /// <summary>Is this the image the slot still wants: the same tenant, and no reset since the job read it? A
+    /// <see cref="TexId"/> outlives several images when a server's texture override changes its file. Caller holds <see cref="_lock"/>.</summary>
     private static bool CurrentImage(TexId id, uint revision)
         => Valid(id) && _imageRevision[id.Index] == revision;
 
@@ -627,6 +632,8 @@ internal static unsafe partial class TexRegistry
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
 
+    /// <summary>One upload's result filed on the game thread; a result for an image the slot no longer wants
+    /// frees what it made instead.</summary>
     private static void FileArrival(in Landed l)
     {
         TexId id = l.Id;
@@ -792,8 +799,7 @@ internal static unsafe partial class TexRegistry
             _failed++;
             name = _resref[i] ?? "?"; kind = _kind[i];
             MarkDependents(i);
-            // A reload can fail after its last material released it. Retire while it is still linked
-            // as idle, so a subsequent reset or acquire starts with a clean slot.
+            // Released while it loaded: Failed must not stay linked on the idle list an acquire would not unlink.
             if (_state[i] == TexState.Idle) Retire(i);
             else _state[i] = TexState.Failed;
         }
