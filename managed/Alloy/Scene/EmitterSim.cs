@@ -344,7 +344,7 @@ internal static unsafe partial class EmitterSim
     private static void EnrollSlot(ref Slot slot, uint tex)
     {
         fixed (IntPtr* block = _ptrs.Span[slot.Base..])
-            Particles.Enroll(IntPtr.Zero, slot.Part, tex, IntPtr.Zero, block, slot.Live);
+            Particles.Enroll(IntPtr.Zero, slot.Part, tex, IntPtr.Zero, block, slot.Live, slot.Cap);
     }
 
     /// <summary>The feed frame the DB walk last stepped on, so two world views of one frame do not advance the

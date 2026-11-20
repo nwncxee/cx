@@ -120,9 +120,8 @@ internal static unsafe partial class Particles
         public float Emissive;
         /// <summary>The material behind <see cref="Emissive"/> was read or is known absent: nothing left to wait for.</summary>
         public bool EmissiveSettled;
-        /// <summary>This emitter's slice of the persistent record buffer, in RECORDS. Stable across
-        /// frames -- that is what makes the upload a delta rather than a rebuild -- and reassigned only when
-        /// the emitter needs more room than it holds.</summary>
+        /// <summary>This emitter's slice of the persistent record buffer, in RECORDS: its particles' history,
+        /// stable across frames, and moved only when the emitter needs more room than it holds.</summary>
         public int RecBase, RecCap;
         /// <summary>This emitter's particle array and its count, as the enroller handed them in. The pass is
         /// indifferent to who stepped them -- <see cref="EmitterSim"/>'s pool records are laid out as engine
@@ -130,12 +129,13 @@ internal static unsafe partial class Particles
         /// own walk.</summary>
         public IntPtr* Parts;
         public int PartCount;
+        /// <summary>The particles the enroller has room for, which its block is sized to.</summary>
+        public int PartRoom;
         /// <summary>The pass counter at the frame this emitter's block was last BUILT. Last frame's centres
         /// are only in the mirror while this says the mirror was written last frame.</summary>
         public int BuiltFrame;
-        /// <summary>FNV-1a over the block as it was last UPLOADED. Equal means the engine's simulation
-        /// produced the same records this frame, so the block is not re-sent. Zero means "never uploaded",
-        /// which is why the allocator sets it to zero on every reassignment.</summary>
+        /// <summary>FNV-1a over the block as it was last built. Zero means the block holds no particle's
+        /// history, which is what a new block holds.</summary>
         public ulong Hash;
     }
 
@@ -258,18 +258,18 @@ internal static unsafe partial class Particles
     /// <c>Scene::DoEmitterBucket</c> is not called. The same two jobs the render hook had -- learn the
     /// population and its transform -- minus the suppression, because there is no original left to decline.
     /// The caller walks in its own back-to-front order, so capture order still IS draw order.</summary>
-    internal static void Enroll(IntPtr em, int part, uint dbTex, IntPtr scene, IntPtr* parts, int count)
+    internal static void Enroll(IntPtr em, int part, uint dbTex, IntPtr scene, IntPtr* parts, int count, int room)
     {
         // CX-188: `part` is always a database part index. The engine arm this used to carry (an engine
         // PartEmitter*, its Scene checked for the world BSP and the table dropped on an area change) had no
         // caller: EmitterSim's only Enroll passes slot.Part, and nothing fills a snapshot from a PartEmitter.
         if (_off || !Enabled.V || parts == null || count <= 0 || part < 0) return;
-        Capture(em, part, dbTex, parts, count);
+        Capture(em, part, dbTex, parts, count, Math.Max(count, room));
     }
 
     /// <summary>Record this emitter and its place in the sort. Returns its table slot, or -1 when the table
     /// is full -- which is not a failure, it just leaves the emitter vanilla.</summary>
-    private static int Capture(IntPtr em, int part, uint dbTex, IntPtr* parts, int count)
+    private static int Capture(IntPtr em, int part, uint dbTex, IntPtr* parts, int count, int room)
     {
         // The capture window opens on the first emitter of a new pass: DoEmitterBucket walks the sorted list
         // in one go, so "the pass changed" is the same event as "a new walk started" without a second hook.
@@ -308,7 +308,7 @@ internal static unsafe partial class Particles
         e.Part = part;
         e.DbTex = dbTex;
         e.CapFrame = _frame;
-        e.Parts = parts; e.PartCount = count;
+        e.Parts = parts; e.PartCount = count; e.PartRoom = room;
         // RenderEmitter pushes nothing and Scene::DoEmitterBucket does no matrix work either, so an emitter
         // draws on whatever base the frame left in the model stack -- which CX-109 established is the identity
         // (AlloyCamera.ModelBase, CX-109 §2). Particles simulate in world space, so this
@@ -338,9 +338,13 @@ internal static unsafe partial class Particles
         groups = Group(n);
         if (groups == 0 || _drawN == 0) return 0;
 
-        int parts = 0;
-        for (int i = 0; i < _drawN; i++) parts += _sCount[_draw[i]];
-        if (!EnsureBuffers(parts)) return 0;
+        int parts = 0, room = 0;
+        for (int i = 0; i < _drawN; i++)
+        {
+            parts += _sCount[_draw[i]];
+            room += Math.Max(_sCount[_draw[i]], _tab[_sSlot[_draw[i]]].PartRoom);
+        }
+        if (!EnsureBuffers(parts, room)) return 0;
 
         // #148: only the alpha-blended class is lit. Additive is self-illuminated by definition, and
         // punch-through in this game's content is Turn Undead auras and a holy strike -- lighting those
@@ -940,11 +944,10 @@ internal static unsafe partial class Particles
     /// <see cref="SelfCheck"/> pins the SAME predicate the pass stages rather than a restatement of it.</summary>
     private static bool WillSort(int cls, int parts) => cls == ClsBlend && parts > 1 && parts <= SortCap;
 
-    /// <summary>The persistent record buffer and the per-frame index list. Growth is by doubling and a grow
-    /// REBUILDS the GL store, so every block's hash is void -- <see cref="EnsureBlock"/> re-sends them, one
-    /// emitter at a time, on the next frame each is drawn. There is no vertex buffer and no vertex format:
-    /// the stage expands six vertices a particle, so the VAO is empty and exists only because GL wants one.</summary>
-    private static bool EnsureBuffers(int parts)
+    /// <summary>The persistent record buffer, with room for <paramref name="room"/> more records, and the per-frame
+    /// index list for <paramref name="parts"/>. Growth is by doubling and keeps every block's records, so each
+    /// particle's history survives it.</summary>
+    private static bool EnsureBuffers(int parts, int room)
     {
         if (parts <= 0 || parts > MaxRecs) { if (parts > MaxRecs) _overflow++; return false; }
         if (_idx.Length < parts)
@@ -955,32 +958,32 @@ internal static unsafe partial class Particles
         }
         // The record store is sized off the ALLOCATOR's high-water mark, not off this frame's particle
         // count: blocks are persistent, so an emitter that went off screen still owns its slice.
-        if (_recs.Length < _recTop + parts)
+        if (_recs.Length < _recTop + room)
         {
             int want = _recs.Length > 0 ? _recs.Length : MinRecs;
-            while (want < _recTop + parts && want < MaxRecs) want *= 2;
-            if (want < _recTop + parts) { ResetBlocks(); return false; }
-            if (!_recs.Take(want)) return false;
-            // The new store holds nothing, so every block is stale by construction.
-            for (int i = 0; i < _tabN; i++) _tab[i].Hash = 0;
+            while (want < _recTop + room && want < MaxRecs) want *= 2;
+            if (want < _recTop + room) { ResetBlocks(); return false; }
+            if (!_recs.Grow(want)) return false;
         }
         return true;   // Vulkan uploads the CPU records itself
     }
 
-    /// <summary>Give this emitter a block big enough for <paramref name="count"/> records, bump-allocated and
-    /// then left alone; reassignment voids the hash, which is what re-sends the block. ponytail: growing a
-    /// block LEAKS the old one -- an emitter's particle count is declared in its model and effectively never
-    /// grows -- and <see cref="ResetBlocks"/> is the backstop, at one frame of vanilla emitters.</summary>
+    /// <summary>Give this emitter a block for <paramref name="count"/> records, sized to its enroller's room and
+    /// bump-allocated; a move carries the old block's records, so its particles keep their history. ponytail: a
+    /// move LEAKS the old block -- the room grows by doubling, so a climbing emitter moves a handful of times --
+    /// and <see cref="ResetBlocks"/> is the backstop, at one frame of no particles.</summary>
     private static bool EnsureBlock(ref Emit e, int count)
     {
         if (count <= 0) return false;
         if (e.RecCap >= count) return true;
+        int cap = Math.Max(count, e.PartRoom);
         // Unreachable in practice -- EnsureBuffers already grew the store to _recTop + this frame's whole
-        // particle count before the loop, which bounds every bump below. A decline rather than a reset
+        // room before the loop, which bounds every bump below. A decline rather than a reset
         // because a reset here would rebase blocks the loop has already written into the index list.
-        if (_recTop + count > _recs.Length) { _declined++; _decFull++; return false; }
-        e.RecBase = _recTop; e.RecCap = count; e.Hash = 0;
-        _recTop += count;
+        if (_recTop + cap > _recs.Length) { _declined++; _decFull++; return false; }
+        if (e.RecCap > 0) _recs.Span.Slice(e.RecBase, e.RecCap).CopyTo(_recs.Span.Slice(_recTop, cap));
+        e.RecBase = _recTop; e.RecCap = cap;
+        _recTop += cap;
         return true;
     }
 
@@ -1010,6 +1013,7 @@ internal static unsafe partial class Particles
         Forget();
         _recs.Free();
         _idx.Free();
+        _vk.Upload.Free();
     }
 
     /// <summary>One line for the <c>/particles</c> status and the arm-time log.</summary>

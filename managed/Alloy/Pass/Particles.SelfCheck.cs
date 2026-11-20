@@ -233,10 +233,34 @@ internal static unsafe partial class Particles
         check.Expect(PrevCentre(false, new Vector3(100f, 0f, 0f), new Vector3(1f, 2f, 3f)) == new Vector3(1f, 2f, 3f),
           "...and a step no particle could have taken is a recycled slot, which takes a zero step too");
 
+        VkUploadCheck(check);
         TintCheck(check);
 
         log.Info(check.Ok ? "Particles.SelfCheck: passed" : "Particles.SelfCheck: FAILED");
         EmissiveSelfCheck(log);
+    }
+
+    /// <summary>Two draw groups reference slots 13, 2 and 7 in that order. The expected bytes are the
+    /// three corresponding history records, including their previous centres for the motion pass.</summary>
+    private static void VkUploadCheck(Checker check)
+    {
+        Span<ParticleRec> history = stackalloc ParticleRec[16];
+        Span<float> fields = MemoryMarshal.Cast<ParticleRec, float>(history);
+        for (int i = 0; i < fields.Length; i++) fields[i] = i;
+        Span<uint> order = [13, 2, 7];
+        Span<ParticleRec> scratch = stackalloc ParticleRec[8];
+        ReadOnlySpan<ParticleRec> expected = [history[13], history[2], history[7]];
+        ReadOnlySpan<ParticleRec> upload = PackVkRecords(history, order, scratch);
+        check.Expect(MemoryMarshal.AsBytes(upload).SequenceEqual(MemoryMarshal.AsBytes(expected)),
+            "the upload contains exactly the three complete records in draw order");
+        check.Expect(order.SequenceEqual((ReadOnlySpan<uint>)[0, 1, 2]),
+            "the colour and motion draws index their packed records");
+
+        order[0] = 2;
+        upload = PackVkRecords(history, order[..1], scratch);
+        check.Expect(MemoryMarshal.AsBytes(upload).SequenceEqual(MemoryMarshal.AsBytes(expected.Slice(1, 1)))
+                     && order[0] == 0, "one survivor uploads one record with its original motion history");
+        check.Expect(PackVkRecords(history, Span<uint>.Empty, scratch).IsEmpty, "an empty draw list uploads no records");
     }
 
     /// <summary>The emitter tint over a synthetic light rig. Oracle: RGB literals worked out by hand from the

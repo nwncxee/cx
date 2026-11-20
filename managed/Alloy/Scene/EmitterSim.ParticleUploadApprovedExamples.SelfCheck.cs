@@ -53,7 +53,7 @@ internal static unsafe partial class EmitterSim
     {
         rig.Fresh();
         int kept = 0, held = 0;
-        for (int f = 0; f < 6; f++)
+        for (int f = 0; f < 11; f++)
         {
             int n = 10 + f;
             rig.Populate(0, n, f * 0.5f, 0f);
@@ -65,7 +65,7 @@ internal static unsafe partial class EmitterSim
                 if (rig.PrevOf(UploadRig.At(i, f * 0.5f, 0f)) is Vector3 prev && Near(prev, UploadRig.At(i, (f - 1) * 0.5f, 0f))) kept++;
             }
         }
-        check.Expect(held == 60 && kept == held,
+        check.Expect(held == 145 && kept == held,
             $"E3: every particle drawn the frame before carries its 0.5 m step while the emitter births ({kept} of {held})");
     }
 
@@ -78,13 +78,13 @@ internal static unsafe partial class EmitterSim
         Particles.ContextLost();
         rig.Populate(0, 10, 0f, 0f);
         rig.Frame(0);
-        rig.Populate(0, 10, 0.5f, 0f);
         rig.Populate(1, 3000, 0f, 1000f);
-        rig.Frame(0, 1);
+        rig.Populate(0, 10, 0.5f, 0f);
+        int placed = rig.Frame(0, 1);
         int kept = 0;
         for (int i = 0; i < 10; i++)
             if (rig.PrevOf(UploadRig.At(i, 0.5f, 0f)) is Vector3 prev && Near(prev, UploadRig.At(i, 0f, 0f))) kept++;
-        check.Expect(kept == 10, $"E4: the 10 moving particles keep their step across the record store's grow ({kept} of 10)");
+        check.Expect(kept == 10, $"E4: the 10 moving particles keep their step across the record store's grow ({kept} of 10, {placed} placed)");
         int still = 0;
         for (int i = 0; i < 3000; i += 300)
             if (rig.PrevOf(UploadRig.At(i, 0f, 1000f)) is Vector3 prev && Near(prev, UploadRig.At(i, 0f, 1000f))) still++;
@@ -159,10 +159,15 @@ internal static unsafe partial class EmitterSim
         /// <summary>The scene-database part emitter <paramref name="k"/> draws.</summary>
         public int Part(int k) => _parts[k].Index;
 
+        /// <summary>Particles the simulation's arena holds from the start: a grow of the arena drops every block and
+        /// the pass's table with it, which is not the record store's grow these examples are about.</summary>
+        private const int ArenaRoom = 1 << 14;
+
         /// <summary>Start from an empty table, pool and record store, as an area does.</summary>
         public void Fresh()
         {
             Reset();
+            Reserve(ArenaRoom);
             Particles.Forget();
             for (int k = 0; k < 2; k++)
             {

@@ -38,5 +38,13 @@ internal static unsafe partial class EmitterSim
         d.Blend = blend;
         check.Expect(Particles.Sort.V && at == 20 && backwards == 0,
             $"blended particles draw farthest first ({at} placed, {backwards} drawn nearer before farther)");
+
+        rig.Fresh();
+        Particles.ContextLost();
+        rig.Populate(0, 10, 0f, 0f);
+        rig.Frame(0);
+        rig.Populate(1, 990, 0f, 1000f);
+        at = rig.Frame(0, 1);
+        check.Expect(at == 1000, $"an emitter of 990 particles with room for 1,024 draws on its first frame beside one of 10 ({at} placed)");
     }
 }
