@@ -77,5 +77,7 @@ public static class LogsAlwaysApprovedExamples
         Settings.Forget(Probe);
         check.Expect(written.Contains($"\n{Probe}=1\n", StringComparison.Ordinal), "L5 the fed cx.cfg was read: its other key is written back");
         check.Expect(!written.Contains("general.logs", StringComparison.Ordinal), "L5 cx.cfg is written again without the general.logs line");
+        Settings.Read("General.Logs=1\n");
+        check.Expect(Settings.Raw("general.logs") == null, "the old key is dropped on read whatever its case");
     }
 }

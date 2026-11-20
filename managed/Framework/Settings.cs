@@ -88,8 +88,6 @@ public static class Settings
             "a prefixed read keeps the value's case and folds the key");
         _values.Remove("cx-selfcheck-pfx.Mixed");
         check.Expect(Raw("cx-selfcheck-pfx.Mixed") == null, "the check leaves no probe behind");
-        Read("General.Logs=1\n");
-        check.Expect(Raw("general.logs") == null, "a retired key is dropped on read whatever its case");
 
         log.Info(check.Ok ? "Settings.SelfCheck: passed" : "Settings.SelfCheck: FAILED");
     }
