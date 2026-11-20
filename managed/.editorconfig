@@ -20,3 +20,5 @@ dotnet_diagnostic.CX0007.severity = error
 dotnet_diagnostic.CX0008.severity = error
 # A cache file read whole or written outside CacheFile, under managed/Alloy or managed/Graphics.
 dotnet_diagnostic.CX0009.severity = error
+# A range tested by an integer sum (offset + n > size), which wraps, under managed/Graphics or managed/Rhi.
+dotnet_diagnostic.CX0010.severity = error

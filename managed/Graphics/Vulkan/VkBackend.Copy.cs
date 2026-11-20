@@ -79,7 +79,7 @@ internal sealed unsafe partial class VkBackend
         if (CopyMissing(img.Desc.Use, false) is { } why)
             return Fault($"ClearDepthLayers: {img.Desc.Label} {why} -- a clear outside a pass is a transfer");
         int layers = Layers(img.Desc);
-        if (c.First < 0 || c.Layers <= 0 || c.First + c.Layers > layers)
+        if (c.Layers <= 0 || !Bounds.Inside(c.First, c.Layers, layers))
             return Fault($"ClearDepthLayers: layers {c.First}..{c.First + c.Layers - 1} of {img.Desc.Label}, which has {layers}");
         Transition(img, VkImageLayout.TransferDstOptimal);
         Flush();
@@ -167,10 +167,10 @@ internal sealed unsafe partial class VkBackend
         int ld = img.Desc.Kind == ImageKind.Tex3D ? Math.Max(img.Desc.D >> r.Mip, 1) : 1;
         if (img.Desc.Kind == ImageKind.Tex3D)
         {
-            if (r.Z < 0 || r.Z + d > ld) { why = $"slices {r.Z}..{r.Z + d} of {ld}"; return false; }
+            if (!Bounds.Inside(r.Z, d, ld)) { why = $"slices {r.Z}..{r.Z + d} of {ld}"; return false; }
         }
         else if (r.Z < 0 || r.Z >= layers || d != 1) { why = $"layer {r.Z} of {layers} with depth {d}"; return false; }
-        if (r.X < 0 || r.Y < 0 || r.X + w > lw || r.Y + h > lh)
+        if (!Bounds.Inside(r.X, w, lw) || !Bounds.Inside(r.Y, h, lh))
         {
             why = $"({r.X}, {r.Y}) + {w}x{h}, outside the mip's {lw}x{lh}";
             return false;

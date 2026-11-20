@@ -435,7 +435,7 @@ internal sealed unsafe partial class VkBackend
         if (c.MaxDraws > 0 && !c.Count.IsNull)
         {
             if (!_buffers.TryGet(c.Count.Value, out count)) return Fault("DrawIndexedIndirect: stale count buffer");
-            if (!InWords(count, c.CountOffset, sizeof(uint)))
+            if (!Bounds.InWords(c.CountOffset, sizeof(uint), count.Desc.Bytes))
                 return Fault($"DrawIndexedIndirect: a count at byte {c.CountOffset} is outside {count.Desc.Label}'s {count.Desc.Bytes}, or not on a word");
         }
         if (!EnsureRendering()) return false;
@@ -470,14 +470,9 @@ internal sealed unsafe partial class VkBackend
     /// the GPU reads indirect arguments with no bounds check, and a read past the end hangs or resets the device.</summary>
     private bool IndirectFits(string op, VkBuf cmds, IndirectCmd c, uint stride)
     {
-        if (c.MaxDraws <= 0 || InWords(cmds, c.Offset, (long)c.MaxDraws * stride)) return true;
+        if (c.MaxDraws <= 0 || Bounds.InWords(c.Offset, (long)c.MaxDraws * stride, cmds.Desc.Bytes)) return true;
         return Fault($"{op}: {c.MaxDraws} commands at byte {c.Offset} are outside {cmds.Desc.Label}'s {cmds.Desc.Bytes}, or not on a word");
     }
-
-    /// <summary><paramref name="bytes"/> at <paramref name="at"/> lie inside <paramref name="b"/> and start and end on a
-    /// word, tested by subtraction so that no offset, however large, wraps the sum back inside.</summary>
-    private static bool InWords(VkBuf b, long at, long bytes) =>
-        at >= 0 && bytes >= 0 && ((at | bytes) & 3) == 0 && at <= b.Desc.Bytes && bytes <= b.Desc.Bytes - at;
 
     private bool Viewport(Rect v)
     {
@@ -676,7 +671,7 @@ internal sealed unsafe partial class VkBackend
         ReadOnlySpan<byte> bytes = r.Span<byte>(c.Bytes);
         if (_inPass) return Fault("UpdateBuffer inside a render pass");
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("UpdateBuffer: stale buffer");
-        if (!InWords(b, c.Offset, c.Bytes))
+        if (!Bounds.InWords(c.Offset, c.Bytes, b.Desc.Bytes))
             return Fault($"UpdateBuffer of {c.Bytes} bytes at {c.Offset} into {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
         Flush();
@@ -703,7 +698,7 @@ internal sealed unsafe partial class VkBackend
         Slot s = _slot!;
         at = 0;
         ulong len = (ulong)bytes.Length;
-        if (s.StageUsed + len > s.StageBytes)
+        if (!Bounds.Inside(s.StageUsed, len, s.StageBytes))
         {
             if (s.Stage.IsNotNull)
             {
@@ -748,7 +743,7 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("ZeroBuffer inside a render pass");
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("ZeroBuffer: stale buffer");
         long bytes = c.Bytes == 0 ? b.Desc.Bytes - c.Offset : c.Bytes;
-        if (!InWords(b, c.Offset, bytes))
+        if (!Bounds.InWords(c.Offset, bytes, b.Desc.Bytes))
             return Fault($"ZeroBuffer: {bytes} bytes at {c.Offset} of {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         if (bytes == 0) return true;
         Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);

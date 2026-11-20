@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CX.Rhi;
 using Vortice.Vulkan;
 
 namespace CX.Graphics.Rhi;
@@ -99,7 +100,7 @@ internal sealed unsafe partial class VkBackend
 
         public void AddHashed(ReadOnlySpan<BindingKey> key, int hash, ulong set)
         {
-            if (_used + key.Length > _keys.Length) Array.Resize(ref _keys, Math.Max(_keys.Length * 2, _used + key.Length));
+            if (!Bounds.Inside(_used, key.Length, _keys.Length)) Array.Resize(ref _keys, Math.Max(_keys.Length * 2, _used + key.Length));
             key.CopyTo(_keys.AsSpan(_used));
             _entries.Add(new Entry(_used, key.Length, set, _head.GetValueOrDefault(hash, -1)));
             _head[hash] = _entries.Count - 1;

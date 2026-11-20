@@ -99,7 +99,7 @@ internal sealed unsafe partial class VkBackend
     /// another is recorded to write them: from its <see cref="CommandList.WhenDone"/> work, or after <see cref="WaitSubmitted"/>.</summary>
     internal bool ReadMapped(BufferId b, long offset, Span<byte> dst)
     {
-        if (!_buffers.TryGet(b.Value, out VkBuf buf) || buf.Desc.Memory != MemoryKind.Readback || offset + dst.Length > buf.Desc.Bytes)
+        if (!_buffers.TryGet(b.Value, out VkBuf buf) || buf.Desc.Memory != MemoryKind.Readback || !Bounds.Inside(offset, dst.Length, buf.Desc.Bytes))
             return Fault("ReadMapped: stale, short or not a readback buffer");
         fixed (byte* p = dst)
             return Vma.vmaCopyAllocationToMemory(_vma, buf.Alloc, (ulong)offset, p, (ulong)dst.Length) == VkResult.Success
@@ -116,7 +116,7 @@ internal sealed unsafe partial class VkBackend
         if (!Inside(src, c.From, c.W, c.H, 1, out string why)) return Fault($"CopyImageToBuffer: the block is {why} of {src.Desc.Label}");
         if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"CopyImageToBuffer: {src.Desc.Label} {sw}");
         long bytes = LevelBytes(src.Desc with { W = c.W, H = c.H, D = 1 }, 0);
-        if (c.Offset < 0 || c.Offset + bytes > dst.Desc.Bytes) return Fault($"CopyImageToBuffer: {bytes} bytes at {c.Offset} of {dst.Desc.Label}'s {dst.Desc.Bytes}");
+        if (!Bounds.Inside(c.Offset, bytes, dst.Desc.Bytes)) return Fault($"CopyImageToBuffer: {bytes} bytes at {c.Offset} of {dst.Desc.Label}'s {dst.Desc.Bytes}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Use(dst, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
         Flush();
@@ -137,8 +137,7 @@ internal sealed unsafe partial class VkBackend
         if (!_buffers.TryGet(c.Src.Value, out VkBuf? src)) return Fault("CopyBuffer: stale source buffer");
         if (!_buffers.TryGet(c.Dst.Value, out VkBuf? dst)) return Fault("CopyBuffer: stale destination buffer");
         if (CopyMissing(src.Desc.Use, src.Desc.Memory) is { } sw) return Fault($"CopyBuffer: {src.Desc.Label} {sw}");
-        if (c.Bytes <= 0 || ((c.SrcOffset | c.DstOffset | c.Bytes) & 3) != 0 || c.SrcOffset < 0 || c.DstOffset < 0
-            || c.SrcOffset + c.Bytes > src.Desc.Bytes || c.DstOffset + c.Bytes > dst.Desc.Bytes)
+        if (c.Bytes <= 0 || !Bounds.InWords(c.SrcOffset, c.Bytes, src.Desc.Bytes) || !Bounds.InWords(c.DstOffset, c.Bytes, dst.Desc.Bytes))
             return Fault($"CopyBuffer: {c.Bytes} bytes from {src.Desc.Label} at {c.SrcOffset} to {dst.Desc.Label} at {c.DstOffset}, in whole words");
         Use(src, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferRead);
         Use(dst, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);

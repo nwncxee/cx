@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using CX.Rhi;
 
 namespace CX.Graphics;
 
@@ -304,7 +305,7 @@ public sealed unsafe partial class NullGl
         int bpp = Bpp(fmt, type);
         lock (g.Textures)
         {
-            if (bpp == 0 || t.Rgba == null || x < 0 || y < 0 || x + w > t.W || y + h > t.H) return;
+            if (bpp == 0 || t.Rgba == null || !Bounds.Inside(x, w, t.W) || !Bounds.Inside(y, h, t.H)) return;
             Widen(new ReadOnlySpan<byte>(data, Extent(w, h, bpp, g.UnpackAlign, g.UnpackRow)), x, y, w, h, t.W, fmt, bpp,
                   g.UnpackAlign, g.UnpackRow, t.Rgba);
         }
