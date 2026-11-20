@@ -51,6 +51,7 @@ internal static partial class GpuGolden
     {
         vk.ResizeHoldsTodaySelfCheck(check);
         vk.ResizeApprovedExamplesSelfCheck(check);
+        vk.ResizeWobbleSelfCheck(check);
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
         SsrJoinSelfCheck(vk, check, log);

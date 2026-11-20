@@ -29,8 +29,8 @@ internal static unsafe partial class TexRegistry
         _log ??= log;
         try
         {
-            Cx569E2(check);
             Cx569E3(check);
+            Cx569E2(check);
             Cx569E4(check);
             Cx569E5(check);
             Cx569E7(check);
@@ -59,6 +59,7 @@ internal static unsafe partial class TexRegistry
     private static void Cx569E3(Checker check)
     {
         ForgetNoDeviceLines();
+        check.Expect(!NoDeviceLineInLog(), "E3: cx.log held a no-device line before the gate closed, so this check cannot tell");
         bool gate = ExtenderLog.Enabled;
         try
         {
@@ -67,9 +68,15 @@ internal static unsafe partial class TexRegistry
             ExtenderLog.Flush();
         }
         finally { ExtenderLog.Enabled = gate; }
-        bool named = false;
-        foreach (string c in DeviceConditions) named |= ExtenderLog.TailHas(NoDeviceLine + c);
-        check.Expect(named, "E3: with general.logs off, cx.log holds no line naming the device condition an upload failed on");
+        check.Expect(NoDeviceLineInLog(), "E3: with general.logs off, cx.log holds no line naming the device condition an upload failed on");
+    }
+
+    /// <summary>Does the end of cx.log hold a no-device line naming one of the conditions?</summary>
+    private static bool NoDeviceLineInLog()
+    {
+        ExtenderLog.Flush();
+        foreach (string c in DeviceConditions) if (ExtenderLog.TailHas(NoDeviceLine + c)) return true;
+        return false;
     }
 
     // Given textures keep finding no Vulkan device for the same reason
