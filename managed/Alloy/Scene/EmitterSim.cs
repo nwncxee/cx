@@ -334,11 +334,17 @@ internal static unsafe partial class EmitterSim
         for (int i = 0; i < _orderN; i++)
         {
             ref Slot slot = ref _tab[_order[i]];
-            fixed (IntPtr* block = _ptrs.Span[slot.Base..])
-                Particles.Enroll(IntPtr.Zero, slot.Part, TexNameOf(ref slot), IntPtr.Zero, block, slot.Live);
+            EnrollSlot(ref slot, TexNameOf(ref slot));
         }
         if (stepping) Reclaim();
         FrameZones.Add(FrameZones.Zone.Emit, tEmit);
+    }
+
+    /// <summary>Hand one stepped emitter's particles to the draw pass, drawn with texture name <paramref name="tex"/>.</summary>
+    private static void EnrollSlot(ref Slot slot, uint tex)
+    {
+        fixed (IntPtr* block = _ptrs.Span[slot.Base..])
+            Particles.Enroll(IntPtr.Zero, slot.Part, tex, IntPtr.Zero, block, slot.Live);
     }
 
     /// <summary>The feed frame the DB walk last stepped on, so two world views of one frame do not advance the
