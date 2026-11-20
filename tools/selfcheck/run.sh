@@ -33,7 +33,7 @@ fxr=$(ls -d "$dotnet_root"/host/fxr/*/libhostfxr.so 2>/dev/null | sort -V | tail
 bin=$out/bin/Release/net10.0/linux-x64
 # Shared by every --out, so a mutant run's own build folders do not rebuild funchook and FSR each time.
 native=$repo/build/selfcheck-native
-mkdir -p "$native"
+mkdir -p "$native" "$out"
 
 # The libraries the AOT image links in statically (DirectPInvoke) are found by name at run time under a JIT, so each
 # static archive build.sh made becomes a shared one here. Rebuilt only when its archive is newer.
