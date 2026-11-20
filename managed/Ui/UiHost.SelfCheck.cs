@@ -79,6 +79,13 @@ public static partial class UiHost
         c.CapturesPointer = up.CapturesPointer = true;
         check.Expect(OverGuiAt(80, 80) && OverGuiAt(10, 10), "a capturing below-NUI window, and an above one, are drawn over the engine GUI");
         check.Expect(!OverGuiAt(150, 150), "a point no window covers is the engine's");
+        var greedy = new Window(300, 300, 10, 10) { OnMouseButton = (_, _, _, _) => true };
+        created.Add(greedy);
+        check.Expect(!OfferOverGui(true, 1, 80, 80), "a press over a CX window that declines it is the engine's, though another window would take any press");
+        upConsumes = true;
+        check.Expect(OfferOverGui(true, 1, 10, 10), "the window under the pointer takes a press it wants");
+        upConsumes = false;
+        Unregister(greedy); created.Remove(greedy);
         var only = new Window(200, 200, 50, 50) { Layer = UiLayer.UnderGui, CapturesPointer = true };
         created.Add(only);
         check.Expect(!OverGuiAt(210, 210), "an under-GUI window is drawn beneath the engine GUI, so it takes nothing from it");

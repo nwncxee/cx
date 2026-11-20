@@ -211,7 +211,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     // engine object beneath, exactly as before.
                     if (gui != IntPtr.Zero && !ours)
                     {
-                        if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
+                        if (UiHost.OfferOverGui(true, btn, mx, my)) return 0;
                         UiHost.Blur();
                         break;
                     }
