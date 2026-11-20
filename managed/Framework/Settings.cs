@@ -37,7 +37,7 @@ public static class Settings
         Loaded = true;
         // ReadTextNow, ungated: waiting for the engine user dir here would mean the capability gates never
         // see their own settings.
-        ConfigFile.ForEachPair(ConfigFile.ReadTextNow(FileName, log, out _path), (k, v) => _values[k] = v);
+        Read(ConfigFile.ReadTextNow(FileName, log, out _path));
         if (_values.Count > 0) log?.Info($"settings: {_values.Count} key(s) from {_path}");
         // On-device only: off-device the path is the real user's, and the demo never writes it.
         if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.ArmFirstRun();
@@ -47,6 +47,12 @@ public static class Settings
         if (!logs) log?.Info($"settings: general.logs=0 -- silent from here; set general.logs=1 in {_path} (or /general logs 1) for diagnostics");
         ExtenderLog.Enabled = logs;
     }
+
+    /// <summary>Take every pair of <paramref name="text"/>, in <c>cx.cfg</c>'s own format, into the loaded table.</summary>
+    internal static void Read(string text) => ConfigFile.ForEachPair(text, (k, v) => _values[k] = v);
+
+    /// <summary>Drop <paramref name="key"/> from the loaded table: a self-check takes back what it fed <see cref="Read"/>.</summary>
+    internal static void Forget(string key) => _values.Remove(key);
 
     /// <summary>Whether cx.log is open for the launch lines: the stored <c>general.logs</c>, or its declared default
     /// when the key is absent or unreadable; always open off-device, where the log is the self-check gate.</summary>
