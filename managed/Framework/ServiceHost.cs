@@ -143,6 +143,7 @@ public static class ServiceHost
         TextList.SelfCheck(log);
         KnobFile.SelfCheck(log);
         KnobFileBootApprovedExamples.SelfCheck(log);   // boot's own sets are held: cx.cfg is not rewritten at boot
+        LogsAlwaysApprovedExamples.SelfCheck(log);   // no setting turns cx.log off
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the
