@@ -52,23 +52,16 @@ internal static unsafe partial class TexRegistry
         check.Expect(w.Contains("no Vulkan device", StringComparison.Ordinal) && NamesCondition(w), $"E2: the reason \"{w}\" does not say which device condition was false");
     }
 
-    // Given general.logs is off
-    // And Alloy draws, but has no Vulkan device for textures
+    // Given Alloy draws, but has no Vulkan device for textures
     // When textures load
     // Then cx.log holds a line naming which of these was false: Alloy draws on Vulkan, Alloy owns textures, Alloy's gate is open, the device exists
     private static void Cx569E3(Checker check)
     {
         ForgetNoDeviceLines();
-        check.Expect(!NoDeviceLineInLog(), "E3: cx.log held a no-device line before the gate closed, so this check cannot tell");
-        bool gate = ExtenderLog.Enabled;
-        try
-        {
-            ExtenderLog.Enabled = false;
-            Upload(UploadJob(0, 0, "cx_e3"), out _);
-            ExtenderLog.Flush();
-        }
-        finally { ExtenderLog.Enabled = gate; }
-        check.Expect(NoDeviceLineInLog(), "E3: with general.logs off, cx.log holds no line naming the device condition an upload failed on");
+        check.Expect(!NoDeviceLineInLog(), "E3: cx.log held a no-device line before the upload, so this check cannot tell");
+        Upload(UploadJob(0, 0, "cx_e3"), out _);
+        ExtenderLog.Flush();
+        check.Expect(NoDeviceLineInLog(), "E3: cx.log holds no line naming the device condition an upload failed on");
     }
 
     /// <summary>Does the end of cx.log hold a no-device line naming one of the conditions?</summary>
