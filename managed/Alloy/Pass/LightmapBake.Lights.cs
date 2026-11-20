@@ -17,8 +17,8 @@ internal static unsafe partial class LightmapBake
 {
     /// <summary>The static set is ONE walk: the first walk after <c>CNWCArea::LoadArea</c> returned non-zero
     /// (<see cref="_loadArmed"/>), rather than a second of frame counting for an answer the load's own message
-    /// already has. Closed, the set is final for the area: a light that appears later is dynamic, whatever its
-    /// shape, and a server tile change reopens it (<see cref="OnTileChanged"/>).</summary>
+    /// already has. Closed, a light that appears later is dynamic, whatever its shape; a tile change
+    /// (<see cref="OnTileChanged"/>) or a set light that drifts or leaves (<see cref="Gone"/>) reopens it.</summary>
     private static bool _closed, _reopen;
     private static int _walks;
     /// <summary>The area under the walk changed since the last close: the pages are the previous area's and
@@ -133,8 +133,8 @@ internal static unsafe partial class LightmapBake
     /// <summary>The static lights of this area by quantised position and reach, filled by the walks before the
     /// set closes and read-only after.</summary>
     private static readonly Dictionary<ulong, int> _seen = new(512);
-    /// <summary>The same set by light object, so a light refused after the close can say whether it is a new
-    /// object or one of the set that moved or changed reach (the drift diagnostic, 24 lines an area).</summary>
+    /// <summary>The same set by light object: after the close a light is the set's only near its own entry, and
+    /// <see cref="Gone"/> names the entries a walk missed.</summary>
     private static readonly Dictionary<IntPtr, int> _seenPtr = new(512);
 
     /// <summary>An area edge: the next walk is a NEW area, whatever the area pointer says -- a server
@@ -202,9 +202,7 @@ internal static unsafe partial class LightmapBake
         if (!_closed && _seen.ContainsKey(key)) { CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true; }
         if (_closed)
         {
-            // a set light within Near of its own entry (a bobbing lantern, a reach re-adjusted by the simulation) is
-            // still the light the bake holds; one with no entry of its own (stacked on a set light's key) was never
-            // baked, and a light that moved or stopped holding still leaves the set, which Gone re-closes without it
+            // only a static light near its OWN entry is baked; one stacked on another's key never was
             if (isStatic && _seenPtr.TryGetValue(id, out int at) && Near(_stPosR[at], pos, adjR))
             {
                 Drifted(id, at, pos, adjR, color);
@@ -226,15 +224,15 @@ internal static unsafe partial class LightmapBake
     }
 
     /// <summary>A set light that no longer hashes as its entry (recoloured, or its reach re-adjusted after the close)
-    /// reopens the set: the next walk closes on what the light is now, and the rects it touched re-bake.</summary>
+    /// reopens the set: the next walk closes on what the light is now, and the rects it touched re-bake. Marks the
+    /// entry met for <see cref="Gone"/>.</summary>
     private static void Drifted(IntPtr id, int at, Vector3 pos, float adjR, Vector3 color)
     {
         _drift.Met[at] = true;
         Vector4 was = _stPosR[at];
         // at the close-time place: the 1 u a static light may bob must not flap the set across a 4 u bin edge
         if (SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at]) || !Reclose()) return;
-        Vector3 c = _stCol[at];
-        _log?.Info($"LightmapBake: static light db light {id:x} changed after the close -- r {was.W:F1} -> {adjR:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}) -> ({color.X:F3},{color.Y:F3},{color.Z:F3}); the set re-closes and the rects it touched re-bake");
+        _log?.Info($"LightmapBake: static light {Who(id)} changed after the close -- {Fmt(was, _stCol[at])} -> {Fmt(new Vector4(pos, adjR), color)}; the set re-closes and the rects it touched re-bake");
     }
 
     /// <summary>A closed walk that met fewer set lights than the set holds: one moved, stopped holding still, or was
@@ -246,9 +244,7 @@ internal static unsafe partial class LightmapBake
         foreach (var (id, i) in _seenPtr)
         {
             if (_drift.Met[i] || gone++ >= MaxGoneNamed) continue;
-            Vector4 p = _stPosR[i]; Vector3 c = _stCol[i];
-            _log?.Info($"LightmapBake: static light db light {id:x} left the set after the close (moved, animated, off, hidden or black) -- "
-                     + $"at ({p.X:F1},{p.Y:F1},{p.Z:F1}) r {p.W:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}); the set re-closes without it");
+            _log?.Info($"LightmapBake: static light {Who(id)} left the set after the close (moved, animated, off, hidden or black) -- {Fmt(_stPosR[i], _stCol[i])}; the set re-closes without it");
         }
         if (gone > MaxGoneNamed) _log?.Info($"LightmapBake: ...and {gone - MaxGoneNamed} more static lights left the set");
     }
@@ -277,7 +273,7 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>The area's drift re-closes so far, whether the cap has been said, and which set entries the closed
     /// walk has met; replaced at an area edge.</summary>
-    private sealed class DriftState { public int Closes; public bool Said; public bool[] Met = new bool[256]; }
+    private sealed class DriftState { public int Closes; public bool Said; public bool[] Met = []; }
     private static DriftState _drift = new();
 
     /// <summary>Within 1 u and 10% of reach of the set entry: the drift a static light is allowed after the close.</summary>
@@ -370,14 +366,13 @@ internal static unsafe partial class LightmapBake
         for (int l = 0; l < _stN; l++)
             if (!liveUsed[l] && liveOnly++ < 6) sb.Append($"; live only: {Fmt(_stPosR[l], _stCol[l])} {Who(byIdx[l])}");
         return $"{same} lights agree, {binned} pair up but hash apart, {planOnly.Count} plan-only, {liveOnly} live-only" + sb;
-
-        static string Fmt(Vector4 pr, Vector3 c) => $"({pr.X:F2},{pr.Y:F2},{pr.Z:F2}) r {pr.W:F2} col ({c.X:F2},{c.Y:F2},{c.Z:F2})";
-        static string Who(IntPtr light)
-        {
-            // a database light id, not a Part: there is nothing to dereference
-            return light == IntPtr.Zero ? "'?'" : $"db light {light:x}";
-        }
     }
+
+    /// <summary>A set light's place, reach and colour, as every bake log line shows one.</summary>
+    private static string Fmt(Vector4 pr, Vector3 c) => $"({pr.X:F2},{pr.Y:F2},{pr.Z:F2}) r {pr.W:F2} col ({c.X:F2},{c.Y:F2},{c.Z:F2})";
+
+    /// <summary>A light as the bake's log lines name it: its database id, which is not a Part and is never dereferenced.</summary>
+    private static string Who(IntPtr light) => light == IntPtr.Zero ? "'?'" : $"db light {light:x}";
 
     /// <summary>The per-instance half of the bake key: an order-independent xor over the static lights
     /// whose sphere touches the instance's bounds -- position and range at 5 cm, full colour at 1/255.

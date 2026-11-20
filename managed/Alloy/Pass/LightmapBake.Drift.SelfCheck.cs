@@ -32,7 +32,7 @@ internal static unsafe partial class LightmapBake
         Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, dim, true);
         check.Expect(_setN == 1 && _setCol[0] == dim,
                      $"a static light recoloured after the close is baked in its new colour, not the close's ({_setCol[0]})");
-        check.Expect(Heard("db light 557 changed after the close -- r 5000.0 -> 5000.0, colour (1.000,1.000,1.000) -> (0.050,0.040,0.030)") == 1,
+        check.Expect(Heard("db light 557", "(40.00,30.00,2.00) r 5000.00 col (1.00,1.00,1.00)", "(40.00,30.00,2.00) r 5000.00 col (0.05,0.04,0.03)") == 1,
                      "...and cx.log names the light once, with its close-time and current reach and colour");
         check.Expect(SetHash != closedOn && _rekeyPending, "...under a new set hash, so every rect it touches re-keys and re-bakes");
 
@@ -74,13 +74,13 @@ internal static unsafe partial class LightmapBake
         Area(); Walk2(white, dim); Walk2(white, dim);
         heard.Clear();
         for (int q = 0; q < 2; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, at, Reach, dim, false, true, out _); EndWalk(); }
-        check.Expect(Heard("db light 558 left the set") == 1, "a lamp moved 30 u onto its neighbour's key is still baked where it stood");
+        check.Expect(Heard("db light 558") == 1, "a lamp moved 30 u onto its neighbour's key is still baked where it stood");
 
         // one lamp recoloured and the other switched off in one walk: one re-close, and the dark one is named
         Area(); Walk2(white, white); Walk2(white, white);
         heard.Clear();
         Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, dim, true);
-        check.Expect(_setN == 1 && _drift.Closes == 1 && Heard("db light 558 left the set") == 1,
+        check.Expect(_setN == 1 && _drift.Closes == 1 && Heard("db light 558") == 1,
                      $"a lamp switched off in the walk another was recoloured in left the set unnamed ({_setN} set lights, {_drift.Closes} re-closes)");
 
         // a set that can no longer bake (no rect, no chart offered) has nothing to re-close: every light is live anyway
@@ -95,8 +95,8 @@ internal static unsafe partial class LightmapBake
         check.Expect(_setN == 300 && _drift.Closes == 0, $"a closed walk over 300 set lights re-closed {_drift.Closes} times ({_setN} set lights)");
         heard.Clear();
         Many(291);
-        check.Expect(Heard("left the set after the close") == 8 && Heard("...and 1 more static lights left the set") == 1,
-                     $"nine lights switched off are not named as eight and a count ({Heard("left the set after the close")} named)");
+        check.Expect(Heard("db light") == 8 && heard.Count == 9,
+                     $"nine lights switched off are not named as eight and a count ({Heard("db light")} named in {heard.Count} lines)");
 
         // a set light switched off, hidden or blacked out never reaches the record: its baked copy goes all the same
         Area(); Walk(lamp, at, Reach, white, true);
@@ -106,7 +106,7 @@ internal static unsafe partial class LightmapBake
         Area(); Walk2(white, white); Walk2(white, white);   // the second walk is a closed one, and meets both
         heard.Clear();
         Walk(lamp, at, Reach, white, true); Walk(lamp, at, Reach, white, true);
-        check.Expect(_setN == 1 && Heard("db light 558 left the set") == 1 && Heard("db light 557 left") == 0,
+        check.Expect(_setN == 1 && Heard("db light 558") == 1 && Heard("db light 557") == 0,
                      $"a second lamp switched off leaves the set and cx.log names it, not the lamp still lit ({_setN} set lights)");
 
         // the same light a hair off is the same light
@@ -151,7 +151,9 @@ internal static unsafe partial class LightmapBake
             if (SetHash != was) reclosed++;
         }
         check.Expect(reclosed == 8, $"a light that never stops changing re-closed the set {reclosed} times, not 8");
-        check.Expect(Heard("keep changing after the close") == 1, "...and cx.log says once that the set stays as it stands");
+        int atEnd = heard.Count;
+        Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, white, true);
+        check.Expect(heard.Count == atEnd, $"past the cap a change still adds {heard.Count - atEnd} cx.log lines: the cap is said once");
         // the eight are per area: past an area edge a recolour re-closes again
         _edgePending = true; _loadArmed = true;
         Walk(lamp, at, Reach, white, true);
@@ -177,13 +179,13 @@ internal static unsafe partial class LightmapBake
             // the area already under the walk: an area CHANGE would repack, and a repack forgets every rect
             _clsArea = 1; _edgePending = false; _areaChanged = false; _loadArmed = true; SetHash = 0; _setN = 0;
             _drift = new(); Reopen();
-            if (_rectN == 0) _rectN = 1;   // a case that re-closed on no light repacked, and a repack forgets every rect
+            if (_rectN == 0) _rectN = 1;   // a case that re-closed on no light repacked
         }
 
-        int Heard(string text)
+        int Heard(params string[] parts)
         {
             int n = 0;
-            foreach (string line in heard) if (line.Contains(text, StringComparison.Ordinal)) n++;
+            foreach (string line in heard) if (Array.TrueForAll(parts, t => line.Contains(t, StringComparison.Ordinal))) n++;
             return n;
         }
 
