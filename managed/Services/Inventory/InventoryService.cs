@@ -163,7 +163,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.BagView(out int first, out int last);
         int want = m.Want(first, last, now, _inv.Scrolled ? Ticks(DwellSec) : 0);
         if (want < 0) return;
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] bag page {m.Selected} -> {want}");
+        _log?.Info($"[inv] bag page {m.Selected} -> {want}");
         AskBag(want, now);
     }
 
@@ -209,8 +209,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
     /// <see cref="ServerPolicy.EventMinor"/> event the server handles itself.</summary>
     private static void OnAction(InvAction a)
     {
-        if (ExtenderLog.Enabled)
-            _log?.Info($"[inv] act {a.Kind} oid=0x{a.Oid:x} mask=0x{a.Mask:x} x={a.X} y={a.Y} other=0x{a.Other:x}");
+        _log?.Info($"[inv] act {a.Kind} oid=0x{a.Oid:x} mask=0x{a.Mask:x} x={a.X} y={a.Y} other=0x{a.Other:x}");
         switch (a.Kind)
         {
             case InvActKind.Close: Close(notify: true); return;
@@ -290,7 +289,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         int want = m.Want(first, last, now, Ticks(DwellSec));
         if (want < 0) return;
         int fwd = ((want - m.EnginePage) % m.Pages + m.Pages) % m.Pages, back = m.Pages - fwd;
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] loot page {m.EnginePage} -> {want}");
+        _log?.Info($"[inv] loot page {m.EnginePage} -> {want}");
         if (fwd == 0) { InventoryNative.LootStep(panel, true); InventoryNative.LootStep(panel, false); }
         else for (int i = Math.Min(fwd, back); i > 0; i--) InventoryNative.LootStep(panel, fwd <= back);
         m.Ask(want, now);

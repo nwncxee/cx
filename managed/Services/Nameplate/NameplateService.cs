@@ -191,8 +191,7 @@ public sealed unsafe class NameplateService : IExtenderService
             _table.NoteBubble(self, type, text, NameplateNative.Decay(text.Length, perChar, fixedSec),
                               _channel, Environment.TickCount64);
         // One line, first chat bubble only: the decision tree for "no bubbles" is exactly len and decay, and
-        // its ABSENCE says the hook never ran for chat at all. Cold (one call per spoken line) and silent
-        // without logs=1.
+        // its ABSENCE says the hook never ran for chat at all. Cold (one call per spoken line).
         if (_inPlate == 0 && !_bubbleSeen)
         {
             _bubbleSeen = true;

@@ -116,7 +116,7 @@ internal static class UserFoldersApprovedExamples
             check.Expect(said == 1, $"E4 cx.log says so once, not {said} times: {string.Join(" | ", heard)}");
             UserFolders.Reset();
 
-            // Given general.logs=1 in cx.cfg, and nwn.ini's [Alias] sets LOGS to D:\NWNLogs
+            // Given nwn.ini's [Alias] sets LOGS to D:\NWNLogs
             // When the player starts the game and reaches the main menu
             // Then cx.log is in D:\NWNLogs
             // And it starts with the launch's first lines
@@ -130,7 +130,7 @@ internal static class UserFoldersApprovedExamples
             check.Expect(Read(Path.Combine(ud, "logs", "cx.log")) == null, "E5 no cx.log is left in the logs folder beside nwn.ini");
             UserFolders.Reset();
 
-            // Given general.logs=1 in cx.cfg and no LOGS alias
+            // Given no LOGS alias
             // When the player starts the game and reaches the main menu
             // Then cx.log is in the logs folder beside nwn.ini, on Linux as on Windows
             // And no new cx.log appears in Documents\Neverwinter Nights itself or in the Linux home folder
@@ -147,7 +147,7 @@ internal static class UserFoldersApprovedExamples
                 check.Expect(!File.Exists(stray) || File.GetLastWriteTimeUtc(stray) < started, $"E6 this launch wrote no {stray}");
             }
 
-            // Given general.logs=1, and LOGS set to D:\NWNLogs
+            // Given LOGS set to D:\NWNLogs
             // When the game closes before it shows its first screen
             // Then cx.log, with that launch's lines, is in the logs folder beside nwn.ini
             string marker = $"UserFoldersApprovedExamples: E7 marker {Guid.NewGuid():N}";

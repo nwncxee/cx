@@ -19,7 +19,6 @@ public sealed unsafe partial class AlloyRenderer
     /// returns before any of it is built.</summary>
     private static void PeriodReport()
     {
-        if (!ExtenderLog.Enabled) return;
         // distinct textures is the BATCH FLOOR: one program + one VDO cannot batch below one call per texture,
         // so batches/frame ~= textures tells you the grouping is optimal and the ratio is scene-bound, while
         // batches >> textures says the sort is failing. Without it the ratio alone cannot distinguish the two.

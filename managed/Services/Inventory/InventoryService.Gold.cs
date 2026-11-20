@@ -82,7 +82,7 @@ public sealed unsafe partial class InventoryService
         if (UiHost.HitTest(x, y) != null) return;
         WorldHit w = InventoryNative.PickWorld(x, y);
         if (!InventoryNative.GoldTarget(w, out uint target)) return;
-        if (ExtenderLog.Enabled) _log?.Info($"[inv] gold {amount} -> 0x{target:x} at {w.Point}");
+        _log?.Info($"[inv] gold {amount} -> 0x{target:x} at {w.Point}");
         if (!Routed("inventory.gold", target, 0, amount, w)) return;
         InventoryNative.SendGold(target, amount, w);
     }

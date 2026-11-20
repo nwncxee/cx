@@ -595,7 +595,7 @@ public static class FrameZones
         double ms = dt * 1000.0 / Stopwatch.Frequency;
         bool hitch = ms > _hitchMs && ms <= StallMs && Drew();
         if (hitch) { _hitchN++; _dtHitch += dt; Blame(); }
-        if (ExtenderLog.Enabled) Sched(dt, hitch);
+        Sched(dt, hitch);
         for (int i = 0; i < Rows * N; i++) { _sum[i] += _frame[i]; if (hitch) _hitch[i] += _frame[i]; _frame[i] = 0; }
         for (int e = 0; e < NE; e++) { _evSum[e] += _ev[e]; if (hitch) _evHitch[e] += _ev[e]; _ev[e] = 0; }
     }
@@ -683,7 +683,7 @@ public static class FrameZones
 
     /// <summary>Close the period without building its line: the adaptive hitch threshold and the blame baseline
     /// roll forward from it, every period accumulator clears. <see cref="Period"/> is this plus the line.</summary>
-    public static void ResetPeriod()
+    private static void ResetPeriod()
     {
         int frames = Math.Max(_frames, 1);
         if (_framesNoStall > 0) _hitchMs = MathF.Max(2f, (float)(_dtNoStall * 1000.0 / Stopwatch.Frequency / _framesNoStall) * HitchFactor);

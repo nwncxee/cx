@@ -3,7 +3,7 @@ using System;
 namespace CX.Framework;
 
 /// <summary>
-/// The General category: the <c>general</c> group (command gate, live log toggle, boot forensics) and the
+/// The General category: the <c>general</c> group (command gate, boot forensics) and the
 /// <c>about</c> group (what this build is, the releases link, the row that copies the knob surface for a bug
 /// report). Declared on first touch -- <see cref="HookService"/>'s constructor reads <see cref="HookDebug"/> right
 /// after <see cref="Settings.Load"/> -- so it is the first group in the walk.
@@ -13,11 +13,6 @@ public static class General
     public static readonly KnobGroup G;
     /// <summary>Off by default: every CX command but <c>/settings</c> then goes to the server as chat.</summary>
     public static readonly Knob<bool> Commands;
-    /// <summary>Live twin of <see cref="ExtenderLog.Enabled"/>; <see cref="Settings.Load"/> reads the same key
-    /// for the launch lines, before any knob exists.</summary>
-    public static readonly Knob<bool> Logs;
-    /// <summary><see cref="Logs"/>'s default, a const so <see cref="Settings.Load"/> reads it before the group exists.</summary>
-    public const bool LogsDefault = true;
     public static readonly Knob<bool> HookDebug;
     public static readonly Knob<int> Pin;
     /// <summary>Debug: log the frame-time percentiles, and what model views cost in CPU and GPU, every few seconds.</summary>
@@ -37,10 +32,6 @@ public static class General
         Commands = G.Toggle("commands", "Enable chat commands", false,
             help: "Lets /grass, /shadow and the other CX commands work in chat. Off, they go to the server like any "
                 + "other text — some servers use the same names. /settings always works.");
-        Logs = G.Toggle("logs", "Write cx.log for bug reports", LogsDefault, Tier.Advanced,
-            help: "Writes what CX is doing to cx.log, in the game's logs folder (beside nwn.ini, or wherever nwn.ini's [Alias] moves LOGS), "
-                + "from now on; restart to capture the launch lines too. Attach cx.log and cx.1.log to a bug report.",
-            changed: () => ExtenderLog.Enabled = Logs!.V);
         HookDebug = G.Toggle("hookdebug", "hookdebug", false, Tier.ChatOnly, Effect.Restart);
         FrameTimes = G.Toggle("frametimes", "frametimes", false, Tier.ChatOnly,
             help: "Debug: every few seconds, log p50, p95, p99 and max of the frame time and of the CPU model views took, and the GPU time of the GUI replay.");

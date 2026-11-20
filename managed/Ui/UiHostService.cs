@@ -338,12 +338,7 @@ public sealed unsafe class UiHostService : IExtenderService
             if (ms > 16.7f) _fsOver17++;
             // or ten seconds: at 2 fps 900 frames is seven minutes, and a collapse went unlogged
             bool period = _fsN >= 900 || _fsSum >= 10 * System.Diagnostics.Stopwatch.Frequency;
-            if (period && !ExtenderLog.Enabled)
-            {
-                FrameZones.ResetPeriod();
-                _fsSum = 0; _fsN = 0; _fsMax = 0; _fsOver7 = 0; _fsOver17 = 0;
-            }
-            else if (period)
+            if (period)
             {
                 float avg = _fsSum * 1000f / System.Diagnostics.Stopwatch.Frequency / _fsN;
                 float max = _fsMax * 1000f / System.Diagnostics.Stopwatch.Frequency;

@@ -84,7 +84,7 @@ internal static unsafe class RadialIcons
 
     /// <summary>The dropdown's header row for an item root: the item's name and its own icon by handle, or
     /// <c>default</c> (null label) when the root is not an item, the item is gone, or the unit is stood down. Cold
-    /// (once per open); logs the <c>[radial] icon</c> line under <c>logs=1</c>. The owner inserts it at row 0 of the
+    /// (once per open); logs the <c>[radial] icon</c> line. The owner inserts it at row 0 of the
     /// item root and treats <c>Activate</c> on it as a no-op.</summary>
     public static CascadeItem HeaderItem(IntPtr menu, RootKind kind, ExtenderLog log)
     {
@@ -93,12 +93,9 @@ internal static unsafe class RadialIcons
         IntPtr icon = ItemIcon((IntPtr)id);
         if (icon == IntPtr.Zero) return default;
         _firstDrawLogged = false;
-        if (ExtenderLog.Enabled)
-        {
-            Span<int> tids = stackalloc int[MaxLayers];
-            int n = Layers(icon, tids);
-            log.Info($"[radial] icon slot=c kind={Classify(icon)} tid={(n > 0 ? tids[0] : 0)} layers={n} icon=0x{(long)icon:x} (0 = built on the next frame)");
-        }
+        Span<int> tids = stackalloc int[MaxLayers];
+        int n = Layers(icon, tids);
+        log.Info($"[radial] icon slot=c kind={Classify(icon)} tid={(n > 0 ? tids[0] : 0)} layers={n} icon=0x{(long)icon:x} (0 = built on the next frame)");
         return new CascadeItem(Native.EngineText(Native.ObjectName(id))) { IconHandle = (IntPtr)id };
     }
 
@@ -161,7 +158,7 @@ internal static unsafe class RadialIcons
         int n = Layers(icon, tids);
         IconFrames.Fit(IconFrames.Of(icon), ref x, ref y, ref w, ref h, out float u1, out float v0);
         for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0);
-        if (!_firstDrawLogged && n > 0 && tids[0] != 0 && ExtenderLog.Enabled)
+        if (!_firstDrawLogged && n > 0 && tids[0] != 0)
         {
             _firstDrawLogged = true;
             _log?.Info($"[radial] icon first draw kind={Classify(icon)} layers={n} tids={tids[0]},{(n > 1 ? tids[1] : 0)},{(n > 2 ? tids[2] : 0)}");
