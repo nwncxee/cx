@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 
 namespace CX.Framework;
 
@@ -11,12 +10,6 @@ public sealed class ExtenderLog
 {
     private static readonly LogParts _parts = new(UserFolders.Logs);
 
-    /// <summary>The one gate every line passes: open by default, closed by <c>general.logs=0</c> once
-    /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
-    /// SITE too -- an interpolated argument goes through <see cref="Line"/>, whose holes the compiler never
-    /// evaluates when this is false, so a census behind a closed gate is never walked at all.</summary>
-    public static bool Enabled = true;
-
     /// <summary>Every line is on disk before its call returns: set by <c>alloy.gpudebug=1</c>, so the log of a crash
     /// ends at the crash. Costs a file write per line on the caller's thread, and the roll when one falls due.</summary>
     public static bool Synchronous;
@@ -26,18 +19,14 @@ public sealed class ExtenderLog
     private static readonly object _fileLock = new();
     private static Thread? _writer;
 
-    /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, gate or
-    /// no gate, so a check gives its own instance one and no other line is diverted.</summary>
+    /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, so a check
+    /// gives its own instance one and no other line is diverted.</summary>
     internal Action<string>? Tap;
 
-    public void Info(string message)
-    {
-        if (!Enabled && Tap == null) return;
-        Always(message);
-    }
+    /// <summary>One line to cx.log; the same write as <see cref="Always"/>.</summary>
+    public void Info(string message) => Always(message);
 
-    /// <summary>A boot line that bypasses the <c>logs</c> gate: a feature standing down is the line a bug report
-    /// needs, even from a player who turned the log off.</summary>
+    /// <summary>One line to cx.log, queued for the writer thread (or the tap).</summary>
     public void Always(string message)
     {
         if (Tap != null) { Tap(message); return; }
@@ -56,13 +45,6 @@ public sealed class ExtenderLog
     {
         Always(message);
         WriteQueued();
-    }
-
-    /// <summary>The interpolated-string overload the compiler prefers for <c>$"..."</c> arguments.</summary>
-    public void Info([InterpolatedStringHandlerArgument("")] ref Line line)
-    {
-        if (!Enabled && Tap == null) return;
-        Info(line.ToStringAndClear());
     }
 
     private static void Drain()
@@ -107,58 +89,22 @@ public sealed class ExtenderLog
         for (int i = 0; i < 200 && !_queue.IsEmpty; i++) BlockingWait.Sleep(1, "self-checks only, never a frame hook");
     }
 
-    /// <summary>Interpolation handler: when <see cref="Enabled"/> is false and the log has no <see cref="Tap"/>,
-    /// <c>shouldAppend</c> tells the compiler to skip every hole, so the expressions inside <c>$"..."</c> never run.</summary>
-    [InterpolatedStringHandler]
-    public ref struct Line
-    {
-        private DefaultInterpolatedStringHandler _h;
-        private readonly bool _on;
-        public Line(int literalLength, int formattedCount, ExtenderLog log, out bool shouldAppend)
-        {
-            _on = Enabled || log.Tap != null;
-            shouldAppend = _on;
-            if (_on) _h = new DefaultInterpolatedStringHandler(literalLength, formattedCount);
-        }
-        public void AppendLiteral(string s) => _h.AppendLiteral(s);
-        public void AppendFormatted<T>(T v) => _h.AppendFormatted(v);
-        public void AppendFormatted<T>(T v, string? format) => _h.AppendFormatted(v, format);
-        public void AppendFormatted<T>(T v, int alignment) => _h.AppendFormatted(v, alignment);
-        public void AppendFormatted<T>(T v, int alignment, string? format) => _h.AppendFormatted(v, alignment, format);
-        public void AppendFormatted(ReadOnlySpan<char> v) => _h.AppendFormatted(v);
-        public void AppendFormatted(string? v) => _h.AppendFormatted(v);
-        public void AppendFormatted(object? v, int alignment = 0, string? format = null) => _h.AppendFormatted(v, alignment, format);
-        public string ToStringAndClear() => _on ? _h.ToStringAndClear() : "";
-    }
-
-    /// <summary>Off-device: a disabled log must not evaluate its holes, an enabled one must, a tapped one hears with
-    /// the gate closed; the queue reaches the file; an <see cref="AlwaysNow"/> line is in it before it returns.
-    /// Oracle: the file's own bytes and the literals written here.</summary>
+    /// <summary>Off-device: a tapped log hears its lines and the file does not; an <see cref="AlwaysNow"/> line is
+    /// in the file before it returns. Oracle: the file's own bytes and the literals written here.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
-        int evaluated = 0;
-        int Hole() { evaluated++; return evaluated; }
-        bool saved = Enabled;
-        Enabled = false;
-        log.Info($"ExtenderLog.SelfCheck: must not appear {Hole()}");
-        bool ok = evaluated == 0;
-        Enabled = true;
-        log.Info($"ExtenderLog.SelfCheck: hole {Hole()}");
-        ok &= evaluated == 1;
-        Flush();
         var heard = new List<string>();
         var ear = new ExtenderLog { Tap = heard.Add };
-        Enabled = false;
+        string quiet = $"ExtenderLog.SelfCheck: tapped, never in the file {Environment.TickCount64}";
         ear.Info("plain");
-        ear.Info($"hole {Hole()}");
-        bool tapped = heard.Count == 2 && heard[0] == "plain" && heard[1] == "hole 2";
-        Enabled = saved;
+        ear.Info(quiet);
+        Flush();
+        bool tapped = heard.Count == 2 && heard[0] == "plain" && heard[1] == quiet && !TailHas(quiet);
         string mark = $"ExtenderLog.SelfCheck: on disk before return {Environment.TickCount64}";
         log.AlwaysNow(mark);
         bool now = TailHas(mark);
-        log.Info(ok && now && tapped ? "ExtenderLog.SelfCheck: passed"
-                 : !ok ? "ExtenderLog.SelfCheck: FAILED -- the disabled log evaluated its holes"
-                 : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log with the gate closed heard [{string.Join("|", heard)}]"
+        log.Info(now && tapped ? "ExtenderLog.SelfCheck: passed"
+                 : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log heard [{string.Join("|", heard)}]"
                  : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
     }
 

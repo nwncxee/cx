@@ -15,7 +15,7 @@ public static unsafe partial class EngineLayout
     // CGuiCallback member-fn pairs: {obj, fn, adj} = 0x18 on Itanium, {obj, fn} = 0x10 on MSVC, so every array
     // after them shifts. sizeof(CRadialMenu) is 0x878 / 0x7f8 (each build's deleting dtor), and every subclass
     // starts its own fields right there, so the subclass rows carry a uniform -0x80. CANDIDATES until a live
-    // probe (logs=1) reads a root on each platform.
+    // probe in cx.log reads a root on each platform.
 
     /// <summary>CGuiCallback: the object word of one member-fn callback record. Unset = the record's own address
     /// (the self-pointer sentinel <c>SetEntryx</c> leaves and <c>HandleMenuAction</c> tests).</summary>

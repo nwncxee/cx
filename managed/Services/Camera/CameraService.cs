@@ -62,7 +62,7 @@ public sealed unsafe class CameraService : IExtenderService
     private static float _sYaw, _sPitch, _vYaw, _vPitch, _sDist, _vDist;
     private static Vector3 _sFocus, _vFocus;
 
-    // ---- instruments (logs=1): Control cadence per present, runtime FOV writers ----
+    // ---- instruments: Control cadence per present, runtime FOV writers ----
     private static int _calls, _callsMin = int.MaxValue, _callsMax, _frames, _fovRewrites;
     /// <summary>Frames the engine's pull-in shortened dist without the user zooming, offset off / on.</summary>
     private static int _pullIns, _pullInsOffset;
@@ -647,15 +647,14 @@ public sealed unsafe class CameraService : IExtenderService
             SmoothDamp(cur.Y, target.Y, ref vel.Y, smooth, dt),
             SmoothDamp(cur.Z, target.Z, ref vel.Z, smooth, dt));
 
-    // ---- frame end (cold-ish: one tick per present, strings only under logs=1) -------------------
+    // ---- frame end (cold-ish: one tick per present, strings once per 600 presents) -------------------
 
     private static void OnFrameEnd()
     {
         int c = _calls; _calls = 0;
         if (c < _callsMin) _callsMin = c;
         if (c > _callsMax) _callsMax = c;
-        if (++_frames < 600 || !ExtenderLog.Enabled) return;
-        // Under logs=1, once per 600 presents.
+        if (++_frames < 600) return;
         _log?.Info(Inv($"[camera] Control {_callsMin}..{_callsMax} call(s)/present over {_frames} presents; ")
                  + Inv($"view angle first read {_fovFirst:0.##}, {_fovRewrites} rewrite(s) between ours; gate: {GateNames[(int)_gate]}, ")
                  + Inv($"mode {_mode}, yaw {_yaw:0.#} pitch {_pitch:0.#} dist {_dist:0.#}, offset {(_offsetOn ? "on" : "off")}; ")

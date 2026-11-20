@@ -197,9 +197,8 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   `cx.log` names the held count when the hold lifts. The one arm that outlives the hold is the
   first run's, where there was no file to keep; off-device the write stands down entirely, because
   there the path is the real user's.
-- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
-  `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
-  inside `Settings.Load`.
+- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`)
+  with **no legacy read** of the flat name.
 - **Restart rows** show `V` with the `↻ restart` badge, amber when `V != Boot`.
 - **Retired:** `cx-camera/chat/combattext/dialog/nameplate/quickbar/ui.cfg` writers and their
   `ToText`/`Parse` round-trips; `ConfigFile.Load/Save/Baseline`. Surviving: `ForEachPair`,
@@ -299,10 +298,9 @@ its own, and *no CX* is an uninstall."
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
-| general.logs | Write cx.log for bug reports | T | on | A | L | — | Writes what CX is doing to cx.log, in the game's logs folder (beside nwn.ini, or wherever nwn.ini's [Alias] moves LOGS), from now on; restart to capture the launch lines too. Attach cx.log and cx.1.log to a bug report. |
 | general.hookdebug / pin / resizeat / frametimes | — | T, S | as declared | C | R, `frametimes` L | — | funchook trace, main-thread affinity, the timed window resize, and the per-frame time list in the log |
 
-`general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
+cx.log is always written: no setting turns it off, and a key an older CX wrote for that is dropped when cx.cfg is read.
 
 **About** — group `about` (110), no master, no value row. `PanelStatus` (and `Status`) =
 `Product.About`: product name + version (`AssemblyInformationalVersion`), author, contact, from

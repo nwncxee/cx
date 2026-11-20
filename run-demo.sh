@@ -66,7 +66,7 @@ if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTLOG"; then
 fi
 echo ">> rot: extender stood down whole, nothing discovered."
 
-# Given Write cx.log for bug reports is off and a cx.log from the last launch
+# Given cx.cfg still holds general.logs=0 from an older CX, and a cx.log from the last launch
 # When the client launches
 # Then cx.log holds this launch's lines and cx.1.log holds the last launch's
 OFFHOME="${TMPDIR:-/tmp}/cx-demo-logs-off"
@@ -77,10 +77,10 @@ mkdir -p "$OFFLOGS"
 echo "the last launch" > "$OFFLOGS/cx.log"
 HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 echo
-if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || [ ! -s "$OFFLOGS/cx.log" ]; then
-  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFLOGS)"; exit 1
+if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || ! grep -q 'KnobFile.SelfCheck: passed' "$OFFLOGS/cx.log"; then
+  echo ">> FAIL: with an old general.logs=0, a launch did not write cx.log and rotate the last one into cx.1.log ($OFFLOGS)"; exit 1
 fi
-echo ">> logs off: the launch rotated cx.log."
+echo ">> old general.logs=0: the launch wrote cx.log and rotated the last one."
 
 echo
 echo "Attach to the real client with the launcher:"

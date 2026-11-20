@@ -187,7 +187,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`, or in
   `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
-  fails.
+  fails; a key `Settings.RetiredKeys` lists (cx.cfg drops it on read) is named on purpose and passes.
 - `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
   that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
   feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a

@@ -8,10 +8,12 @@ Declarations: `KnobGroup.Declare("<group>", ...)` for the group, and the factori
 row is always `<group>.enabled`. Group and knob names are collected tree-wide rather than per file, because a
 group's rows are often declared across its partials (the `weather` group is eight files).
 
-Two shapes are NOT knob keys and are skipped, or every one of them would read as a violation:
+Three shapes are NOT knob keys and are skipped, or every one of them would read as a violation:
   - a dotted token whose tail is a file extension (`hotkeys.cfg`, `ui.ttf`);
   - a key on a line that reaches `ServerPolicy.` or `Routed(` -- the server-policy and action-id namespaces,
-    which share the shape and are not knobs.
+    which share the shape and are not knobs;
+  - a key `Settings.RetiredKeys` lists: an older CX wrote it, cx.cfg drops it on read, and the self-checks that
+    prove so have to name it. The list is read out of Settings.cs, never restated.
 
 Prints "<count> <file>" per offending file, for tools/gates/ratchet.sh; `-v` lists each key instead."""
 import os, re, sys
@@ -23,6 +25,7 @@ EXT = {'cfg', 'ttf', 'glsl', 'shd', 'cs', 'md', 'log', 'txt', 'tsv', 'json', 'in
        'tga', 'mdl', 'lod', 'mtr', 'txi', 'bmf', 'set', 'are', '2da', 'tlk', 'so', 'dll', 'exe', 'zip',
        'wav', 'py', 'sh', 'html', 'xml', 'bin', 'sqlite', 'key', 'bif', 'hak'}
 OTHER_NS = ('ServerPolicy.', 'Routed(')
+RETIRED = re.compile(r'RetiredKeys\s*=\s*\[([^\]]*)\]')
 
 
 def walk():
@@ -37,6 +40,12 @@ for path in paths:
     text = open(path, encoding='utf-8', errors='replace').read()
     groups |= set(DECL.findall(text))
     knobs |= set(FACT.findall(text))
+retired = set()
+for m in RETIRED.finditer(open('managed/Framework/Settings.cs', encoding='utf-8').read()):
+    retired |= set(re.findall(r'"([^"]+)"', m.group(1)))
+if not retired:
+    print('!! knob-refs: no Settings.RetiredKeys found -- the collector is broken', file=sys.stderr)
+    sys.exit(2)
 if not groups:
     print('!! knob-refs: no KnobGroup.Declare found -- the collector is broken', file=sys.stderr)
     sys.exit(2)
@@ -51,7 +60,7 @@ for path in paths:
             continue
         for lit in LIT.findall(line):
             for group, knob in REF.findall(lit):
-                if knob in knobs or knob in EXT:
+                if knob in knobs or knob in EXT or f'{group}.{knob}' in retired:
                     continue
                 hits.append(f'{path}:{n}: "{group}.{knob}" is not a declared knob')
     if verbose:

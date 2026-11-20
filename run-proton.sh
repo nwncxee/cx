@@ -24,9 +24,9 @@ proton_pick || exit 1
 # runtime library the proxy loads that this script forgot is the same stale-DLL diagnosis all over again.
 cp cx-windows-x64/*.dll "$GAME/"
 PFX="$PWD/build/proton-pfx"; mkdir -p "$PFX"
-# The engine picks "Neverwinter Nights.0" (its .N instance suffix) under Proton, so seed the cfg in both.
+# The engine picks "Neverwinter Nights.0" (its .N instance suffix) under Proton, so make both.
 DOCS="$PFX/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights"
-for d in "$DOCS" "$DOCS.0"; do mkdir -p "$d"; [ -f "$d/cx.cfg" ] || printf 'general.logs=1\n' > "$d/cx.cfg"; done
+for d in "$DOCS" "$DOCS.0"; do mkdir -p "$d"; done
 # #456: the bar is a SAME-SAVE two-platform compare, and a throwaway prefix otherwise means a fresh
 # character -- "20 minutes into Chapter 1" is not a repeatable area. Mirror the Linux saves in (cp -Ru:
 # newer only, so a Windows-side save is not clobbered by a stale Linux one).

@@ -102,7 +102,7 @@ if [ -n "$SHOWCASE" ]; then
     CFGS+=("nui.cardfile=Z:$SHOW_DIR/$SHOWCASE.policy")
     [ -z "$KEYS" ] && [ -f "$SHOW_DIR/$SHOWCASE.keys" ] && KEYS=$(sed "s|@SHOTS@|$SHOTS|g" "$SHOW_DIR/$SHOWCASE.keys" | tr -d '\n')
 fi
-{ echo "general.logs=1"; for c in ${CFGS+"${CFGS[@]}"}; do echo "$c"; done; } > "$DOCS/cx.cfg"
+{ for c in ${CFGS+"${CFGS[@]}"}; do echo "$c"; done; } > "$DOCS/cx.cfg"
 
 echo "run-proton-live: out    $OUT"
 echo "run-proton-live: prefix $PFX (throwaway)"

@@ -110,13 +110,7 @@ Signatures: the signer is `Open Source Developer Michał Piasecki`, issued by Ce
 
 ## Reporting a problem
 
-CX writes `cx.log` by default. If you turned it off (Settings, General, *Write cx.log for bug reports*), turn it back on, or put this line in `cx.cfg` next to `nwn.ini` (Windows: `Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`):
-
-```
-general.logs=1
-```
-
-Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` and `cx.1.log` from the game's `logs` folder (next to `nwn.ini`, or wherever `[Alias]` in `nwn.ini` moves `LOGS`) and what you were doing right before things went wrong. If you restarted the game after the problem, it is in `cx.1.log`.
+CX writes `cx.log` every time the game runs. Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` and `cx.1.log` from the game's `logs` folder (next to `nwn.ini`, or wherever `[Alias]` in `nwn.ini` moves `LOGS`) and what you were doing right before things went wrong. If you restarted the game after the problem, it is in `cx.1.log`.
 
 ## Build from source
 

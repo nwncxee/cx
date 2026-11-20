@@ -28,10 +28,9 @@ UNINSTALL
   bin\win32\. README.txt and LICENSES.txt can go too.
 
 REPORTING A PROBLEM
-  CX writes cx.log by default. For a full report, create a file named cx.cfg next to nwn.ini (usually
-  Documents\Neverwinter Nights\) holding these two lines, or add them if it exists:
+  CX writes cx.log every time the game runs. For a full report, create a file named cx.cfg next to nwn.ini (usually
+  Documents\Neverwinter Nights\) holding this line, or add it if it exists:
 
-     general.logs=1
      general.hookdebug=1
 
   Play again, then open an issue at https://github.com/nwncxee/cx/issues with cx.log,
