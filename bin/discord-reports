@@ -27,7 +27,11 @@ def main():
     ap.add_argument("--forum", default="bug-reports")
     ap.add_argument("--since", help="only posts with a message on or after this date")
     a = ap.parse_args()
-    token = Path(paths.require("DISCORD_TOKEN_FILE")).read_text().strip()
+    tf = Path(paths.require("DISCORD_TOKEN_FILE"))
+    if not tf.is_file():
+        sys.exit(f"!! no Discord token at {tf}. It is left out of persistence on purpose, so reading Discord is the "
+                 "user's choice: ask the user to put the token back. Don't propose persisting it.")
+    token = tf.read_text().strip()
 
     def get(p):
         req = urllib.request.Request(API + p, headers={"Authorization": "Bot " + token,

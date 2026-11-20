@@ -66,6 +66,10 @@ def main():
         fails.append("messages not oldest-first")
     if not (out.find("Open post") < out.find("Archived post") < out.find("Older archived post")):
         fails.append("posts not newest-first")
+    gone = subprocess.run([sys.executable, str(ROOT / "bin/discord-reports")], capture_output=True, text=True,
+                          env=dict(env, DISCORD_TOKEN_FILE=tok.name + ".missing"))
+    if gone.returncode == 0 or "on purpose" not in gone.stderr or "Don't propose persisting" not in gone.stderr:
+        fails.append(f"a missing token must say it is unpersisted on purpose: {gone.stderr.strip()!r}")
     doc = (ROOT / "docs/agents/issue-tracker.md").read_text()
     if "can't read Discord" in doc or "bin/discord-reports" not in doc:
         fails.append("issue-tracker.md must send Discord bug reports to bin/discord-reports")
