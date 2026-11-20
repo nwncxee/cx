@@ -3,7 +3,6 @@
 # only across a commit that changes comments or Markdown. Run against a fixture checkout of its own, so no build and
 # no real staged folder is involved. Oracle: the fixture's sources and the expectations written by hand below.
 cd "$(dirname "$0")/.."
-repo=$PWD
 rc=0
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

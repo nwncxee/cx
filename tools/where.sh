@@ -16,19 +16,15 @@ elif [ ! -f "$out/BUILT_FROM" ]; then
   built="UNKNOWN -- built before build.sh stamped its commit; rebuild to be sure"
 else
   from=$(sed -n 1p "$out/BUILT_FROM")
-  stamped=$(sed -n 's/^code //p' "$out/BUILT_FROM")
+  was=$(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}")
   # A stamped code fingerprint decides, by the same test build.sh keeps a build by: equal means only comments or
   # Markdown moved since the build.
-  if [ -n "$stamped" ] && bash tools/keep-staged.sh >/dev/null; then
-    if [ "$from" = "$head" ]; then
-      built="CURRENT -- built from ${head:0:8}, same code as the tree"
-    else
-      built="CURRENT -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), same code as ${head:0:8} (only comments or Markdown differ)"
-    fi
-  elif [ -n "$stamped" ]; then
-    built="STALE -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), and the code changed since; rebuild"
+  if bash tools/keep-staged.sh >/dev/null; then
+    built="CURRENT -- built from $was, same code as ${head:0:8}"
+  elif grep -q '^code ' "$out/BUILT_FROM"; then
+    built="STALE -- built from $was, and the code changed since; rebuild"
   elif [ "$from" != "$head" ]; then
-    built="STALE -- built from $(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}"), checkout is at ${head:0:8}; rebuild"
+    built="STALE -- built from $was, checkout is at ${head:0:8}; rebuild"
   elif grep -qx dirty "$out/BUILT_FROM"; then
     built="UNCOMMITTED -- built from ${head:0:8} plus uncommitted edits"
   elif [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ]; then

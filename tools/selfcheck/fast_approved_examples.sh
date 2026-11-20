@@ -5,7 +5,6 @@
 # log of the same tree, and the hand-written FAIL line below. Exit 0 PASS, 1 FAIL, 2 setup.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
-repo=$PWD
 rc=0
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/cx-fast-examples.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT

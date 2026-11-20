@@ -2,7 +2,6 @@
 """Prints the code fingerprint of a checkout: what build.sh would compile and stage, less what cannot change it.
 
 Usage: codehash.py [checkout]     (default: the checkout this script lives in)
-       codehash.py --strip <file>  (the text a .cs file is hashed as, for its tests)
 
 Every tracked or untracked file the repo's .gitignore files do not ignore counts except Markdown outside third_party/
 (whose notices packaging/licenses.sh ships), a submodule counts by its checked-out commit, and a .cs file counts
@@ -177,10 +176,6 @@ def fingerprint(root):
 
 
 def main(argv):
-    if len(argv) == 3 and argv[1] == '--strip':
-        with open(argv[2], encoding='utf-8', errors='surrogateescape') as f:
-            sys.stdout.write(strip_cs(f.read()) + '\n')
-        return 0
     if len(argv) > 2:
         print(__doc__, file=sys.stderr)
         return 2

@@ -121,7 +121,8 @@ jobs:
             set -euo pipefail
             ./build.sh
             CX_NO_BUILD=1 ./run-demo.sh | tee demo.out
-            # The fast self-check path must run what the AOT image runs: the same verdict and the same suites.
+            # The fast self-check path must run what the AOT image runs: the same verdict and the same suites. Not
+            # tools/selfcheck/fast_approved_examples.sh: that one needs a systemd user manager and a timing bound.
             tools/selfcheck/run.sh | tee fast.out
             want=$(grep -E "^>> [0-9]+ SelfCheck lines" demo.out)
             got=$(grep -E "^>> [0-9]+ SelfCheck lines" fast.out)

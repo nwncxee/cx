@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs a list of hand mutants against the self-checks with one compile for the lot.
 
-Usage: tools/selfcheck/mutants.py <mutants.tsv> [--keep]
+Usage: tools/selfcheck/mutants.py <mutants.tsv>
 
 Each line of the list is a mutant, four fields split by tabs: a name, a file under managed/, the exact text to
 change (it must occur in the file exactly once) and what it becomes (empty: the text is removed, which only a whole
@@ -295,11 +295,10 @@ def verdict(m, rc, output):
 
 
 def main(argv):
-    args = [a for a in argv[1:] if a != '--keep']
-    if len(args) != 1:
+    if len(argv) != 2:
         print(__doc__, file=sys.stderr)
         return 2
-    mutants, refusals = parse(args[0])
+    mutants, refusals = parse(argv[1])
     if refusals or not mutants:
         for r in refusals or ['the list holds no mutant']:
             print(f'!! refusing {r}', file=sys.stderr)
@@ -355,10 +354,7 @@ def main(argv):
             survived += not verdict(m, rc, output)
         return 1 if survived else 0
     finally:
-        if '--keep' in argv:
-            print(f'>> kept {work}', file=sys.stderr)
-        else:
-            shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
 
 
 if __name__ == '__main__':
