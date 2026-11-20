@@ -260,6 +260,10 @@ def run(work, out, build, k, timeout):
         os.killpg(p.pid, signal.SIGKILL)
         output, _ = p.communicate()
         rc, output = 124, output + f'\n>> TIMEOUT: the run passed {timeout:.0f}s and was stopped\n'
+    except BaseException:  # a Ctrl-C or a TERM: the compile and the host go down with the runner, not after it
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
+        raise
     sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
     sys.stdout.flush()
     return rc, output
@@ -295,6 +299,7 @@ def verdict(m, rc, output):
 
 
 def main(argv):
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # so the work folder's cleanup below runs on a TERM
     if len(argv) != 2:
         print(__doc__, file=sys.stderr)
         return 2

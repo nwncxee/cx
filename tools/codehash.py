@@ -19,6 +19,10 @@ import subprocess
 import sys
 
 
+# What can open a comment or literal, or move the brace depth: the lexer takes the code between two of these whole.
+_SPECIAL = re.compile(r'[/\'"$@{}]')
+
+
 def _string_end(s, i, quotes, verbatim, dollars):
     """Index just past the string literal whose opening quote run (``quotes`` long) starts at ``i``. A raw string
     closes on the same run of quotes; a verbatim one escapes a quote by doubling it, a regular one with a backslash.
@@ -106,6 +110,11 @@ def _code(s, i, out, stop=None, spans=None):
             else:
                 verbatim = True
             j += 1
+        if j > i and (j >= n or s[j] != '"'):  # a $ or @ run that opens no string: taken whole, not rescanned
+            if out is not None:
+                out.append(s[i:j])
+            i = j
+            continue
         if j < n and s[j] == '"':
             q = j
             while q < n and s[q] == '"':
@@ -120,17 +129,31 @@ def _code(s, i, out, stop=None, spans=None):
                 out.append((s[i:end],))
             i = end
             continue
+        k = _SPECIAL.search(s, i + 1)
+        k = n if k is None else k.start()
         if out is not None:
-            out.append(c)
-        i += 1
+            out.append(s[i:k])
+        i = k
     return out, i
 
 
 def spans(text):
     """The (start, end) of every comment and every string or char literal in C# ``text``."""
     found = []
-    _code(text, 0, None, spans=found)
+    try:
+        _code(text, 0, None, spans=found)
+    except RecursionError:  # interpolation nested past Python's stack: call it all literal, which switches nothing
+        return [(0, len(text))]
     return found
+
+
+def _tidy(code):
+    """Code with each line's trailing blanks cut and its blank lines dropped, in one pass."""
+    lines = code.split('\n')
+    if len(lines) == 1:
+        return code
+    kept = [lines[0].rstrip(' \t')] + [l.rstrip(' \t') for l in lines[1:-1] if l.strip(' \t')] + [lines[-1]]
+    return '\n'.join(kept)
 
 
 def strip_cs(text):
@@ -142,7 +165,7 @@ def strip_cs(text):
         if isinstance(p, str):
             code.append(p)
             continue
-        out.append(re.sub(r'\n(?:[ \t]*\n)+', '\n', re.sub(r'[ \t]+\n', '\n', ''.join(code))))
+        out.append(_tidy(''.join(code)))
         out.append(p[0])
         code = []
     return ''.join(out).strip('\n')
@@ -176,11 +199,16 @@ def fingerprint(root, raw=False):
             data = b'submodule:' + head
         elif not os.path.isfile(full):
             continue  # deleted in the tree: listed by git, read by nothing
+        elif raw or not path.endswith('.cs'):
+            with open(full, 'rb') as f:
+                data = hashlib.file_digest(f, 'sha256').digest()
         else:
             with open(full, 'rb') as f:
                 data = f.read()
-            if not raw and path.endswith('.cs'):
+            try:
                 data = strip_cs(data.decode('utf-8', 'surrogateescape')).encode('utf-8', 'surrogateescape')
+            except RecursionError:  # nested past Python's stack: the file counts whole, so any change rebuilds
+                pass
         h.update(path.encode() + b'\0' + hashlib.sha256(data).digest())
     return h.hexdigest()
 

@@ -147,7 +147,7 @@ echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
 # Quiet on success, but NEVER swallow a failure: discarding stderr here once hid a compile error behind a
 # stale staged .so, and run-demo.sh happily booted the old build.
-# No build server: VBCSCompiler outlives the compile and holds its memory while ILC runs, which puts a build over 2G.
+# No build server: VBCSCompiler outlives the compile and holds its memory while ILC runs.
 if ! dotnet publish managed/cx_managed.csproj -c Release -o build --disable-build-servers -p:UseSharedCompilation=false \
      -p:InformationalVersion="$CX_VERSION" > build-managed.log 2>&1; then
   echo ">> managed build FAILED:"; grep -E "error|rror" build-managed.log | head -20; exit 1
