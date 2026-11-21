@@ -40,9 +40,9 @@ internal static class UiKnobs
                           help: "Size of the text in every CX window and label. Each element may set its own in its Text rows; a chat window on its gear.",
                           changed: UiHostService.ApplyFont);
         FontRegistry.MigrateStored("ui.typeface", "ui.weight", "ui.style");
-        Typeface = G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true,
+        Typeface = FontRegistry.Lists(G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true, open: true,
                               help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search.",
-                              changed: UiHostService.ApplyTypeface);
+                              changed: UiHostService.ApplyTypeface));
         FontWeight = G.Dropdown("weight", "Default weight", TextStyle.Weights, FontRegistry.Regular, layout: true,
                             help: "How heavy the letters are, for text that asks for no weight of its own: 400 is regular, 700 bold. A family without that weight draws the nearest one it has.",
                             changed: UiHostService.ApplyTypeface);
@@ -93,6 +93,7 @@ internal static class UiKnobs
         G.Button("custompaste", "Paste palette from clipboard", PaletteShare.Paste, Tier.Advanced,
                  help: "Read palette-file text from the clipboard into the custom colours and switch to Custom.");
         ServerPolicy.AllowKnobs("ui.look");
+        foreach (Knob k in new Knob[] { Typeface, FontWeight, FontStyle }) ServerPolicy.AllowKnobs(k.Key);
         ServerPolicy.AllowKnobs("ui.palette");
         Theme.SetFound(System.Array.Empty<Palette>());
         G.Section("Tooltips");

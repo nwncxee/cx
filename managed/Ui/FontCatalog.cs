@@ -9,8 +9,8 @@ public sealed class FontCatalog
 {
     /// <summary>One font: a file, or one font inside a collection at <see cref="Index"/>. <see cref="Weight"/> is its
     /// OS/2 weight, a variable font's default; its weight axis runs <see cref="VarMin"/> to <see cref="VarMax"/>, both 0
-    /// for a static font.</summary>
-    public sealed record Face(string Family, int Weight, bool Italic, int Width, string Path, int Index, int VarMin, int VarMax)
+    /// for a static font. A resource of the module's content carries its <see cref="Bytes"/>, and its resref as the path.</summary>
+    public sealed record Face(string Family, int Weight, bool Italic, int Width, string Path, int Index, int VarMin, int VarMax, byte[]? Bytes = null)
     {
         public bool Variable => VarMax > VarMin;
     }
@@ -26,11 +26,13 @@ public sealed class FontCatalog
     private static readonly string[] WidthNames = { "", "UltraCondensed", "ExtraCondensed", "Condensed", "SemiCondensed", "", "SemiExpanded", "Expanded", "ExtraExpanded", "UltraExpanded" };
     private static readonly string[] Extensions = { ".ttf", ".otf", ".ttc", ".otc" };
 
+    private readonly List<Face> _faces;
     private readonly Dictionary<string, List<Face>> _families = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Face> _byFullName;
 
     private FontCatalog(List<Face> faces, Dictionary<string, Face> byFullName)
     {
+        _faces = faces;
         foreach (Face f in faces)
         {
             if (!_families.TryGetValue(f.Family, out List<Face>? l)) _families[f.Family] = l = new List<Face>();
@@ -72,21 +74,47 @@ public sealed class FontCatalog
             if (!Extensions.Contains(Path.GetExtension(p), StringComparer.OrdinalIgnoreCase)) continue;
             byte[] bytes;
             try { bytes = File.ReadAllBytes(p); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
-            int count = Sfnt.Count(bytes);
-            for (int i = 0; i < count; i++)
-                if (Sfnt.Read(bytes, i) is Sfnt.Info info && info.Drawable)
-                {
-                    var face = new Face(FamilyOf(info), info.Weight, info.Italic, info.Width, p, i, info.VarMin, info.VarMax);
-                    faces.Add(face);
-                    if (info.FullName != null) byFull.TryAdd(info.FullName, face);
-                }
+            Add(faces, byFull, p, bytes, keep: false);
         }
         return new FontCatalog(faces, byFull);
     }
 
+    /// <summary>Each drawable font in <paramref name="bytes"/>, read from <paramref name="path"/>, onto the lists; with
+    /// <paramref name="keep"/> each face holds the bytes, for a font no file holds.</summary>
+    private static void Add(List<Face> faces, Dictionary<string, Face> byFull, string path, byte[] bytes, bool keep)
+    {
+        int count = Sfnt.Count(bytes);
+        for (int i = 0; i < count; i++)
+            if (Sfnt.Read(bytes, i) is Sfnt.Info info && info.Drawable)
+            {
+                var face = new Face(FamilyOf(info), info.Weight, info.Italic, info.Width, path, i, info.VarMin, info.VarMax, keep ? bytes : null);
+                faces.Add(face);
+                if (info.FullName != null) byFull.TryAdd(info.FullName, face);
+            }
+    }
+
     /// <summary>The fonts of the loaded module's content: each resource a hak, the module or NWSync supplies
     /// (<c>Server</c>), read from its own bytes; a loose override file or the base game's own is left out.</summary>
-    public static FontCatalog FromContent(IEnumerable<(string ResRef, bool Server, byte[] Bytes)> resources) => Empty;
+    public static FontCatalog FromContent(IEnumerable<(string ResRef, bool Server, byte[] Bytes)> resources)
+    {
+        var faces = new List<Face>();
+        var byFull = new Dictionary<string, Face>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string resref, bool server, byte[] bytes) in resources)
+            if (server) Add(faces, byFull, resref + ".ttf", bytes, keep: true);
+        return new FontCatalog(faces, byFull);
+    }
+
+    /// <summary>This catalog laid over <paramref name="under"/>: a family both hold is this one's alone.</summary>
+    public FontCatalog Over(FontCatalog under)
+    {
+        if (_faces.Count == 0) return under;
+        var faces = new List<Face>(_faces);
+        faces.AddRange(under._faces.Where(f => !_families.ContainsKey(f.Family)));
+        var byFull = new Dictionary<string, Face>(_byFullName, StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, f) in under._byFullName)
+            if (!_families.ContainsKey(f.Family)) byFull.TryAdd(name, f);
+        return new FontCatalog(faces, byFull);
+    }
 
     /// <summary>The family a font belongs to: its typographic family name (id 16, else 1), plus its width when the
     /// letters are not normal width -- in its own words when its name says one, else the width class's.</summary>

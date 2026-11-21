@@ -64,8 +64,8 @@ public sealed class TextStyle
                               help: $"Text size for {what}; as UI follows the UI text size.");
         }
         FontRegistry.MigrateStored($"{g.Name}.{prefix}typeface", $"{g.Name}.{prefix}weight", $"{g.Name}.{prefix}style");
-        Typeface = g.Dropdown(prefix + "typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true, tier: tier, changed: changed,
-                              help: $"Font for {what}; default follows the UI typeface. Type in the list to search.");
+        Typeface = FontRegistry.Lists(g.Dropdown(prefix + "typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true, tier: tier,
+                              changed: changed, open: true, help: $"Font for {what}; default follows the UI typeface. Type in the list to search."));
         Weight = g.Dropdown(prefix + "weight", "Default weight", RowWeights, 0, WeightNames, layout: true, tier: tier, changed: changed,
                             help: $"How heavy the letters of {what} are, for text that asks for no weight of its own; as UI follows the UI's.");
         Style = g.Dropdown(prefix + "style", "Default style", RowStyles, FontRegistry.StyleAsUi, StyleNames, layout: true, tier: tier, changed: changed,
@@ -73,7 +73,11 @@ public sealed class TextStyle
         Weight.ShowIf = Style.ShowIf = () => FontRegistry.IsFamily(FontRegistry.UiFamily(Typeface.V));   // one face takes no weight
         Outline = g.Dropdown(prefix + "outline", "Text outline", OutlineLevels, outline, OutlineNames, tier: tier, changed: changed,
                              help: $"A dark edge around the letters of {what}, so they read over a bright scene.");
-        if (g.Registered) lock (s_all) s_all.Add(this);
+        if (g.Registered)
+        {
+            lock (s_all) s_all.Add(this);
+            foreach (Knob k in new Knob[] { Typeface, Weight, Style }) ServerPolicy.AllowKnobs(k.Key);
+        }
     }
 
     /// <summary>Every style a registered group declared: each sheet bake carries their faces, so no element's first

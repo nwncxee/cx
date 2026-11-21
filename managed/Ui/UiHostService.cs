@@ -19,6 +19,7 @@ public sealed unsafe class UiHostService : IExtenderService
         _log = log;
         UiCategory.SelfCheck(log);   // declares the UI groups in panel order, then checks their rows
         FrameRegistry.Global.Register(FramePhase.PostPresent, 70, PaletteShare.Tick, "Palettes.scan", log);
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 71, FontContent.Tick, "Fonts.content", log);
         Capabilities.Register("palette", 1, static () => true);
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
         WorldLayerApprovedExamples.SelfCheck(log);   // plates and damage numbers under the game's panels (off-device)

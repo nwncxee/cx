@@ -51,6 +51,10 @@ public static class FontRegistry
     private static string[]? _names;
     /// <summary>The fonts a hak, the module or NWSync supply, while that content is loaded.</summary>
     private static FontCatalog _content = FontCatalog.Empty;
+    /// <summary><see cref="_content"/> over the installed fonts, made on first ask after either changes.</summary>
+    private static FontCatalog? _merged;
+    /// <summary>Every Typeface row made, offered the new list whenever the fonts change; a row nothing holds drops out.</summary>
+    private static readonly List<WeakReference<Knob<string>>> _lists = new();
     /// <summary>The entries of installed families' faces, by face name; a new catalog drops them.</summary>
     private static readonly Dictionary<string, Entry> _faces = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Each face name once made, so a frame that asks again allocates nothing; a new catalog or declaration drops them.</summary>
@@ -103,8 +107,11 @@ public static class FontRegistry
 
     /// <summary>The installed fonts, read once, cold, on first ask: every font fontconfig lists, or the font folders
     /// walked where there is no fontconfig (Windows, Proton, a bare Linux).</summary>
-    private static FontCatalog Catalog()
+    private static FontCatalog Installed()
         => _catalog ??= FontCatalog.Scan(Fontconfig("fc-list", "--format", FcListFormat), FontDirs(), d => _log?.Info($"FontRegistry: {d} not walked"));
+
+    /// <summary>The fonts a name may draw: the loaded module's content laid over the installed fonts.</summary>
+    private static FontCatalog Catalog() => _merged ??= _content.Over(Installed());
 
     /// <summary>The entry for <paramref name="name"/>: declared, or an installed font read on this first ask
     /// (a read failure is its refusal). Null for a name nobody knows.</summary>
@@ -117,7 +124,7 @@ public static class FontRegistry
             if (name.StartsWith(DefaultName + KeySep, StringComparison.Ordinal)) return _faces[name] = Shipped(name, name[(DefaultName.Length + 1)..]);
             if (Face(name) is not (FontCatalog.Face face, int weight)) return null;
             e = new Entry { Name = name, Source = face.Path, Index = face.Index };
-            try { e.Bytes = File.ReadAllBytes(face.Path); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
+            try { e.Bytes = face.Bytes ?? File.ReadAllBytes(face.Path); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
             if (e.Bytes != null && face.Variable && weight != face.Weight)
             {
                 if (VarFont.Instance(e.Bytes, face.Index, weight) is byte[] inst) { e.Bytes = inst; e.Index = 0; e.Source = $"{face.Path} at {weight}"; }
@@ -309,26 +316,59 @@ public static class FontRegistry
     /// <summary>Draw the loaded module's fonts from <paramref name="content"/> from now on; the content it replaces comes back.</summary>
     internal static FontCatalog UseContent(FontCatalog content)
     {
+        FontCatalog was;
         lock (_entries)
         {
-            FontCatalog was = _content;
+            was = _content;
             _content = content;
-            return was;
+            Forget();
+        }
+        Offer();
+        return was;
+    }
+
+    /// <summary>Drops every list, face and face name the old fonts made. Under the entries' lock.</summary>
+    private static void Forget()
+    {
+        _merged = null;
+        _names = null;
+        _faces.Clear();
+        _keys.Clear();
+    }
+
+    /// <summary>Makes <paramref name="row"/> a Typeface row: an open dropdown of <see cref="Names"/>, offered the new list
+    /// whenever the fonts change, that a server may hold only at a listed name.</summary>
+    internal static Knob<string> Lists(Knob<string> row)
+    {
+        row.HoldsListedOnly = true;
+        lock (_lists) _lists.Add(new WeakReference<Knob<string>>(row));
+        return row;
+    }
+
+    /// <summary>Offers <see cref="Names"/> to every Typeface row still alive.</summary>
+    private static void Offer()
+    {
+        string[] names = Names;
+        lock (_lists)
+        {
+            _lists.RemoveAll(w => !w.TryGetTarget(out _));
+            foreach (WeakReference<Knob<string>> w in _lists)
+                if (w.TryGetTarget(out Knob<string>? k)) k.Offer(names, names);
         }
     }
 
     /// <summary>Draw installed fonts from <paramref name="catalog"/> from now on; the catalog it replaces comes back.</summary>
     internal static FontCatalog UseCatalog(FontCatalog catalog)
     {
+        FontCatalog was;
         lock (_entries)
         {
-            FontCatalog was = Catalog();
+            was = Installed();
             _catalog = catalog;
-            _names = null;
-            _faces.Clear();
-            _keys.Clear();
-            return was;
+            Forget();
         }
+        Offer();
+        return was;
     }
 
     /// <summary>The registry name of <paramref name="family"/> at <paramref name="weight"/> and <paramref name="style"/>: a face

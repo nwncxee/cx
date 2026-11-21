@@ -383,6 +383,29 @@ public static unsafe partial class TextRig
         }
     }
 
+    /// <summary>Re-reads every face the sheet is baked from, the default's binding included, and re-bakes when any font
+    /// changed under its name: the module's content brought or took a family. Cold, main thread.</summary>
+    public static void Refont()
+    {
+        if (_sheet == null || _log == null || _requests.Count == 0) return;
+        lock (_bakeLock)
+        {
+            if (!FontRegistry.Bind(_typeface)) { FontRegistry.Bind(DefaultFace); _typeface = DefaultFace; }   // its family left with the content
+            bool moved = false;
+            for (int i = 0; i < _requests.Count; i++)
+            {
+                FaceRequest r = _requests[i];
+                if (r.IconsOnly) continue;
+                if (FontRegistry.Bytes(r.Typeface) is not byte[] b || ReferenceEquals(b, r.Font)) continue;
+                _requests[i] = r with { Font = b, Index = FontRegistry.Index(r.Typeface) };
+                moved = true;
+            }
+            if (!moved) return;
+            if (Rebake()) { _log.Info("TextRig: the content's fonts changed; sheet re-baked"); FontChanged?.Invoke(); }
+            else _log.Info("TextRig: the content's fonts changed but the re-bake was refused; the old sheet stays");
+        }
+    }
+
     /// <summary>Point every request of the default typeface at font <paramref name="index"/> of <paramref name="font"/> (the
     /// icon-only ones are the embedded font's).</summary>
     private static void Retarget(byte[] font, int index)

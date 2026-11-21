@@ -39,6 +39,31 @@ internal static unsafe class ResLocate
     /// <summary>The live <c>CExoResMan*</c>, or zero.</summary>
     internal static IntPtr ResMan => _resManSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_resManSym;
 
+    /// <summary>Every resref of <paramref name="resType"/> the resource manager lists, lower case, each once; empty when it
+    /// cannot be asked. Main thread, outside any resman hook.</summary>
+    internal static List<string> OfType(ushort resType)
+    {
+        var ids = new List<string>();
+        if (EngineFn.ResManGetResOfType == null || EngineFn.ExoStringListCount == null || EngineFn.ExoStringListGet == null
+            || EngineFn.ExoStringListDtor == null || EngineFn.OperatorDelete == null || !Attach(out _) || ResMan == IntPtr.Zero) return ids;
+        IntPtr list = EngineFn.ResManGetResOfType(ResMan, resType, 0);
+        if (list == IntPtr.Zero) return ids;
+        int n = EngineFn.ExoStringListCount(list);
+        for (int i = 0; i < n; i++)
+        {
+            IntPtr str = EngineFn.ExoStringListGet(list, i);
+            byte* text = str == IntPtr.Zero ? null : *(byte**)str;
+            if (text == null) continue;
+            int len = 0;
+            while (len < 16 && text[len] != 0) len++;
+            string name = System.Text.Encoding.ASCII.GetString(text, len).ToLowerInvariant();
+            if (!ids.Contains(name)) ids.Add(name);
+        }
+        EngineFn.ExoStringListDtor(list);
+        EngineFn.OperatorDelete(list);
+        return ids;
+    }
+
     /// <summary>Resolve the two globals. Idempotent: every consumer calls it, the first one does the work.
     /// <paramref name="why"/> is the caller's refusal line when this answers false.</summary>
     internal static bool Attach(out string? why)

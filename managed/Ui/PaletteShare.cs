@@ -106,26 +106,7 @@ internal static unsafe class PaletteShare
     /// <summary>The <c>cxpal_*</c> text resources a hak, the module or NWSync supply. Main thread, outside any resman hook.</summary>
     private static void FromContent(List<Palette> found)
     {
-        if (EngineFn.ResManGetResOfType == null || EngineFn.ExoStringListCount == null || EngineFn.ExoStringListGet == null
-            || EngineFn.ExoStringListDtor == null || EngineFn.OperatorDelete == null || !CX.Alloy.ResLocate.Attach(out _)
-            || CX.Alloy.ResLocate.ResMan == IntPtr.Zero) return;
-        IntPtr list = EngineFn.ResManGetResOfType(CX.Alloy.ResLocate.ResMan, ResTypeTxt, 0);
-        if (list == IntPtr.Zero) return;
-        var ids = new List<string>();
-        int n = EngineFn.ExoStringListCount(list);
-        for (int i = 0; i < n; i++)
-        {
-            IntPtr str = EngineFn.ExoStringListGet(list, i);
-            byte* text = str == IntPtr.Zero ? null : *(byte**)str;
-            if (text == null) continue;
-            int len = 0;
-            while (len < 16 && text[len] != 0) len++;
-            string name = Encoding.ASCII.GetString(text, len).ToLowerInvariant();
-            if (name.StartsWith(Theme.FilePrefix, StringComparison.Ordinal) && !ids.Contains(name)) ids.Add(name);
-        }
-        EngineFn.ExoStringListDtor(list);
-        EngineFn.OperatorDelete(list);
-        foreach (string resref in ids)
+        foreach (string resref in CX.Alloy.ResLocate.OfType(ResTypeTxt).FindAll(n => n.StartsWith(Theme.FilePrefix, StringComparison.Ordinal)))
         {
             string id = resref[Theme.FilePrefix.Length..];
             if (!Theme.ValidId(id) || !FromServer(resref)) continue;
