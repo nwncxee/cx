@@ -35,8 +35,8 @@ internal static partial class FontRegistryApprovedExamples
             TextStyle w = Window("cx-fontcheck-e20");
             KnobPanel.Row? gear = Gear(Chat("")).Find(r => r.Text == "Default style");
             return gear?.Choices is string[] c && c.SequenceEqual(new[] { "as UI", "Normal", "Italic" }) && gear.Selected == 0
-                && UiKnobs.Style!.Choices.SequenceEqual(new[] { "Normal", "Italic" }) && UiKnobs.Style.Default == Normal
-                && UiKnobs.Style.Label == "Default style" && w.Style!.Key == "cx-fontcheck-e20.style" && w.Style.Label == "Default style"
+                && UiKnobs.FontStyle!.Choices.SequenceEqual(new[] { "Normal", "Italic" }) && UiKnobs.FontStyle.Default == Normal
+                && UiKnobs.FontStyle.Label == "Default style" && w.Style!.Key == "cx-fontcheck-e20.style" && w.Style.Label == "Default style"
                 && w.Style.Choices.SequenceEqual(new[] { "as UI", "Normal", "Italic" }) && w.Style.ChoiceIndex == 0;
         });
 
@@ -87,7 +87,7 @@ internal static partial class FontRegistryApprovedExamples
         // E28 Given a window whose Default style is Italic, drawing plain text and text that asks to be upright When the
         // window draws Then the plain text is italic and the upright text is upright; E20's Style row is named Default style
         Example(check, "E28 text that asks to be upright stays upright", () =>
-            UiKnobs.Style!.Label == "Default style"
+            UiKnobs.FontStyle!.Label == "Default style"
             && Drawn(FontRegistry.RunFace(Noto, 400, Italic, 0, 0, false, out _)) == "NotoSans-Italic-VF.ttf#0@400i"
             && Drawn(FontRegistry.RunFace(Noto, 400, Italic, 0, Normal, false, out _)) == "NotoSans-VF.ttf#0@400");
 
@@ -99,7 +99,7 @@ internal static partial class FontRegistryApprovedExamples
         {
             bool inline = PanelMarkup.TryParse("rest <n>upright</n> <i>slanted</i>", out Run[] runs, out _);
             bool blocks = PanelParser.TryParse("[{\"key\":\"k\",\"blocks\":[{\"text\":\"plain\",\"style\":\"normal\"}]}]", out PanelDecl[] cards, out _);
-            if (!inline || !blocks || runs.Length != 5 || cards.Length != 1) return false;
+            if (!inline || !blocks || runs.Length != 4 || cards.Length != 1) return false;
             Run block = cards[0].Blocks[0].Runs[0], n = runs[1], i = runs[3];
             bool restSlant = true, itSlant = true, todaySlant = false;
             bool italicUi = WithUi(Noto, 400, Italic, () =>

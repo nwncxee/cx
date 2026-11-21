@@ -98,10 +98,10 @@ internal static partial class FontRegistryApprovedExamples
     internal static bool WithUi(string typeface, int weight, int style, Func<bool> body)
     {
         string t = UiKnobs.Typeface.V;
-        int w = UiKnobs.Weight!.V, s = UiKnobs.Style!.V;
-        UiKnobs.Typeface.V = typeface; UiKnobs.Weight.V = weight; UiKnobs.Style.V = style;
+        int w = UiKnobs.FontWeight!.V, s = UiKnobs.FontStyle!.V;
+        UiKnobs.Typeface.V = typeface; UiKnobs.FontWeight.V = weight; UiKnobs.FontStyle.V = style;
         try { return body(); }
-        finally { UiKnobs.Typeface.V = t; UiKnobs.Weight.V = w; UiKnobs.Style.V = s; }
+        finally { UiKnobs.Typeface.V = t; UiKnobs.FontWeight.V = w; UiKnobs.FontStyle.V = s; }
     }
 
     /// <summary>A chat window drawing in <paramref name="typeface"/> at the given rows (0 follows the UI).</summary>
@@ -129,7 +129,7 @@ internal static partial class FontRegistryApprovedExamples
             TextStyle w = Window("cx-fontcheck-e4");
             KnobPanel.Row? gear = Gear(Chat("")).Find(r => r.Text == "Default weight");
             return gear?.Choices is string[] c && c[0] == "as UI" && c.Skip(1).SequenceEqual(Ladder.Select(x => x.ToString())) && gear.Selected == 0
-                && UiKnobs.Weight!.Values.SequenceEqual(Ladder) && UiKnobs.Weight.Default == 400 && UiKnobs.Weight.Label == "Default weight"
+                && UiKnobs.FontWeight!.Values.SequenceEqual(Ladder) && UiKnobs.FontWeight.Default == 400 && UiKnobs.FontWeight.Label == "Default weight"
                 && w.Weight!.Key == "cx-fontcheck-e4.weight" && w.Weight.Label == "Default weight" && w.Weight.Choices[0] == "as UI"
                 && w.Weight.Values.Skip(1).SequenceEqual(Ladder) && w.Weight.V == 0;
         });
@@ -238,7 +238,7 @@ internal static partial class FontRegistryApprovedExamples
             ChatWindow w = Chat("");
             string following = Drawn(ChatService.FaceName(w));
             w.Weight = 400;
-            return following == "DejaVuSans-Bold.ttf#0@700" && Drawn(ChatService.FaceName(w)) == "DejaVuSans.ttf#0@400" && UiKnobs.Weight!.V == 700;
+            return following == "DejaVuSans-Bold.ttf#0@700" && Drawn(ChatService.FaceName(w)) == "DejaVuSans.ttf#0@400" && UiKnobs.FontWeight!.V == 700;
         }));
 
         // E25 Given a window whose Default weight is 100, drawing a line of plain text and a bold heading When the window

@@ -37,8 +37,8 @@ internal static class FontRegistryRegressions
         });
 
         Example(check, "R5 the UI's weight and style rows show only for an installed family", () =>
-            WithUi(FontRegistry.DefaultName, 400, FontRegistry.StyleNormal, () => !UiKnobs.Weight.ShowIf!() && !UiKnobs.Style.ShowIf!())
-            && WithUi(DejaVu, 400, FontRegistry.StyleNormal, () => UiKnobs.Weight.ShowIf!() && UiKnobs.Style.ShowIf!()));
+            WithUi(FontRegistry.DefaultName, 400, FontRegistry.StyleNormal, () => !UiKnobs.FontWeight.ShowIf!() && !UiKnobs.FontStyle.ShowIf!())
+            && WithUi(DejaVu, 400, FontRegistry.StyleNormal, () => UiKnobs.FontWeight.ShowIf!() && UiKnobs.FontStyle.ShowIf!()));
 
         Example(check, "R6 an older chat window typeface that is a family keeps its weight as UI", () =>
             ChatConfig.From(new[] { new KeyValuePair<string, string>("w0.typeface", DejaVu) }).Windows[0] is { Typeface: DejaVu, Weight: null, Style: null });
