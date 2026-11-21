@@ -75,6 +75,16 @@ if [ -f "$EXTRA.nss" ]; then
     nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$(basename "$EXTRA").ncs" "$WORK/$(basename "$EXTRA").nss"
 fi
 [ ! -f "$HERE/$NAME.dlg.json" ] || nwn_gff -i "$HERE/$NAME.dlg.json" -l json -o "$WORK/$NAME.dlg" -k gff
+# A showcase with a <name>.res beside it packs more files into the module: each line is a path from the repo root and
+# the file's name in the module, so a fixture the self-checks use is shipped as the module's own content.
+RES="${SRC%.nss}.res"
+if [ -f "$RES" ]; then
+    ROOT="$(cd "$HERE/../../.." && pwd)"
+    while read -r from to; do
+        [ -n "$from" ] && [ "${from#\#}" = "$from" ] || continue
+        cp -f "$ROOT/$from" "$WORK/$to" || { echo "build-ladder: $RES names $from, which is not there" >&2; exit 1; }
+    done < "$RES"
+fi
 
 # 3. module.ifo: our OnClientEnter, and a name that says what this is.
 nwn_gff -i "$WORK/module.ifo" -k json -o "$WORK/module.ifo.json"

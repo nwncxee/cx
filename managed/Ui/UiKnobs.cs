@@ -41,7 +41,7 @@ internal static class UiKnobs
                           changed: UiHostService.ApplyFont);
         FontRegistry.MigrateStored("ui.typeface", "ui.weight", "ui.style");
         Typeface = FontRegistry.Lists(G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true, open: true,
-                              help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search.",
+                              help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, one installed on this machine, or one the server you are on supplies. Each element may pick its own in its Text rows. Type in the list to search.",
                               changed: UiHostService.ApplyTypeface));
         FontWeight = G.Dropdown("weight", "Default weight", TextStyle.Weights, FontRegistry.Regular, layout: true,
                             help: "How heavy the letters are, for text that asks for no weight of its own: 400 is regular, 700 bold. A family without that weight draws the nearest one it has.",

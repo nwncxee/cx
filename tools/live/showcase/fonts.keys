@@ -1,0 +1,1 @@
+sleep:20000;shot:@SHOTS@/0-own.png;sleep:40000;shot:@SHOTS@/1-held.png

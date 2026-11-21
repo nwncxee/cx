@@ -134,7 +134,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 | line | meaning |
 |---|---|
-| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look`, `ui.palette` and `vfog.*`) can be held -- the rest of the renderer, audio and the hotkeys consent stay the player's |
+| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look`, `ui.palette`, `vfog.*`, and the font rows: `ui.typeface`, `ui.weight`, `ui.style` and every element's `<prefix>typeface`, `<prefix>weight` and `<prefix>style`) can be held -- the rest of the renderer, audio and the hotkeys consent stay the player's. A typeface is held only at a name the client lists, so a font your hak or NWSync supplies is held once that content has loaded (see [Fonts](#fonts)) |
 | `inventory.gold.visible=0` | any other key is a component property |
 | `inventory.gold.visible=` | an empty value releases the key |
 | `inventory.*=` | releases every key under the prefix |
@@ -211,6 +211,27 @@ The pick shows as a pending hold: dimmer than a confirmed one, with the same cur
 - No `held.image` line within `held.confirm` ms drops it. Only a line for `held.image` itself answers; a change to any other key does not.
 
 A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending `held.image` as before.
+
+## Fonts
+
+Every `.ttf` a hak, the module or NWSync supplies joins the client's Typeface lists while that content is loaded,
+listed under the family name its own name table gives (never its resref), beside the fonts installed on the machine.
+A loose file in `override/` and the base game's own fonts are not listed. A family you ship in several files (a
+regular, a bold, an italic) takes the weight and style rows the way an installed family does, by the nearest weight;
+a family of one file draws that file as it is, whatever weight or style is asked. Your family wins over an installed
+one of the same name.
+
+To make every CX window draw your font, ship it and hold the rows:
+
+```
+ui.typeface=Old Fell
+ui.weight=700
+ui.style=Italic
+```
+
+An element the player set to a typeface of its own escapes `ui.typeface`; hold its own rows too (`dialog.typeface=Old Fell`).
+A chat window's gear values are not knobs and are not held. A hold that names a family the client does not list is refused,
+and `/policy` says so.
 
 ## Item menu
 

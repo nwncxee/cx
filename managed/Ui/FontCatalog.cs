@@ -107,12 +107,10 @@ public sealed class FontCatalog
     /// <summary>This catalog laid over <paramref name="under"/>: a family both hold is this one's alone.</summary>
     public FontCatalog Over(FontCatalog under)
     {
-        if (_faces.Count == 0) return under;
         var faces = new List<Face>(_faces);
         faces.AddRange(under._faces.Where(f => !_families.ContainsKey(f.Family)));
         var byFull = new Dictionary<string, Face>(_byFullName, StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, f) in under._byFullName)
-            if (!_families.ContainsKey(f.Family)) byFull.TryAdd(name, f);
+        foreach (var (name, f) in under._byFullName) byFull.TryAdd(name, f);
         return new FontCatalog(faces, byFull);
     }
 
