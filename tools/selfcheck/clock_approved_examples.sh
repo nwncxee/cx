@@ -17,13 +17,15 @@ command -v dotnet >/dev/null || { echo ">> run this inside nix develop" >&2; exi
 case "$(bash tools/where.sh)" in *"build     CURRENT"*) ;; *) echo ">> the staged build is not CURRENT: run ./build.sh first" >&2; exit 2 ;; esac
 SUITES="KnobFileBootApprovedExamples.SelfCheck TexRegistry.UploadApprovedExamples.SelfCheck TexRegistry.UploadHoldsToday.SelfCheck"
 
-# A suite's span in a boot's log: seconds from the line before its first line to its last.
+# A suite's span in a boot's log: seconds from the last SelfCheck line of the suite before it to its own last line, so
+# the lines a suite writes without its own prefix still count toward its time.
 span() { python3 -I - "$1" "$2" <<'PY'
 import sys, datetime
 lines = [l for l in open(sys.argv[1], encoding='utf-8') if l[:4].isdigit()]
 t = lambda l: datetime.datetime.fromisoformat(l.split(' ')[0][:26])
 hits = [i for i, l in enumerate(lines) if '[cx] ' + sys.argv[2] in l]
-print('%.2f' % ((t(lines[hits[-1]]) - t(lines[max(hits[0] - 1, 0)])).total_seconds()) if hits else 'none')
+prev = max([i for i in range(hits[0]) if 'SelfCheck' in lines[i] and sys.argv[2] not in lines[i]] or [0]) if hits else 0
+print('%.2f' % ((t(lines[hits[-1]]) - t(lines[prev])).total_seconds()) if hits else 'none')
 PY
 }
 
