@@ -24,7 +24,9 @@ internal static class FontRegistryRegressions
 
         Example(check, "R3 a run's own weight wins over its block's", () =>
             PanelParser.TryParse("[{\"key\":\"k\",\"blocks\":[{\"text\":\"<b>x</b>y\",\"weight\":300}]}]", out PanelDecl[] c, out _)
-            && c.Length == 1 && c[0].Blocks[0].Runs is [{ Weight: 700 }, { Weight: 300 }]);
+            && c.Length == 1 && c[0].Blocks[0].Runs is [{ Weight: 700 }, { Weight: 300 }]
+            && PanelParser.TryParse("[{\"key\":\"k\",\"blocks\":[{\"text\":\"<b>x</b>y\",\"weight\":300,\"italic\":true}]}]", out PanelDecl[] i, out _)
+            && i.Length == 1 && i[0].Blocks[0].Runs is [{ Weight: 700, Italic: true }, { Weight: 300, Italic: true }]);
 
         Example(check, "R4 a chat window's weight and style are saved and read back", () =>
         {
@@ -56,6 +58,24 @@ internal static class FontRegistryRegressions
             bool before = w.FollowsUi;
             w.Weight.V = 700;
             return before && !w.FollowsUi && ChatService.FollowsUi(Chat("")) && !ChatService.FollowsUi(Chat("", 700)) && !ChatService.FollowsUi(Chat("", 0, 2));
+        });
+
+        Example(check, "R10 an untouched point between two touched ones at its own place moves only when both move alike", () =>
+        {
+            double[] pos = { 0, 5, 0, 10, 20, 10 }, apart = { 1, 0, 3, 2, 0, 2 };
+            bool[] t = { true, false, true, true, false, true };
+            VarFont.Interpolate(pos, apart, t, 0, 2);
+            VarFont.Interpolate(pos, apart, t, 3, 5);
+            return apart[1] == 0 && apart[4] == 2;
+        });
+
+        Example(check, "R11 point numbers past 255 and runs of zero deltas decode", () =>
+        {
+            var r = new VarFont.Reader(new byte[] { 2, 0x81, 1, 0, 0, 5, 0x81, 0x00, 5 });
+            int p = 0;
+            int[]? pts = r.Points(ref p);
+            double[] d = r.Deltas(ref p, 3);
+            return pts is [256, 261] && d is [0, 0, 5] && p == 9;
         });
 
         Example(check, "R9 a cfg name shadows an installed family, and draws its own file at any weight", () =>
