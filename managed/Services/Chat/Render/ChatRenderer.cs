@@ -257,7 +257,8 @@ public static unsafe class ChatRenderer
     }
 
     /// <summary>Whether the credit line's gold run is slanted: true on an upright UI face, false on one already italic.</summary>
-    internal static bool AttributionSlant() => true;
+    internal static bool AttributionSlant()
+        => FontRegistry.Where(FontRegistry.FaceKey(UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V)) is not { Italic: true };
 
     private static void BuildAttribution()
     {
@@ -281,11 +282,13 @@ public static unsafe class ChatRenderer
             batch.Glyph(g, penX, baseline, 1f, 1f, 1f, a);
             penX += g.Advance;
         }
-        // ponytail: gold = (1, 0.82, 0); synthetic italic via vertex shear
+        // ponytail: gold = (1, 0.82, 0); synthetic italic via vertex shear on an upright UI face
+        bool slant = AttributionSlant();
         foreach (Rune r in italic.EnumerateRunes())
         {
             if (!atlas.TryGet(r.Value, out Glyph g)) { penX += atlas.AdvanceOf(r); continue; }
-            batch.GlyphItalic(g, penX, baseline, 1f, 0.82f, 0f, a);
+            if (slant) batch.GlyphItalic(g, penX, baseline, 1f, 0.82f, 0f, a);
+            else batch.Glyph(g, penX, baseline, 1f, 0.82f, 0f, a);
             penX += g.Advance;
         }
 

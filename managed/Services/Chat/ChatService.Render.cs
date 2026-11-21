@@ -316,8 +316,8 @@ public sealed unsafe partial class ChatService
 
     /// <summary>The registry name a window's text draws with: its typeface, Default weight and Default style rows applied.</summary>
     internal static string FaceName(ChatWindow win)
-        => FontRegistry.FaceKey(win.Typeface.Length > 0 ? win.Typeface : UiKnobs.Typeface.V, win.Weight > 0 ? win.Weight : UiKnobs.Weight.V,
-                                win.Style > 0 ? win.Style : UiKnobs.Style.V);
+        => FontRegistry.FaceKey(win.Typeface.Length > 0 ? win.Typeface : UiKnobs.Typeface.V, win.Weight > 0 ? win.Weight : UiKnobs.FontWeight.V,
+                                win.Style > 0 ? win.Style : UiKnobs.FontStyle.V);
 
     /// <summary>True when the window draws with the UI face: every font row of its own follows the UI.</summary>
     internal static bool FollowsUi(ChatWindow win) => win.FontPx <= 0 && win.Typeface.Length == 0 && win.Weight == 0 && win.Style == 0;

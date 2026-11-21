@@ -13,8 +13,7 @@ public sealed partial class SettingsWindow
     {
         var check = new Checker(log);
 
-        string[] realFaces = Typefaces;
-        Typefaces = new[] { FollowUi, "Arial", "DejaVu Serif" };
+        TypefacesOverride = new[] { FollowUi, "Arial", "DejaVu Serif" };
 
         var body = new GlyphAtlas { LineHeight = 24, Ascent = 19, SpaceAdvance = 6f };
         var small = new GlyphAtlas { LineHeight = 19, Ascent = 15, SpaceAdvance = 5f };
@@ -312,7 +311,7 @@ public sealed partial class SettingsWindow
         check.Expect(s.CategoryTab == 11 && Find(s, SetAct.TabLabel, "11").Value.Length == 32, "a scrolled-to entry picks its tab (offset-correct hit)");
         s.Reset();
 
-        Typefaces = realFaces;
+        TypefacesOverride = null;
         log.Info(check.Ok ? "SettingsWindow.SelfCheck: passed" : "SettingsWindow.SelfCheck: FAILED");
     }
 }

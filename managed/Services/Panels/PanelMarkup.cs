@@ -7,7 +7,7 @@ namespace CX.Services.Panels;
 
 /// <summary>
 /// The inline markup of a panel's text: <c>&lt;c=#RRGGBB[AA]&gt;</c> or <c>&lt;c=@role[/aa]&gt;</c>, <c>&lt;s=N&gt;</c> (snapped to the size ladder),
-/// <c>&lt;i&gt;</c>, <c>&lt;b&gt;</c> (weight 700) and <c>&lt;w=N&gt;</c> (weight 100 to 900), their closing tags, <c>&lt;icon=NAME&gt;</c> and <c>&lt;br&gt;</c>; a newline in the string breaks the line
+/// <c>&lt;i&gt;</c>, <c>&lt;b&gt;</c> (weight 700), <c>&lt;w=N&gt;</c> (weight 100 to 900), <c>&lt;n&gt;</c> (upright), their closing tags, <c>&lt;icon=NAME&gt;</c> and <c>&lt;br&gt;</c>; a newline in the string breaks the line
 /// too, and <c>&lt;&lt;</c> is a literal <c>&lt;</c>. A tag it does not know, or a bad value, stays in the text as typed.
 /// Cold: parses once, when a declaration arrives.
 /// </summary>
@@ -28,12 +28,13 @@ internal static class PanelMarkup
         var sizes = new List<float>();
         int italic = 0;
         var weights = new List<int>();
+        int upright = 0;
         var buf = new StringBuilder();
         void Flush()
         {
             if (buf.Length == 0) return;
             list.Add(new Run(buf.ToString(), "", colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, italic > 0, false,
-                             weights.Count > 0 ? weights[^1] : 0));
+                             weights.Count > 0 ? weights[^1] : 0, upright > 0 ? Ui.FontRegistry.StyleNormal : 0));
             buf.Clear();
         }
         for (int i = 0; i < s.Length; i++)
@@ -55,6 +56,8 @@ internal static class PanelMarkup
                 case "/i": if (italic > 0) italic--; break;
                 case "b": weights.Add(Bold); break;
                 case "w": weights.Add(int.Parse(arg, CultureInfo.InvariantCulture)); break;
+                case "n": upright++; break;
+                case "/n": if (upright > 0) upright--; break;
                 case "/b": case "/w": if (weights.Count > 0) weights.RemoveAt(weights.Count - 1); break;
                 case "br": list.Add(new Run("", "", default, 0, false, true)); break;
                 case "icon":
@@ -85,7 +88,7 @@ internal static class PanelMarkup
         arg = eq < 0 ? "" : body[(eq + 1)..].ToString();
         switch (name)
         {
-            case "/c": case "/s": case "i": case "/i": case "br": case "b": case "/b": case "/w": return eq < 0;
+            case "/c": case "/s": case "i": case "/i": case "br": case "b": case "/b": case "/w": case "n": case "/n": return eq < 0;
             case "w": return IsWeight(arg);
             case "c": return Paint.TryParse(arg, out _);
             case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out size) && float.IsFinite(size);

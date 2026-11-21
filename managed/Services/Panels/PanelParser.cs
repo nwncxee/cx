@@ -220,7 +220,7 @@ internal static class PanelParser
         b.Size = st.Snap(Num(e, "size", 1f));
         b.Color = Col(e, "color", default);
         if (Bool(e, "dim", false)) b.Color = (b.Color.Set ? b.Color : st.DimColor).WithAlpha(st.DimAlpha);
-        b.Runs = Runs(e, "text", Bool(e, "italic", false), st, Weight(e));
+        b.Runs = Runs(e, "text", Bool(e, "italic", false), st, Weight(e), Style(e));
         b.Icon = Str(e, "icon", "");
         if (b.Icon.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
         if (!PanelLimits.NameOk(b.Icon)) throw new Refusal($"icon '{b.Icon}' is over {PanelLimits.MaxResref} characters, the longest resref");
@@ -265,18 +265,25 @@ internal static class PanelParser
     private static float? Opt(JsonElement e, string name, float lo)
         => e.TryGetProperty(name, out _) ? Clamped(e, name, 0f, lo, PanelLimits.MaxLen) : null;
 
-    private static Run[] Runs(JsonElement e, string name, bool italic, PanelStyle st, int weight = 0)
+    private static Run[] Runs(JsonElement e, string name, bool italic, PanelStyle st, int weight = 0, int style = 0)
     {
         string s = Str(e, name, "");
         if (!PanelMarkup.TryParse(s, out Run[] runs, out string why, st)) throw new Refusal($"{name}: {why}");
         for (int i = 0; i < runs.Length; i++)
         {
             Run r = runs[i];
-            if (italic || (weight > 0 && r.Weight == 0))
-                runs[i] = new Run(r.Text, r.Icon, r.Rgba, r.Size, italic || r.Italic, r.Break, r.Weight > 0 ? r.Weight : weight, r.Style);
+            if (italic || (weight > 0 && r.Weight == 0) || (style > 0 && r.Style == 0))
+                runs[i] = new Run(r.Text, r.Icon, r.Rgba, r.Size, italic || r.Italic, r.Break, r.Weight > 0 ? r.Weight : weight, r.Style > 0 ? r.Style : style);
         }
         return runs;
     }
+
+    /// <summary>A text block's <c>style</c>: <c>normal</c> or <c>italic</c>; 0 when it names none.</summary>
+    private static int Style(JsonElement e) => Str(e, "style", "") switch
+    {
+        "" => 0, "normal" => Ui.FontRegistry.StyleNormal, "italic" => Ui.FontRegistry.StyleItalic,
+        var x => throw new Refusal($"style '{x}' is normal or italic"),
+    };
 
     /// <summary>A text block's <c>weight</c>, 100 to 900; 0 when it names none.</summary>
     private static int Weight(JsonElement e)

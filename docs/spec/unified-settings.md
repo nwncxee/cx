@@ -620,7 +620,8 @@ distances stay design px.
 **Element text rows** (`TextStyle`): every CX element that draws text declares the same three
 rows in its own group, under a section the group names: `<prefix>font` (*Text size*, as UI /
 6..32), `<prefix>typeface` (*Typeface*, the `ui.typeface` choices; `default` follows the UI),
-`<prefix>weight` (*Default weight*, as UI or 100 to 900; as UI follows `ui.weight`) and
+`<prefix>weight` (*Default weight*, as UI or 100 to 900; as UI follows `ui.weight`), `<prefix>style` (*Default style*,
+as UI, Normal or Italic; as UI follows `ui.style`) and
 `<prefix>outline` (*Text outline*, off / thin / thick). Overriding the UI-wide rows for one
 element is an enthusiast's dial (ADR 0030), so the tier is **Advanced** for an element drawn
 over the world (`nameplate` names and `bubble*`, `combattext`, `dialog`, `fps`) and

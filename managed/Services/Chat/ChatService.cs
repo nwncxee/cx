@@ -65,11 +65,6 @@ public sealed unsafe partial class ChatService : IExtenderService
         InputWindowApprovedExamples.SelfCheck(log);
         ClickThroughApprovedExamples.SelfCheck(log);
         WindowPickerApprovedExamples.SelfCheck(log);
-        string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
-        var faces = new string[names.Length];
-        faces[0] = SettingsWindow.FollowUi;
-        Array.Copy(names, 1, faces, 1, names.Length - 1);
-        SettingsWindow.Typefaces = faces;
         if (!Enabled)   // chat.enabled=0 at boot: install nothing -> the stock chat window runs
         {
             log.Info("ChatService: chat.enabled=0 -- standing down, vanilla chat left intact (/chat enabled 1 + relaunch)");

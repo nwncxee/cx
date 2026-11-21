@@ -2,7 +2,7 @@ using CX.Framework;
 
 namespace CX.Ui;
 
-/// <summary>One UI element's own text rows -- size, typeface, weight, outline -- declared into the element's group (the caller
+/// <summary>One UI element's own text rows -- size, typeface, weight, style, outline -- declared into the element's group (the caller
 /// sets the section first), so the panel, <c>cx.cfg</c> and chat get them like any knob; and the face they resolve to.
 /// Size "as UI" (0) and typeface <c>default</c> follow <c>ui.font</c> / <c>ui.typeface</c>.</summary>
 public sealed class TextStyle
@@ -31,10 +31,12 @@ public sealed class TextStyle
     /// <summary>The Default weight row: 0 as UI, else 100 to 900.</summary>
     public readonly Knob<int> Weight;
     /// <summary>The Default style row: <see cref="FontRegistry.StyleAsUi"/>, Normal or Italic.</summary>
-    public Knob<int>? Style => null;
+    public readonly Knob<int> Style;
+    /// <summary>The values a Default style row offers, index-aligned with <see cref="StyleNames"/>.</summary>
+    public static readonly int[] RowStyles = { FontRegistry.StyleAsUi, FontRegistry.StyleNormal, FontRegistry.StyleItalic };
     /// <summary>The registry name this element's text draws with, its typeface, weight and style rows applied over the UI's.</summary>
     public string FaceName => FontRegistry.FaceKey(Typeface.V == FontRegistry.DefaultName ? UiKnobs.Typeface.V : Typeface.V,
-                                                   Weight.V > 0 ? Weight.V : UiKnobs.Weight.V, Style is { V: > 0 } s ? s.V : UiKnobs.Style.V);
+                                                   Weight.V > 0 ? Weight.V : UiKnobs.FontWeight.V, Style.V > 0 ? Style.V : UiKnobs.FontStyle.V);
     private readonly string _what;
     private GlyphAtlas? _face;
     /// <summary>The last (typeface, px) a miss asked a bake for: in flight or refused, so it is not asked again.</summary>
@@ -45,7 +47,7 @@ public sealed class TextStyle
     /// cached wrap or measure of this element's text is valid under. Unique across styles.</summary>
     public int Stamp { get; private set; }
 
-    /// <summary>Declare <c>&lt;prefix&gt;font</c>, <c>&lt;prefix&gt;typeface</c>, <c>&lt;prefix&gt;weight</c>, <c>&lt;prefix&gt;outline</c> in
+    /// <summary>Declare <c>&lt;prefix&gt;font</c>, <c>&lt;prefix&gt;typeface</c>, <c>&lt;prefix&gt;weight</c>, <c>&lt;prefix&gt;style</c>, <c>&lt;prefix&gt;outline</c> in
     /// <paramref name="g"/>. <paramref name="what"/> names the element in the help lines; <paramref name="size"/> is
     /// the size default (0 = as UI), <paramref name="sized"/> false leaves the size row out. <paramref name="tier"/>
     /// carries every row: Advanced for an element over the world, ChatOnly to follow the UI-wide rows.</summary>
@@ -67,6 +69,9 @@ public sealed class TextStyle
                               help: $"Font for {what}; default follows the UI typeface. Type in the list to search.");
         Weight = g.Dropdown(prefix + "weight", "Default weight", RowWeights, 0, WeightNames, layout: true, tier: tier, changed: changed,
                             help: $"How heavy the letters of {what} are, for text that asks for no weight of its own; as UI follows the UI's.");
+        Style = g.Dropdown(prefix + "style", "Default style", RowStyles, FontRegistry.StyleAsUi, StyleNames, layout: true, tier: tier, changed: changed,
+                           help: $"Upright or italic letters for {what}, for text that asks for no style of its own; as UI follows the UI's.");
+        Weight.ShowIf = Style.ShowIf = () => FontRegistry.IsFamily(Typeface.V == FontRegistry.DefaultName ? UiKnobs.Typeface.V : Typeface.V);   // one face takes no weight
         Outline = g.Dropdown(prefix + "outline", "Text outline", OutlineLevels, outline, OutlineNames, tier: tier, changed: changed,
                              help: $"A dark edge around the letters of {what}, so they read over a bright scene.");
         if (g.Registered) lock (s_all) s_all.Add(this);
@@ -89,7 +94,7 @@ public sealed class TextStyle
     public float Px => TextRig.FacePx(Size?.V ?? 0);
 
     /// <summary>True when both rows follow the UI: the element draws with the UI face.</summary>
-    public bool FollowsUi => (Size?.V ?? 0) <= 0 && Typeface.V == FontRegistry.DefaultName && Weight.V == 0 && Style is not { V: > 0 };
+    public bool FollowsUi => (Size?.V ?? 0) <= 0 && Typeface.V == FontRegistry.DefaultName && Weight.V == 0 && Style.V == FontRegistry.StyleAsUi;
 
     /// <summary>Halo radius in px for this element's outline (0 = none): <see cref="HaloOf"/> at <see cref="Px"/>.</summary>
     public float HaloPx => HaloOf(Outline.V, Px);
@@ -162,7 +167,7 @@ public sealed class TextStyle
                      && s.Outline.TryParse("thick", out int thick) && thick == 2, "a stored toggle's 1/0 and a label parse onto the ladder");
         var bare = new TextStyle(new KnobGroup("cx-textcheck2", "Test", "Text check 2", null, null, true, Effect.Live, null, null, "", register: false),
                                  "the window", sized: false);
-        check.Expect(bare.Size == null && bare.Typeface.Group.Knobs.Count == 3 && bare.Typeface.Key == "cx-textcheck2.typeface", "sized: false declares no size row: typeface, weight and outline");
+        check.Expect(bare.Size == null && bare.Typeface.Group.Knobs.Count == 4 && bare.Typeface.Key == "cx-textcheck2.typeface", "sized: false declares no size row: typeface, weight, style and outline");
 
         var ui = new GlyphAtlas();
         int stamp = s.Stamp;

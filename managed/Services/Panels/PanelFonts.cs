@@ -86,7 +86,7 @@ internal static class PanelFonts
     /// <summary>The registry name <paramref name="r"/> draws with over the UI's rows, and whether its letters are
     /// slanted (<paramref name="slant"/>): an italic run on an upright face.</summary>
     public static string RunFace(in Run r, out bool slant)
-        => FontRegistry.RunFace(UiKnobs.Typeface.V, UiKnobs.Weight.V, UiKnobs.Style.V, r.Weight, r.Style, r.Italic, out slant);
+        => FontRegistry.RunFace(UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V, r.Weight, r.Style, r.Italic, out slant);
 
     /// <summary>The atlas of face <paramref name="name"/> at <paramref name="mult"/> times the player's size, when it is baked;
     /// a miss asks its bake on the thread pool once and is null until it lands, and null when there is no UI face (headless).

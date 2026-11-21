@@ -353,8 +353,9 @@ knobs (a colour written without the `#`) are the player's alone.
 | `blocks` | the blocks, drawn top to bottom |
 | `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-1024, default the style's `imagesize`, 64), `at` (`tl`, `tr`, `bl`, `br`, `t`, `b`, `l`, `r`, `c`, default `tr`; any other value is refused), `alpha` (0-1, default 1), `dx`, `dy` (px right and down from the corner, clamped to -1024..1024; a push out of the card makes the image overflow it), `crop` (`[left, top, width, height]` as fractions of a texture's width and height from its top-left corner: only that part is drawn, stretched to `w` x `h`. `[0, 0, 1, 0.78125]` is a portrait's painting without the filler under it. Every value 0-1, width and height above 0, inside the texture; anything else is refused, and so is a crop on an `@` image) |
 
-Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic` and `pulse`,
-all off unless declared; the fields a type reads are listed here.
+Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic`, `weight`
+(100 to 900), `style` (`normal` or `italic`) and `pulse`, all off unless declared. `style` draws the typeface's own
+italic or upright letters; `italic` slants them, as `<i>` does; the fields a type reads are listed here.
 
 | type | draws | fields |
 |---|---|---|
@@ -483,7 +484,10 @@ element's card exists. Send one small stand-in per id family when the window ope
 |---|---|
 | `<c=#RRGGBB>...</c>` | colour (`#RRGGBBAA` for opacity, or a role: `<c=@accent>`, `<c=@accent/80>`) |
 | `<s=1.6>...</s>` | size, snapped to the sizes above |
-| `<i>...</i>` | italic |
+| `<i>...</i>` | italic: the letters are slanted, unless the player's face is already italic |
+| `<b>...</b>` | bold: weight 700 |
+| `<w=600>...</w>` | weight 100 to 900, the nearest the player's typeface has; a typeface of one weight draws its own |
+| `<n>...</n>` | upright, whatever the player's Default style |
 | `<icon=NAME>` | an inline icon, as tall as its line |
 | `<br>` or a newline | a line break |
 | `<<` | a literal `<` |
