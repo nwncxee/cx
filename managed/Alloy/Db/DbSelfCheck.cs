@@ -64,8 +64,8 @@ internal static partial class DbSelfCheck
             MaterialFaces(check);
             check.Expect(HintDecal(), "a transparencyhint makes a flat face-up sheet on a static object a ground decal, and leaves every recipe a cutout");
             check.Expect(ContentPairRecipe(), "a material naming a content pair does not take a content id, its row and the unposed sentinel, or one naming a single half takes an id");
-            check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
-            check.Expect(RecycledWaiterDropped(), "a waiting part whose slot was recycled before the read landed is dropped, never folded into the slot's new tenant");
+            check.Expect(AbsentMaterialRewritesNothing(), "a material asked for early and answered ABSENT landed nothing, yet a part built while it was asked for was rewritten");
+            check.Expect(LandingSkipsRecycledSlot(), "a late .mtr landing folded a freed part's material into the slot's new tenant");
             check.Expect(LateMaterialColumns(), "a .mtr that lands after a PART was built folds into its material columns, and a PLT replace on it then matches the file's diffuse rather than the mesh bitmap");
         }
         finally
@@ -1093,10 +1093,10 @@ internal static partial class DbSelfCheck
         DrawRecipe.Pump();
     }
 
-    /// <summary>A part built while its mesh's <c>.mtr</c> was unreadable: its material columns are the mesh's
-    /// alone, and only the read's own landing edge can fold the file in -- after which a PLT replace aims at
-    /// the file's diffuse and no longer at the mesh bitmap. Oracles: a hand-written <c>.mtr</c> text and the
-    /// resrefs the replace must take and must refuse.</summary>
+    /// <summary>A part built while its mesh's <c>.mtr</c> was not read yet: its material columns are the mesh's alone,
+    /// and the late landing folds the file in at the next tick -- after which a PLT replace aims at the file's diffuse
+    /// and no longer at the mesh bitmap. Oracles: a hand-written <c>.mtr</c> text and the resrefs the replace must take
+    /// and must refuse.</summary>
     private static bool LateMaterialColumns()
     {
         Reset();
@@ -1114,15 +1114,14 @@ internal static partial class DbSelfCheck
         bool ok = SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_chest001"
                   && SceneDb.PartMtl[p].RenderHint == 0
                   && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0
-                  // ...and it is on the wait list, which is the only thing the edge revisits
-                  && PartTree.MaterialWaiting == 1;
+                  && MtrDef.Pending(mesh);
 
-        // ...and the read lands. The edge is the one re-ask: nothing else revisits a built part's material.
+        // ...and the read lands, as the feed reports a material something was built without
         MtrDef.Bytes = n => n == "cx_late_mat"
             ? Encoding.ASCII.GetBytes("texture0 cx_chest003\nrenderhint NormalAndSpecMapped\n") : null;
         MtrDef.Answered = _ => true;
-        DrawRecipe.MaterialLanded();
-        ok &= PartTree.ReseedMaterials() == 1 && PartTree.MaterialWaiting == 0;
+        OverrideReset.Landed("cx_late_mat");
+        TexRegistry.Tick();
         ok &= SceneDb.PartMtr[p] != null && SceneDb.PartTexName(p, 0) == "cx_chest003"
               && SceneDb.PartMtl[p].RenderHint == 2;
         // ...and the part is MARKED, which is what rewrites its record and re-resolves its texture slots
@@ -1138,32 +1137,31 @@ internal static partial class DbSelfCheck
         return ok;
     }
 
-    /// <summary>A material the layer has ANSWERED for and that does not exist: final, so the part has nothing
-    /// to wait for and must not be enqueued -- otherwise every part of a vanilla area (whose bitmap names no
-    /// <c>.mtr</c>) would sit on the wait list for the session. Oracle: the waiting count, hand-written.</summary>
-    private static bool AbsentMaterialNeverWaits()
+    /// <summary>A part built while its material had only been asked for, whose answer is "no such file": nothing landed,
+    /// so nothing built from the name is worked out again -- otherwise every vanilla part (whose bitmap names no
+    /// <c>.mtr</c>) would be rewritten once its answer came. Oracle: the part's dirty bits and its mesh's own resref.</summary>
+    private static bool AbsentMaterialRewritesNothing()
     {
+        using var files = new StandInFiles();
         Reset();
-        MtrDef.Forget();
-        MtrDef.Bytes = _ => null;
-        MtrDef.Answered = _ => true;   // asked and answered: there is no such file
         MeshDef mesh = Quad("cx_absent_tex");
         var model = Model("cx_absent", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
                           new MeshDef?[] { null, mesh });
         DbId obj = NewObject();
         if (!PartTree.Build(obj, model)) return false;
         int p = SceneDb.ObjPartFirst[obj.Index] + 1;
-        if (PartTree.MaterialWaiting != 0) return false;
-        // ...and a landing edge therefore has nothing to do for it
-        DrawRecipe.MaterialLanded();
-        return PartTree.ReseedMaterials() == 0 && SceneDb.PartMtr[p] == null
-               && SceneDb.PartTexName(p, 0) == "cx_absent_tex";
+        bool asked = MtrDef.Pending(mesh);
+        MtrFeed.Pump(4);
+        SceneDb.Parts.TakeDirty();
+        TexRegistry.Tick();
+        return asked && !MtrDef.Pending(mesh) && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0
+               && SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_absent_tex";
     }
 
-    /// <summary>A waiting part whose slot was freed and handed to another tree before the read landed: the
-    /// entry names a tenant that is gone, so it is dropped rather than folding one model's material into
-    /// another model's part. Oracle: the second tree's own columns, which must stay its mesh's.</summary>
-    private static bool RecycledWaiterDropped()
+    /// <summary>A part that waited on a <c>.mtr</c> whose slot was freed and handed to another tree before the read
+    /// landed: the landing reaches the parts that draw the name now, so the slot's new tenant keeps its own mesh's
+    /// columns. Oracle: the second tree's own resref.</summary>
+    private static bool LandingSkipsRecycledSlot()
     {
         Reset();
         MtrDef.Forget();
@@ -1176,7 +1174,6 @@ internal static partial class DbSelfCheck
         DbId a = NewObject();
         if (!PartTree.Build(a, first)) return false;
         int p = SceneDb.ObjPartFirst[a.Index] + 1;
-        if (PartTree.MaterialWaiting != 1) return false;
         PartTree.Free(a);
 
         // ...and the slot comes back to a tree whose mesh names no material at all
@@ -1185,10 +1182,12 @@ internal static partial class DbSelfCheck
         DbId b = NewObject();
         if (!PartTree.Build(b, second)) return false;
         if (SceneDb.ObjPartFirst[b.Index] + 1 != p) return false;   // the same slot, or this proves nothing
+        SceneDb.Parts.TakeDirty();
         MtrDef.Bytes = n => n == "cx_recyc_mat" ? Encoding.ASCII.GetBytes("texture0 cx_recyc_mtr\n") : null;
         MtrDef.Answered = _ => true;
-        DrawRecipe.MaterialLanded();
-        return PartTree.ReseedMaterials() == 0 && PartTree.MaterialWaiting == 0
-               && SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_recyc002";
+        OverrideReset.Landed("cx_recyc_mat");
+        TexRegistry.Tick();
+        return SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_recyc002"
+               && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0;
     }
 }

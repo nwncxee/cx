@@ -16,6 +16,7 @@ internal sealed class StandInFiles : IDisposable
     private readonly Func<string, bool>? _answered = MtrDef.Answered;
     private readonly Func<string, bool>? _reread = MtrDef.Reread;
     private readonly HashSet<(string, ushort)> _locked = new();
+    private readonly Dictionary<(string, ushort), int> _reads = new();
     private readonly TexRegistry.StandInRead? _read = TexRegistry.ResourceStandIn;
     private readonly bool _feed;
 
@@ -39,9 +40,13 @@ internal sealed class StandInFiles : IDisposable
         else _locked.Remove((name.ToLowerInvariant(), type));
     }
 
+    /// <summary>How many times file <paramref name="name"/> of <paramref name="type"/> has been asked for, readable or not.</summary>
+    internal int Reads(string name, ushort type) => _reads.TryGetValue((name.ToLowerInvariant(), type), out int n) ? n : 0;
+
     private byte[]? Read(string name, ushort type, out string? why)
     {
         var key = (name.ToLowerInvariant(), type);
+        _reads[key] = Reads(name, type) + 1;
         why = _locked.Contains(key) ? "the self-check holds it locked" : null;
         return why == null && _files.TryGetValue(key, out byte[]? b) ? b : null;
     }

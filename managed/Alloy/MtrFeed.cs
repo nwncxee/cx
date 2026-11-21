@@ -37,6 +37,9 @@ internal static unsafe class MtrFeed
     private static readonly Dictionary<string, string?> _shd = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Queue<string> _want = new();
     private static readonly HashSet<string> _queued = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Names <see cref="Cached"/> answered "not read yet": something was built without the material, so its
+    /// landing is a change <see cref="OverrideReset"/> carries to everything built from the name.</summary>
+    private static readonly HashSet<string> _early = new(StringComparer.OrdinalIgnoreCase);
 
     private static ExtenderLog? _log;
     private static bool _armed;
@@ -102,10 +105,14 @@ internal static unsafe class MtrFeed
     }
 
     /// <summary>Whatever the cache already holds; null for a name no pump has reached, which is queued for the
-    /// next one. Never reads.</summary>
+    /// next one and remembered as asked early. Never reads.</summary>
     private static byte[]? Cached(string name)
     {
-        lock (Gate) if (_bytes.TryGetValue(name, out byte[]? b)) return b;
+        lock (Gate)
+        {
+            if (_bytes.TryGetValue(name, out byte[]? b)) return b;
+            if (name.Length > 0 && _early.Count < MaxQueued) _early.Add(name);
+        }
         Hint(name);
         return null;
     }
@@ -214,14 +221,18 @@ internal static unsafe class MtrFeed
             }
         }
         else _absent++;
+        bool late;
         lock (Gate)
         {
             _hint[name] = hint;
             _bytes[name] = data;
+            late = _early.Remove(name) && data != null && !keepUnreadable;
         }
         // A recipe interned before this read took its coverage mode and its declared-water term from a
         // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
         if (data != null) DrawRecipe.MaterialLanded();
+        // ...and whatever was built while it was missing works it out again; a reread is an override's own reset
+        if (late) OverrideReset.Landed(name);
         return true;
     }
 
@@ -279,6 +290,7 @@ internal static unsafe class MtrFeed
             _shd.Clear();
             _want.Clear();
             _queued.Clear();
+            _early.Clear();
         }
     }
 

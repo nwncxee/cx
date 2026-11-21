@@ -433,9 +433,6 @@ public static partial class PartTree
         };
         for (int t = 0; t < 4; t++) SceneDb.PartTexId[p * 4 + t] = 0;
         SceneDb.PartPltOwn[p] = false;
-        // The two columns above that come from the FILE are provisional while the layer has not answered for
-        // this material: an answer can still arrive, and nothing else re-asks (PartTree.Material.cs).
-        if (mtr == null && MtrDef.Pending(mesh)) WaitForMaterial(p);
     }
 
     // ---------------------------------------------------------------- ComputePartBBox
@@ -868,15 +865,13 @@ public static partial class PartTree
                + (_dangly > 0 ? $", {_dangly} dangly parts NOT SOLVED (rest frame from the arena)" : "")
                + (_refused > 0 ? $", {_refused} trees REFUSED ({_refusedParts} parts past the {SceneDb.MaxParts} slots)" : "")
                + (_deepTrees > 0 ? $", {_deepTrees} chains past {MaxHops} hops" : "")
-               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "")
-               + (MaterialNote() is { Length: > 0 } mtr ? ", " + mtr : "");
+               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "");
     }
 
     /// <summary>Off-device reset, for the self-check suite.</summary>
     internal static void ResetForCheck()
     {
         _built = _merged = _collapsed = _refused = _refusedParts = _animMesh = _dangly = _deepTrees = 0;
-        _mtrWait = new MtrWaitState();
         PartGate.ResetForCheck();
     }
 }
