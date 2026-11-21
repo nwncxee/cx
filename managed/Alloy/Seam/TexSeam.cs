@@ -12,7 +12,7 @@ namespace CX.Alloy.Seam;
 /// standing in for <c>Gob::SetTextureAttributes</c> @0x43f9d0, <c>SetOverrideTextureFilter</c> @0x43b600 and
 /// <c>SetMaterialParam</c> @0x43cb20, over <see cref="TexRegistry"/> and <see cref="DrawRecipe"/>. Each is
 /// change-driven: it writes a column and marks the records that read it, never per frame.</summary>
-internal static class TexSeam
+internal static partial class TexSeam
 {
     private static ExtenderLog? _log;
 
@@ -102,6 +102,8 @@ internal static class TexSeam
     }
     /// <summary>The module edge: a server's <c>.txi</c> must not be shadowed by the previous module's answer.</summary>
     internal static void ModuleEdge() => _txiCache.Clear();
+    /// <summary>A server's override changed which <c>.txi</c> <paramref name="name"/> resolves to: the next apply reads it.</summary>
+    internal static void ForgetTxi(string name) => _txiCache.Remove(name);
     /// <summary><c>CResHelper&lt;CResTXI, 2022&gt;</c>.</summary>
     private const ushort TxiResType = 2022;   // not-an-offset: restype id (TXI)
     private static readonly Dictionary<string, string?> _txiCache = new(StringComparer.OrdinalIgnoreCase);

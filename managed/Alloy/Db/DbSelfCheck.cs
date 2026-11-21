@@ -13,7 +13,7 @@ namespace CX.Alloy.Db;
 /// <see cref="ModelDef"/> fixtures, with no engine and no GL. Every expected value below comes from the
 /// decompilation named on its check, not from running the code.
 /// </summary>
-internal static class DbSelfCheck
+internal static partial class DbSelfCheck
 {
     /// <summary>The recipe's blend constants are table INDICES and <see cref="Issue.BlendGl"/> is the one
     /// translation, so a wrong index is three valid indices naming the wrong factors: nothing throws and only

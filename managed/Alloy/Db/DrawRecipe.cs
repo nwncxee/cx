@@ -238,6 +238,16 @@ internal static partial class DrawRecipe
         _own.Held[r] = false; _own.Orphan[r] = false;
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
+        ReleaseMaterial(r);
+        _model[r] = null; _mesh[r] = null;
+        _rangeQueued[r] = false;
+        _own.Retiring.Add(r);
+        Retired++;
+    }
+
+    /// <summary>Give back what recipe <paramref name="r"/>'s material holds: its content row and its texture references.</summary>
+    private static void ReleaseMaterial(int r)
+    {
         if (_own.ContentRow[r] >= 0) { ContentTable.Free(_own.ContentRow[r], r); _own.ContentRow[r] = -1; }
         _own.Mtr[r] = null;
         _own.FaceTerms[r] = 0;
@@ -248,10 +258,29 @@ internal static partial class DrawRecipe
             _texId[o] = 0; _tex[o] = "";
             if (_texWait[o] != 0) { _texWait[o] = 0; _texPending--; }
         }
-        _model[r] = null; _mesh[r] = null;
-        _rangeQueued[r] = false;
-        _own.Retiring.Add(r);
-        Retired++;
+    }
+
+    /// <summary>A server's override changed the materials in <paramref name="names"/>: every held recipe drawing one
+    /// of them works its material terms and texture slots out again, in place, so the parts on it keep their recipe.
+    /// Answers how many did. Game thread, cold.</summary>
+    internal static int Refresh(HashSet<string> names)
+    {
+        int n = 0;
+        for (int r = 0; r < _n; r++)
+        {
+            MeshDef? mesh = _mesh[r];
+            ModelDef? model = _model[r];
+            if (!_own.Held[r] || mesh == null || model == null || (uint)_node[r] >= (uint)model.Nodes.Length
+                || !names.Contains(MtrDef.NameOf(mesh))) continue;
+            // a dynamic dangly recipe draws solved vertices and carries no palette, whatever the node's rig says
+            RecipeFlag skinned = _flags[r] & RecipeFlag.Skinned;
+            ReleaseMaterial(r);
+            FillMaterial(r, model.Nodes[_node[r]], mesh);
+            _flags[r] = (_flags[r] & ~RecipeFlag.Skinned) | skinned;
+            TexRegistry.WatchMask(Tex(r, 0));
+            n++;
+        }
+        return n;
     }
 
     /// <summary>Off-device: a held slot carrying exactly <paramref name="flags"/> and no model, mesh, range or
@@ -629,6 +658,29 @@ internal static partial class DrawRecipe
 
     private static void Fill(int r, NodeDef nd, MeshDef mesh)
     {
+        FillMaterial(r, nd, mesh);
+        _cos[r] = 1f; _sin[r] = 0f;
+        // A compiled mesh's bmin/bmax is the compiler's word, and community compilers get it wrong; the draw
+        // culls on this box, so it is grown over the vertices the arena actually draws.
+        Vector3 lo = mesh.BMin, hi = mesh.BMax, flo = lo, fhi = hi;
+        foreach (Vector3 v in mesh.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
+        if (lo != flo || hi != fhi)
+        {
+            if (BoxGrown++ == 0) BoxGrownFirst = $"{_model[r]?.Name}:{nd.Name} {flo}..{fhi} -> {lo}..{hi}";
+        }
+        _centre[r] = (lo + hi) * 0.5f;
+        Vector3 ex = hi - lo;
+        _radius[r] = 0.5f * ex.Length();
+        _box[r] = new Box { Min = lo, Max = hi };
+        _range[r] = MeshArena.Acquire(mesh);
+        if (_range[r] < 0 && !_rangeQueued[r] && _rangeWaitN < _rangeWait.Length)
+        { _rangeWait[_rangeWaitN++] = r; _rangeQueued[r] = true; }
+    }
+
+    /// <summary>Every term of recipe <paramref name="r"/> that comes from its material, and the texture slots it
+    /// names: what <see cref="Refresh"/> works out again when a server's override changes the material.</summary>
+    private static void FillMaterial(int r, NodeDef nd, MeshDef mesh)
+    {
         _amb[r] = new Vector4(mesh.Ambient, 1f);
         _dif[r] = new Vector4(mesh.Diffuse, 1f);
         // #126's blend pair as the engine states it: an .mdl declares none, so the default pair is the
@@ -724,22 +776,6 @@ internal static partial class DrawRecipe
         // until the texture lands, which is after the recipe is interned.
         if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
         TxiWords(r, additive, hinted);
-        _cos[r] = 1f; _sin[r] = 0f;
-        // A compiled mesh's bmin/bmax is the compiler's word, and community compilers get it wrong; the draw
-        // culls on this box, so it is grown over the vertices the arena actually draws.
-        Vector3 lo = mesh.BMin, hi = mesh.BMax, flo = lo, fhi = hi;
-        foreach (Vector3 v in mesh.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
-        if (lo != flo || hi != fhi)
-        {
-            if (BoxGrown++ == 0) BoxGrownFirst = $"{_model[r]?.Name}:{nd.Name} {flo}..{fhi} -> {lo}..{hi}";
-        }
-        _centre[r] = (lo + hi) * 0.5f;
-        Vector3 ex = hi - lo;
-        _radius[r] = 0.5f * ex.Length();
-        _box[r] = new Box { Min = lo, Max = hi };
-        _range[r] = MeshArena.Acquire(mesh);
-        if (_range[r] < 0 && !_rangeQueued[r] && _rangeWaitN < _rangeWait.Length)
-        { _rangeWait[_rangeWaitN++] = r; _rangeQueued[r] = true; }
     }
 
     /// <summary>R1-15 + tex-3: retire every recipe of <paramref name="model"/>. Subscribed to

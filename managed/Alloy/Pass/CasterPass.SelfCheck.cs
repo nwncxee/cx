@@ -10,6 +10,17 @@ namespace CX.Alloy;
 
 public sealed unsafe partial class CasterPass
 {
+    /// <summary>The caster list's version, which a re-stage of every caster's mask follows. For a check of an edge.</summary>
+    internal static int ListVersionForCheck => _listVer;
+
+    /// <summary>Set the pending shadow invalidate to <paramref name="on"/> and answer what it was. For a check of an edge.</summary>
+    internal static bool InvalidateForCheck(bool on)
+    {
+        bool was = _invalidate;
+        _invalidate = on;
+        return was;
+    }
+
     /// <summary>Headless check of the contracts that fail SILENTLY -- a wrong SSBO binding or record stride
     /// reads a neighbour's matrix and misplaces geometry rather than erroring, and swapping
     /// <c>gl_BaseInstance</c> for <c>gl_DrawID</c> would look correct today and break the moment M4's culling

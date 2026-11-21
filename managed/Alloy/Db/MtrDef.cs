@@ -42,6 +42,7 @@ public sealed class MtrDef
     {
         public Func<string, byte[]?>? Bytes;
         public Func<string, bool>? Answered;
+        public Func<string, bool>? Reread;
     }
 
     private static ProviderState _provider = new();
@@ -62,6 +63,15 @@ public sealed class MtrDef
     {
         get => _provider.Answered;
         set => _provider.Answered = value;
+    }
+
+    /// <summary>Make the layer read a material again, now, over what it answered before: a server's override changed
+    /// which file the name resolves to. False when the file exists and could not be read, and the old answer stands.
+    /// Set beside <see cref="Bytes"/>; null means there is nothing to read again.</summary>
+    public static Func<string, bool>? Reread
+    {
+        get => _provider.Reread;
+        set => _provider.Reread = value;
     }
 
     private static readonly Dictionary<string, MtrDef?> _cache = new(StringComparer.OrdinalIgnoreCase);
@@ -87,8 +97,8 @@ public sealed class MtrDef
     /// (a content dynamic sky) IS that material.</summary>
     public static MtrDef? Of(MeshDef mesh) => Resolve(NameOf(mesh));
 
-    /// <inheritdoc cref="Of"/>
-    private static string NameOf(MeshDef mesh) => mesh.MaterialName.Length > 0 ? mesh.MaterialName : mesh.Textures[0];
+    /// <summary>The material name <paramref name="mesh"/> draws with (<see cref="Of"/>).</summary>
+    internal static string NameOf(MeshDef mesh) => mesh.MaterialName.Length > 0 ? mesh.MaterialName : mesh.Textures[0];
 
     /// <summary>Could <paramref name="mesh"/> still gain a material a resolve has not seen? True only while
     /// the layer has not answered for its name -- an answered "no such file" is final, so a part built against
@@ -97,6 +107,20 @@ public sealed class MtrDef
 
     /// <summary>Could material <paramref name="name"/> still arrive? True only while the layer has not answered for it.</summary>
     public static bool Pending(string name) => name.Length > 0 && _provider.Answered is { } ask && !ask(name);
+
+    /// <summary>A server's override changed which <c>.mtr</c> <paramref name="name"/> resolves to: the layer reads it
+    /// again and the parse is dropped. Answers whether there was a material before or is one now -- false means
+    /// nothing built from the name can have changed. <paramref name="pending"/>: the file could not be read, so the
+    /// old material stands and nothing changed yet. Game thread.</summary>
+    public static bool Reset(string name, out bool pending)
+    {
+        pending = false;
+        if (name.Length == 0) return false;
+        if (_provider.Reread is { } reread && !reread(name)) { pending = true; return false; }
+        MtrDef? was;
+        lock (_cache) { _cache.TryGetValue(name, out was); _cache.Remove(name); }
+        return was != null || Resolve(name) != null;
+    }
 
     /// <summary>Forget every parsed material (the self-check, and a content reload).</summary>
     public static void Forget() { lock (_cache) _cache.Clear(); }

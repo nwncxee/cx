@@ -463,6 +463,22 @@ internal static unsafe partial class TexRegistry
         return true;
     }
 
+    /// <summary>A self-check's read of one resource: its bytes, or null with <paramref name="why"/> set when it
+    /// exists and cannot be read (null <paramref name="why"/>: no such resource), as <see cref="ReadResourceBytes"/> answers.</summary>
+    internal delegate byte[]? StandInRead(string resref, ushort resType, out string? why);
+
+    /// <summary>A self-check's stand-in for the engine's resource tables.</summary>
+    private sealed class ResourceStandInState { public StandInRead? Read; }
+    private static ResourceStandInState _resStandIn = new();
+
+    /// <summary>Answers every resource read while set: a self-check's own files by name and type, with no engine.
+    /// Null in a session.</summary>
+    internal static StandInRead? ResourceStandIn
+    {
+        get => _resStandIn.Read;
+        set => _resStandIn.Read = value;
+    }
+
     /// <summary>One small text resource (a <c>.txi</c>), read through the same location record and file
     /// handles a texture is. Game thread -- it reads the engine's resource tables -- and cold: the caller
     /// caches by name. Null when there is no such resource, which the caller reports.</summary>
@@ -475,6 +491,7 @@ internal static unsafe partial class TexRegistry
     internal static byte[]? ReadResourceBytes(string resref, ushort resType, out string? why)
     {
         why = null;
+        if (_resStandIn.Read is { } stand) return stand(resref, resType, out why);
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) return null;
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
         ResRef(resref, name);
@@ -661,6 +678,7 @@ internal static unsafe partial class TexRegistry
     internal static void Tick()
     {
         ApplyResets();
+        OverrideReset.Tick();
         // The seven palettes, read where a resource read belongs: needed the first time a PLT record draws.
         // PltVerify loads them itself when Alloy is off, which is why this does not force it.
         if (Renderer.On && !PltPalettes.Loaded) PltPalettes.LoadDefaults();
@@ -735,6 +753,7 @@ internal static unsafe partial class TexRegistry
             }
             // Released while it loaded: Release already filed it on the idle list, and filing it twice links it to itself.
             if (_state[i] == TexState.Idle) { IdleUnlink(i); _idleBytes -= _bytes[i]; }
+            MaskSettled(i);
             _cov[i] = cov;
             _bumpyShiny[i] = bumpyShiny;
             CoverageSerial++; TableSerial++;
@@ -797,6 +816,7 @@ internal static unsafe partial class TexRegistry
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;
+            MaskSettled(i);
             name = _resref[i] ?? "?"; kind = _kind[i];
             MarkDependents(i);
             // Released while it loaded: Failed must not stay linked on the idle list an acquire would not unlink.

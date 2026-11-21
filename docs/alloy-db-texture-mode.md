@@ -37,7 +37,7 @@ seam-feed streams install the hooks and the vtable slots.
 | `Scene::ReplaceTileTexture(Vector const&, char const*, char const*)` @0x45f090 (slot 10; Win 9) | `_ZN5Scene18ReplaceTileTextureERK6VectorPKcS4_` | `?ReplaceTileTexture@Scene@@UEAAXAEBVVector@@PEBD1@Z` | `TexRegistry.Swap` over the tile's parts (owner: the tiles stream, CX-116) |
 | `AurTextureRefreshAll()` @0x48f050 | `_Z20AurTextureRefreshAllv` | `?AurTextureRefreshAll@@YAXXZ` | no-op: a registry slot is content-keyed and never stale |
 | `AurTextureSuspendUpdates()` @0x486af0 / `AurTextureResumeUpdates()` @0x486b00 | `_Z24AurTextureSuspendUpdatesv` / `_Z23AurTextureResumeUpdatesv` | `?AurTextureSuspendUpdates@@YAXXZ` / `?AurTextureResumeUpdates@@YAXXZ` | no-op: the registry has no update list to suspend |
-| `AurResetTexture(char const*)` @0x48fa90 | `_Z15AurResetTexturePKc` | `?AurResetTexture@@YAXPEBD@Z` | After the stock reset, retire idle copies of the named texture and reload its live registry slots from the current resource table. |
+| `AurResetTexture(char const*)` @0x48fa90 | `_Z15AurResetTexturePKc` | `?AurResetTexture@@YAXPEBD@Z` | After the stock reset, retire idle copies of the named texture and reload its live registry slots from the current resource table. The name's `.mtr` and `.txi` are read again too (`OverrideReset`), and every recipe, part and particle emitter drawing that material works its material out again in place, as `SharedMaterial::RefreshSharedMaterial` does for the engine. |
 
 ### Registry API the renderer and the seam use
 

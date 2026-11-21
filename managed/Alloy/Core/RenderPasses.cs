@@ -387,7 +387,7 @@ internal static class RenderPasses
         {
             Name = "mesharena",
             Attach = l => { CX.Alloy.Db.MeshArena.Attach(l); CX.Alloy.Db.PartTree.Attach(l); },
-            SelfCheck = l => CX.Alloy.Db.DbSelfCheck.Run(l),
+            SelfCheck = l => { CX.Alloy.Db.DbSelfCheck.Run(l); CX.Alloy.Db.DbSelfCheck.MaterialResetApprovedExamplesSelfCheck(l); CX.Alloy.Db.DbSelfCheck.MaterialResetHoldsTodaySelfCheck(l); },
             ContextLost = CX.Alloy.Db.MeshArena.ContextLost,
             // the live comparison is per AREA, so the world edge re-arms it
             Revoke = () => { CX.Alloy.Db.PartTree.AreaEdge(); },
@@ -414,7 +414,7 @@ internal static class RenderPasses
         {
             Name = "texreg",
             Attach = l => { Db.TexRegistry.Attach(l); Db.PltColors.Attach(l); Db.PltVerify.Attach(l); Db.ContentTable.Attach(l); },
-            SelfCheck = l => { Db.TexRegistry.SelfCheck(l); Seam.TexSeam.SelfCheck(l); Db.ContentTable.SelfCheck(l); },
+            SelfCheck = l => { Db.TexRegistry.SelfCheck(l); Seam.TexSeam.SelfCheck(l); Seam.TexSeam.TxiResetApprovedExamplesSelfCheck(l); Db.ContentTable.SelfCheck(l); },
             // No Revoke: every slot is keyed on CONTENT (a resref, a kind, a cell), so a world edge
             // invalidates nothing in it -- which is the whole point of the registry replacing the engine's
             // per-area CAurTexture population.
