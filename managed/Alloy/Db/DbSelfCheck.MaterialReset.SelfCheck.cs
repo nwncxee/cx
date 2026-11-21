@@ -166,9 +166,9 @@ internal static partial class DbSelfCheck
     /// <summary>Frames a check waits for a name the first retry left out: two retries of fifteen frames, and slack.</summary>
     private const int SecondRetryTicks = 40;
 
-    /// <summary>A name that fails its retry goes behind the names not yet tried: of nine unreadable files, the eight the
-    /// first retry read stay locked, and the ninth, made readable, takes its file at the next retry and not after
-    /// the eight give up. Oracle: the stand-in's own count of the reads it answered, and the hand-written paving text.</summary>
+    /// <summary>A name that fails its retry goes behind the names not yet tried: of nine unreadable files, the ninth, made
+    /// readable, takes its file at the next retry and not after the eight give up; one an override reads meanwhile is
+    /// not read again when its turn comes. Oracle: the stand-in's own count of the reads it answered, and the paving text.</summary>
     private static void UnreadableRetriesTakeTurns(Checker check)
     {
         const int Names = 9;
@@ -209,6 +209,14 @@ internal static partial class DbSelfCheck
         check.Expect(Took(new[] { names[left] }) == 1,
                      $"'{names[left]}', left out of the first retry and readable again, still had not taken its file "
                      + $"{SecondRetryTicks} frames later: the names that failed again went ahead of it");
+        string done = names[(left + 1) % Names];
+        files.Lock(done, StandInFiles.Mtr, false);
+        TexRegistry.QueueReset(done);
+        TexRegistry.Tick();
+        int reads = files.Reads(done, StandInFiles.Mtr);
+        for (int t = 0; t < SecondRetryTicks; t++) TexRegistry.Tick();
+        check.Expect(Took(new[] { done }) == 1 && files.Reads(done, StandInFiles.Mtr) == reads,
+                     $"'{done}', read by an override while its retry turn was still queued, was read again when the turn came");
         for (int k = 0; k < Names; k++) files.Lock(names[k], StandInFiles.Mtr, false);
         for (int t = 0; t < RetryTicks && Took(names) < Names; t++) TexRegistry.Tick();
     }
