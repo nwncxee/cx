@@ -129,6 +129,18 @@ internal static class FontRegistryRegressions
             return asItIs && slanted;
         });
 
+        Example(check, "R17 a hak's face draws the resource's own bytes, which no file on disk holds", () =>
+        {
+            FontCatalog was = FontRegistry.UseCatalog(FontCatalog.Empty);
+            FontCatalog wasContent = FontRegistry.UseContent(FontCatalog.FromContent(new[] { ("hakdv_b", true, FontRegistryApprovedExamples.Fixture("DejaVuSans-Bold.ttf")) }));
+            try
+            {
+                string key = FontRegistry.FaceKey(DejaVu, 700, FontRegistry.StyleNormal);
+                return FontRegistry.Bytes(key) is byte[] b && Sfnt.Read(b, 0)?.FullName == "DejaVu Sans Bold" && FontRegistry.Effective(key) == key;
+            }
+            finally { FontRegistry.UseContent(wasContent); FontRegistry.UseCatalog(was); }
+        });
+
         Example(check, "R9 a cfg name shadows an installed family, and draws its own file at any weight", () =>
         {
             Settings.Read($"font.{DejaVu}={Path.Combine(dir, "DejaVuSans-ExtraLight.ttf")}\n");

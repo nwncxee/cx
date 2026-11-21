@@ -49,6 +49,7 @@ internal static partial class FontRegistryApprovedExamples
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { log.Info($"FontRegistryApprovedExamples: {dir} left behind ({ex.GetType().Name})"); }
         }
         check.Expect(FontRegistry.Names.SequenceEqual(names), "the client's own font list is back as it was");
+        check.Expect(UiKnobs.Typeface.Choices.SequenceEqual(names), "the UI's Typeface row offers the client's own list again");
         log.Info(check.Ok ? "FontRegistryApprovedExamples.SelfCheck: passed" : "FontRegistryApprovedExamples.SelfCheck: FAILED");
     }
 
