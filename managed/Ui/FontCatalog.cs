@@ -19,7 +19,7 @@ public sealed class FontCatalog
     public static readonly FontCatalog Empty = new(new List<Face>(), new Dictionary<string, Face>());
 
     /// <summary>The OS/2 width class of normal letters; any other width is a family of its own.</summary>
-    private const int NormalWidth = 5;
+    internal const int NormalWidth = 5;
     /// <summary>Words a family's own name uses for a width, kept in a family name that is not normal width.</summary>
     private static readonly string[] WidthWords = { "Condensed", "SemiCondensed", "Narrow", "Compressed", "Expanded", "Extended", "Wide" };
     /// <summary>The OS/2 width classes 1 to 9, named for a family whose name says no width of its own.</summary>
@@ -47,8 +47,9 @@ public sealed class FontCatalog
     public bool Holds(string family) => _families.ContainsKey(family);
 
     /// <summary>The fonts <paramref name="fcList"/> names (one path per line, fontconfig's own list; null when there is
-    /// no fontconfig), else the fonts under <paramref name="dirs"/>. Cold: it opens every font file it finds.</summary>
-    public static FontCatalog Scan(string? fcList, IEnumerable<string> dirs)
+    /// no fontconfig), else the fonts under <paramref name="dirs"/>; <paramref name="skipped"/> hears each folder it could not
+    /// walk. Cold: it opens every font file it finds.</summary>
+    public static FontCatalog Scan(string? fcList, IEnumerable<string> dirs, Action<string>? skipped = null)
     {
         var paths = new SortedSet<string>(StringComparer.Ordinal);
         if (fcList != null)
@@ -61,7 +62,7 @@ public sealed class FontCatalog
             {
                 if (dir.Length == 0 || !Directory.Exists(dir)) continue;
                 try { foreach (string f in Directory.EnumerateFiles(dir, "*", opt)) paths.Add(f); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }   // an unreadable folder offers nothing
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { skipped?.Invoke($"{dir} ({ex.GetType().Name})"); }
             }
         }
         var faces = new List<Face>();
@@ -138,8 +139,8 @@ internal static class Sfnt
 
     /// <summary>Tags as big-endian numbers.</summary>
     private const uint TrueType = 0x00010000, Otto = 0x4F54544F, TrueMac = 0x74727565, Ttcf = 0x74746366;   // not-an-offset: sfnt tags
-    private const uint NameTag = 0x6E616D65, Os2Tag = 0x4F532F32, FvarTag = 0x66766172, GlyfTag = 0x676C7966, CffTag = 0x43464620;   // not-an-offset: table tags
-    private const uint WghtTag = 0x77676874;   // not-an-offset: the weight axis tag
+    /// <summary>The weight axis's tag in <c>fvar</c>.</summary>
+    internal const string WeightAxis = "wght";
     /// <summary>OS/2 fsSelection's italic and oblique bits.</summary>
     private const int ItalicBit = 1, ObliqueBit = 1 << 9;
 
@@ -156,27 +157,30 @@ internal static class Sfnt
     internal static int Offset(byte[] b, int index)
         => BinaryPrimitives.ReadUInt32BigEndian(b) == Ttcf ? (int)BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(12 + index * 4)) : 0;
 
+    /// <summary>Font <paramref name="index"/>'s table directory: each table's tag, offset into the file, and length.</summary>
+    internal static Dictionary<string, (int Off, int Len)> Tables(byte[] b, int index)
+    {
+        int at = Offset(b, index);
+        var tables = new Dictionary<string, (int, int)>(StringComparer.Ordinal);
+        for (int i = 0, n = BinaryPrimitives.ReadUInt16BigEndian(b.AsSpan(at + 4)); i < n; i++)
+        {
+            int rec = at + 12 + i * 16;
+            tables[Encoding.ASCII.GetString(b, rec, 4)] = ((int)BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(rec + 8)), (int)BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(rec + 12)));
+        }
+        return tables;
+    }
+
     /// <summary>The facts of font <paramref name="index"/> in <paramref name="b"/>, or null when it is no readable font.</summary>
     internal static Info? Read(byte[] b, int index)
     {
         try
         {
-            int at = Offset(b, index);
-            int n = BinaryPrimitives.ReadUInt16BigEndian(b.AsSpan(at + 4));
-            int name = -1, os2 = -1, fvar = -1;
-            bool outlines = false;
-            for (int i = 0; i < n; i++)
-            {
-                int rec = at + 12 + i * 16;
-                uint tag = BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(rec));
-                int off = (int)BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(rec + 8));
-                if (tag == NameTag) name = off;
-                else if (tag == Os2Tag) os2 = off;
-                else if (tag == FvarTag) fvar = off;
-                else if (tag is GlyfTag or CffTag) outlines = true;
-            }
-            if (name < 0) return null;
-            int weight = 400, width = 5, sel = 0;
+            Dictionary<string, (int Off, int Len)> tables = Tables(b, index);
+            if (!tables.TryGetValue("name", out var nameTable)) return null;
+            int name = nameTable.Off;
+            int os2 = tables.TryGetValue("OS/2", out var o) ? o.Off : -1, fvar = tables.TryGetValue("fvar", out var v) ? v.Off : -1;
+            bool outlines = tables.ContainsKey("glyf") || tables.ContainsKey("CFF ");
+            int weight = FontRegistry.Regular, width = FontCatalog.NormalWidth, sel = 0;
             if (os2 >= 0)
             {
                 weight = BinaryPrimitives.ReadUInt16BigEndian(b.AsSpan(os2 + 4));
@@ -191,7 +195,7 @@ internal static class Sfnt
                 for (int a = 0; a < count; a++)
                 {
                     int rec = axes + a * size;
-                    if (BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(rec)) != WghtTag) continue;
+                    if (Encoding.ASCII.GetString(b, rec, 4) != WeightAxis) continue;
                     vmin = BinaryPrimitives.ReadInt32BigEndian(b.AsSpan(rec + 4)) >> 16;
                     vmax = BinaryPrimitives.ReadInt32BigEndian(b.AsSpan(rec + 12)) >> 16;
                 }

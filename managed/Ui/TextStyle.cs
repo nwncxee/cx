@@ -35,8 +35,7 @@ public sealed class TextStyle
     /// <summary>The values a Default style row offers, index-aligned with <see cref="StyleNames"/>.</summary>
     public static readonly int[] RowStyles = { FontRegistry.StyleAsUi, FontRegistry.StyleNormal, FontRegistry.StyleItalic };
     /// <summary>The registry name this element's text draws with, its typeface, weight and style rows applied over the UI's.</summary>
-    public string FaceName => FontRegistry.FaceKey(Typeface.V == FontRegistry.DefaultName ? UiKnobs.Typeface.V : Typeface.V,
-                                                   Weight.V > 0 ? Weight.V : UiKnobs.FontWeight.V, Style.V > 0 ? Style.V : UiKnobs.FontStyle.V);
+    public string FaceName => FontRegistry.UiFace(Typeface.V, Weight.V, Style.V);
     private readonly string _what;
     private GlyphAtlas? _face;
     /// <summary>The last (typeface, px) a miss asked a bake for: in flight or refused, so it is not asked again.</summary>
@@ -71,7 +70,7 @@ public sealed class TextStyle
                             help: $"How heavy the letters of {what} are, for text that asks for no weight of its own; as UI follows the UI's.");
         Style = g.Dropdown(prefix + "style", "Default style", RowStyles, FontRegistry.StyleAsUi, StyleNames, layout: true, tier: tier, changed: changed,
                            help: $"Upright or italic letters for {what}, for text that asks for no style of its own; as UI follows the UI's.");
-        Weight.ShowIf = Style.ShowIf = () => FontRegistry.IsFamily(Typeface.V == FontRegistry.DefaultName ? UiKnobs.Typeface.V : Typeface.V);   // one face takes no weight
+        Weight.ShowIf = Style.ShowIf = () => FontRegistry.IsFamily(FontRegistry.UiFamily(Typeface.V));   // one face takes no weight
         Outline = g.Dropdown(prefix + "outline", "Text outline", OutlineLevels, outline, OutlineNames, tier: tier, changed: changed,
                              help: $"A dark edge around the letters of {what}, so they read over a bright scene.");
         if (g.Registered) lock (s_all) s_all.Add(this);

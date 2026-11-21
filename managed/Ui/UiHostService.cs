@@ -440,7 +440,7 @@ public sealed unsafe class UiHostService : IExtenderService
     }
 
     /// <summary><c>ui.typeface</c>'s set: rebind <c>default</c> and re-bake (cold).</summary>
-    internal static void ApplyTypeface() => TextRig.SetTypeface(FontRegistry.FaceKey(UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V));
+    internal static void ApplyTypeface() => TextRig.SetTypeface(FontRegistry.UiFace());
 
     /// <summary>Track the engine's live GUI scale (<c>CAurora::GetGUIScale</c>) into <see cref="Metrics.GameUiScale"/>
     /// so windowed content scales with the game's UI-scaling option. A cheap float read every frame -- the static it

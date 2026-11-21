@@ -77,7 +77,7 @@ internal static class PanelMarkup
 
     /// <summary>True when <paramref name="s"/> is a weight a card may ask for: a whole number from 100 to 900.</summary>
     internal static bool IsWeight(string s)
-        => int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out int w) && w is >= 100 and <= 900;
+        => int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out int w) && w >= Ui.TextStyle.Weights[0] && w <= Ui.TextStyle.Weights[^1];
 
     /// <summary>True when <paramref name="body"/> is a tag this markup knows, with a value that parses.</summary>
     private static bool Tag(ReadOnlySpan<char> body, out string name, out string arg, out float size)

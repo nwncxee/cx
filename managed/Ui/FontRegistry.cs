@@ -13,6 +13,8 @@ namespace CX.Ui;
 public static class FontRegistry
 {
     public const string DefaultName = "default";
+    /// <summary>The weight of regular letters: a font that says no weight is this one.</summary>
+    public const int Regular = 400;
     /// <summary>The embedded DejaVuSans under its own reserved name: always loaded, never overridable from the
     /// cfg, because it is the chrome's icon source whatever <c>default</c> is bound to.</summary>
     public const string EmbeddedName = "embedded";
@@ -91,66 +93,7 @@ public static class FontRegistry
     }
 
     /// <summary>The installed fonts: the font folders walked once, cold, on first ask.</summary>
-    private static FontCatalog Catalog() => _catalog ??= FontCatalog.Scan(null, FontDirs());
-
-    /// <summary>The font's full name (name id 4; Windows/Unicode English first, the Mac Roman record as the
-    /// fallback) read through the table directory with three small reads, or null for anything that is not one
-    /// sfnt font. Internal for the self-check.</summary>
-    internal static string? FullName(string path)
-    {
-        try { using FileStream f = File.OpenRead(path); return FullName(f); }
-        catch (Exception) { return null; }
-    }
-
-    internal static string? FullName(Stream f)
-    {
-        try
-        {
-            Span<byte> hdr = stackalloc byte[12];
-            if (f.Read(hdr) < 12) return null;
-            uint tag = BinaryPrimitives.ReadUInt32BigEndian(hdr);
-            if (tag != 0x00010000 && tag != 0x4F54544F && tag != 0x74727565) return null;   // 1.0 / 'OTTO' / 'true'
-            int n = BinaryPrimitives.ReadUInt16BigEndian(hdr.Slice(4));
-            if (n == 0 || n > 64) return null;
-            var dir = new byte[n * 16];
-            if (f.Read(dir) < dir.Length) return null;
-            for (int i = 0; i < n; i++)
-            {
-                ReadOnlySpan<byte> rec = dir.AsSpan(i * 16, 16);
-                if (BinaryPrimitives.ReadUInt32BigEndian(rec) != 0x6E616D65) continue;   // 'name'
-                uint off = BinaryPrimitives.ReadUInt32BigEndian(rec.Slice(8)), len = BinaryPrimitives.ReadUInt32BigEndian(rec.Slice(12));
-                if (len < 6 || len > 1 << 20 || off + len > (ulong)f.Length) return null;
-                f.Seek(off, SeekOrigin.Begin);
-                var t = new byte[len];
-                return f.Read(t) < t.Length ? null : NameRecord(t, 4);
-            }
-        }
-        catch (Exception) { }
-        return null;
-    }
-
-    private static string? NameRecord(byte[] t, int wantId)
-    {
-        int count = BinaryPrimitives.ReadUInt16BigEndian(t.AsSpan(2)), strOff = BinaryPrimitives.ReadUInt16BigEndian(t.AsSpan(4));
-        string? win = null, uni = null, mac = null;
-        for (int i = 0; i < count; i++)
-        {
-            int r = 6 + i * 12;
-            if (r + 12 > t.Length) break;
-            ReadOnlySpan<byte> rec = t.AsSpan(r, 12);
-            int plat = BinaryPrimitives.ReadUInt16BigEndian(rec), enc = BinaryPrimitives.ReadUInt16BigEndian(rec.Slice(2));
-            int lang = BinaryPrimitives.ReadUInt16BigEndian(rec.Slice(4)), id = BinaryPrimitives.ReadUInt16BigEndian(rec.Slice(6));
-            int len = BinaryPrimitives.ReadUInt16BigEndian(rec.Slice(8)), off = BinaryPrimitives.ReadUInt16BigEndian(rec.Slice(10));
-            if (id != wantId || len == 0) continue;
-            int s = strOff + off;
-            if (s + len > t.Length) continue;
-            if (plat == 3 && (enc == 1 || enc == 0) && (win == null || lang == 0x409)) { win = Encoding.BigEndianUnicode.GetString(t, s, len); if (lang == 0x409) break; }
-            else if (plat == 0) uni ??= Encoding.BigEndianUnicode.GetString(t, s, len);
-            else if (plat == 1 && enc == 0) mac ??= Encoding.Latin1.GetString(t, s, len);
-        }
-        string? name = (win ?? uni ?? mac)?.Trim();
-        return string.IsNullOrEmpty(name) || name.Contains('\0') ? null : name;
-    }
+    private static FontCatalog Catalog() => _catalog ??= FontCatalog.Scan(null, FontDirs(), d => _log?.Info($"FontRegistry: {d} not walked"));
 
     /// <summary>The entry for <paramref name="name"/>: declared, or an installed font read on this first ask
     /// (a read failure is its refusal). Null for a name nobody knows.</summary>
@@ -327,7 +270,7 @@ public static class FontRegistry
     public readonly record struct Place(string Path, int Index, int Weight, bool Italic);
 
     /// <summary>Draw installed fonts from <paramref name="catalog"/> from now on; the catalog it replaces comes back.</summary>
-    public static FontCatalog UseCatalog(FontCatalog catalog)
+    internal static FontCatalog UseCatalog(FontCatalog catalog)
     {
         lock (_entries)
         {
@@ -356,7 +299,19 @@ public static class FontRegistry
     }
 
     /// <summary>True when <paramref name="name"/> is an installed family, so a weight or a style can pick its face.</summary>
-    public static bool IsFamily(string name) => FaceKey(name, 400, StyleNormal) != name;
+    public static bool IsFamily(string name) => FaceKey(name, Regular, StyleNormal) != name;
+
+    /// <summary>The family a row names: an empty or <c>default</c> typeface follows <c>ui.typeface</c>.</summary>
+    public static string UiFamily(string typeface) => typeface.Length == 0 || typeface == DefaultName ? UiKnobs.Typeface.V : typeface;
+
+    /// <summary>The face name of rows set over the UI's: a typeface <see cref="UiFamily"/> resolves, and a weight or style
+    /// of 0 that follows <c>ui.weight</c> or <c>ui.style</c>.</summary>
+    public static string UiFace(string typeface = "", int weight = 0, int style = 0)
+        => FaceKey(UiFamily(typeface), weight > 0 ? weight : UiKnobs.FontWeight.V, style > 0 ? style : UiKnobs.FontStyle.V);
+
+    /// <summary><see cref="RunFace"/> over the UI's own rows: a run of text in a card or on the main menu.</summary>
+    public static string UiRunFace(int runWeight, int runStyle, bool runSlant, out bool slant)
+        => RunFace(UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V, runWeight, runStyle, runSlant, out slant);
 
     /// <summary>Where <paramref name="name"/> draws from, an installed family's face or a declared name's file; null for a name nobody knows.</summary>
     public static Place? Where(string name)
@@ -364,7 +319,7 @@ public static class FontRegistry
         if (Face(name) is (FontCatalog.Face f, int w)) return new Place(f.Path, f.Index, w, f.Italic);
         if (Find(name) is not { Bytes: byte[] b } e) return null;
         Sfnt.Info? info = Sfnt.Read(b, e.Index);
-        return new Place(e.Source, e.Index, info?.Weight ?? 400, info?.Italic ?? false);
+        return new Place(e.Source, e.Index, info?.Weight ?? Regular, info?.Italic ?? false);
     }
 
     /// <summary>The face a run of text draws with: its own weight and style when it asks (non-zero), else the window's.
@@ -421,8 +376,8 @@ public static class FontRegistry
 
         // the name-table read on the embedded DejaVu, the choice list, and the default rebinding.
         if (Bytes(EmbeddedName) is byte[] emb)
-            check.Expect(FullName(new MemoryStream(emb)) == "DejaVu Sans", $"the embedded font's full name reads back ({FullName(new MemoryStream(emb))})");
-        check.Expect(FullName(new MemoryStream(Encoding.ASCII.GetBytes("not a font, not at all"))) == null, "a non-sfnt stream has no name");
+            check.Expect(Sfnt.Read(emb, 0)?.FullName == "DejaVu Sans", $"the embedded font's full name reads back ({Sfnt.Read(emb, 0)?.FullName})");
+        check.Expect(Sfnt.Count(Encoding.ASCII.GetBytes("not a font, not at all")) == 0, "a non-sfnt file holds no font");
         string[] names = Names;
         check.Expect(names.Length >= 1 && names[0] == DefaultName && names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length,
           $"the choices start with {DefaultName} and repeat nothing ({names.Length} names, {Catalog().Families.Length} installed families)");

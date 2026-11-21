@@ -10,17 +10,15 @@ internal static class VarFont
     /// <summary>Tables the static font leaves out: the variations themselves, and caches and hinting the new outlines
     /// would make stale.</summary>
     private static readonly string[] Dropped = { "fvar", "gvar", "avar", "HVAR", "MVAR", "VVAR", "STAT", "cvar", "DSIG", "hdmx", "LTSH", "VDMX", "cvt ", "fpgm", "prep" };
-    /// <summary>The weight axis's tag.</summary>
-    private const string Wght = "wght";
     /// <summary>A glyph's four phantom points, after its outline points: left side, advance, top, bottom.</summary>
     private const int Phantoms = 4;
     /// <summary>F2DOT14's one: the normalised coordinate's unit.</summary>
     private const double F2Dot14 = 16384.0;
 
     /// <summary>The component flags the rewrite reads or sets.</summary>
-    private const int ArgWords = 0x1, ArgsXy = 0x2, Scale = 0x8, More = 0x20, XyScale = 0x40, TwoByTwo = 0x80, Instructions = 0x100;
+    private const int ArgWords = 0x1, ArgsXy = 0x2, Scale = 0x8, More = 0x20, XyScale = 0x40, TwoByTwo = 0x80, Instructions = 0x100;   // not-an-offset: composite glyph flags
     /// <summary>gvar's tuple flags.</summary>
-    private const int EmbeddedPeak = 0x8000, Intermediate = 0x4000, PrivatePoints = 0x2000, TupleIndexMask = 0x0FFF, SharedPoints = 0x8000, CountMask = 0x0FFF;
+    private const int EmbeddedPeak = 0x8000, Intermediate = 0x4000, PrivatePoints = 0x2000, TupleIndexMask = 0x0FFF, SharedPoints = 0x8000, CountMask = 0x0FFF;   // not-an-offset: gvar tuple flags
 
     /// <summary>The font at <paramref name="index"/> of <paramref name="font"/> at weight <paramref name="weight"/>, every
     /// other axis at its default, as a static font; null when it is not a variable TrueType font.</summary>
@@ -28,7 +26,7 @@ internal static class VarFont
     {
         try
         {
-            var f = new Reader(font, Sfnt.Offset(font, index));
+            var f = new Reader(font, index);
             if (!f.Has("fvar") || !f.Has("gvar") || !f.Has("glyf") || !f.Has("loca") || !f.Has("hmtx")) return null;
             double[] at = Normalize(f, weight);
             Glyph[] glyphs = Glyphs(f);
@@ -65,7 +63,7 @@ internal static class VarFont
         {
             int rec = axes + a * size;
             double min = f.S32(rec + 4) / 65536.0, def = f.S32(rec + 8) / 65536.0, max = f.S32(rec + 12) / 65536.0;
-            double v = f.Tag(rec) == Wght ? Math.Clamp(weight, min, max) : def;
+            double v = f.Tag(rec) == Sfnt.WeightAxis ? Math.Clamp(weight, min, max) : def;
             double n = v < def ? (def == min ? 0 : (v - def) / (def - min)) : (max == def ? 0 : (v - def) / (max - def));
             at[a] = Math.Round(n * F2Dot14) / F2Dot14;
         }
@@ -430,15 +428,11 @@ internal static class VarFont
         /// <summary>Reads <paramref name="b"/> with no tables, for the packed-data decoders alone.</summary>
         public Reader(byte[] b) => _b = b;
 
-        public Reader(byte[] b, int at)
+        /// <summary>Reads font <paramref name="index"/> of <paramref name="b"/> through its table directory.</summary>
+        public Reader(byte[] b, int index)
         {
             _b = b;
-            int n = U16(at + 4);
-            for (int i = 0; i < n; i++)
-            {
-                int rec = at + 12 + i * 16;
-                _tables[Tag(rec)] = ((int)U32(rec + 8), (int)U32(rec + 12));
-            }
+            _tables = Sfnt.Tables(b, index);
         }
 
         public bool Has(string tag) => _tables.ContainsKey(tag);

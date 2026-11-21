@@ -258,7 +258,10 @@ public static unsafe class ChatRenderer
 
     /// <summary>Whether the credit line's gold run is slanted: true on an upright UI face, false on one already italic.</summary>
     internal static bool AttributionSlant()
-        => FontRegistry.Where(FontRegistry.FaceKey(UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V)) is not { Italic: true };
+    {
+        FontRegistry.UiRunFace(0, 0, true, out bool slant);
+        return slant;
+    }
 
     private static void BuildAttribution()
     {

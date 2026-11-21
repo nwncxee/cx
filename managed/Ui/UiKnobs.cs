@@ -43,10 +43,10 @@ internal static class UiKnobs
         Typeface = G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true,
                               help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search.",
                               changed: UiHostService.ApplyTypeface);
-        FontWeight = G.Dropdown("weight", "Default weight", TextStyle.Weights, 400, layout: true,
+        FontWeight = G.Dropdown("weight", "Default weight", TextStyle.Weights, FontRegistry.Regular, layout: true,
                             help: "How heavy the letters are, for text that asks for no weight of its own: 400 is regular, 700 bold. A family without that weight draws the nearest one it has.",
                             changed: UiHostService.ApplyTypeface);
-        FontStyle = G.Dropdown("style", "Default style", new[] { FontRegistry.StyleNormal, FontRegistry.StyleItalic }, FontRegistry.StyleNormal,
+        FontStyle = G.Dropdown("style", "Default style", TextStyle.RowStyles[1..], FontRegistry.StyleNormal,
                            TextStyle.StyleNames[1..], layout: true,
                            help: "Upright or italic letters, for text that asks for no style of its own. A family with no italic draws upright.",
                            changed: UiHostService.ApplyTypeface);
