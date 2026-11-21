@@ -20,19 +20,18 @@ internal static partial class GpuGolden
         string lib = ShaderSource.Get("cx_wx_shade.glsl"), lf = ShaderSource.Get("cx_lightfrag.glsl");
         string shade = Function(lib, "vec4 CxWxShade("), lamp = Function(lib, "vec3 CxWxLamp(");
         string point = Function(lf, "bool CxPointLight("), cut = Function(lf, "float CxReachCut(");
-        string wrap = Function(lf, "float CxWrap(");
-        bool have = shade.Length > 0 && lamp.Length > 0 && point.Length > 0 && cut.Length > 0 && wrap.Length > 0;
-        check.Expect(have, "rain look: cx_wx_shade declares CxWxShade and CxWxLamp, cx_lightfrag CxPointLight");
+        string wrap = Function(lf, "float CxWrap("), linear = ShaderResource.Tokens(Function(lf, "vec3 CxLightLinear("));
+        bool have = shade.Length > 0 && lamp.Length > 0 && point.Length > 0 && cut.Length > 0 && wrap.Length > 0 && linear.Length > 0;
+        check.Expect(have, "rain look: cx_wx_shade declares CxWxShade and CxWxLamp, cx_lightfrag CxPointLight and CxLightLinear");
         if (!have) return;
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 12) + """
             const vec3 uFalloff = vec3(1.0, 0.0, 1.0);
             const vec2 uAtten = vec2(0.0);
             const vec2 uHot = vec2(0.0);
             const float uReach = 0.0, uLightFloor = 0.0, uWrap = 0.0, uWrapN = 0.0, uDayDim = 1.0, cxLod = 1.0;
-            vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
             float CxSurfFade(vec3 L) { return 1.0; }
             bool cxFragNormal = false;
-            """ + Declaration(lf, "CX_SOFTEN") + cut + wrap + point + shade + lamp + """
+            """ + Declaration(lf, "CX_SOFTEN") + linear + cut + wrap + point + shade + lamp + """
             void main()
             {
                 int kind = int(uIn[gl_WorkGroupID.x * uint(CX_GOLD_IN)]);

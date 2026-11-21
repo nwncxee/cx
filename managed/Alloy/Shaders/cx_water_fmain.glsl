@@ -316,7 +316,7 @@ void main()
     // ---- composite ---------------------------------------------------------------------------
     ColorLiquid = mix(ColorLiquid, ColorRefraction, fRefractionTransparency);
     float fFresnelSpecularity = mix(CX_WATER_SPECULARITY, 1.0, CxFresnel(NdotV));
-    vec3 lit = ColorLiquid + ColorReflection * fFresnelSpecularity;
+    vec3 lit = CxLitFloor(ColorLiquid + ColorReflection * fFresnelSpecularity);
 
     // #129's term views, kept: water composites four things that can each be wrong on their own and
     // look identical in the sum. 9 = what is seen THROUGH the surface, 10 = the reflection,

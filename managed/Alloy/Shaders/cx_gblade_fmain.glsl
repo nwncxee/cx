@@ -35,7 +35,7 @@ void main()
     // self-occlusion inside the clump: the root sits in its neighbours' shade
     float ao = mix(1.0 - uRootAo, 1.0, sqrt(vRoot));
     float skyView = CxSkyView(vWorld, CX_SKY_UP);
-    vec3 lit = albedo * ((uAreaAmbient * vMatAmb * skyView + point * vMatDif) * ao
+    vec3 lit = albedo * (CxLitFloor(uAreaAmbient * vMatAmb * skyView + point * vMatDif) * ao
                         + (sun * ao + uAreaDiffuse * sh * back) * vMatDif)
              + uAreaDiffuse * sh * sheen;
     // CX-51: a blade reflects as the ground around it does -- the probe, under the split-sum

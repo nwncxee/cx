@@ -67,6 +67,18 @@ const int CX_CAP_MAX = 2;   // #336: the shadow cap's ceiling -- two NAMED candi
 // ship config runs and the shipped .shd assume (GAMMA_CORRECTION 1); plumb that param through if a
 // legacy-pipeline build ever needs the Alloy path.
 vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
+/// A LIGHT's colour to linear, as GetColorSpaceFromSRGB @0x45d850 takes it: a positive channel on the sRGB curve,
+/// a zero or negative one unchanged. A negative light (the Darkness spell's) stays negative and subtracts.
+vec3 CxLightLinear(vec3 c)
+{
+    return mix(c, pow(max(c, vec3(0.0)), vec3($SRGB$)), greaterThan(c, vec3(0.0)));
+}
+/// The light a lit total keeps: never under black. A negative light subtracts from the whole sum it reaches, and
+/// stock floors the sum (inc_lighting.shd:612 at a zero scene ambient, then the framebuffer), never one light.
+vec3 CxLitFloor(vec3 t)
+{
+    return max(t, vec3(0.0));
+}
 
 // The diffuse N.L every light takes: stock's softened curve (inc_lighting.shd:324-347 at quality 2), which
 // already reaches a little past the terminator, over a dot widened by `w` and divided by (1 + w) -- the
@@ -294,7 +306,7 @@ float CxLightImportance(uint li, vec3 worldPos)
         fade *= min((r2 - f2) / (r2 * 0.3), 1.0);
     }
     vec2 at = uAtten.x > 0.0 ? uAtten : vec2(1.0, 1.0);
-    return fade / (at.x + at.y * f2) * dot(uLights[li * 2u + 1u].rgb, vec3(0.299, 0.587, 0.114));
+    return fade / (at.x + at.y * f2) * dot(abs(uLights[li * 2u + 1u].rgb), vec3(0.299, 0.587, 0.114));
 }
 
 // #674: one light's colour, attenuation and geometry -- the per-light body, shared by the cluster loop
@@ -314,9 +326,9 @@ bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,
     float dd = dot(d, d);
     if (dd > rr) return false;
     // The walk already divided an overbright colour down by its max channel (spending the
-    // surplus on radius, as GetLightAdjustedColor does), so every channel is <= 1 here and the
-    // plain sRGB curve is the right linearization.
-    c = CxLinear(c0);
+    // surplus on radius, as GetLightAdjustedColor does), so every channel is <= 1 here. Signed: a
+    // negative light's colour subtracts, and every cut below reads its magnitude.
+    c = CxLightLinear(c0);
     // #140: the ENGINE's curve, range-normalised -- inc_lighting.shd's ComputePointLightSource
     // at GAMMA_CORRECTION == 1, verbatim. The authored range IS the shape here, which is the
     // whole reason a dim cave glow and a torch can share one formula: the glow's R is small and
@@ -330,7 +342,7 @@ bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,
     // the last 30% of the window, so neither can draw a ring -- the one mechanism, now with a per-light source
     // for the number. 1e30 from both (binreach 0 with reachfade off, floor 0) is the pre-window curve, term for
     // term: the floor's window is its own knob's, not /light reachfade's.
-    float rw = min(uReach > 0.0 ? uReach * uReach : 1e30, CxReachCut(c));
+    float rw = min(uReach > 0.0 ? uReach * uReach : 1e30, CxReachCut(abs(c)));
     // a light whose own brightness is already under the floor has NO reach: out before the fade divides by it
     // (rw and f2 are both 0 at the light's own centre, and 0/0 is a NaN that would poison the whole pixel)
     if (rw <= 0.0) return false;

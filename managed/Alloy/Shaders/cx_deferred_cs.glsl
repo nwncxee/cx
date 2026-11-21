@@ -344,7 +344,7 @@ bool CxTileReaches(int i, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn, out 
     // CX-188 budget: light.floor's own per-light cut as well, so the tile list is the window the walk will
     // apply (CxReachCut; 1e30 with the floor off, and then this is exactly the binreach radius as before).
     float r = pr.w * min(uReach > 0.0 ? min(uReach, 1.0) : 1.0,
-                         sqrt(min(CxReachCut(CxLinear(uLights[i * 2 + 1].rgb)), 1.0)));
+                         sqrt(min(CxReachCut(abs(CxLightLinear(uLights[i * 2 + 1].rgb))), 1.0)));
     vec3 e = (uView * vec4(pr.xyz, 1.0)).xyz;
     vec3 dv = e - clamp(e, lo, hi);
     if (dot(dv, dv) > r * r) return false;
@@ -577,7 +577,8 @@ void main()
 #endif
         vec4 hdr = imageLoad(uHdr, p);
         // alpha is the probe capture's 1 / distance, which this pass never runs for: hand it back untouched
-        imageStore(uHdr, p, vec4(hdr.rgb + add, hdr.a));
+        // a negative light's `add` is below zero: the pixel takes it and stops at black, as the framebuffer does
+        imageStore(uHdr, p, vec4(CxLitFloor(hdr.rgb + add), hdr.a));
 #ifdef CX_FILM_PASS
         }
 #endif

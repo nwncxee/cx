@@ -53,6 +53,7 @@ uint CxCluster(float depth) { return 0u; }
 uint CxClusterWalk(uint cluster) { return 0u; }
 int CxLightSlot(int w) { return -1; }
 vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
+vec3 CxLightLinear(vec3 c) { return vec3(0.0); }   // no light reaches a GUI scene: the loop it sits in never runs
 // The engine's lobe: a GUI program never uploads light.brdf, so it reads the engine's own forms.
 const vec4 uMaterial = vec4(0.0);
 #include "cx_matsynth.glsl"
