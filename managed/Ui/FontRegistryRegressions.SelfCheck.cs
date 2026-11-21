@@ -11,7 +11,7 @@ namespace CX.Ui;
 /// own tables and the literals written here.</summary>
 internal static class FontRegistryRegressions
 {
-    private const string DejaVu = "DejaVu Sans";
+    private const string DejaVu = "DejaVu Sans", Noto = "Noto Sans";
 
     /// <summary>Runs over the approved suite's fixture folder and catalog, which <paramref name="dir"/> holds.</summary>
     internal static void SelfCheck(Checker check, string dir)
@@ -52,12 +52,16 @@ internal static class FontRegistryRegressions
             finally { foreach (string k in new[] { "typeface", "weight", "style" }) Settings.Forget("cx-fontcheck-r7." + k); }
         });
 
-        Example(check, "R8 a weight row of its own no longer follows the UI", () =>
+        Example(check, "R8 a weight or style row of its own no longer follows the UI", () =>
         {
             TextStyle w = Window("cx-fontcheck-r8");
             bool before = w.FollowsUi;
             w.Weight.V = 700;
-            return before && !w.FollowsUi && ChatService.FollowsUi(Chat("")) && !ChatService.FollowsUi(Chat("", 700)) && !ChatService.FollowsUi(Chat("", 0, 2));
+            bool weighted = !w.FollowsUi;
+            w.Weight.V = 0;
+            w.Style.V = FontRegistry.StyleItalic;
+            bool styled = !w.FollowsUi;
+            return before && weighted && styled && ChatService.FollowsUi(Chat("")) && !ChatService.FollowsUi(Chat("", 700)) && !ChatService.FollowsUi(Chat("", 0, 2));
         });
 
         Example(check, "R10 an untouched point between two touched ones at its own place moves only when both move alike", () =>
@@ -97,6 +101,31 @@ internal static class FontRegistryRegressions
         Example(check, "R14 a run's own style wins over its block's", () =>
             PanelParser.TryParse("[{\"key\":\"k\",\"blocks\":[{\"text\":\"<n>x</n>y\",\"style\":\"italic\",\"italic\":true}]}]", out PanelDecl[] c, out _)
             && c.Length == 1 && c[0].Blocks[0].Runs is [{ Style: FontRegistry.StyleNormal }, { Style: FontRegistry.StyleItalic }]);
+
+        Example(check, "R15 a style picked on a chat window's gear is the window's", () =>
+        {
+            ChatWindow w = Chat(DejaVu);
+            var gear = new SettingsWindow();
+            gear.OpenAt(w, 1280, 800);
+            if (gear.Rows.Find(r => r.Text == "Default style") is not { } row) return false;
+            row.Selected = Array.IndexOf(row.Choices!, "Italic");
+            gear.Panel.RowPressed!(row);
+            return w.Style == FontRegistry.StyleItalic && gear.FontChanged && Drawn(ChatService.FaceName(w)) == "DejaVuSans-Oblique.ttf#0@400i";
+        });
+
+        Example(check, "R16 a card's <i> run is slanted on an upright face and drawn as it is on an italic one", () =>
+        {
+            var atlas = new GlyphAtlas { LineHeight = 18, Ascent = 14, SpaceAdvance = 5 };
+            atlas.Store('x', new Glyph { W = 4, H = 8, U1 = 1, V1 = 1, Advance = 5, YOff = -8 });
+            float[] Verts(string text)
+            {
+                PanelParser.TryParse($"[{{\"key\":\"k\",\"blocks\":[{{\"text\":\"{text}\"}}]}}]", out PanelDecl[] c, out _);
+                return PanelLayout.Build(c[0], 1f, m => (atlas, m), default).Text.AsSpan().ToArray();
+            }
+            bool asItIs = WithUi(Noto, 400, FontRegistry.StyleItalic, () => Verts("<i>x</i>").SequenceEqual(Verts("x")));
+            bool slanted = WithUi(Noto, 400, FontRegistry.StyleNormal, () => !Verts("<i>x</i>").SequenceEqual(Verts("x")));
+            return asItIs && slanted;
+        });
 
         Example(check, "R9 a cfg name shadows an installed family, and draws its own file at any weight", () =>
         {
