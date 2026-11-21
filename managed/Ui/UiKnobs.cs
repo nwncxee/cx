@@ -42,14 +42,14 @@ internal static class UiKnobs
         FontRegistry.MigrateStored("ui.typeface", "ui.weight", "ui.style");
         Typeface = FontRegistry.Lists(G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true, open: true,
                               help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, one installed on this machine, or one the server you are on supplies. Each element may pick its own in its Text rows. Type in the list to search.",
-                              changed: UiHostService.ApplyTypeface));
+                              changed: UiHostService.AskTypeface));
         FontWeight = G.Dropdown("weight", "Default weight", TextStyle.Weights, FontRegistry.Regular, layout: true,
                             help: "How heavy the letters are, for text that asks for no weight of its own: 400 is regular, 700 bold. A family without that weight draws the nearest one it has.",
-                            changed: UiHostService.ApplyTypeface);
+                            changed: UiHostService.AskTypeface);
         FontStyle = G.Dropdown("style", "Default style", TextStyle.RowStyles[1..], FontRegistry.StyleNormal,
                            TextStyle.StyleNames[1..], layout: true,
                            help: "Upright or italic letters, for text that asks for no style of its own. A family with no italic draws upright.",
-                           changed: UiHostService.ApplyTypeface);
+                           changed: UiHostService.AskTypeface);
         FontWeight.ShowIf = FontStyle.ShowIf = static () => FontRegistry.IsFamily(Typeface.V);   // the built-in face and a declared font are one face
         ConsoleScale = G.Slider("consolescale", "Console text size", 1f, 3f, 0.25f, 1.5f, "x", Tier.Advanced,
                                 help: "Size of the ~ console and the other text the game prints on screen, over the game's own 14px grid. Needs the Alloy renderer.");
