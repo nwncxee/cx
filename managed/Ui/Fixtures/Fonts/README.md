@@ -1,6 +1,6 @@
 # Font fixtures
 
-Small cuts of real fonts for the font self-checks: each keeps the glyphs of `Hamburgefonstiv HOLx01`, every name
+Small cuts of real fonts for the font self-checks: each keeps the glyphs of `Hamburgefonstiv HOLx01é`, every name
 record, OS/2 and its variation tables. `tools/fonts/make-fixtures.py` cuts them and writes
 `NotoSans-VF.golden.tsv`, fontTools' own instance of Noto Sans at each weight from 100 to 900.
 

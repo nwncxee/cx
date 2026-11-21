@@ -16,7 +16,7 @@ from fontTools.ttLib.ttCollection import TTCollection
 from fontTools.misc.roundTools import otRound
 from fontTools.varLib import instancer
 
-TEXT = "Hamburgefonstiv HOLx01"
+TEXT = "Hamburgefonstiv HOLx01é"
 DEJAVU = ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVuSans-ExtraLight.ttf", "DejaVuSans-Oblique.ttf",
           "DejaVuSans-BoldOblique.ttf", "DejaVuSansCondensed.ttf", "DejaVuSansCondensed-Bold.ttf"]
 WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900]

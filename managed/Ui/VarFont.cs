@@ -195,7 +195,7 @@ internal static class VarFont
             int tuples = header & CountMask;
             int serial = gv + f.U16(gv + 2);
             int[]? sharedPoints = null;
-            if ((header & SharedPoints) != 0) sharedPoints = Points(f, ref serial);
+            if ((header & SharedPoints) != 0) sharedPoints = f.Points(ref serial);
             int h = gv + 4;
             for (int t = 0; t < tuples; t++)
             {
@@ -214,9 +214,9 @@ internal static class VarFont
                 if (scalar != 0)
                 {
                     int p = serial;
-                    int[]? points = (index & PrivatePoints) != 0 ? Points(f, ref p) : sharedPoints;
+                    int[]? points = (index & PrivatePoints) != 0 ? f.Points(ref p) : sharedPoints;
                     int n = points?.Length ?? gl.X.Length;
-                    double[] dx = Deltas(f, ref p, n), dy = Deltas(f, ref p, n);
+                    double[] dx = f.Deltas(ref p, n), dy = f.Deltas(ref p, n);
                     Apply(gl, points, dx, dy, scalar);
                 }
                 serial = next;
@@ -266,7 +266,7 @@ internal static class VarFont
     }
 
     /// <summary>One axis of one contour: each untouched point takes the delta its two touched neighbours imply.</summary>
-    private static void Interpolate(double[] pos, double[] d, bool[] touched, int first, int last)
+    internal static void Interpolate(double[] pos, double[] d, bool[] touched, int first, int last)
     {
         var ref_ = new List<int>();
         for (int i = first; i <= last; i++) if (touched[i]) ref_.Add(i);
@@ -287,46 +287,6 @@ internal static class VarFont
                 }
             }
         }
-    }
-
-    /// <summary>gvar's packed point numbers at <paramref name="p"/>; null means every point.</summary>
-    private static int[]? Points(Reader f, ref int p)
-    {
-        int count = f.B(p++);
-        if (count == 0) return null;
-        if ((count & 0x80) != 0) count = ((count & 0x7F) << 8) | f.B(p++);
-        var pts = new int[count];
-        int v = 0;
-        for (int i = 0; i < count;)
-        {
-            int control = f.B(p++);
-            bool words = (control & 0x80) != 0;
-            for (int r = (control & 0x7F) + 1; r > 0 && i < count; r--)
-            {
-                v += words ? f.U16(p) : f.B(p);
-                p += words ? 2 : 1;
-                pts[i++] = v;
-            }
-        }
-        return pts;
-    }
-
-    /// <summary>gvar's packed deltas at <paramref name="p"/>: <paramref name="n"/> of them.</summary>
-    private static double[] Deltas(Reader f, ref int p, int n)
-    {
-        var d = new double[n];
-        for (int i = 0; i < n;)
-        {
-            int control = f.B(p++);
-            int run = (control & 0x3F) + 1;
-            for (; run > 0 && i < n; run--)
-            {
-                if ((control & 0x80) != 0) d[i++] = 0;
-                else if ((control & 0x40) != 0) { d[i++] = f.S16(p); p += 2; }
-                else d[i++] = (sbyte)f.B(p++);
-            }
-        }
-        return d;
     }
 
     /// <summary>The static font: the original's tables less <see cref="Dropped"/>, with new <c>glyf</c>, <c>loca</c>
@@ -462,10 +422,13 @@ internal static class VarFont
     private static int Round(double v) => (int)Math.Floor(v + 0.5);
 
     /// <summary>Big-endian reads over one font's tables, by tag, at absolute offsets into the file.</summary>
-    private sealed class Reader
+    internal sealed class Reader
     {
         private readonly byte[] _b;
         private readonly Dictionary<string, (int Off, int Len)> _tables = new(StringComparer.Ordinal);
+
+        /// <summary>Reads <paramref name="b"/> with no tables, for the packed-data decoders alone.</summary>
+        public Reader(byte[] b) => _b = b;
 
         public Reader(byte[] b, int at)
         {
@@ -488,5 +451,46 @@ internal static class VarFont
         public uint U32(int at) => BinaryPrimitives.ReadUInt32BigEndian(_b.AsSpan(at));
         public int S32(int at) => BinaryPrimitives.ReadInt32BigEndian(_b.AsSpan(at));
         public byte[] Slice(int at, int len) => _b.AsSpan(at, len).ToArray();
+
+        /// <summary>gvar's packed point numbers at <paramref name="p"/>; null means every point.</summary>
+        public int[]? Points(ref int p)
+        {
+            int count = B(p++);
+            if (count == 0) return null;
+            if ((count & 0x80) != 0) count = ((count & 0x7F) << 8) | B(p++);
+            var pts = new int[count];
+            int v = 0;
+            for (int i = 0; i < count;)
+            {
+                int control = B(p++);
+                bool words = (control & 0x80) != 0;
+                for (int r = (control & 0x7F) + 1; r > 0 && i < count; r--)
+                {
+                    v += words ? U16(p) : B(p);
+                    p += words ? 2 : 1;
+                    pts[i++] = v;
+                }
+            }
+            return pts;
+        }
+
+        /// <summary>gvar's packed deltas at <paramref name="p"/>: <paramref name="n"/> of them.</summary>
+        public double[] Deltas(ref int p, int n)
+        {
+            var d = new double[n];
+            for (int i = 0; i < n;)
+            {
+                int control = B(p++);
+                int run = (control & 0x3F) + 1;
+                for (; run > 0 && i < n; run--)
+                {
+                    if ((control & 0x80) != 0) d[i++] = 0;
+                    else if ((control & 0x40) != 0) { d[i++] = S16(p); p += 2; }
+                    else d[i++] = (sbyte)B(p++);
+                }
+            }
+            return d;
+        }
+
     }
 }
