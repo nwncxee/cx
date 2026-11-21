@@ -32,6 +32,7 @@ internal static partial class FontRegistryApprovedExamples
             Styles(check, dir);
             Variable(check, dir);
             Scan(check, dir);
+            FontRegistryRegressions.SelfCheck(check, dir);
         }
         finally
         {
@@ -74,7 +75,7 @@ internal static partial class FontRegistryApprovedExamples
     }
 
     /// <summary>One example: its checks, with a throw counted as a failure of that example rather than of the suite.</summary>
-    private static void Example(Checker check, string id, Func<bool> body)
+    internal static void Example(Checker check, string id, Func<bool> body)
     {
         bool ok;
         try { ok = body(); }
@@ -83,18 +84,18 @@ internal static partial class FontRegistryApprovedExamples
     }
 
     /// <summary>The file name and weight <paramref name="name"/> draws from, or "nothing".</summary>
-    private static string Drawn(string name)
+    internal static string Drawn(string name)
         => FontRegistry.Where(name) is FontRegistry.Place p ? $"{Path.GetFileName(p.Path)}#{p.Index}@{p.Weight}{(p.Italic ? "i" : "")}" : "nothing";
 
     /// <summary>A style of an unregistered group, so nothing it declares reaches the panel or cx.cfg.</summary>
-    private static TextStyle Window(string key)
+    internal static TextStyle Window(string key)
     {
         var g = new KnobGroup(key, "Test", "Font check", null, null, true, Effect.Live, null, null, "", register: false);
         return new TextStyle(g, "the window", sized: false);
     }
 
     /// <summary>Runs <paramref name="body"/> with the UI rows at the given values, putting them back after.</summary>
-    private static bool WithUi(string typeface, int weight, int style, Func<bool> body)
+    internal static bool WithUi(string typeface, int weight, int style, Func<bool> body)
     {
         string t = UiKnobs.Typeface.V;
         int w = UiKnobs.Weight!.V, s = UiKnobs.Style!.V;
@@ -104,7 +105,7 @@ internal static partial class FontRegistryApprovedExamples
     }
 
     /// <summary>A chat window drawing in <paramref name="typeface"/> at the given rows (0 follows the UI).</summary>
-    private static ChatWindow Chat(string typeface, int weight = 0, int style = 0)
+    internal static ChatWindow Chat(string typeface, int weight = 0, int style = 0)
         => new(0, 0, 400, 300, new[] { new Tab("All", 0xffffffff) }) { Typeface = typeface, Weight = weight, Style = style };
 
     /// <summary>The rows a chat window's gear shows, opened as a player opens it.</summary>
