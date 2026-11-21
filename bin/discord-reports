@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Print the CX Discord's #bug-reports forum: every post, open and archived, newest first, with its messages.
+
+Reads through the CX bot, whose token sits in the file `tools/paths.py DISCORD_TOKEN_FILE` names
+(default ~/cx-discord-token). The forum is found by name, so no server or channel id is kept here.
+Usage: bin/discord-reports [--forum NAME] [--since YYYY-MM-DD]
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import paths  # noqa: E402
+
+API = os.environ.get("DISCORD_API", "https://discord.com/api/v10")
+FORUM_TYPE = 15
+DISCORD_EPOCH_MS = 1420070400000
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--forum", default="bug-reports")
+    ap.add_argument("--since", help="only posts with a message on or after this date")
+    a = ap.parse_args()
+    tf = Path(paths.require("DISCORD_TOKEN_FILE"))
+    if not tf.is_file():
+        sys.exit(f"!! no Discord token at {tf}. It is left out of persistence on purpose, so reading Discord is the "
+                 "user's choice: ask the user to put the token back. Don't propose persisting it.")
+    token = tf.read_text().strip()
+
+    def get(p):
+        req = urllib.request.Request(API + p, headers={"Authorization": "Bot " + token,
+                                                       "User-Agent": "DiscordBot (cx-reports, 1.0)"})
+        for _ in range(5):
+            try:
+                return json.load(urllib.request.urlopen(req))
+            except urllib.error.HTTPError as e:
+                if e.code != 429:
+                    sys.exit(f"!! discord: {e.code} on {p}")
+                time.sleep(float(json.load(e).get("retry_after", 1)))
+        sys.exit(f"!! discord: still rate-limited on {p}")
+
+    forums = [(g["id"], c) for g in get("/users/@me/guilds") for c in get(f"/guilds/{g['id']}/channels")
+              if c["type"] == FORUM_TYPE and c["name"] == a.forum]
+    if not forums:
+        sys.exit(f"!! no forum named #{a.forum} on any server the bot is in")
+    for guild, forum in forums:
+        tags = {t["id"]: t["name"] for t in forum.get("available_tags", [])}
+        threads = {t["id"]: t for t in get(f"/guilds/{guild}/threads/active")["threads"]
+                   if t.get("parent_id") == forum["id"]}
+        before = ""
+        while True:
+            page = get(f"/channels/{forum['id']}/threads/archived/public?limit=100{before}")
+            threads.update({t["id"]: t for t in page["threads"]})
+            if not page.get("has_more") or not page["threads"]:
+                break
+            before = "&before=" + page["threads"][-1]["thread_metadata"]["archive_timestamp"]
+        for t in sorted(threads.values(), key=lambda t: int(t["id"]), reverse=True):
+            last = t.get("last_message_id") or t["id"]
+            if a.since and time.strftime("%Y-%m-%d", time.gmtime(((int(last) >> 22) + DISCORD_EPOCH_MS) / 1000)) < a.since:
+                continue
+            md = t.get("thread_metadata", {})
+            state = "archived" if md.get("archived") else "open"
+            print("=" * 80)
+            print(f"POST {t['id']} | {t['name']} | {state} | tags: {', '.join(tags.get(x, x) for x in t.get('applied_tags', [])) or '-'}")
+            for m in reversed(get(f"/channels/{t['id']}/messages?limit=100")):
+                att = f" +{len(m['attachments'])}att" if m.get("attachments") else ""
+                print(f"  [{m['timestamp'][:16]}] {m['author']['username']}{att}: {m['content']}")
+
+
+if __name__ == "__main__":
+    main()
