@@ -54,8 +54,16 @@ internal static unsafe partial class LightmapBake
         var lamp2 = (IntPtr)0x558;
         var at2 = at + new Vector3(30f, 0f, 0f);
         Area(); Walk2(white, white);
+        heard.Clear();
         Walk2(dim, dim);
         check.Expect(_drift.Closes == 1, $"two lights recoloured in one walk spent {_drift.Closes} re-closes, not 1");
+        check.Expect(Heard("db light 557") == 1 && Heard("db light 558") == 1, "...and cx.log names both, not only the first");
+
+        // a light dimmed in one channel alone is a different light
+        var redOnly = new Vector3(0.2f, 1f, 1f);
+        Area(); Walk(lamp, at, Reach, white, true);
+        Walk(lamp, at, Reach, redOnly, true); Walk(lamp, at, Reach, redOnly, true);
+        check.Expect(_setN == 1 && _setCol[0] == redOnly, $"a light dimmed in one channel after the close is baked as it was ({_setCol[0]})");
 
         // two set lights stacked on one place and reach, in two colours, are each their own entry: nothing re-closes
         Area();
@@ -113,7 +121,7 @@ internal static unsafe partial class LightmapBake
         Area(); Walk(lamp, at, Reach, white, true);
         ulong same = SetHash;
         Walk(lamp, at + new Vector3(0.01f, 0f, 0f), Reach * 1.0001f, white * 0.999f, true); Walk(lamp, at, Reach, white, true);
-        check.Expect(SetHash == same && !_rekeyPending, "a light within its bins of the close is the set's light: nothing re-keys");
+        check.Expect(SetHash == same && !_rekeyPending && _drift.Closes == 0, "a light within its bins of the close is the set's light: nothing re-keys");
 
         // a lantern bobbing 0.2 u across a 4 u bin edge of the set hash is still the set's light
         var bob = new Vector3(41.9f, 30f, 2f);

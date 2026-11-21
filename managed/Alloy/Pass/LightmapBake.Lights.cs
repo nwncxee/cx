@@ -231,7 +231,7 @@ internal static unsafe partial class LightmapBake
         _drift.Met[at] = true;
         Vector4 was = _stPosR[at];
         // at the close-time place: the 1 u a static light may bob must not flap the set across a 4 u bin edge
-        if (SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at]) || !Reclose()) return;
+        if (SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at]) || !_reopen && !Reclose()) return;
         _log?.Info($"LightmapBake: static light {Who(id)} changed after the close -- {Fmt(was, _stCol[at])} -> {Fmt(new Vector4(pos, adjR), color)}; the set re-closes and the rects it touched re-bake");
     }
 
@@ -252,11 +252,10 @@ internal static unsafe partial class LightmapBake
     /// <summary>Lights one re-close names by <see cref="Gone"/>; the rest are counted.</summary>
     private const int MaxGoneNamed = 8;
 
-    /// <summary>Reopens the set for a re-close, once per walk, unless the area has spent <see cref="MaxDriftCloses"/>;
-    /// then it says so once and the set stays as it stands.</summary>
+    /// <summary>Reopens the set for a re-close, unless the area has spent <see cref="MaxDriftCloses"/>; then it says so
+    /// once and the set stays as it stands. Callers ask only while the set is not already reopening.</summary>
     private static bool Reclose()
     {
-        if (_reopen) return false;
         if (_drift.Closes >= MaxDriftCloses)
         {
             if (!_drift.Said) _log?.Always($"LightmapBake: the static lights keep changing after the close -- {MaxDriftCloses} re-closes this area already, the set stays as it stands");
