@@ -78,6 +78,26 @@ internal static class FontRegistryRegressions
             return pts is [256, 261] && d is [0, 0, 5] && p == 9;
         });
 
+        Example(check, "R12 the bake is handed the font's index inside its collection", () =>
+        {
+            FontCatalog was = FontRegistry.UseCatalog(FontCatalog.Scan(null, new[] { Path.Combine(dir, "pair") }));
+            try { return FontRegistry.Index(FontRegistry.FaceKey("DejaVu Sans Condensed", 400, FontRegistry.StyleNormal)) == 1 && FontRegistry.Index(FontRegistry.FaceKey(DejaVu, 400, FontRegistry.StyleNormal)) == 0; }
+            finally { FontRegistry.UseCatalog(was); }
+        });
+
+        Example(check, "R13 an element's weight and style rows show only while its face is an installed family", () =>
+            WithUi(FontRegistry.DefaultName, 400, FontRegistry.StyleNormal, () =>
+            {
+                TextStyle w = Window("cx-fontcheck-r13");
+                bool hidden = !w.Weight.ShowIf!() && !w.Style.ShowIf!();
+                w.Typeface.V = DejaVu;
+                return hidden && w.Weight.ShowIf!() && w.Style.ShowIf!();
+            }));
+
+        Example(check, "R14 a run's own style wins over its block's", () =>
+            PanelParser.TryParse("[{\"key\":\"k\",\"blocks\":[{\"text\":\"<n>x</n>y\",\"style\":\"italic\",\"italic\":true}]}]", out PanelDecl[] c, out _)
+            && c.Length == 1 && c[0].Blocks[0].Runs is [{ Style: FontRegistry.StyleNormal }, { Style: FontRegistry.StyleItalic }]);
+
         Example(check, "R9 a cfg name shadows an installed family, and draws its own file at any weight", () =>
         {
             Settings.Read($"font.{DejaVu}={Path.Combine(dir, "DejaVuSans-ExtraLight.ttf")}\n");
