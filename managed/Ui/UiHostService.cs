@@ -19,6 +19,8 @@ public sealed unsafe class UiHostService : IExtenderService
         _log = log;
         UiCategory.SelfCheck(log);   // declares the UI groups in panel order, then checks their rows
         FrameRegistry.Global.Register(FramePhase.PostPresent, 70, PaletteShare.Tick, "Palettes.scan", log);
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 71, FontContent.Tick, "Fonts.content", log);
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 72, TypefaceTick, "Fonts.typeface", log);
         Capabilities.Register("palette", 1, static () => true);
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
         WorldLayerApprovedExamples.SelfCheck(log);   // plates and damage numbers under the game's panels (off-device)
@@ -440,7 +442,21 @@ public sealed unsafe class UiHostService : IExtenderService
     }
 
     /// <summary><c>ui.typeface</c>'s set: rebind <c>default</c> and re-bake (cold).</summary>
-    internal static void ApplyTypeface() => TextRig.SetTypeface(UiKnobs.Typeface.V);
+    internal static void ApplyTypeface() => TextRig.SetTypeface(FontRegistry.UiFace());
+
+    /// <summary>Set by a change of the UI's typeface, weight or style row; the next frame re-binds once, so a server's
+    /// three font lines in one message cost one bake, not three.</summary>
+    private static volatile bool _typefaceAsked;
+
+    /// <summary>A UI font row moved: <see cref="ApplyTypeface"/> on the next frame.</summary>
+    internal static void AskTypeface() => _typefaceAsked = true;
+
+    private static void TypefaceTick()
+    {
+        if (!_typefaceAsked) return;
+        _typefaceAsked = false;
+        ApplyTypeface();
+    }
 
     /// <summary>Track the engine's live GUI scale (<c>CAurora::GetGUIScale</c>) into <see cref="Metrics.GameUiScale"/>
     /// so windowed content scales with the game's UI-scaling option. A cheap float read every frame -- the static it

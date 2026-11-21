@@ -16,7 +16,9 @@ internal static unsafe class NuiSkinFontLoad
     internal const string FaceName = "nuiskin";
     /// <summary>The skin's resref, and the restypes of a <c>.tml</c> and a <c>.ttf</c>, read from <c>nwn_base.key</c>.</summary>
     private const string SkinResRef = "nui_skin";
-    private const ushort TmlResType = 2076, TtfResType = 2074;
+    private const ushort TmlResType = 2076;
+    /// <summary>The restype of a <c>.ttf</c>, read from <c>nwn_base.key</c>.</summary>
+    internal const ushort TtfResType = 2074;
 
     private sealed class LoadState
     {
@@ -61,8 +63,9 @@ internal static unsafe class NuiSkinFontLoad
         return px;
     }
 
-    /// <summary>One resource's bytes, from the file that holds it or from the NWSync store.</summary>
-    private static bool Read(string resref, ushort resType, out byte[]? bytes, out string? why)
+    /// <summary>One resource's bytes, from the file that holds it or from the NWSync store; with <paramref name="serverOnly"/>,
+    /// only when its winning copy is a hak's, the module's or NWSync's. Main thread.</summary>
+    internal static bool Read(string resref, ushort resType, out byte[]? bytes, out string? why, bool serverOnly = false)
     {
         bytes = null;
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) { why ??= "the resource manager is not attached"; return false; }
@@ -75,6 +78,7 @@ internal static unsafe class NuiSkinFontLoad
             if (!ResLocate.Find(p, resType, out IntPtr table, out IntPtr entry)) { why = "no such resource"; return false; }
             if (!ResLocate.Locate(table, entry, resId, out loc, out why, out ResLocate.Source src)) { why ??= $"the resource is {src}"; return false; }
         }
+        if (serverOnly && loc.Kind is not (KindErf or KindNwSync)) { why = "not a hak's, the module's or NWSync's"; return false; }
         if (loc.Kind != KindNwSync)
         {
             if (!_handles.Read(loc, out ReadOnlySpan<byte> raw, out why)) return false;

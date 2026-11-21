@@ -163,6 +163,8 @@ public sealed class Knob<T> : Knob
     /// <summary>A Dropdown whose values are found at runtime: any text its parser accepts is a value, listed or not
     /// (the file may name one before it is found), and <see cref="Offer"/> replaces the list.</summary>
     public bool Open { get; }
+    /// <summary>A server may hold this dropdown only at a value it lists now, though the player's own file may name any.</summary>
+    public bool HoldsListedOnly { get; internal set; }
 
     private T _bound;
     private T[]? _rungs;
@@ -200,6 +202,7 @@ public sealed class Knob<T> : Knob
     public override bool Enforce(string raw)
     {
         if (!Persisted || !TryParse(raw, out T v)) return false;
+        if (HoldsListedOnly && Array.IndexOf(Values, v) < 0) return false;
         if (!Enforced) _user = V;
         Enforced = true;
         V = v;

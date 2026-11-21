@@ -123,6 +123,7 @@ global using unsafe ExoConfigGetBoolFn = delegate* unmanaged<nint, byte*, byte, 
 global using unsafe ExoConfigGetLongFn = delegate* unmanaged<nint, byte*, byte, long>;
 global using unsafe ExoConfigGetDoubleFn = delegate* unmanaged<nint, byte*, byte, double>;
 global using unsafe StbttInitFontFn = delegate* unmanaged<byte*, byte*, int, int>;
+global using unsafe StbttGetFontOffsetForIndexFn = delegate* unmanaged<byte*, int, int>;
 global using unsafe StbttScaleForPixelHeightFn = delegate* unmanaged<byte*, float, float>;
 global using unsafe StbttGetFontVMetricsFn = delegate* unmanaged<byte*, int*, int*, int*, void>;
 global using unsafe StbttGetCodepointHMetricsFn = delegate* unmanaged<byte*, int, int*, int*, void>;
@@ -4466,6 +4467,10 @@ public static unsafe class EngineFn
     private static bool _StbttInitFontDone;
     /// <inheritdoc cref="SymbolMap.StbttInitFont"/>
     public static StbttInitFontFn StbttInitFont => (StbttInitFontFn)(_StbttInitFontDone ? _StbttInitFont : Resolve(ref _StbttInitFont, ref _StbttInitFontDone, SymbolMap.StbttInitFont));
+    private static IntPtr _StbttGetFontOffsetForIndex;
+    private static bool _StbttGetFontOffsetForIndexDone;
+    /// <inheritdoc cref="SymbolMap.StbttGetFontOffsetForIndex"/>
+    public static StbttGetFontOffsetForIndexFn StbttGetFontOffsetForIndex => (StbttGetFontOffsetForIndexFn)(_StbttGetFontOffsetForIndexDone ? _StbttGetFontOffsetForIndex : Resolve(ref _StbttGetFontOffsetForIndex, ref _StbttGetFontOffsetForIndexDone, SymbolMap.StbttGetFontOffsetForIndex));
     private static IntPtr _StbttScaleForPixelHeight;
     private static bool _StbttScaleForPixelHeightDone;
     /// <inheritdoc cref="SymbolMap.StbttScaleForPixelHeight"/>
@@ -6585,6 +6590,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.StbttInitFont"/>; returns the slot holding the next layer, or null.</summary>
     public static StbttInitFontFn* ChainStbttInitFont(this HookService h, StbttInitFontFn handler, int priority) =>
         (StbttInitFontFn*)h.Chain(SymbolMap.StbttInitFont, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttGetFontOffsetForIndex"/>; returns the original, or null.</summary>
+    public static StbttGetFontOffsetForIndexFn InstallStbttGetFontOffsetForIndex(this HookService h, StbttGetFontOffsetForIndexFn handler) =>
+        (StbttGetFontOffsetForIndexFn)h.Install(SymbolMap.StbttGetFontOffsetForIndex, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttGetFontOffsetForIndex"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttGetFontOffsetForIndexFn* ChainStbttGetFontOffsetForIndex(this HookService h, StbttGetFontOffsetForIndexFn handler, int priority) =>
+        (StbttGetFontOffsetForIndexFn*)h.Chain(SymbolMap.StbttGetFontOffsetForIndex, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.StbttScaleForPixelHeight"/>; returns the original, or null.</summary>
     public static StbttScaleForPixelHeightFn InstallStbttScaleForPixelHeight(this HookService h, StbttScaleForPixelHeightFn handler) =>
         (StbttScaleForPixelHeightFn)h.Install(SymbolMap.StbttScaleForPixelHeight, (IntPtr)handler);

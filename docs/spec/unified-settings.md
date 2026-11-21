@@ -326,7 +326,9 @@ copy.
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | ui.font | Text size | D | 6 … 32 pt, every point · 18 | U | L | — | Size of the text in every CX window and label. Each element may set its own in its Text rows; a chat window on its gear. |
-| ui.typeface | Typeface | D | `default` + every `font.<name>` + every installed font (full name) · default | U | L | — | The font every CX window draws with: the built-in DejaVu Sans, a `font.<name>` from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search. |
+| ui.typeface | Typeface | D | `default` + every `font.<name>` + every installed family + every family the loaded content supplies · default | U | L | — | The font every CX window draws with: the built-in DejaVu Sans, a `font.<name>` from cx.cfg, one installed on this machine, or one a server's hak or NWSync supplies. Each element may pick its own in its Text rows. Type in the list to search. An older full name (DejaVu Sans Bold) is read as its family, weight and style. The list is open: a saved family the content has not loaded yet is kept and draws the built-in face until it does. A server may hold it, and `ui.weight` and `ui.style`, like every element's typeface, weight and style rows; a typeface hold takes only a listed family (`docs/ui-policy-contract.md`, Fonts). |
+| ui.weight | Default weight | D | 100 … 900, by 100 · 400 | U | L | — | Shown while the Typeface is an installed family. How heavy the letters are, for text that asks for no weight of its own: 400 is regular, 700 bold. A family without that weight draws the nearest one it has, as a web browser picks; a `font.<name>`, a hak's font and the built-in face keep their own. |
+| ui.style | Default style | D | Normal / Italic · Normal | U | L | — | Shown while the Typeface is an installed family. Upright or italic letters, for text that asks for no style of its own. A family with no italic draws upright. |
 | ui.look | Look | D | Game art / Flat colour · Game art | U | L | Look | Every CX window, chat included: Game art wears NWN's own GUI textures and colours (a server may re-skin them or hold this choice); Flat colour draws plain panels in the palette below. Server-holdable. |
 | ui.palette | Palette | D (open) | Slate / Ember / Moss / Wine / Ash / Custom / every `cxpal_<id>` found · Slate | U | L | Look | The colours of every CX window in the Flat colour look: a built-in set, Custom, or a palette file (the player's in override/, or the server's content). An id not found yet is kept and draws Slate. Server-holdable. |
 | ui.custom_&lt;role&gt; | the role's label (Window, Accent, Text, ...) | Sw | slate's colour per role | A | L | Custom palette | 28 rows, one per role; editable while Palette is Custom. |
@@ -391,7 +393,7 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 | chat.undo | Undo and redo | T | on | A | L | Editing | Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
-| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, clickthrough, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
+| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, weight, style, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, clickthrough, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
 | snippets.enabled | Expand chat shortcuts | T | on | U | L | — | Type a shortcut, then a space (or Enter), and it turns into its text. Ctrl+Z right after takes it back. |
 | snippets.list | Shortcuts | L | empty, hint `;bow *bows deeply*` | U | L | — | Each entry is the word to type, a space, then what it becomes. Enter adds the next one; clear an entry or press × to remove it. |
 
@@ -617,7 +619,9 @@ distances stay design px.
 
 **Element text rows** (`TextStyle`): every CX element that draws text declares the same three
 rows in its own group, under a section the group names: `<prefix>font` (*Text size*, as UI /
-6..32), `<prefix>typeface` (*Typeface*, the `ui.typeface` choices; `default` follows the UI) and
+6..32), `<prefix>typeface` (*Typeface*, the `ui.typeface` choices; `default` follows the UI),
+`<prefix>weight` (*Default weight*, as UI or 100 to 900; as UI follows `ui.weight`), `<prefix>style` (*Default style*,
+as UI, Normal or Italic; as UI follows `ui.style`) and
 `<prefix>outline` (*Text outline*, off / thin / thick). Overriding the UI-wide rows for one
 element is an enthusiast's dial (ADR 0030), so the tier is **Advanced** for an element drawn
 over the world (`nameplate` names and `bubble*`, `combattext`, `dialog`, `fps`) and

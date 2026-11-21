@@ -22,6 +22,8 @@ internal static class PanelFonts
     {
         /// <summary>Each size the panels hold and the px its face was asked at.</summary>
         public readonly Dictionary<float, float> Held = [];
+        /// <summary>Each named face a run asked a bake for, so it is asked once.</summary>
+        public readonly HashSet<(string Name, float Px)> Asked = [];
     }
 
     private static readonly FacesState _f = new();
@@ -79,6 +81,25 @@ internal static class PanelFonts
             lock (_f) still = _f.Held.ContainsValue(old);
             if (!still) TextRig.ReleaseFace(old, Owner);
         }
+    }
+
+    /// <summary>The registry name <paramref name="r"/> draws with over the UI's rows, and whether its letters are
+    /// slanted (<paramref name="slant"/>): an italic run on an upright face.</summary>
+    public static string RunFace(in Run r, out bool slant)
+        => FontRegistry.UiRunFace(r.Weight, r.Style, r.Italic, out slant);
+
+    /// <summary>The atlas of face <paramref name="name"/> at <paramref name="mult"/> times the player's size, when it is baked;
+    /// a miss asks its bake on the thread pool once and is null until it lands, and null when there is no UI face (headless).
+    /// ponytail: a named face stays in the sheet for the session; releasing one no card uses is the upgrade.</summary>
+    public static (GlyphAtlas A, float K)? Named(string name, float mult)
+    {
+        if (TextRig.Atlas == null) return null;
+        float px = PxOf(mult);
+        if (TextRig.BakedFace(name, px) is GlyphAtlas f) return (f, 1f);
+        bool fresh;
+        lock (_f) fresh = _f.Asked.Add((name, px));
+        if (fresh) ThreadPool.QueueUserWorkItem(static a => TextRig.Face(a.Name, a.Px, Owner), (Name: name, Px: px), preferLocal: false);
+        return null;
     }
 
     private static float PxOf(float mult) => MathF.Round(TextRig.FacePx(0) * mult);

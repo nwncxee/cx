@@ -58,9 +58,14 @@ public sealed partial class SettingsWindow
         for (int i = 1; i < a.Length; i++) a[i] = (lo + i - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
         return a;
     }
-    /// <summary>The typeface choices: <see cref="FollowUi"/>, then the registry's names past <c>default</c>. Set by the
-    /// shell once the registry loaded; the self-check supplies its own.</summary>
-    public static string[] Typefaces = { FollowUi };
+    /// <summary>The typeface choices: <see cref="FollowUi"/>, then the registry's names past <c>default</c>, read live so a
+    /// font list the registry rebuilt is the one the gear shows. Cold: the gear's layout and picks.</summary>
+    public static string[] Typefaces => _faces.Override ?? [FollowUi, .. FontRegistry.Names.AsSpan(1)];
+
+    /// <summary>A typeface list a self-check hands the gear in place of the registry's; null reads the registry.</summary>
+    private sealed class FacesState { public string[]? Override; }
+    private static readonly FacesState _faces = new();
+    internal static string[]? TypefacesOverride { set => _faces.Override = value; }
 
     public SettingsWindow()
     {
@@ -172,6 +177,10 @@ public sealed partial class SettingsWindow
         AddSection(rows, "Font");
         AddDropdown(rows, SetAct.Typeface, "Typeface", Typefaces, TypefaceIndex(win.Typeface),
                     "The font this window draws its text with; UI default follows the Typeface setting under UI.");
+        AddDropdown(rows, SetAct.FontWeight, "Default weight", TextStyle.WeightNames, Math.Max(0, Array.IndexOf(TextStyle.RowWeights, win.Weight)),
+                    "How heavy this window's letters are, for text that asks for no weight of its own; as UI follows the Default weight under UI.");
+        AddDropdown(rows, SetAct.FontStyle, "Default style", TextStyle.StyleNames, Math.Max(0, Array.IndexOf(TextStyle.RowStyles, win.Style)),
+                    "Upright or italic letters in this window, for text that asks for no style of its own; as UI follows the Default style under UI.");
         AddDropdown(rows, SetAct.SliderFont, "Text size", FontSizes, FontIndex(win.FontPx),
                     "Text size in this window; UI default follows the Text size setting under UI.");
         AddDropdown(rows, SetAct.OutlineOn, "Outline", TextStyle.OutlineNames, win.Outline,
@@ -360,6 +369,8 @@ public sealed partial class SettingsWindow
             case SetAct.CycleAlign: win.Align = (TextAlign)row.Selected; break;
             case SetAct.CycleBgMode: win.BgMode = (BgMode)row.Selected; break;
             case SetAct.SliderFont: win.FontPx = row.Selected <= 0 ? 0 : TextRig.MinFontPx + row.Selected - 1; FontChanged = true; break;
+            case SetAct.FontWeight: win.Weight = TextStyle.RowWeights[Math.Clamp(row.Selected, 0, TextStyle.RowWeights.Length - 1)]; FontChanged = true; break;
+            case SetAct.FontStyle: win.Style = TextStyle.RowStyles[Math.Clamp(row.Selected, 0, TextStyle.RowStyles.Length - 1)]; FontChanged = true; break;
             case SetAct.Typeface: win.Typeface = row.Selected <= 0 || row.Selected >= Typefaces.Length ? "" : Typefaces[row.Selected]; FontChanged = true; break;
             case SetAct.TabRemove:
             {
