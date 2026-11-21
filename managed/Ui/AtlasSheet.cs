@@ -289,6 +289,7 @@ public sealed unsafe class AtlasSheet
 
     /// <summary>pack-and-grow (a box set that overflows 64² fits 128², one past the ceiling is refused,
     /// the solid block is placed first) and the face lookup, with no GL context and no stbtt.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

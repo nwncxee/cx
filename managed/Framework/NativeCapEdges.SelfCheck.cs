@@ -8,6 +8,7 @@ internal static unsafe class NativeCapEdges
 {
     private const int TenMiB = 10 * 1024 * 1024;
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "NativeCapEdges.SelfCheck");

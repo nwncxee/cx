@@ -8,6 +8,7 @@ internal sealed unsafe partial class VkBackend
 {
     /// <summary>Approved-spec: a limit the driver reports as unbounded reads as the largest int, never negative.
     /// Oracles: an AMD Windows table, whose descriptor counts are UINT32_MAX, and a plain one, both by hand.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void CapsSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

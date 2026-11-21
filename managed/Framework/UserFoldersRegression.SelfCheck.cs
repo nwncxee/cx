@@ -7,6 +7,7 @@ namespace CX.Framework;
 /// nwn.ini whatever the aliases say. Oracle: the folder names written here.</summary>
 internal static class UserFoldersRegression
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "UserFoldersRegression.SelfCheck");

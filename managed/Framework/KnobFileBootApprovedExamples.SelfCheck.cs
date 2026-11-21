@@ -7,6 +7,7 @@ namespace CX.Framework;
 /// file rewritten with values a self-check moved and put back.</summary>
 public static class KnobFileBootApprovedExamples
 {
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

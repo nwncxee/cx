@@ -116,6 +116,7 @@ internal static class MemorySettle
     }
 
     /// <summary>Off-device: when a period asks for what. Oracle: hand-written allocation totals in MiB.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MemorySettle.SelfCheck");

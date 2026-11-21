@@ -5,6 +5,7 @@ namespace CX.Framework;
 /// written and is a regression test here. Oracle: the literals written here and the files' own bytes.</summary>
 internal static class LogPartsMoveEdges
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LogPartsMoveEdges.SelfCheck");

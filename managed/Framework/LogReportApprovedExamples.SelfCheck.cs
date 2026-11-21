@@ -8,6 +8,7 @@ internal static class LogReportApprovedExamples
     private const string CopyLabel = "Copy my settings for a bug report";
     private const string SaveLabel = "Save my log for a bug report";
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LogReportApprovedExamples.SelfCheck");

@@ -239,6 +239,7 @@ internal static unsafe class LooseBlock
     /// <summary>A two-member block: a name resolves to its member index, a write lands at that member's offset, an
     /// array element at its stride, and an element past the array is counted. Oracle: the hand-laid std140 offsets
     /// below and the literal values written.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LooseBlock.SelfCheck");

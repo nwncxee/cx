@@ -155,6 +155,7 @@ public sealed class TextStyle
     /// <summary>Off-device: the three rows declare under their keys with the ladders the panel shows, a stored toggle
     /// parses onto the outline ladder, a following style hands back the UI face and a headless one falls back to it,
     /// the halo radius grows with the face, and a batch lays a run's halos under all of its glyphs.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

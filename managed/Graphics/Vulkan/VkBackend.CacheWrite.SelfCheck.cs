@@ -9,6 +9,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Off-device: the blob a save hands a worker lands at its path whole, leaves no temporary behind, and
     /// replaces a file already there; a path that cannot be written says so and answers false. Oracle: the bytes the
     /// file holds afterwards, read back, against a blob built here.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void CacheWriteSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkBackend.CacheWriteSelfCheck");

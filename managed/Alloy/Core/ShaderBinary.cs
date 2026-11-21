@@ -172,6 +172,7 @@ internal static class ShaderBinary
     /// <summary>What <see cref="Validate"/> reads off a module, against two oracles that know nothing of it: the
     /// hand-written <see cref="Fixture"/> transcribed from the SPIR-V specification, and (where the staged shaderc
     /// loads) a module shaderc produced from GLSL text. Each refusal is the fixture with ONE word wrong.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "ShaderBinary.SelfCheck");

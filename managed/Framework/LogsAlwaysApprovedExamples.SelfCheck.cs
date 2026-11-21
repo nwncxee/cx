@@ -10,6 +10,7 @@ public static class LogsAlwaysApprovedExamples
     /// <summary>A key no real setting claims, fed beside the old one to show the fed file was read at all.</summary>
     private const string Probe = "cx-selfcheck-logs.keep";
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

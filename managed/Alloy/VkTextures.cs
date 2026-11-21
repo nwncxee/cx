@@ -218,6 +218,7 @@ internal static class VkTextures
     internal static string Line() => _s.Dev == null ? "" : $"VkTextures: {_s.ByName.Count} mirrored ({_s.Mirrored} made, {_s.Refused} refused)";
 
     /// <summary>Oracle: the GL tokens glcorearb.h assigns, hand-written, against the seam formats they are.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkTextures.SelfCheck");

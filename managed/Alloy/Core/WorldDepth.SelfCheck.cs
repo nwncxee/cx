@@ -9,6 +9,7 @@ internal static partial class WorldDepth
 {
     /// <summary>The folds and the content rewrite on fixtures. Oracle: a GL perspective with near 1 and far 3 worked by
     /// hand (M33 -2, M43 -3, M34 -1), its folded entries and clip depths at the two planes, and rewritten text by hand.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

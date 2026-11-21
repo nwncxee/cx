@@ -59,6 +59,7 @@ public static class ConfigFile
     }
 
     /// <summary>Off-device proof of the line walker's degrade behaviour.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

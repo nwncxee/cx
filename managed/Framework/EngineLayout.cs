@@ -2138,7 +2138,7 @@ public static unsafe partial class EngineLayout
     /// and -- the part that matters -- that a deliberately wrong offset makes a probe FAIL rather than pass
     /// quietly. Off-device: the probe runs against a hand-built fake object, not the client.
     /// </summary>
-    public static void SelfCheck(ExtenderLog log)
+    [SelfCheckSuite(SuitePhase.BeforeServices)] public static void SelfCheck(ExtenderLog log)
     {
         int before = Registry.Rows.Count, unresolvedBefore = UnresolvedCount, missingBefore = MissingCount;
         // A row no build file gives a value: it must read 0, count as missing, and gate its class.

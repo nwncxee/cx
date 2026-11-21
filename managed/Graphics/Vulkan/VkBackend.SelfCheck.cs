@@ -16,6 +16,7 @@ internal sealed unsafe partial class VkBackend
     /// Oracles: the interval-to-mode table and the size-compatibility rule written by hand; shaderc's acceptance of the
     /// translated text; SPIR-V binding numbers read by the specification's opcodes against hand-written ones; format
     /// tokens and each layout's barrier scope as vulkan_core.h's bits, by hand.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

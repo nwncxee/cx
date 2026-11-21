@@ -8,6 +8,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Approved-spec: which chain the surface's extent leaves standing, and the extent a new one takes.
     /// Oracles: two hand-written capability tables -- one dictating 2544x1378, one leaving its extent open between
     /// 640x480 and 1600x900 -- with the frame sizes, present modes and create results written out beside them.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SwapSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

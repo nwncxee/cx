@@ -136,6 +136,7 @@ public static class KnobFile
 
     /// <summary>Off-device: the composed text carries the header, no declared-at-default key, and every
     /// unknown loaded key verbatim. Never writes: the demo's file is the real user's.</summary>
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

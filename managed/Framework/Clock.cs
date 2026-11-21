@@ -53,6 +53,7 @@ public sealed class Clock
 
     /// <summary>A stepped clock's alarm fires once, at its due time and not a millisecond before, and a second set
     /// restarts it. Oracle: the hand-written step sizes and fire counts below.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

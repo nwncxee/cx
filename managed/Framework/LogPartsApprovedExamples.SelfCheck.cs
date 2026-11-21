@@ -9,6 +9,7 @@ internal static class LogPartsApprovedExamples
     /// <summary>A line of <paramref name="bytes"/> bytes counting its newline.</summary>
     private static string Line(char c, int bytes) => new(c, bytes - 1);
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LogPartsApprovedExamples.SelfCheck");

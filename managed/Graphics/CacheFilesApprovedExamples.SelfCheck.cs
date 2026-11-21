@@ -59,6 +59,7 @@ internal static class CacheFilesApprovedExamples
         && a.ChartUv.AsSpan(0, a.OutVerts * 2).SequenceEqual(b.ChartUv.AsSpan(0, b.OutVerts * 2))
         && a.Out0.AsSpan(0, a.Out0N).SequenceEqual(b.Out0.AsSpan(0, b.Out0N));
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "CacheFilesApprovedExamples.SelfCheck");

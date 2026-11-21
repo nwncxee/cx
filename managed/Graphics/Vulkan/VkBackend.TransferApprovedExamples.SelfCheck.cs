@@ -9,6 +9,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Approved-spec: E4, the transfer family a device's table offers. Oracles: hand-written queue-family
     /// tables in the shapes real drivers report -- a discrete card with a copy-only family, an iGPU with one family
     /// that does everything, a copy-only family whose transfer granularity is coarser than a texel.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void TransferSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

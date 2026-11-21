@@ -7,6 +7,7 @@ public sealed partial class AlloyRenderer
 {
     /// <summary>Approved-spec: S1 and S2, the frame line's memory part. Oracles: hand-written device figures and
     /// allocation names, and the MiB they read as.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VramSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VramSelfCheck");

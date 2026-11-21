@@ -240,6 +240,7 @@ public static unsafe class Native
     }
 
     /// <summary>The std::string and CExoString readers against hand-built layouts -- the stub host has no engine to call.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         byte* s = stackalloc byte[32];

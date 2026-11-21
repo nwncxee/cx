@@ -264,6 +264,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Off-device: the Vulkan vertex text keeps no vertex input and reads every attribute GL's VAO feeds.
     /// Oracle: the embedded GLSL text, whose declarations are matched and whose reads are kept.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GrassField.VkSelfCheck");

@@ -8,6 +8,7 @@ public sealed partial class AlloyRenderer
 {
     /// <summary>Oracles: hand-written stale-or-not verdicts for four passes driven through <see cref="VkFlushPass"/>,
     /// which is where the snapshot's one staling rule lives. The lists only record; no device sees them.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void FlushPassSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.FlushPassSelfCheck");

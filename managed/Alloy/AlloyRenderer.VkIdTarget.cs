@@ -133,6 +133,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Off-device: the Vulkan prepass puts the vis-ID on the slot its fragment stages write, and the
     /// viz reads it unfiltered. Oracles: the embedded GLSL text of the shared output declaration and the viz
     /// stage, against the attachment index this file uses.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkIdSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkIdSelfCheck");

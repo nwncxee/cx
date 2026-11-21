@@ -10,6 +10,7 @@ internal static unsafe class MessageBytesCheck
     /// <summary>The fixture's byte count, and the value its last byte carries.</summary>
     private const int Bytes = 40, Mark = 167;
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "CNWMessage.Bytes.SelfCheck");

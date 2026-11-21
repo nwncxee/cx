@@ -117,6 +117,7 @@ public sealed class ExtenderLog
 
     /// <summary>Off-device: a tapped log hears its lines and the file does not; an <see cref="AlwaysNow"/> line is
     /// in the file before it returns. Oracle: the file's own bytes and the literals written here.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var heard = new List<string>();

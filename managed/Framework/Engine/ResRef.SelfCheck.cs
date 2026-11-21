@@ -7,6 +7,7 @@ namespace CX.Engine;
 /// <c>CExoResMan::GetOverride</c> copy (bytes 0..16 of its argument) and hand-written names.</summary>
 internal static unsafe class ResRefCheck
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "ResRef.SelfCheck");

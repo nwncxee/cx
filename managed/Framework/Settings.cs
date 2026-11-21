@@ -78,6 +78,7 @@ public static class Settings
 
     /// <summary>The prefixed read, off-device. Runs against the live table, so it uses keys no real setting
     /// claims and leaves none behind.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

@@ -22,6 +22,7 @@ internal static class WindowNotes
     };
 
     /// <summary>Oracle: SDL 2's <c>SDL_WindowEventID</c> values, written out by hand from <c>SDL_video.h</c>.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "WindowNotes.SelfCheck");

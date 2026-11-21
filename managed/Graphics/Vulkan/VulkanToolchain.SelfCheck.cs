@@ -27,6 +27,7 @@ public static unsafe partial class VulkanToolchain
     /// folder, the shipped shaderc turns GLSL into a module whose header the SPIR-V specification predicts
     /// and refuses a broken source, and the machine's Vulkan loader hands back an instance that is then
     /// destroyed. Off-device only: a game session creates no Vulkan instance and compiles no SPIR-V yet.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

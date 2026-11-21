@@ -36,6 +36,7 @@ internal static class UserFoldersApprovedExamples
         return new StreamReader(f).ReadToEnd();
     }
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "UserFoldersApprovedExamples.SelfCheck");

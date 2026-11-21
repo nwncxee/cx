@@ -115,6 +115,7 @@ public static unsafe class AurTex
     /// client. The real vtable addresses cannot be asserted here; what can is that an exact match is admitted, that
     /// anything else is refused and counted, and that a null or an unarmed AurTex is refused without a deref.
     /// <see cref="Live"/> rather than <see cref="Tid"/>: admitting a match through Tid would call into no engine.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static bool SelfCheck(ExtenderLog log)
     {
         bool wasReady = Ready; IntPtr wv = _vtbl, wb = _vtblBasic;

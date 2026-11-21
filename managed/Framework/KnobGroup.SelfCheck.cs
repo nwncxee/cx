@@ -15,6 +15,7 @@ public sealed partial class KnobGroup
     /// <summary>Off-device: the three constraints on a throwaway group (each must be caught), the
     /// bind/set/reset/format contract, then a walk of every LIVE declaration -- a real knob that broke one
     /// fails the suite, which is what makes <c>run-demo.sh</c> the gate.</summary>
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

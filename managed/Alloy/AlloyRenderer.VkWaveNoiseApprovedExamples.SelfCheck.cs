@@ -11,6 +11,7 @@ public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>Approved-spec: the engine's mirror answers where it is up, CX's own copy answers the frames before
     /// it arrives, and only both missing leaves the class without a field.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkWaveNoiseSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkWaveNoiseSelfCheck");

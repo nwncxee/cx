@@ -65,6 +65,7 @@ internal static partial class VkGlsl
     /// <summary>The translator's rules on hand-written fixtures. Oracle: the literal declarations each rule must emit,
     /// written out here by hand; off-device, shaderc's verdict on the fixtures' output and the std140 offsets of a
     /// fixture block computed by hand from the specification's alignment rules.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkGlsl.SelfCheck");

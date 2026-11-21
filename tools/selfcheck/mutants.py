@@ -14,7 +14,11 @@ The tree is never edited. Every mutated file is copied to a folder of the runner
 a switch -- an expression in `(on ? new : old)`, a statement (text ending in `;`) in `if (on) { new } else { old }` --
 and that copy is compiled once with tools/selfcheck/run.sh --overlay. The switch class exists only in that copy and
 reads which mutant is on from a file in the same folder, so a staged build carries no switch and reads no setting.
-The unmutated run goes first and must pass; then each mutant is booted in turn. A mutant whose switch does not
+The unmutated run goes first and must pass, and writes down which unit (a registered suite, or one service's
+Initialize) was running each time a mutant's site ran. Then each mutant is booted in turn on just those units; a
+site that never ran, or ran outside every unit, boots every unit, and so does one whose units fail unmutated on their
+own. A mutant that survives its filtered boot is booted again with every unit, and that boot's verdict is the one
+reported. A mutant whose switch does not
 compile (a declaration, say) is compiled on its own instead, and the report says so.
 
 Prints one line per mutant: `killed <name> <the first FAIL line>`, with every other FAIL line under it as
@@ -39,6 +43,10 @@ ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 RUN = os.path.join(ROOT, 'tools', 'selfcheck', 'run.sh')
 SWITCH = 'CxMutantSwitch'
 ACTIVE = 'cx-mutant-active'
+ONLY = 'cx-mutant-suites'
+UNITS = 'cx-mutant-units'
+REACH = 'cx-mutant-reach'
+OUTSIDE = '(host)'
 COMPILE_TIMEOUT = 1200
 
 
@@ -238,21 +246,72 @@ def overlay(work, mutants, switched):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, 'w', encoding='utf-8').write(text)
     os.makedirs(os.path.join(work, 'managed'), exist_ok=True)
-    active = os.path.join(work, ACTIVE)
     with open(os.path.join(work, 'managed', SWITCH + '.cs'), 'w', encoding='utf-8') as f:
-        f.write('namespace CX;\n\n'
-                '/// <summary>Which mutant the runner turned on, read once from its own folder.</summary>\n'
-                f'internal static class {SWITCH}\n{{\n'
-                f'    private static readonly int Active = int.Parse(System.IO.File.ReadAllText(@"{active}").Trim());\n\n'
-                '    /// <summary>True for the mutant numbered <paramref name="k"/> when it is the one on.</summary>\n'
-                '    internal static bool On(int k) => Active == k;\n}\n')
+        f.write(SWITCH_CS.replace('@WORK@', work))
 
 
-def run(work, out, build, k, timeout):
-    """Boots the self-checks with mutant k on (0: none), compiling first when asked. Returns (exit, output); a run
-    over ``timeout`` seconds is stopped, the whole process group with it, and returns 124."""
+
+# The switch class, and the registry's filter seam, in the overlay only. An unmutated boot (mutant 0) writes down which
+# unit was running each time a mutant's site ran, and every unit it was asked about; a mutant boot reads the units to run.
+SWITCH_CS = '''namespace CX
+{
+    /// <summary>Which mutant the runner turned on, read once from its own folder, and where each site ran.</summary>
+    internal static class CxMutantSwitch
+    {
+        internal const string Work = @"@WORK@";
+        internal static readonly int Active = int.Parse(System.IO.File.ReadAllText(Work + "/cx-mutant-active").Trim());
+        private static readonly System.Collections.Generic.HashSet<(int, string)> Seen = new();
+
+        /// <summary>True for the mutant numbered <paramref name="k"/> when it is the one on.</summary>
+        internal static bool On(int k)
+        {
+            if (Active == 0) Note(k);
+            return Active == k;
+        }
+
+        /// <summary>Writes down the unit running site k, once per pair.</summary>
+        private static void Note(int k)
+        {
+            string unit = global::CX.Framework.SelfCheckUnits.Current ?? "(host)";
+            lock (Seen)
+                if (Seen.Add((k, unit))) System.IO.File.AppendAllText(Work + "/cx-mutant-reach", k + "\\t" + unit + "\\n");
+        }
+    }
+}
+
+namespace CX.Framework
+{
+    public static partial class SelfCheckUnits
+    {
+        private static readonly System.Collections.Generic.HashSet<string>? Only =
+            System.IO.File.Exists(global::CX.CxMutantSwitch.Work + "/cx-mutant-suites")
+                ? new(System.IO.File.ReadAllLines(global::CX.CxMutantSwitch.Work + "/cx-mutant-suites"))
+                : null;
+
+        static partial void Admit(string unit, ref bool run)
+        {
+            if (Only != null) run = Only.Contains(unit);
+            else if (global::CX.CxMutantSwitch.Active == 0)
+                System.IO.File.AppendAllText(global::CX.CxMutantSwitch.Work + "/cx-mutant-units", unit + "\\n");
+        }
+    }
+}
+'''
+
+
+def run(work, out, build, k, timeout, only=None):
+    """Boots the self-checks with mutant k on (0: none), compiling first when asked, running only the units ``only``
+    names (None: every unit). Returns (exit, output); a run over ``timeout`` seconds is stopped, the whole process
+    group with it, and returns 124."""
     with open(os.path.join(work, ACTIVE), 'w') as f:
         f.write(str(k))
+    only_file = os.path.join(work, ONLY)
+    if only is None:
+        if os.path.exists(only_file):
+            os.remove(only_file)
+    else:
+        with open(only_file, 'w', encoding='utf-8') as f:
+            f.write(''.join(u + '\n' for u in sorted(only)))
     cmd = [RUN, '--out', out, '--overlay', work] + ([] if build else ['--no-build'])
     p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          start_new_session=True)
@@ -270,6 +329,30 @@ def run(work, out, build, k, timeout):
     sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
     sys.stdout.flush()
     return rc, output
+
+
+def read_reach(work):
+    """What the unmutated boots wrote down: every unit, in order, and {mutant: the units its site ran in}."""
+    units, reach = [], {}
+    path = os.path.join(work, UNITS)
+    if os.path.isfile(path):
+        for u in open(path, encoding='utf-8').read().split('\n'):
+            if u and u not in units:
+                units.append(u)
+    path = os.path.join(work, REACH)
+    if os.path.isfile(path):
+        for line in open(path, encoding='utf-8').read().split('\n'):
+            if '\t' in line:
+                k, unit = line.split('\t', 1)
+                reach.setdefault(int(k), set()).add(unit)
+    return units, reach
+
+
+def filtered(ran_in, units):
+    """The units a mutant's boot needs, or None for every unit: a site that never ran, or ran outside any unit."""
+    if not ran_in or OUTSIDE in ran_in or not ran_in <= set(units):
+        return None
+    return ran_in
 
 
 def failed_lines(output, work):
@@ -304,8 +387,9 @@ def verdict(m, rc, output):
 def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # so the work folder's cleanup below runs on a TERM
     args, logs = argv[1:], None
-    if '--whole' in args:
-        args.remove('--whole')  # every boot runs every suite, so this asks for what each boot already does
+    whole = '--whole' in args
+    if whole:
+        args.remove('--whole')
     if '--logs' in args:
         i = args.index('--logs')
         if i + 1 >= len(args):
@@ -365,9 +449,33 @@ def main(argv):
             print(output, file=sys.stderr)
             return 2
         timeout = max(180.0, 4 * (time.monotonic() - boot))
+        units, reach = read_reach(work)
+        clean = {}
+
+        def judge(m, only):
+            """Boots mutant m on the units ``only`` names (None: every unit), and says which and how long."""
+            names = ', '.join(sorted(only)) if only is not None else 'every suite'
+            print(f'>> {m.name}: booting {len(units) if only is None else len(only)} of {len(units)} suites: {names}',
+                  flush=True)
+            began = time.monotonic()
+            rc, output = run(work, out, False, m.k, timeout, only)
+            print(f'>> {m.name}: booted in {time.monotonic() - began:.1f}s', flush=True)
+            return rc, output
+
         survived = 0
         for m in switched:
-            rc, output = run(work, out, False, m.k, timeout)
+            only = None if whole else filtered(reach.get(m.k), units)
+            if only is not None:
+                key = frozenset(only)
+                if key not in clean:
+                    clean[key] = run(work, out, False, 0, timeout, only)[0] == 0
+                if not clean[key]:
+                    print(f'>> {m.name}: its suites fail unmutated on their own, so it boots every suite', flush=True)
+                    only = None
+            rc, output = judge(m, only)
+            if only is not None and rc == 0:
+                print(f'>> {m.name}: survived the filtered boot, booting it with every suite', flush=True)
+                rc, output = judge(m, None)
             keep(m.name, out)
             survived += not verdict(m, rc, output)
         for m in [m for m in mutants if m.alone]:

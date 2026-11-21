@@ -94,6 +94,7 @@ public sealed class FrameRegistry
 
     /// <summary>Walk order under priority and ties, the post-seal refusal, and the acceptance criterion the
     /// ticket states but nothing else can prove off-device: the sealed walk allocates nothing.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
