@@ -102,6 +102,8 @@ internal static partial class TexSeam
     }
     /// <summary>The module edge: a server's <c>.txi</c> must not be shadowed by the previous module's answer.</summary>
     internal static void ModuleEdge() => _txiCache.Clear();
+    /// <summary>A server's override changed which <c>.txi</c> <paramref name="name"/> resolves to: the next apply reads it.</summary>
+    internal static void ForgetTxi(string name) => _txiCache.Remove(name);
     /// <summary><c>CResHelper&lt;CResTXI, 2022&gt;</c>.</summary>
     private const ushort TxiResType = 2022;   // not-an-offset: restype id (TXI)
     private static readonly Dictionary<string, string?> _txiCache = new(StringComparer.OrdinalIgnoreCase);

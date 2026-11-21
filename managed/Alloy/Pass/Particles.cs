@@ -842,12 +842,26 @@ internal static unsafe partial class Particles
     /// emitter's texture. <paramref name="settled"/> is false while that material may still be read.</summary>
     internal static float EmissiveOfPart(int part, out bool settled)
     {
-        Mdl.ModelDef? m = (uint)part < (uint)SceneDb.PartModel.Length ? SceneDb.PartModel[part] : null;
-        int n = (uint)part < (uint)SceneDb.PartNode.Length ? SceneDb.PartNode[part] : -1;
-        string name = m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Emitter?.Texture ?? "" : "";
+        string name = MaterialOfPart(part);
         MtrDef? mtr = MtrDef.Resolve(name);
         settled = mtr != null || !MtrDef.Pending(name);
         return EmissiveOf(mtr);
+    }
+
+    /// <summary>The material part <paramref name="part"/>'s emitter draws with: its texture's name. Empty for no emitter.</summary>
+    private static string MaterialOfPart(int part)
+    {
+        Mdl.ModelDef? m = (uint)part < (uint)SceneDb.PartModel.Length ? SceneDb.PartModel[part] : null;
+        int n = (uint)part < (uint)SceneDb.PartNode.Length ? SceneDb.PartNode[part] : -1;
+        return m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Emitter?.Texture ?? "" : "";
+    }
+
+    /// <summary>A server's override changed the materials in <paramref name="names"/>: every captured emitter drawing
+    /// one asks for its <c>fEmissive</c> again at its next capture. Game thread, cold.</summary>
+    internal static void MaterialsReset(System.Collections.Generic.HashSet<string> names)
+    {
+        for (int i = 0; i < _tabN; i++)
+            if (_tab[i].Part >= 0 && names.Contains(MaterialOfPart(_tab[i].Part))) _tab[i].EmissiveSettled = false;
     }
 
     /// <summary><paramref name="mtr"/>'s float <c>fEmissive</c> (the last one stated wins), or 1.0 when it states none,

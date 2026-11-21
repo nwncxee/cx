@@ -391,9 +391,15 @@ internal static unsafe partial class TexRegistry
                 CoverageSerial++; TableSerial++;
                 MarkDependents(i);
             }
+            _resetApplied.Clear();
+            _resetApplied.UnionWith(_resetNames);
             _resetNames.Clear();
         }
+        OverrideReset.Apply(_resetApplied);
     }
+
+    /// <summary>The names <see cref="ApplyResets"/> took this tick, handed on once the registry's lock is let go.</summary>
+    private static readonly HashSet<string> _resetApplied = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Drop one reference. The last one leaves the slot <see cref="TexState.Idle"/> -- resident, GL
     /// name and bytes kept, bindless handle released -- which is ADR 0023's decision, now without an engine

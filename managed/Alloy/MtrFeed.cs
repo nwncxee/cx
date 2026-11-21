@@ -59,6 +59,7 @@ internal static unsafe class MtrFeed
         MdlParser.MaterialHint = Hint;
         MtrDef.Bytes = Cached;
         MtrDef.Answered = Answered;
+        MtrDef.Reread = Reread;
         TileBuild.WarmMaterials = Warm;
     }
 
@@ -70,7 +71,7 @@ internal static unsafe class MtrFeed
         bool was = _armed;
         ModuleEdge();
         _armed = on;
-        if (on) { MtrDef.Bytes = Cached; MtrDef.Answered = Answered; }
+        if (on) { MtrDef.Bytes = Cached; MtrDef.Answered = Answered; MtrDef.Reread = Reread; }
         return was;
     }
 
@@ -79,6 +80,13 @@ internal static unsafe class MtrFeed
     private static bool Answered(string name)
     {
         lock (Gate) return _bytes.ContainsKey(name);
+    }
+
+    /// <summary>GAME thread: read <paramref name="name"/> again from the resource table as it stands now, over what
+    /// the cache held for it -- its bytes, its hint, or the answer that there is no such file.</summary>
+    private static void Reread(string name)
+    {
+        if (_armed) Read(name);
     }
 
     /// <summary>Parse worker: the hint, or 0 and a queued read.</summary>

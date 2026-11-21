@@ -10,7 +10,7 @@ internal static partial class DbSelfCheck
     /// <summary>The floor's material, named after its texture as a tile's is.</summary>
     private const string RsFloor = "cx_rs_floor";
     private const string GravelMtr = "texture0 cx_rs_gravel\n";
-    private const string PavingMtr = "texture0 cx_rs_paving\ntwosided 1\n";
+    private const string PavingMtr = "texture0 cx_rs_paving\ntwosided 1\nrenderhint NormalAndSpecMapped\n";
 
     internal static bool MaterialResetApprovedExamplesSelfCheck(ExtenderLog log)
     {
@@ -51,6 +51,7 @@ internal static partial class DbSelfCheck
         check.Expect(Draws(p) == "cx_rs_paving", $"E1: the floor draws {Draws(p)} after the override, not the paving");
         int r = SceneDb.PartRecipe[p];
         check.Expect(r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0, "E1: the override's twosided term did not reach the floor");
+        check.Expect(SceneDb.PartMtl[p].RenderHint == 2, $"E1: the override's render hint did not reach the floor ({SceneDb.PartMtl[p].RenderHint})");
         check.Expect((SceneDb.Parts.DirtyAt(p) & Dirty.Material) != 0, "E1: the floor's record is not rewritten for the override");
         ForgetFixture(model);
     }
@@ -69,6 +70,7 @@ internal static partial class DbSelfCheck
         check.Expect(Draws(p) == "cx_rs_gravel", $"E2: the floor draws {Draws(p)} once the override is cleared, not the gravel");
         int r = SceneDb.PartRecipe[p];
         check.Expect(r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) == 0, "E2: the cleared override's twosided term stayed on the floor");
+        check.Expect(SceneDb.PartMtl[p].RenderHint == 0, $"E2: the cleared override's render hint stayed on the floor ({SceneDb.PartMtl[p].RenderHint})");
         ForgetFixture(model);
     }
 
@@ -115,6 +117,7 @@ internal static partial class DbSelfCheck
         check.Expect(Draws(p) == RsFloor, $"E5: the floor draws {Draws(p)} after the override took its .mtr away, not its own texture");
         int r = SceneDb.PartRecipe[p];
         check.Expect(r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) == 0, "E5: the old .mtr's twosided term stayed on the floor");
+        check.Expect(SceneDb.PartMtl[p].RenderHint == 0, $"E5: the old .mtr's render hint stayed on the floor ({SceneDb.PartMtl[p].RenderHint})");
         ForgetFixture(model);
     }
 

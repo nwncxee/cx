@@ -14,6 +14,7 @@ internal sealed class StandInFiles : IDisposable
     private readonly Dictionary<(string, ushort), byte[]> _files = new();
     private readonly Func<string, byte[]?>? _bytes = MtrDef.Bytes;
     private readonly Func<string, bool>? _answered = MtrDef.Answered;
+    private readonly Action<string>? _reread = MtrDef.Reread;
     private readonly Func<string, ushort, byte[]?>? _read = TexRegistry.ResourceStandIn;
     private readonly bool _feed;
 
@@ -37,6 +38,7 @@ internal sealed class StandInFiles : IDisposable
         MtrFeed.ArmForCheck(_feed);
         MtrDef.Bytes = _bytes;
         MtrDef.Answered = _answered;
+        MtrDef.Reread = _reread;
         TexRegistry.ResourceStandIn = _read;
         MtrDef.Forget();
     }
