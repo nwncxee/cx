@@ -396,7 +396,7 @@ public static unsafe partial class TextRig
             {
                 FaceRequest r = _requests[i];
                 if (r.IconsOnly) continue;
-                if (FontRegistry.Bytes(r.Typeface) is not byte[] b || ReferenceEquals(b, r.Font)) continue;
+                if (FontRegistry.Bytes(r.Typeface) is not byte[] b || b.AsSpan().SequenceEqual(r.Font)) continue;   // the same font re-read is no change
                 _requests[i] = r with { Font = b, Index = FontRegistry.Index(r.Typeface) };
                 moved = true;
             }
