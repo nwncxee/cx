@@ -300,3 +300,5 @@ cx-(shaders|charts)	CX-553	older CX|no cx-(shaders|charts)|Path\.Combine\(ud, "c
 # cx.log is always written: the setting that switched it off, its boot read and the logger's gate are gone. The
 # approved examples feed an old cx.cfg the key to prove nothing reads it.
 general\.logs\b|\bGeneral\.Logs(Default)?\b|\bLogsAtBoot\b|\bExtenderLog\.Enabled\b	logs-always	LogsAlwaysApprovedExamples|RetiredKeys = 
+# The part-column wait list a late .mtr re-seeded, folded into the one rederive a late landing shares with an override.
+\b(ReseedMaterials|MaterialWaiting|TakePartMaterialEdge)\b	late-mtr-one-path

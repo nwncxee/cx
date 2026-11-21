@@ -5,7 +5,8 @@ namespace CX.Alloy.Db;
 
 /// <summary>A server set or cleared an override, so a name resolves to other files. What CX read and built from the
 /// name's <c>.mtr</c> and <c>.txi</c> is read and worked out again, as the engine's own material refresh does; the
-/// textures themselves are <see cref="TexRegistry"/>'s. A shadow caster's mask follows both.</summary>
+/// textures themselves are <see cref="TexRegistry"/>'s. A shadow caster's mask follows both. A <c>.mtr</c> that lands
+/// after something was built from its name is the same change and takes the same path.</summary>
 internal static class OverrideReset
 {
     /// <summary>Frames between two reads of a <c>.mtr</c> that exists and could not be read.</summary>
@@ -27,6 +28,8 @@ internal static class OverrideReset
         public readonly Dictionary<string, int> Unread = new(StringComparer.OrdinalIgnoreCase);
         /// <summary><see cref="Unread"/>'s names, each once, in the order they are read again: a name that fails goes to the back.</summary>
         public readonly Queue<string> Turns = new();
+        /// <summary>The names whose <c>.mtr</c> landed after something was built from them, for the next tick.</summary>
+        public readonly HashSet<string> Late = new(StringComparer.OrdinalIgnoreCase);
         public int Frame;
     }
 
@@ -46,8 +49,12 @@ internal static class OverrideReset
         Rederive(s, reloaded);
     }
 
-    /// <summary>Once a frame, from the registry's tick: read again the materials whose turn it is, and follow a watched
-    /// mask that landed or failed. Allocation-free.</summary>
+    /// <summary>Game thread, from the material feed: <paramref name="name"/>'s <c>.mtr</c> landed after something built from
+    /// the name was told it had not been read, so the next tick works it out again with that frame's other changes.</summary>
+    internal static void Landed(string name) => _s.Late.Add(name);
+
+    /// <summary>Once a frame, from the registry's tick: read again the materials whose turn it is, work out again the ones
+    /// that landed late, and follow a watched mask that landed or failed. Allocation-free.</summary>
     internal static void Tick()
     {
         ResetState s = _s;
@@ -60,6 +67,11 @@ internal static class OverrideReset
                 s.Unread.Remove(name, out int reads);
                 if (reads != Settled) Settle(s, name, reads + 1);
             }
+        if (s.Late.Count > 0)
+        {
+            foreach (string name in s.Late) s.Changed.Add(name);
+            s.Late.Clear();
+        }
         Rederive(s, landed);
     }
 
