@@ -55,6 +55,7 @@ missing=$(comm -23 \
       | grep -oP '^\s*\[\K\w+' | sort -u))
 if [ -n "$missing" ]; then
   echo "!! symbol constant with no Windows row (#447):" >&2
+  # shellcheck disable=SC2001 # a prefix on every line of a list, which ${//} cannot anchor
   echo "$missing" | sed 's/^/!!   /' >&2
   echo "!! every symbol in SymbolMap.cs resolves to Nm(), At(), LinuxOnly(\"why\") or Hole(\"why\")." >&2
   exit 1
@@ -106,6 +107,7 @@ bash tools/ffx/prepare.sh python3 glslang
 if [ ! -f build/libcxfsr.a ] || [ native/ffx/cxfsr.cpp -nt build/libcxfsr.a ] || [ native/ffx/compat.h -nt build/libcxfsr.a ] \
    || [ build/ffx/shaders/.stamp -nt build/libcxfsr.a ]; then
   echo ">> building FSR 3.1 (libcxfsr.a)..."
+  # shellcheck disable=SC1091 # tools/ffx/cxxflags.sh only sets FFX_CXXFLAGS, read below
   . tools/ffx/cxxflags.sh
   mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o
   pids=()
