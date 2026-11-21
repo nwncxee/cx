@@ -4,10 +4,10 @@ using CX.Framework;
 
 namespace CX.Ui;
 
-/// <summary>A face to bake: TTF bytes (keyed by their path) at a pixel height. <paramref name="IconsOnly"/> bakes
-/// only the <c>icon</c> rows -- a sprite face at 100+ px, where a full text face would eat the whole sheet; such
-/// a face is its own icon source and takes no part in the coverage fills.</summary>
-public readonly record struct FaceRequest(string Typeface, byte[] Font, float Px, bool IconsOnly = false);
+/// <summary>A face to bake: TTF bytes (keyed by their path) at a pixel height, and <paramref name="Index"/>, the font's
+/// place in a collection. <paramref name="IconsOnly"/> bakes only the <c>icon</c> rows -- a sprite face at 100+ px,
+/// where a full text face would eat the whole sheet; such a face is its own icon source and takes no part in the fills.</summary>
+public readonly record struct FaceRequest(string Typeface, byte[] Font, float Px, bool IconsOnly = false, int Index = 0);
 
 /// <summary>
 /// The one shared glyph sheet every face lives in, two planes over one layout: the coverage bitmap text at its baked
@@ -171,7 +171,8 @@ public sealed unsafe class AtlasSheet
                 NativeMemory.Clear(fi, (nuint)FontInfoBytes);   // InitFont fills what it uses; zero the rest to be version-proof
                 byte* fn = (byte*)(fonts[f] = Marshal.AllocHGlobal(r.Font.Length));   // stbtt keeps a pointer into this
                 Marshal.Copy(r.Font, 0, fonts[f], r.Font.Length);
-                if (EngineFn.StbttInitFont(fi, fn, 0) == 0) { log.Info($"AtlasSheet: stbtt_InitFont failed for {r.Typeface}"); return null; }
+                int offset = r.Index == 0 ? 0 : EngineFn.StbttGetFontOffsetForIndex == null ? -1 : EngineFn.StbttGetFontOffsetForIndex(fn, r.Index);
+                if (offset < 0 || EngineFn.StbttInitFont(fi, fn, offset) == 0) { log.Info($"AtlasSheet: stbtt_InitFont failed for {r.Typeface} (font {r.Index} of its file)"); return null; }
                 float scale = EngineFn.StbttScaleForPixelHeight(fi, r.Px);
 
                 var face = faces[f] = new GlyphAtlas();

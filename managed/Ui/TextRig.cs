@@ -112,7 +112,7 @@ public static unsafe partial class TextRig
         if (_sheet.TryFace(typeface, px, out GlyphAtlas f)) return f;
         byte[]? bytes = FontRegistry.Bytes(typeface);
         if (bytes == null) return null;
-        _requests.Add(new FaceRequest(typeface, bytes, px));
+        _requests.Add(new FaceRequest(typeface, bytes, px, Index: FontRegistry.Index(typeface)));
         if (!Rebake()) { _requests.RemoveAt(_requests.Count - 1); return null; }
         return _sheet.TryFace(typeface, px, out f) ? f : null;
     }
@@ -208,7 +208,7 @@ public static unsafe partial class TextRig
         foreach (var (typeface, px) in want)
         {
             if (_requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px)) continue;
-            if (FontRegistry.Bytes(typeface) is byte[] bytes) _requests.Add(new FaceRequest(typeface, bytes, px));
+            if (FontRegistry.Bytes(typeface) is byte[] bytes) _requests.Add(new FaceRequest(typeface, bytes, px, Index: FontRegistry.Index(typeface)));
         }
     }
 
@@ -319,7 +319,7 @@ public static unsafe partial class TextRig
         if (bytes == null) { log.Info("TextRig: no default font (embedded DejaVuSans missing from the image)"); return; }
         _defaultName = DefaultFace;
         _bakedPx = FontPx;
-        _requests.Add(new FaceRequest(DefaultFace, bytes, FontPx));
+        _requests.Add(new FaceRequest(DefaultFace, bytes, FontPx, Index: FontRegistry.Index(DefaultFace)));
         _sheet = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, log);
         log.Info(_sheet != null ? "TextRig: atlas ready" : "TextRig: atlas bake unavailable");
     }
@@ -369,24 +369,26 @@ public static unsafe partial class TextRig
             if (name.Equals(_typeface, StringComparison.OrdinalIgnoreCase)) return;
             string prev = _typeface;
             byte[] prevFont = _requests[0].Font;
+            int prevIndex = _requests[0].Index;
             if (!FontRegistry.Bind(name)) { _log.Info($"TextRig: typeface {name} unknown or refused; keeping {prev}"); return; }
             byte[]? bytes = FontRegistry.Bytes(DefaultFace);
             if (bytes == null) return;
             _typeface = name;
             if (ReferenceEquals(bytes, prevFont)) return;
-            Retarget(bytes);
+            Retarget(bytes, FontRegistry.Index(DefaultFace));
             if (Rebake()) { _log.Info($"TextRig: typeface -> {name}"); FontChanged?.Invoke(); return; }
             _log.Info($"TextRig: typeface {name} refused by the bake; keeping {prev}");
             FontRegistry.Bind(prev); _typeface = prev;
-            Retarget(prevFont);
+            Retarget(prevFont, prevIndex);
         }
     }
 
-    /// <summary>Point every request of the default typeface at <paramref name="font"/> (the icon-only ones are the embedded font's).</summary>
-    private static void Retarget(byte[] font)
+    /// <summary>Point every request of the default typeface at font <paramref name="index"/> of <paramref name="font"/> (the
+    /// icon-only ones are the embedded font's).</summary>
+    private static void Retarget(byte[] font, int index)
     {
         for (int i = 0; i < _requests.Count; i++)
-            if (_requests[i].Typeface == DefaultFace) _requests[i] = _requests[i] with { Font = font };
+            if (_requests[i].Typeface == DefaultFace) _requests[i] = _requests[i] with { Font = font, Index = index };
     }
 
     // ---- portrait pass ------------------------------------------------------------------

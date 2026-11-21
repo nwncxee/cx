@@ -579,6 +579,9 @@ internal static unsafe class SymbolMap
     // stb_truetype: the client statically links stb and exports every entry point as extern "C".
     [Fn("int(byte* info, byte* data, int offset)")]
     public const string StbttInitFont              = "stbtt_InitFont";
+    /// <summary>Where font <c>index</c> of a collection starts in <c>data</c>, the offset <see cref="StbttInitFont"/> takes; -1 past its last.</summary>
+    [Fn("int(byte* data, int index)")]
+    public const string StbttGetFontOffsetForIndex = "stbtt_GetFontOffsetForIndex";
     [Fn("float(byte* info, float px)")]
     public const string StbttScaleForPixelHeight   = "stbtt_ScaleForPixelHeight";
     [Fn("void(byte* info, int* ascent, int* descent, int* lineGap)")]
@@ -2814,6 +2817,7 @@ internal static unsafe class SymbolMap
         //     All extern "C" or shared-engine statics, name-exported. Portraits stay Linux-only: the CAurTexture
         //     vtables AurTex keys on resolve by RVA below. ---
         [StbttInitFont]              = Nm("stbtt_InitFont"),
+        [StbttGetFontOffsetForIndex] = Nm("stbtt_GetFontOffsetForIndex"),
         [StbttScaleForPixelHeight]   = Nm("stbtt_ScaleForPixelHeight"),
         [StbttGetFontVMetrics]       = Nm("stbtt_GetFontVMetrics"),
         [StbttGetCodepointHMetrics]  = Nm("stbtt_GetCodepointHMetrics"),

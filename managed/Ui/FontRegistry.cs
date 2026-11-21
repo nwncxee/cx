@@ -92,8 +92,10 @@ public static class FontRegistry
         yield return Path.Combine(home, ".fonts");
     }
 
-    /// <summary>The installed fonts: the font folders walked once, cold, on first ask.</summary>
-    private static FontCatalog Catalog() => _catalog ??= FontCatalog.Scan(null, FontDirs(), d => _log?.Info($"FontRegistry: {d} not walked"));
+    /// <summary>The installed fonts, read once, cold, on first ask: every font fontconfig lists, or the font folders
+    /// walked where there is no fontconfig (Windows, Proton, a bare Linux).</summary>
+    private static FontCatalog Catalog()
+        => _catalog ??= FontCatalog.Scan(Fontconfig("fc-list", "--format", FcListFormat), FontDirs(), d => _log?.Info($"FontRegistry: {d} not walked"));
 
     /// <summary>The entry for <paramref name="name"/>: declared, or an installed font read on this first ask
     /// (a read failure is its refusal). Null for a name nobody knows.</summary>
@@ -134,7 +136,7 @@ public static class FontRegistry
         if (e == null || e.Bytes == null || _boot == null) return false;
         lock (_entries)
             _entries[DefaultName] = ReferenceEquals(e, _boot) ? _boot
-                                  : new Entry { Name = DefaultName, Source = $"{e.Source} (ui.typeface {e.Name})", Bytes = e.Bytes };
+                                  : new Entry { Name = DefaultName, Source = $"{e.Source} (ui.typeface {e.Name})", Bytes = e.Bytes, Index = e.Index };
         return true;
     }
 
@@ -154,11 +156,11 @@ public static class FontRegistry
         if (!_entries.ContainsKey(MonospaceName))
         {
             var e = new Entry { Name = MonospaceName, Source = "system monospace" };
-            string? mono = SystemMonospace();
-            if (mono == null) e.Refusal = "none found";
+            if (SystemMonospace() is not var (mono, index)) e.Refusal = "none found";
             else
             {
-                e.Source = mono;
+                e.Source = index == 0 ? mono : $"{mono} font {index}";
+                e.Index = index;
                 try { e.Bytes = File.ReadAllBytes(mono); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
             }
             _entries[MonospaceName] = e;
@@ -227,29 +229,44 @@ public static class FontRegistry
     /// that follows the desktop uses), and on Windows -- which has no such setting -- the console hosts' defaults,
     /// Cascadia Mono then Consolas, then Courier New. Only a single <c>.ttf</c>/<c>.otf</c>: the bake cannot open a
     /// collection. Cold, once, from <see cref="Load"/>.</summary>
-    private static string? SystemMonospace()
+    private static (string Path, int Index)? SystemMonospace()
     {
         if (OperatingSystem.IsWindows())
         {
             string dir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
             foreach (string f in new[] { "CascadiaMono.ttf", "consola.ttf", "cour.ttf" })
-                if (dir.Length > 0 && File.Exists(Path.Combine(dir, f))) return Path.Combine(dir, f);
+                if (dir.Length > 0 && File.Exists(Path.Combine(dir, f))) return (Path.Combine(dir, f), 0);
             return null;
         }
+        return Fontconfig("fc-match", "-f", FcMatchFormat, "monospace") is string answer ? ParseFcMatch(answer) : null;
+    }
+
+    /// <summary>fc-match's answer: the file and the font's index in it, so a font inside a collection is found.</summary>
+    internal const string FcMatchFormat = "%{file}:%{index}";
+
+    /// <summary>One file per line, every font fontconfig knows.</summary>
+    internal const string FcListFormat = "%{file}\\n";
+
+    /// <summary>What a fontconfig tool printed, or null when there is no fontconfig (Windows, Proton, a bare
+    /// Linux), it failed, or it had not exited <see cref="FcWaitMs"/> after its output closed. Cold, once per question.</summary>
+    private static string? Fontconfig(string tool, params string[] args)
+    {
+        if (OperatingSystem.IsWindows()) return null;
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("fc-match", "-f %{file} monospace")
-            { RedirectStandardOutput = true, UseShellExecute = false };
+            var psi = new System.Diagnostics.ProcessStartInfo(tool) { RedirectStandardOutput = true, UseShellExecute = false };
+            foreach (string a in args) psi.ArgumentList.Add(a);
             using var p = System.Diagnostics.Process.Start(psi);
             if (p == null) return null;
-            string path = p.StandardOutput.ReadToEnd().Trim();
-            if (!p.WaitForExit(2000)) { p.Kill(); return null; }
-            string ext = Path.GetExtension(path);
-            bool single = ext.Equals(".ttf", StringComparison.OrdinalIgnoreCase) || ext.Equals(".otf", StringComparison.OrdinalIgnoreCase);
-            return single && File.Exists(path) ? path : null;
+            string text = p.StandardOutput.ReadToEnd();   // before the wait: a long list fills the pipe and the tool would block
+            if (!p.WaitForExit(FcWaitMs)) { p.Kill(); return null; }
+            return p.ExitCode == 0 ? text : null;
         }
-        catch (Exception) { return null; }   // no fontconfig: the console keeps the UI face
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }   // no such tool
     }
+
+    /// <summary>How long a fontconfig tool may linger after its output closed before CX walks the font folders itself.</summary>
+    private const int FcWaitMs = 5000;
 
     /// <summary>A rooted path as given; a relative one beside the extender (the process directory, where nwmain
     /// sits next to the proxy DLL or the <c>.so</c>) and then in the user directory beside <c>cx.cfg</c> -- the
@@ -351,7 +368,19 @@ public static class FontRegistry
     }
 
     /// <summary>The file and the index in it of fontconfig's <c>%{file}:%{index}</c> answer; null for anything else.</summary>
-    internal static (string Path, int Index)? ParseFcMatch(string output) => null;
+    internal static (string Path, int Index)? ParseFcMatch(string output)
+    {
+        string s = output.Trim();
+        int colon = s.LastIndexOf(':');
+        if (colon <= 0 || !int.TryParse(s.AsSpan(colon + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int index)) return null;
+        string path = s[..colon];
+        byte[] bytes;
+        try { bytes = File.ReadAllBytes(path); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+        return index < Sfnt.Count(bytes) && Sfnt.Read(bytes, index) is { Drawable: true } ? (path, index) : null;
+    }
+
+    /// <summary>The font's index inside a collection that backs <paramref name="name"/>; 0 for a single font or an unknown name.</summary>
+    public static int Index(string name) => Find(name) is { Bytes: not null } e ? e.Index : 0;
 
     /// <summary>What <c>/knobs</c> prints: each name, its source, and its state.</summary>
     public static string Report(Func<string, int> facesOf)
