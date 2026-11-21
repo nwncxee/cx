@@ -15,8 +15,9 @@ internal static partial class DbSelfCheck
     internal static bool MaterialResetHoldsTodaySelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbSelfCheck.MaterialResetHoldsToday.SelfCheck");
-        ExtenderLog? savedTreeLog = PartTree.Log;
+        ExtenderLog? savedTreeLog = PartTree.Log, savedArenaLog = MeshArena.Log;
         PartTree.Log = null;
+        MeshArena.Log = null;
         try
         {
             TextureOnlyOverride(check);
@@ -30,6 +31,7 @@ internal static partial class DbSelfCheck
             Drain();
             PartTree.ResetForCheck();
             MeshArena.ResetForCheck();
+            MeshArena.Log = savedArenaLog;
         }
         log.Info(check.Ok ? "DbSelfCheck.MaterialResetHoldsToday.SelfCheck: passed"
                           : "DbSelfCheck.MaterialResetHoldsToday.SelfCheck: FAILED");
