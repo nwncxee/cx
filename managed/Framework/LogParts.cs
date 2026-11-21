@@ -78,6 +78,12 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
         catch (IOException e) { WriteFailed(e); }
     }
 
+    /// <summary>A saved copy's full path, or why there is none.</summary>
+    internal readonly record struct Saved(string? Path, string? Why);
+
+    /// <summary>Copy cx.log as it stands to <see cref="LogReport.FileName"/> beside it.</summary>
+    internal Saved SaveReport() => new(null, "not built");
+
     internal void Flush()
     {
         try { _file?.Flush(); }
