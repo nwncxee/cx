@@ -19,5 +19,11 @@ internal static class LogReport
     /// <summary>The press: save the copy, put its path on the clipboard, and say in cx.log where it is.</summary>
     internal static void Press()
     {
+        LogReportState s = State;
+        ExtenderLog? log = s.Log ?? KnobGroup.Log;
+        LogParts.Saved saved = s.Save();
+        if (saved.Path == null) { log?.Info($"About: {FileName} was not saved: {saved.Why}"); return; }
+        log?.Info(s.Copy(saved.Path) ? $"About: saved {saved.Path}, and its path is on the clipboard"
+                                     : $"About: saved {saved.Path}, but the clipboard refused its path");
     }
 }

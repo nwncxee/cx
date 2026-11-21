@@ -49,6 +49,9 @@ public static class General
         About.Link("releases", "Releases", Product.Url);
         About.Button("copy", "Copy my settings for a bug report", CopySurface,
             help: "Copies every CX setting, and what CX found when it started, to the clipboard -- paste it into a bug report.");
+        About.Button("savelog", "Save my log for a bug report", LogReport.Press,
+            help: "Saves cx-report.log next to cx.log and copies its path. Attach cx-report.log to your report, not cx.log: "
+                + "CX keeps writing cx.log while the game runs, and Discord or the browser refuses a file that changes while it uploads.");
 
         CommandRegistry.Global.Register("/settings", "open the CX settings panel", OpenSettings, exempt: true);
     }
