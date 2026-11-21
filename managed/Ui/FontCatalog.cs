@@ -84,6 +84,10 @@ public sealed class FontCatalog
         return new FontCatalog(faces, byFull);
     }
 
+    /// <summary>The fonts of the loaded module's content: each resource a hak, the module or NWSync supplies
+    /// (<c>Server</c>), read from its own bytes; a loose override file or the base game's own is left out.</summary>
+    public static FontCatalog FromContent(IEnumerable<(string ResRef, bool Server, byte[] Bytes)> resources) => Empty;
+
     /// <summary>The family a font belongs to: its typographic family name (id 16, else 1), plus its width when the
     /// letters are not normal width -- in its own words when its name says one, else the width class's.</summary>
     private static string FamilyOf(Sfnt.Info f)

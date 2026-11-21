@@ -49,6 +49,8 @@ public static class FontRegistry
     /// <summary>The installed fonts, scanned once on first ask (or handed in by <see cref="UseCatalog"/>).</summary>
     private static FontCatalog? _catalog;
     private static string[]? _names;
+    /// <summary>The fonts a hak, the module or NWSync supply, while that content is loaded.</summary>
+    private static FontCatalog _content = FontCatalog.Empty;
     /// <summary>The entries of installed families' faces, by face name; a new catalog drops them.</summary>
     private static readonly Dictionary<string, Entry> _faces = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Each face name once made, so a frame that asks again allocates nothing; a new catalog or declaration drops them.</summary>
@@ -303,6 +305,17 @@ public static class FontRegistry
 
     /// <summary>Where a face name draws from: the file, the font's index in it, the weight it draws at, and whether it is italic.</summary>
     public readonly record struct Place(string Path, int Index, int Weight, bool Italic);
+
+    /// <summary>Draw the loaded module's fonts from <paramref name="content"/> from now on; the content it replaces comes back.</summary>
+    internal static FontCatalog UseContent(FontCatalog content)
+    {
+        lock (_entries)
+        {
+            FontCatalog was = _content;
+            _content = content;
+            return was;
+        }
+    }
 
     /// <summary>Draw installed fonts from <paramref name="catalog"/> from now on; the catalog it replaces comes back.</summary>
     internal static FontCatalog UseCatalog(FontCatalog catalog)
