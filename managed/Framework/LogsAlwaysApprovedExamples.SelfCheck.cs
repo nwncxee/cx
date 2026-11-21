@@ -52,7 +52,7 @@ public static class LogsAlwaysApprovedExamples
             $"L3 /general logs 0 answers that General has no logs setting, not: {reply}");
         string mark = $"LogsAlwaysApprovedExamples: L3 still writing {Guid.NewGuid():N}";
         log.Info(mark);
-        ExtenderLog.Flush();
+        check.ExpectFlushed();
         check.Expect(ExtenderLog.TailHas(mark), "L3 cx.log goes on getting lines after /general logs 0");
     }
 

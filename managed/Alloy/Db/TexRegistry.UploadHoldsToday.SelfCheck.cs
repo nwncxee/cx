@@ -14,8 +14,9 @@ internal static unsafe partial class TexRegistry
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         { check.Skip("in a session: the suite waits out the retry, which a player's boot does not pay for"); return true; }
         ExtenderLog? saved = _log;
+        Clock was = UseRetryClock(Clock.Stepped());
         try { Cx569E6(check); }
-        finally { _log = saved; }
+        finally { _log = saved; UseRetryClock(was); }
         log.Info(check.Ok ? "TexRegistry.UploadHoldsToday.SelfCheck: passed" : "TexRegistry.UploadHoldsToday.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -28,7 +29,7 @@ internal static unsafe partial class TexRegistry
         List<string> heard = Listen();
         TexId id = Alloc("cx_e6", TexKind.Plain, 0, out _);
         Fail(id.Index, "no DDS, TGA or PLT resource of that name");
-        BlockingWait.Sleep(RetryWaitMs, "self-check only: outlive the once-a-second retry");
+        _clk.Clock.Step(RetryWaitMs);
         TexId again = Alloc("cx_e6", TexKind.Plain, 0, out bool offer);
         check.Expect(!offer && StateOf(again) == TexState.Failed, "E6: a texture the game's files lack was loaded again");
         Fail(again.Index, "no DDS, TGA or PLT resource of that name");

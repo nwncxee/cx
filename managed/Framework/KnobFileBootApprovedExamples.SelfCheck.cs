@@ -7,10 +7,6 @@ namespace CX.Framework;
 /// file rewritten with values a self-check moved and put back.</summary>
 public static class KnobFileBootApprovedExamples
 {
-    /// <summary>Slack over <see cref="KnobFile.DebounceMs"/> before the timing example reads the counters: a
-    /// pool thread has to be scheduled, and a late callback must not read as a held arm.</summary>
-    private const int SettleMs = 500;
-
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -43,15 +39,21 @@ public static class KnobFileBootApprovedExamples
         check.Expect(!first.End(), "which is owed once, not on every call");
     }
 
-    /// <summary>E1 live: the arm boot raises sits past the debounce without the writer firing. The counter is
-    /// the whole point -- the write itself stands down off-device, so only a fire would show.</summary>
+    /// <summary>E1 live: the arm boot raises sits past the debounce, on a clock this check steps, without the writer
+    /// firing. The counter is the point: the write itself stands down off-device, so only a fire would show.</summary>
     private static void BootArmNeverFires(Checker check)
     {
         check.Expect(KnobFile.Holding, "the writer is still held while the examples run");
         int held = KnobFile.HeldArms;
         int fires = KnobFile.Fires;
-        KnobFile.Arm();
-        BlockingWait.Sleep(KnobFile.DebounceMs + SettleMs, "off-device boot self-check: the debounce has to be waited out to prove it never fires");
+        Clock clock = Clock.Stepped();
+        Clock was = KnobFile.UseClock(clock);
+        try
+        {
+            KnobFile.Arm();
+            clock.Step(KnobFile.DebounceMs + 1);
+        }
+        finally { KnobFile.UseClock(was); }
         check.Expect(KnobFile.Fires == fires, "a boot arm never reaches the writer, however long boot takes");
         check.Expect(KnobFile.HeldArms == held + 1, "...and the hold counted it");
         check.Expect(KnobFile.Writes == 0, "so cx.cfg is not rewritten at boot");

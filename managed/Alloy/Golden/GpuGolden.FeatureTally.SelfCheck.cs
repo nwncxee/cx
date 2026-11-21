@@ -34,7 +34,7 @@ internal static partial class GpuGolden
         string again = vk.FeatureLine;
         check.Expect(again.Contains(": grass 0 under the hold, 0 on the frame;") && again.Contains("; environment probe 0 under the hold, 0 on the frame;"),
             $"a new hold starts the counts again: \"{again}\"");
-        ExtenderLog.Flush();
+        check.ExpectFlushed();
         check.Expect(ExtenderLog.TailHas(line), $"a hold that begins inside the last lift's window writes that window's line first: \"{line}\"");
         vk.Destroy(grass); vk.Destroy(probe); vk.Destroy(other); vk.Destroy(vs); vk.Destroy(fs);
         vk.UnderHold = held;

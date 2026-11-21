@@ -36,7 +36,7 @@ public static class ServiceHost
             log.Always("host: " + rot);
             log.Always("host: 0 service(s) discovered, 0 hook(s) installed");
             SymbolMap.RotNotice("NWNCX:EE: " + rot);   // Windows-only: a version.dll proxy has no log the player reads
-            ExtenderLog.Flush();   // Always only enqueues, and nothing else in this process will drain it
+            ExtenderLog.FlushNow();   // Always only enqueues, and nothing else in this process will drain it
             return;
         }
 
@@ -160,6 +160,8 @@ public static class ServiceHost
         // Boot is over here, so a set from now on is a player's: every group has declared and every self-check
         // has put back what it moved.
         KnobFile.BootEnded(log);
-        ExtenderLog.Flush();   // boot lines on disk before the host returns: the demo exits right after
+        log.Info($"KnobFile: the debounce runs on {KnobFile.ClockName}");
+        log.Info($"TexRegistry: the upload retry runs on {CX.Alloy.Db.TexRegistry.RetryClockName}");
+        ExtenderLog.FlushNow();   // boot lines on disk before the host returns: the demo exits right after
     }
 }

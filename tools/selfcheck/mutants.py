@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Runs a list of hand mutants against the self-checks with one compile for the lot.
 
-Usage: tools/selfcheck/mutants.py <mutants.tsv>
+Usage: tools/selfcheck/mutants.py [--whole] [--logs DIR] <mutants.tsv>
+
+  --whole     boot every suite for every mutant
+  --logs DIR  keep each mutant boot's cx.log as DIR/<name>.cx.log
 
 Each line of the list is a mutant, four fields split by tabs: a name, a file under managed/, the exact text to
 change (it must occur in the file exactly once) and what it becomes (empty: the text is removed, which only a whole
@@ -300,10 +303,23 @@ def verdict(m, rc, output):
 
 def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # so the work folder's cleanup below runs on a TERM
-    if len(argv) != 2:
+    args, logs = argv[1:], None
+    if '--whole' in args:
+        args.remove('--whole')  # every boot runs every suite, so this asks for what each boot already does
+    if '--logs' in args:
+        i = args.index('--logs')
+        if i + 1 >= len(args):
+            print(__doc__, file=sys.stderr)
+            return 2
+        logs = os.path.abspath(args[i + 1])
+        del args[i:i + 2]
+        os.makedirs(logs, exist_ok=True)
+    if len(args) != 1:
         print(__doc__, file=sys.stderr)
         return 2
-    mutants, refusals = parse(argv[1])
+    keep = (lambda name, out: shutil.copy(os.path.join(out, 'cx.log'), os.path.join(logs, name + '.cx.log'))
+            if os.path.isfile(os.path.join(out, 'cx.log')) else None) if logs else (lambda name, out: None)
+    mutants, refusals = parse(args[0])
     if refusals or not mutants:
         for r in refusals or ['the list holds no mutant']:
             print(f'!! refusing {r}', file=sys.stderr)
@@ -352,10 +368,13 @@ def main(argv):
         survived = 0
         for m in switched:
             rc, output = run(work, out, False, m.k, timeout)
+            keep(m.name, out)
             survived += not verdict(m, rc, output)
         for m in [m for m in mutants if m.alone]:
             overlay(work, [m], False)
-            rc, output = run(work, os.path.join(work, 'alone-' + str(m.k)), True, 0, 2 * compiled + timeout)
+            alone = os.path.join(work, 'alone-' + str(m.k))
+            rc, output = run(work, alone, True, 0, 2 * compiled + timeout)
+            keep(m.name, alone)
             survived += not verdict(m, rc, output)
         return 1 if survived else 0
     finally:

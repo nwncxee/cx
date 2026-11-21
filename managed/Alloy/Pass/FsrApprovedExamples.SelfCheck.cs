@@ -67,7 +67,7 @@ internal static partial class Fsr
             string panel = Post.G.PanelStatus?.Invoke() ?? "";
             check.Expect(panel.Contains("FSR", StringComparison.Ordinal) && panel.Contains(why, StringComparison.Ordinal),
                 $"E6: the settings panel says FSR is off for the session, and why (got \"{panel}\")");
-            ExtenderLog.Flush();
+            check.ExpectFlushed();
             string path = Path.Combine(ExtenderLog.Dir, "cx.log");
             if (!File.Exists(path)) { check.Skip("E6's cx.log half: no cx.log in this launch's logs folder to read"); return; }
             int said = 0;
