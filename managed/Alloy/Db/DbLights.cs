@@ -33,7 +33,7 @@ internal static class DbLights
         // Cleared per walk: an area pair that is no longer in the scene must stop lighting it. The SUN is
         // deliberately NOT cleared -- see AreaTerm.
         FrameInputs.HasAreaAmbient = false; FrameInputs.HasAreaDiffuse = false;
-        DbId only = SceneFeed.BlindLights(scene);
+        DbId only = SceneFeed.BlindLights;
         FrameInputs.Blind = !only.IsNull;
         // The bake's own walk opens with ours: it closes a STATIC set over the lights it is told about, and a
         // walk that never began leaves every light dynamic and every tile unbaked.
@@ -98,7 +98,7 @@ internal static class DbLights
     {
         ulong h = 1469598103934665603UL;
         Mix(ref h, scene.Value);
-        Mix(ref h, SceneFeed.BlindLights(scene).Value);
+        Mix(ref h, SceneFeed.BlindLights.Value);
         Mix(ref h, (uint)BitConverter.SingleToInt32Bits(radiusMult));
         Mix(ref h, DbInputs.LightRev);
         if (t.HaveArea)
@@ -143,7 +143,7 @@ internal static class DbLights
     /// <summary>One light into the frame's rig: the area-pair fork, the engine's admission tests, the
     /// adjusted radius/colour pair, and the bake's static verdict. Shared by both enumerations so a tile
     /// light and an object light cannot drift apart in how they are admitted. <paramref name="only"/> is the
-    /// scene's blind-lights object (<see cref="SceneFeed.BlindLights"/>), null when there is none.</summary>
+    /// session's blind-lights object (<see cref="SceneFeed.BlindLights"/>), null when there is none.</summary>
     private static void Admit(in DbLight l, float radiusMult, in FrameHoist h, bool tile, DbId only)
     {
         _walked++;
@@ -352,16 +352,32 @@ internal static class DbLights
 
         // Blind lights (a blindness effect's light): only the named object's lights light the scene.
         DbId blind = SceneDb.Objects.Alloc();
-        SceneDb.SceneBlindLights[scene.Index] = blind;
+        SceneDb.BlindLights = blind;
         Walk(scene, in noArea);
         check.Expect(FrameInputs.Blind && FrameInputs.LightCount == 0,
                      $"under another object's blind lights this light is out of the rig ({FrameInputs.LightCount})");
         check.Expect(FrameInputs.HasAreaAmbient && FrameInputs.AreaAmbient == Vector3.Zero,
                      "...and the area ambient is black, not the grey stand-in");
-        SceneDb.SceneBlindLights[scene.Index] = obj;
+        SceneDb.BlindLights = obj;
         Walk(scene, in noArea);
         check.Expect(FrameInputs.LightCount == 1, $"...while the blind object's own light still lights ({FrameInputs.LightCount})");
-        SceneDb.SceneBlindLights[scene.Index] = default;
+        SceneDb.BlindLights = default;
+
+        // The engine names the blind object and THEN attaches it to the creature, which takes it out of the
+        // scene's member list; LightManager's one global keeps naming it, so the blind lights stay on.
+        DbScene.Join(scene, blind);
+        SceneDb.BlindLights = blind;
+        DbScene.Leave(scene, blind);
+        SceneDb.ObjScene[obj.Index] = scene;
+        Walk(scene, in noArea);
+        check.Expect(FrameInputs.Blind && FrameInputs.LightCount == 0,
+                     $"blind lights stay on after their object leaves the scene's member list ({FrameInputs.LightCount})");
+        Walk(other, in noArea);
+        check.Expect(FrameInputs.Blind, "...and hold for another scene too: the engine keeps one, not one per scene");
+        SceneDb.BlindLights = default;
+        Walk(scene, in noArea);
+        check.Expect(!FrameInputs.Blind && FrameInputs.LightCount == 1,
+                     $"cleared, every light lights again ({FrameInputs.LightCount})");
         SceneDb.Objects.Free(blind);
 
         // A TILE light, which is the case the part registry never saw: the Lit table is enumerated directly,

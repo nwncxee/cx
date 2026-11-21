@@ -40,7 +40,6 @@ public static unsafe class DbScene
         SceneDb.SceneSkyFade[i] = default;
         SceneDb.SceneSkyT[i] = 0f; SceneDb.SceneSkyCur[i] = 0; SceneDb.SceneSkyDesired[i] = 0;
         SceneDb.SceneSkyOff[i] = true;
-        SceneDb.SceneBlindLights[i] = default;
         SceneDb.SceneShadowGob[i] = default;
         SceneDb.SceneHighlightTex[i] = "";
         SceneDb.SceneRenderAabb[i] = false;
@@ -177,7 +176,6 @@ public static unsafe class DbScene
         int i = scene.Index;
         if (SceneDb.SceneObjects[i]?.Remove(obj) != true) return false;
         SceneDb.SceneHighlights[i]?.Remove(obj);
-        if (SceneDb.SceneBlindLights[i] == obj) SceneDb.SceneBlindLights[i] = default;
         if (SceneDb.SceneShadowGob[i] == obj) SceneDb.SceneShadowGob[i] = default;
         if (SceneDb.SceneSkyFade[i] == obj) SceneDb.SceneSkyFade[i] = default;
         for (int k = 0; k < SceneDb.SkyBoxSlots; k++)

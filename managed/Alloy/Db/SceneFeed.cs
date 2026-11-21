@@ -24,7 +24,8 @@ public static class SceneFeed
 
     // ---- the inputs themselves ----------------------------------------------------------------------
 
-    public static DbId BlindLights(DbId s) => Ok(s) ? SceneDb.SceneBlindLights[s.Index] : default;
+    /// <summary>The session's blind-lights object (<see cref="SceneDb.BlindLights"/>): it holds for every scene.</summary>
+    public static DbId BlindLights => SceneDb.BlindLights;
     public static string HighlightTexture(DbId s) => Ok(s) ? SceneDb.SceneHighlightTex[s.Index] : "";
 
     public static int HighlightCount(DbId s) => Ok(s) ? SceneDb.SceneHighlights[s.Index]?.Count ?? 0 : 0;
@@ -137,7 +138,7 @@ public static class SceneFeed
             FrameInputs.FogStart = v.Fog.Start;
             FrameInputs.FogEnd = v.Fog.End;
             // Scene::DoFog @0x45f1b0's blind-lights branch
-            FrameInputs.FogColor = SceneDb.SceneBlindLights[i].IsNull ? v.Fog.Colour : Vector3.Zero;
+            FrameInputs.FogColor = SceneDb.BlindLights.IsNull ? v.Fog.Colour : Vector3.Zero;
         }
         FogNote(i, in h);
     }
