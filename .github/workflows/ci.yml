@@ -5,8 +5,10 @@
 # hide in any file, Markdown included, and checks the decision records. Releases are built by release.yml on a v* tag.
 name: ci
 
+# ready_for_review starts the run a draft never had; the other three are the default set.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -26,6 +28,13 @@ jobs:
     outputs:
       build: ${{ steps.match.outputs.build }}
     steps:
+      # A draft fails here and every job needs this one, so a draft runs nothing. Failing, not skipping:
+      # a skipped job reports as passed. Marking it ready starts the run that counts.
+      - name: Refuse a draft
+        if: github.event.pull_request.draft
+        run: |
+          echo "draft: CI runs when the pull request is marked ready" >&2
+          exit 1
       - id: match
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,6 +166,7 @@ jobs:
         run: ./build-win-native.sh
 
   no-decompiled:
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
