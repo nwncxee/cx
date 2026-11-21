@@ -27,6 +27,8 @@ internal static partial class DbSelfCheck
             UnreadableMtrRetries(check);
             ResetRestagesShadowMasks(check);
             UnreadableRetriesAreBudgeted(check);
+            UnreadableRetriesTakeTurns(check);
+            LateMaterialReachesRecipe(check);
         }
         finally
         {
@@ -159,6 +161,91 @@ internal static partial class DbSelfCheck
         }
         check.Expect(first == Budget && after == Names,
                      $"of {Names} unreadable .mtr files, {first} were read again at the first retry (not {Budget}) and {after} in all");
+    }
+
+    /// <summary>Frames a check waits for a name the first retry left out: two retries of fifteen frames, and slack.</summary>
+    private const int SecondRetryTicks = 40;
+
+    /// <summary>A name that fails its retry goes behind the names not yet tried: of nine unreadable files, the eight the
+    /// first retry read stay locked, and the ninth, made readable, takes its file at the next retry and not after
+    /// the eight give up. Oracle: the stand-in's own count of the reads it answered, and the hand-written paving text.</summary>
+    private static void UnreadableRetriesTakeTurns(Checker check)
+    {
+        const int Names = 9;
+        using var files = new StandInFiles();
+        var names = new string[Names];
+        for (int k = 0; k < Names; k++)
+        {
+            names[k] = "cx_rs_turn" + k;
+            files.Put(names[k], StandInFiles.Mtr, GravelMtr);
+            MtrFeed.Pump();
+            MtrDef.Resolve(names[k]);
+        }
+        MtrFeed.Pump(Names);
+        for (int k = 0; k < Names; k++)
+        {
+            files.Put(names[k], StandInFiles.Mtr, PavingMtr);
+            files.Lock(names[k], StandInFiles.Mtr, true);
+            TexRegistry.QueueReset(names[k]);
+        }
+        TexRegistry.Tick();
+        var before = new int[Names];
+        for (int k = 0; k < Names; k++) before[k] = files.Reads(names[k], StandInFiles.Mtr);
+        int left = -1, retried = 0;
+        for (int t = 0; t < RetryTicks && retried == 0; t++)
+        {
+            TexRegistry.Tick();
+            retried = 0;
+            for (int k = 0; k < Names; k++)
+                if (files.Reads(names[k], StandInFiles.Mtr) > before[k]) retried++;
+                else left = k;
+        }
+        check.Expect(retried == Names - 1 && left >= 0,
+                     $"the first retry of {Names} unreadable .mtr files read {retried} of them, not {Names - 1}");
+        if (left < 0) return;
+        files.Lock(names[left], StandInFiles.Mtr, false);
+        int ticks = 0;
+        for (; ticks < SecondRetryTicks && Took(new[] { names[left] }) == 0; ticks++) TexRegistry.Tick();
+        check.Expect(Took(new[] { names[left] }) == 1,
+                     $"'{names[left]}', left out of the first retry and readable again, still had not taken its file "
+                     + $"{SecondRetryTicks} frames later: the names that failed again went ahead of it");
+        for (int k = 0; k < Names; k++) files.Lock(names[k], StandInFiles.Mtr, false);
+        for (int t = 0; t < RetryTicks && Took(names) < Names; t++) TexRegistry.Tick();
+    }
+
+    /// <summary>A floor built while its <c>.mtr</c> had only been asked for draws its mesh's texture; once the file lands,
+    /// with no override, the next frame moves its recipe, its part and the shadow staging to the material, and it draws
+    /// what a floor built after the landing draws. Oracle: the hand-written paving text and the second model's recipe.</summary>
+    private static void LateMaterialReachesRecipe(Checker check)
+    {
+        bool inv0 = CasterPass.InvalidateForCheck(false);
+        using var files = new StandInFiles();
+        files.Put(RsFloor, StandInFiles.Mtr, PavingMtr);
+        Reset();
+        var model = Model("cx_rs_latemdl", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, Quad(RsFloor) });
+        int p = Place(model);
+        int r = p >= 0 ? SceneDb.PartRecipe[p] : -1;
+        check.Expect(r >= 0 && Draws(p) == RsFloor && MtrDef.Pending(RsFloor),
+                     $"the floor built before its .mtr was read does not draw its mesh's texture while it waits ({Draws(p)})");
+        int v0 = CasterPass.ListVersionForCheck;
+        MtrFeed.Pump(4);
+        TexRegistry.Tick();
+        var fresh = Model("cx_rs_freshmdl", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, Quad(RsFloor) });
+        int q = Place(fresh);
+        int fr = q >= 0 ? SceneDb.PartRecipe[q] : -1;
+        check.Expect(fr >= 0 && fr != r && Draws(q) == "cx_rs_paving",
+                     $"a floor built after the .mtr landed does not draw its paving ({Draws(q)})");
+        check.Expect(r >= 0 && fr >= 0 && Draws(p) == Draws(q) && DrawRecipe.Tex(r, 0).Value == DrawRecipe.Tex(fr, 0).Value,
+                     $"the floor built before its .mtr landed draws {Draws(p)}, the one built after it {Draws(q)}");
+        check.Expect(r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0,
+                     "the late .mtr's twosided term did not reach the recipe built before it landed");
+        check.Expect(CasterPass.ListVersionForCheck != v0 && CasterPass.InvalidateForCheck(false),
+                     "the late .mtr moved the floor's mask and the shadow staging and its bakes stood on the old one");
+        CasterPass.InvalidateForCheck(inv0);
+        ForgetFixture(model);
+        ForgetFixture(fresh);
     }
 
     /// <summary>How many of <paramref name="names"/> resolve to the paving material now.</summary>
