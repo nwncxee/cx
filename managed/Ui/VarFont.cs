@@ -33,7 +33,7 @@ internal static class VarFont
             double[] at = Normalize(f, weight);
             Glyph[] glyphs = Glyphs(f);
             ApplyVariations(f, glyphs, at);
-            return Write(f, glyphs, weight);
+            return Write(f, glyphs);
         }
         catch (ArgumentOutOfRangeException) { return null; }   // a table pointing past the file
     }
@@ -330,8 +330,8 @@ internal static class VarFont
     }
 
     /// <summary>The static font: the original's tables less <see cref="Dropped"/>, with new <c>glyf</c>, <c>loca</c>
-    /// (long), <c>hmtx</c> (a metric per glyph), and <c>head</c>, <c>hhea</c> and <c>OS/2</c> patched to match.</summary>
-    private static byte[] Write(Reader f, Glyph[] glyphs, int weight)
+    /// (long), <c>hmtx</c> (a metric per glyph), and <c>head</c> and <c>hhea</c> patched to match.</summary>
+    private static byte[] Write(Reader f, Glyph[] glyphs)
     {
         var glyf = new MemoryStream();
         var loca = new byte[(glyphs.Length + 1) * 4];
@@ -365,7 +365,6 @@ internal static class VarFont
         BinaryPrimitives.WriteInt16BigEndian(head.AsSpan(50), 1);
         BinaryPrimitives.WriteUInt16BigEndian(hhea.AsSpan(10), (ushort)maxAdv);
         BinaryPrimitives.WriteUInt16BigEndian(hhea.AsSpan(34), (ushort)glyphs.Length);
-        if (tables.TryGetValue("OS/2", out byte[]? os2)) BinaryPrimitives.WriteUInt16BigEndian(os2.AsSpan(4), (ushort)weight);
         return Pack(tables);
     }
 
