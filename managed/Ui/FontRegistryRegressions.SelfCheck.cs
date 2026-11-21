@@ -12,6 +12,8 @@ namespace CX.Ui;
 internal static class FontRegistryRegressions
 {
     private const string DejaVu = "DejaVu Sans", Noto = "Noto Sans";
+    /// <summary>The approved suite's <c>font.&lt;name&gt;=</c> line naming one static file.</summary>
+    private const string MineStatic = "cx-fontcheck-mine-static";
 
     /// <summary>Runs over the approved suite's fixture folder and catalog, which <paramref name="dir"/> holds.</summary>
     internal static void SelfCheck(Checker check, string dir)
@@ -38,8 +40,8 @@ internal static class FontRegistryRegressions
                 && saved.Contains(new KeyValuePair<string, string>("w0.weight", "700")) && saved.Contains(new KeyValuePair<string, string>("w0.style", "2"));
         });
 
-        Example(check, "R5 the UI's weight and style rows show only for an installed family", () =>
-            WithUi(FontRegistry.DefaultName, 400, FontRegistry.StyleNormal, () => !UiKnobs.FontWeight.ShowIf!() && !UiKnobs.FontStyle.ShowIf!())
+        Example(check, "R5 the UI's weight and style rows hide for a font a cx.cfg line names", () =>
+            WithUi(MineStatic, 400, FontRegistry.StyleNormal, () => !UiKnobs.FontWeight.ShowIf!() && !UiKnobs.FontStyle.ShowIf!())
             && WithUi(DejaVu, 400, FontRegistry.StyleNormal, () => UiKnobs.FontWeight.ShowIf!() && UiKnobs.FontStyle.ShowIf!()));
 
         Example(check, "R6 an older chat window typeface that is a family keeps its weight as UI", () =>
@@ -89,8 +91,8 @@ internal static class FontRegistryRegressions
             finally { FontRegistry.UseCatalog(was); }
         });
 
-        Example(check, "R13 an element's weight and style rows show only while its face is an installed family", () =>
-            WithUi(FontRegistry.DefaultName, 400, FontRegistry.StyleNormal, () =>
+        Example(check, "R13 an element's weight and style rows hide for a font a cx.cfg line names", () =>
+            WithUi(MineStatic, 400, FontRegistry.StyleNormal, () =>
             {
                 TextStyle w = Window("cx-fontcheck-r13");
                 bool hidden = !w.Weight.ShowIf!() && !w.Style.ShowIf!();
