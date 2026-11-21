@@ -15,14 +15,18 @@ internal static class OverrideReset
     /// <summary>Names read again in one frame, so a burst of unreadable files spends a bounded share of it.</summary>
     private const int RetryPerTick = 8;
 
+    /// <summary>An unread name's read count once it has been read or given up on while its turn is still queued.</summary>
+    private const int Settled = -1;
+
     /// <summary>The reset's working sets and its unread names, one owner.</summary>
     private sealed class ResetState
     {
         /// <summary>The names whose material was there before the reset or is there now.</summary>
         public readonly HashSet<string> Changed = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>The names whose <c>.mtr</c> could not be read, each with the reads it has had.</summary>
+        /// <summary>The names whose <c>.mtr</c> could not be read, each with the reads it has had, or <see cref="Settled"/>.</summary>
         public readonly Dictionary<string, int> Unread = new(StringComparer.OrdinalIgnoreCase);
-        public readonly List<string> Due = new();
+        /// <summary><see cref="Unread"/>'s names, each once, in the order they are read again: a name that fails goes to the back.</summary>
+        public readonly Queue<string> Turns = new();
         public int Frame;
     }
 
@@ -37,34 +41,25 @@ internal static class OverrideReset
         foreach (string name in names)
         {
             Seam.TexSeam.ForgetTxi(name);
-            s.Unread.Remove(name);
             Settle(s, name, 0);
         }
         Rederive(s, reloaded);
     }
 
-    /// <summary>Once a frame, from the registry's tick: read again the materials that were due, and follow a watched
-    /// mask that landed or failed. Allocation-free, and nothing but two reads on a frame with neither.</summary>
+    /// <summary>Once a frame, from the registry's tick: read again the materials whose turn it is, and follow a watched
+    /// mask that landed or failed. Allocation-free.</summary>
     internal static void Tick()
     {
         ResetState s = _s;
         bool landed = TexRegistry.TakeMaskLanded();
         s.Changed.Clear();
-        if (s.Unread.Count > 0 && ++s.Frame % RetryEvery == 0)
-        {
-            s.Due.Clear();
-            foreach (KeyValuePair<string, int> u in s.Unread)
+        if (s.Turns.Count > 0 && ++s.Frame % RetryEvery == 0)
+            for (int k = Math.Min(RetryPerTick, s.Turns.Count); k > 0; k--)
             {
-                if (s.Due.Count >= RetryPerTick) break;
-                s.Due.Add(u.Key);
+                string name = s.Turns.Dequeue();
+                s.Unread.Remove(name, out int reads);
+                if (reads != Settled) Settle(s, name, reads + 1);
             }
-            foreach (string name in s.Due)
-            {
-                int reads = s.Unread[name] + 1;
-                s.Unread.Remove(name);
-                Settle(s, name, reads);
-            }
-        }
         Rederive(s, landed);
     }
 
@@ -72,11 +67,23 @@ internal static class OverrideReset
     /// file that could not be read back on the unread list, until <see cref="RetryLimit"/> reads.</summary>
     private static void Settle(ResetState s, string name, int reads)
     {
-        if (MtrDef.Reset(name, out bool pending)) { s.Changed.Add(name); return; }
-        if (!pending) return;
-        if (reads < RetryLimit) { s.Unread[name] = reads; return; }
+        if (MtrDef.Reset(name, out bool pending)) { s.Changed.Add(name); Drop(s, name); return; }
+        if (!pending) { Drop(s, name); return; }
+        if (reads < RetryLimit)
+        {
+            if (s.Unread.TryAdd(name, reads)) s.Turns.Enqueue(name);
+            else s.Unread[name] = reads;
+            return;
+        }
+        Drop(s, name);
         DrawRecipe.Log?.Always($"OverrideReset: '{name}'.mtr still could not be read after {reads} tries -- "
                              + "its parts keep the material they had");
+    }
+
+    /// <summary>Take <paramref name="name"/> off the unread list; its queued turn, if it has one, passes without a read.</summary>
+    private static void Drop(ResetState s, string name)
+    {
+        if (s.Unread.ContainsKey(name)) s.Unread[name] = Settled;
     }
 
     /// <summary>Work out again everything built from the changed materials, and re-stage the shadow masks when
