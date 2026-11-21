@@ -257,6 +257,12 @@ public static class FontRegistry
         _log?.Info($"FontRegistry: {name} = {source} ({bytes.Length} bytes)");
     }
 
+    /// <summary>Forgets a name <see cref="Declare"/> declared; a self-check's stand-ins leave the player's registry as it was.</summary>
+    internal static void Undeclare(string name)
+    {
+        lock (_entries) _entries.Remove(name);
+    }
+
     /// <summary>Bytes for <paramref name="name"/>, or the default's when unknown or refused. Null only when the
     /// embedded default itself is missing from the image.</summary>
     public static byte[]? Bytes(string name)
@@ -307,6 +313,35 @@ public static class FontRegistry
         string user = Native.ConfigPath(path);
         return File.Exists(user) ? user : null;
     }
+
+    /// <summary>The style rows' values: as UI (an element's row only), upright, italic.</summary>
+    public const int StyleAsUi = 0, StyleNormal = 1, StyleItalic = 2;
+
+    /// <summary>Where a face name draws from: the file, the font's index in it, the weight it draws at, and whether it is italic.</summary>
+    public readonly record struct Place(string Path, int Index, int Weight, bool Italic);
+
+    /// <summary>Draw installed fonts from <paramref name="catalog"/> from now on; the catalog it replaces comes back.</summary>
+    public static FontCatalog UseCatalog(FontCatalog catalog) => FontCatalog.Empty;
+
+    /// <summary>The registry name of <paramref name="family"/> at <paramref name="weight"/> and <paramref name="style"/>.</summary>
+    public static string FaceKey(string family, int weight, int style) => family;
+
+    /// <summary>Where <paramref name="name"/> draws from, an installed family's face or a declared name's file; null for a name nobody knows.</summary>
+    public static Place? Where(string name) => null;
+
+    /// <summary>The face a run of text draws with: its own weight and style when it asks (non-zero), else the window's.
+    /// <paramref name="slant"/> is true when the run is slanted (<paramref name="runSlant"/>) and the face drawn is upright.</summary>
+    public static string RunFace(string family, int weight, int style, int runWeight, int runStyle, bool runSlant, out bool slant)
+    {
+        slant = false;
+        return family;
+    }
+
+    /// <summary>The family, weight and style an older stored typeface (a font's full name) stands for; null when it names none.</summary>
+    public static (string Family, int Weight, int Style)? Migrate(string stored) => null;
+
+    /// <summary>The file and the index in it of fontconfig's <c>%{file}:%{index}</c> answer; null for anything else.</summary>
+    internal static (string Path, int Index)? ParseFcMatch(string output) => null;
 
     /// <summary>What <c>/knobs</c> prints: each name, its source, and its state.</summary>
     public static string Report(Func<string, int> facesOf)

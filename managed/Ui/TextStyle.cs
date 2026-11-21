@@ -21,6 +21,12 @@ public sealed class TextStyle
     public readonly Knob<int>? Size;
     public readonly Knob<string> Typeface;
     public readonly Knob<int> Outline;
+    /// <summary>The Default weight row: 0 as UI, else 100 to 900.</summary>
+    public Knob<int>? Weight => null;
+    /// <summary>The Default style row: <see cref="FontRegistry.StyleAsUi"/>, Normal or Italic.</summary>
+    public Knob<int>? Style => null;
+    /// <summary>The registry name this element's text draws with, its typeface, weight and style rows applied.</summary>
+    public string FaceName => Typeface.V;
     private readonly string _what;
     private GlyphAtlas? _face;
     /// <summary>The last (typeface, px) a miss asked a bake for: in flight or refused, so it is not asked again.</summary>

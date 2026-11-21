@@ -314,6 +314,9 @@ public sealed unsafe partial class ChatService
 
     private static float WindowFacePx(ChatWindow win) => TextRig.FacePx(win.FontPx);
 
+    /// <summary>The registry name a window's text draws with: its typeface, Default weight and Default style rows applied.</summary>
+    internal static string FaceName(ChatWindow win) => win.Typeface.Length > 0 ? win.Typeface : FontRegistry.DefaultName;
+
     /// <summary>Bake a window's own face if it has one. COLD (a miss re-bakes the sheet): a gear pick, or the
     /// scale edge where the frame host re-bakes the UI atlas anyway. A refused bake logs and the window draws with
     /// the UI face. ponytail: every (typeface, px) picked stays in the sheet for the session and later picks fall

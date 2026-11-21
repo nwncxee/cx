@@ -118,6 +118,8 @@ public sealed partial class ChatWindow
     public int FontPx;
     /// <summary>Per-window typeface, a <c>FontRegistry</c> name; "" = follow <c>ui.typeface</c>.</summary>
     public string Typeface = "";
+    /// <summary>The window's Default weight (0 follows the UI, else 100 to 900) and Default style (0 follows the UI).</summary>
+    public int Weight, Style;
     /// <summary>Per-window timestamp presentation.</summary>
     public TsFormat TimeFormat = TsFormat.HourMin;
     public TsSource TimeSource = TsSource.Local;

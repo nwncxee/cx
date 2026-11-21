@@ -21,6 +21,8 @@ public sealed class WindowConfig
     /// <summary>Per-window font: absent = follow the UI knobs.</summary>
     public int? FontPx;
     public string? Typeface;
+    /// <summary>Per-window Default weight and Default style: absent = follow the UI rows.</summary>
+    public int? Weight, Style;
     public int? TimeFormat, TimeSource;
     public int? Align;
     public int? BgMode;

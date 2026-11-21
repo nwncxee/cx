@@ -18,10 +18,12 @@ internal readonly struct Run
     public readonly Paint Rgba;
     public readonly float Size;
     public readonly bool Italic, Break;
+    /// <summary>The weight the run asks for (100 to 900), and its style (<c>FontRegistry.StyleNormal</c> or <c>StyleItalic</c>); 0 asks for nothing.</summary>
+    public readonly int Weight, Style;
 
-    public Run(string text, string icon, Paint rgba, float size, bool italic, bool brk)
+    public Run(string text, string icon, Paint rgba, float size, bool italic, bool brk, int weight = 0, int style = 0)
     {
-        Text = text; Icon = icon; Rgba = rgba; Size = size; Italic = italic; Break = brk;
+        Text = text; Icon = icon; Rgba = rgba; Size = size; Italic = italic; Break = brk; Weight = weight; Style = style;
     }
 }
 

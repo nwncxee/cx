@@ -51,6 +51,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         ChatConfig.SelfCheck(log);     // per-window pair round-trip proof (off-device)
         TextRig.SelfCheck(log);   // session-clear drops cached engine texture pointers (off-device)
         FontRegistry.SelfCheck(log);
+        FontRegistryApprovedExamples.SelfCheck(log);
         EditBuffer.SelfCheck(log);     // the input line's editing contract (off-device)
         ChatCommands.SelfCheck(log);   // slash-command grammar
         TypingSignal.SelfCheck(log);   // chat-bar focus/unfocus latch (off-device)

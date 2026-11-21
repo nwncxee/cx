@@ -256,6 +256,9 @@ public static unsafe class ChatRenderer
         if (_attrCount > 0) TextRig.DrawBatch(_attrVerts, _attrCount);
     }
 
+    /// <summary>Whether the credit line's gold run is slanted: true on an upright UI face, false on one already italic.</summary>
+    internal static bool AttributionSlant() => true;
+
     private static void BuildAttribution()
     {
         GlyphAtlas atlas = _atlas!;

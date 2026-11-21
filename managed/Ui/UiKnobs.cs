@@ -16,6 +16,9 @@ internal static class UiKnobs
     /// <summary>The face <c>default</c> binds to; with <see cref="Font"/> it is the base every element's own
     /// <see cref="TextStyle"/> rows follow until set.</summary>
     internal static readonly Knob<string> Typeface;
+    /// <summary>The UI's Default weight, 100 to 900, and Default style, Normal or Italic.</summary>
+    internal static Knob<int>? Weight => null;
+    internal static Knob<int>? Style => null;
     /// <summary><see cref="HoverFocus"/> is read by <see cref="UiHost"/>; the two snapping toggles and
     /// <see cref="GridPx"/> are applied to <c>ChatWindow</c>'s snap statics by the quickbar tick.</summary>
     internal static readonly Knob<bool> HoverFocus, Snap, EdgeSnap, TextEdit, Streaming;

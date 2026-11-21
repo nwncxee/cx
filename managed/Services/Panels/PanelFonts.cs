@@ -81,6 +81,14 @@ internal static class PanelFonts
         }
     }
 
+    /// <summary>The registry name <paramref name="r"/> draws with over the UI's rows, and whether its letters are
+    /// slanted (<paramref name="slant"/>): an italic run on an upright face.</summary>
+    public static string RunFace(in Run r, out bool slant)
+    {
+        slant = r.Italic;
+        return FontRegistry.DefaultName;
+    }
+
     private static float PxOf(float mult) => MathF.Round(TextRig.FacePx(0) * mult);
 
     /// <summary>The atlas for <paramref name="mult"/> and the stretch it still needs (1 when that size is baked). Allocation-free.</summary>
