@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using CX.Framework;
 
+using CX.Ui;
+
 namespace CX.Services.Chat.Core;
 
 /// <summary>
@@ -58,6 +60,8 @@ public sealed class ChatConfig
             if (w.Outline is int ol) Put(p + "outline", ol.ToString(CultureInfo.InvariantCulture));
             if (w.FontPx is int fp && fp > 0) Put(p + "font", fp.ToString(ci));
             if (w.Typeface is { Length: > 0 } tfn) Put(p + "typeface", tfn.Replace("\n", "").Replace("\r", ""));
+            if (w.Weight is int fw and > 0) Put(p + "weight", fw.ToString(ci));
+            if (w.Style is int fst and > 0) Put(p + "style", fst.ToString(ci));
             if (w.TimeFormat is int tf) Put(p + "tsfmt", tf.ToString(ci));
             if (w.TimeSource is int ts) Put(p + "tssrc", ts.ToString(ci));
             if (w.Align is int al) Put(p + "align", al.ToString(ci));
@@ -143,7 +147,12 @@ public sealed class ChatConfig
             case "tau": if (float.TryParse(val, ci, out float tau)) w.TauMs = tau; break;
             case "outline": if (int.TryParse(val, out int ol)) w.Outline = Math.Clamp(ol, 0, 2); break;   // the old toggle's 1/0 is thin/off
             case "font": if (int.TryParse(val, out int fp)) w.FontPx = fp; break;
-            case "typeface": w.Typeface = val; break;
+            case "typeface":
+                if (FontRegistry.Migrate(val) is var (family, weight, style)) { w.Typeface = family; w.Weight ??= weight; w.Style ??= style; }
+                else w.Typeface = val;
+                break;
+            case "weight": if (int.TryParse(val, out int fwv)) w.Weight = fwv; break;
+            case "style": if (int.TryParse(val, out int fsv)) w.Style = fsv; break;
             case "tsfmt": if (int.TryParse(val, out int f)) w.TimeFormat = f; break;
             case "tssrc": if (int.TryParse(val, out int s)) w.TimeSource = s; break;
             case "align": if (int.TryParse(val, out int a)) w.Align = a; break;

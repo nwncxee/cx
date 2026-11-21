@@ -750,7 +750,7 @@ public sealed partial class ChatWindow
         AnimEnabled = src.AnimEnabled;
         HoldSec = src.HoldSec; FadeSec = src.FadeSec; TauMs = src.TauMs;
         Outline = src.Outline;
-        FontPx = src.FontPx; Typeface = src.Typeface;
+        FontPx = src.FontPx; Typeface = src.Typeface; Weight = src.Weight; Style = src.Style;
         TimeFormat = src.TimeFormat; TimeSource = src.TimeSource;
         Align = src.Align;
         BgMode = src.BgMode; BgAngle = src.BgAngle; BgStart = src.BgStart; BgEnd = src.BgEnd;

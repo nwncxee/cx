@@ -172,6 +172,8 @@ public sealed partial class SettingsWindow
         AddSection(rows, "Font");
         AddDropdown(rows, SetAct.Typeface, "Typeface", Typefaces, TypefaceIndex(win.Typeface),
                     "The font this window draws its text with; UI default follows the Typeface setting under UI.");
+        AddDropdown(rows, SetAct.FontWeight, "Default weight", TextStyle.WeightNames, Math.Max(0, Array.IndexOf(TextStyle.RowWeights, win.Weight)),
+                    "How heavy this window's letters are, for text that asks for no weight of its own; as UI follows the Default weight under UI.");
         AddDropdown(rows, SetAct.SliderFont, "Text size", FontSizes, FontIndex(win.FontPx),
                     "Text size in this window; UI default follows the Text size setting under UI.");
         AddDropdown(rows, SetAct.OutlineOn, "Outline", TextStyle.OutlineNames, win.Outline,
@@ -360,6 +362,7 @@ public sealed partial class SettingsWindow
             case SetAct.CycleAlign: win.Align = (TextAlign)row.Selected; break;
             case SetAct.CycleBgMode: win.BgMode = (BgMode)row.Selected; break;
             case SetAct.SliderFont: win.FontPx = row.Selected <= 0 ? 0 : TextRig.MinFontPx + row.Selected - 1; FontChanged = true; break;
+            case SetAct.FontWeight: win.Weight = TextStyle.RowWeights[Math.Clamp(row.Selected, 0, TextStyle.RowWeights.Length - 1)]; FontChanged = true; break;
             case SetAct.Typeface: win.Typeface = row.Selected <= 0 || row.Selected >= Typefaces.Length ? "" : Typefaces[row.Selected]; FontChanged = true; break;
             case SetAct.TabRemove:
             {

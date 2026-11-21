@@ -47,7 +47,7 @@ public sealed class WindowConfig
         wc.AnimEnabled = win.AnimEnabled; wc.HoldSec = win.HoldSec;
         wc.FadeSec = win.FadeSec; wc.TauMs = win.TauMs;
         wc.Outline = win.Outline;
-        wc.FontPx = win.FontPx; wc.Typeface = win.Typeface;
+        wc.FontPx = win.FontPx; wc.Typeface = win.Typeface; wc.Weight = win.Weight; wc.Style = win.Style;
         wc.TimeFormat = (int)win.TimeFormat; wc.TimeSource = (int)win.TimeSource;
         wc.Align = (int)win.Align;
         wc.BgMode = (int)win.BgMode; wc.BgAngle = win.BgAngle; wc.BgStart = win.BgStart; wc.BgEnd = win.BgEnd;
@@ -71,6 +71,8 @@ public sealed class WindowConfig
         if (Outline is int ol) win.Outline = ol;
         if (FontPx is int fp && fp >= TextRig.MinFontPx && fp <= TextRig.MaxFontPx) win.FontPx = fp;
         if (Typeface is { Length: > 0 } tfn) win.Typeface = tfn;
+        if (Weight is int fw && (fw == 0 || Array.IndexOf(TextStyle.Weights, fw) >= 0)) win.Weight = fw;
+        if (Style is int fst && fst is >= FontRegistry.StyleAsUi and <= FontRegistry.StyleItalic) win.Style = fst;
         if (TimeFormat is int tf) win.TimeFormat = (TsFormat)tf;
         if (TimeSource is int ts) win.TimeSource = (TsSource)ts;
         if (Align is int al && al >= 0 && al <= 3) win.Align = (TextAlign)al;

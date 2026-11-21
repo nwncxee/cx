@@ -7,7 +7,7 @@ namespace CX.Services.Panels;
 
 /// <summary>
 /// The inline markup of a panel's text: <c>&lt;c=#RRGGBB[AA]&gt;</c> or <c>&lt;c=@role[/aa]&gt;</c>, <c>&lt;s=N&gt;</c> (snapped to the size ladder),
-/// <c>&lt;i&gt;</c>, their closing tags, <c>&lt;icon=NAME&gt;</c> and <c>&lt;br&gt;</c>; a newline in the string breaks the line
+/// <c>&lt;i&gt;</c>, <c>&lt;b&gt;</c> (weight 700) and <c>&lt;w=N&gt;</c> (weight 100 to 900), their closing tags, <c>&lt;icon=NAME&gt;</c> and <c>&lt;br&gt;</c>; a newline in the string breaks the line
 /// too, and <c>&lt;&lt;</c> is a literal <c>&lt;</c>. A tag it does not know, or a bad value, stays in the text as typed.
 /// Cold: parses once, when a declaration arrives.
 /// </summary>
@@ -27,11 +27,13 @@ internal static class PanelMarkup
         var colors = new List<Paint>();
         var sizes = new List<float>();
         int italic = 0;
+        var weights = new List<int>();
         var buf = new StringBuilder();
         void Flush()
         {
             if (buf.Length == 0) return;
-            list.Add(new Run(buf.ToString(), "", colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, italic > 0, false));
+            list.Add(new Run(buf.ToString(), "", colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, italic > 0, false,
+                             weights.Count > 0 ? weights[^1] : 0));
             buf.Clear();
         }
         for (int i = 0; i < s.Length; i++)
@@ -51,6 +53,9 @@ internal static class PanelMarkup
                 case "/s": if (sizes.Count > 0) sizes.RemoveAt(sizes.Count - 1); break;
                 case "i": italic++; break;
                 case "/i": if (italic > 0) italic--; break;
+                case "b": weights.Add(Bold); break;
+                case "w": weights.Add(int.Parse(arg, CultureInfo.InvariantCulture)); break;
+                case "/b": case "/w": if (weights.Count > 0) weights.RemoveAt(weights.Count - 1); break;
                 case "br": list.Add(new Run("", "", default, 0, false, true)); break;
                 case "icon":
                     if (!PanelLimits.NameOk(arg)) { error = $"icon '{arg}' is over {PanelLimits.MaxResref} characters, the longest resref"; return false; }
@@ -64,6 +69,13 @@ internal static class PanelMarkup
         return true;
     }
 
+    /// <summary>The weight <c>&lt;b&gt;</c> asks for.</summary>
+    private const int Bold = 700;
+
+    /// <summary>True when <paramref name="s"/> is a weight a card may ask for: a whole number from 100 to 900.</summary>
+    internal static bool IsWeight(string s)
+        => int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out int w) && w is >= 100 and <= 900;
+
     /// <summary>True when <paramref name="body"/> is a tag this markup knows, with a value that parses.</summary>
     private static bool Tag(ReadOnlySpan<char> body, out string name, out string arg, out float size)
     {
@@ -73,7 +85,8 @@ internal static class PanelMarkup
         arg = eq < 0 ? "" : body[(eq + 1)..].ToString();
         switch (name)
         {
-            case "/c": case "/s": case "i": case "/i": case "br": return eq < 0;
+            case "/c": case "/s": case "i": case "/i": case "br": case "b": case "/b": case "/w": return eq < 0;
+            case "w": return IsWeight(arg);
             case "c": return Paint.TryParse(arg, out _);
             case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out size) && float.IsFinite(size);
             case "icon": return arg.Length is > 0 and <= PanelLimits.MaxIconName;

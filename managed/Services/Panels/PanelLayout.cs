@@ -311,6 +311,12 @@ internal sealed class PanelLayout
             }
             float mult = r.Size > 0f ? r.Size : size;
             var (a, k) = _face(mult);
+            bool slant = r.Italic;
+            if (r.Weight > 0 || r.Style > 0 || r.Italic)
+            {
+                string name = PanelFonts.RunFace(r, out slant);
+                if ((r.Weight > 0 || r.Style > 0) && PanelFonts.Named(name, mult) is var (na, nk)) (a, k) = (na, nk);
+            }
             uint col = r.Rgba.Set ? r.Rgba : rgba;
             float asc = a.Ascent * k, desc = (a.LineHeight - a.Ascent) * k;
             if (r.Icon.Length > 0)
@@ -331,7 +337,7 @@ internal sealed class PanelLayout
                 if (j < 0) j = text.Length;
                 float ww = Measure(text, i, j, a) * k;
                 if (cursor > 0f && cursor + ww > w) { top += EndLine(x, top, w, align, emit, blankAsc, blankDesc); cursor = 0f; }
-                _line.Add(new Atom { Text = text, From = i, To = j, X = cursor, W = ww, K = k, A = a, Asc = asc, Desc = desc, Rgba = col, Italic = r.Italic });
+                _line.Add(new Atom { Text = text, From = i, To = j, X = cursor, W = ww, K = k, A = a, Asc = asc, Desc = desc, Rgba = col, Italic = slant });
                 cursor += ww;
                 i = j;
                 any = true;

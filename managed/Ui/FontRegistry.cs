@@ -28,6 +28,8 @@ public static class FontRegistry
         public string Name = "", Source = "";
         public byte[]? Bytes;
         public string? Refusal;
+        /// <summary>The font's index inside a collection; 0 for a single font.</summary>
+        public int Index;
     }
 
     private static readonly Dictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -35,15 +37,21 @@ public static class FontRegistry
     private static ExtenderLog? _log;
     /// <summary>What <c>default</c> was bound to at load: the embedded font or the <c>font.default=</c> file.</summary>
     private static Entry? _boot;
-    /// <summary>Installed fonts by full name -> path, scanned once on first ask.</summary>
-    private static Dictionary<string, string>? _system;
+    /// <summary>The installed fonts, scanned once on first ask (or handed in by <see cref="UseCatalog"/>).</summary>
+    private static FontCatalog? _catalog;
     private static string[]? _names;
+    /// <summary>The entries of installed families' faces, by face name; a new catalog drops them.</summary>
+    private static readonly Dictionary<string, Entry> _faces = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Each face name once made, so a frame that asks again allocates nothing; a new catalog or declaration drops them.</summary>
+    private static readonly Dictionary<(string Family, int Weight, int Style), string> _keys = new();
+    /// <summary>Separates a face name's family, weight and style: no family name holds it.</summary>
+    private const char KeySep = '|';
 
     /// <summary>Every declared name, default first.</summary>
     public static IEnumerable<Entry> All { get { lock (_entries) return _entries.Values.OrderBy(e => e.Name != DefaultName).ThenBy(e => e.Name).ToArray(); } }
 
-    /// <summary>The <c>ui.typeface</c> choices: <c>default</c>, then every cfg-declared name and every installed font's
-    /// full name, sorted; a cfg name shadows an installed one of the same name. Built once, before the knob binds.</summary>
+    /// <summary>The <c>ui.typeface</c> choices: <c>default</c>, then every cfg-declared name and every installed family,
+    /// sorted; a cfg name shadows an installed one of the same name. Built once, before the knob binds.</summary>
     public static string[] Names
     {
         get
@@ -56,7 +64,7 @@ public static class FontRegistry
                 if (n.Length > 0 && !n.Equals(DefaultName, StringComparison.OrdinalIgnoreCase) && !n.Equals(EmbeddedName, StringComparison.OrdinalIgnoreCase)
                     && Resolve(path) != null) set.Add(n);   // a declared file that is not there is no choice
             }
-            foreach (string n in SystemFonts().Keys) set.Add(n);
+            foreach (string n in Catalog().Families) set.Add(n);
             var names = new string[set.Count + 1];
             names[0] = DefaultName;
             set.CopyTo(names, 1);
@@ -82,30 +90,8 @@ public static class FontRegistry
         yield return Path.Combine(home, ".fonts");
     }
 
-    /// <summary>Walk the font directories once for <c>.ttf</c>/<c>.otf</c> files stbtt can open (collections are
-    /// skipped: the bake inits at offset 0). Cold, first-name-wins on a duplicate full name.</summary>
-    private static Dictionary<string, string> SystemFonts()
-    {
-        if (_system != null) return _system;
-        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var opt = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MaxRecursionDepth = 8 };
-        foreach (string dir in FontDirs())
-        {
-            if (dir.Length == 0 || !Directory.Exists(dir)) continue;
-            try
-            {
-                foreach (string f in Directory.EnumerateFiles(dir, "*", opt))
-                {
-                    string ext = Path.GetExtension(f);
-                    if (!ext.Equals(".ttf", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".otf", StringComparison.OrdinalIgnoreCase)) continue;
-                    string? name = FullName(f);
-                    if (name != null) found.TryAdd(name, f);
-                }
-            }
-            catch (Exception ex) { _log?.Info($"FontRegistry: {dir} not walked ({ex.GetType().Name})"); }
-        }
-        return _system = found;
-    }
+    /// <summary>The installed fonts: the font folders walked once, cold, on first ask.</summary>
+    private static FontCatalog Catalog() => _catalog ??= FontCatalog.Scan(null, FontDirs());
 
     /// <summary>The font's full name (name id 4; Windows/Unicode English first, the Mac Roman record as the
     /// fallback) read through the table directory with three small reads, or null for anything that is not one
@@ -172,15 +158,29 @@ public static class FontRegistry
     {
         lock (_entries)
         {
-            if (_entries.TryGetValue(name, out Entry? e)) return e;
-            if (!SystemFonts().TryGetValue(name, out string? path)) return null;
-            e = new Entry { Name = name, Source = path };
-            try { e.Bytes = File.ReadAllBytes(path); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
-            _entries[name] = e;
+            if (_entries.TryGetValue(name, out Entry? e) || _faces.TryGetValue(name, out e)) return e;
+            if (Settings.Raw(Prefix + name) is string declared && name != EmbeddedName) return _entries[name] = Declared(name, declared);
+            if (Face(name) is not (FontCatalog.Face face, int weight)) return null;
+            e = new Entry { Name = name, Source = face.Path, Index = face.Index };
+            try { e.Bytes = File.ReadAllBytes(face.Path); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
+            if (e.Bytes != null && face.Variable && weight != face.Weight)
+            {
+                if (VarFont.Instance(e.Bytes, face.Index, weight) is byte[] inst) { e.Bytes = inst; e.Index = 0; e.Source = $"{face.Path} at {weight}"; }
+                else e.Refusal = $"its weight {weight} could not be made";
+            }
+            _faces[name] = e;
             _log?.Info(e.Refusal == null ? $"FontRegistry: {name} = {e.Source} ({e.Bytes!.Length} bytes)"
                                          : $"FontRegistry: {name} = {e.Source} REFUSED ({e.Refusal}); falls back to {DefaultName}");
             return e;
         }
+    }
+
+    /// <summary>The installed face a face name stands for, and the weight it draws at; null for any other name.</summary>
+    private static (FontCatalog.Face, int)? Face(string name)
+    {
+        string[] p = name.Split(KeySep);
+        if (p.Length != 3 || !int.TryParse(p[1], out int weight)) return null;
+        return Catalog().Pick(p[0], weight, p[2] == "i");
     }
 
     /// <summary>Bind <c>default</c> to <paramref name="name"/> (<c>ui.typeface</c>); <c>default</c> itself restores
@@ -206,17 +206,7 @@ public static class FontRegistry
             string name = key.Substring(Prefix.Length);
             if (name.Length == 0) continue;
             if (name.Equals(EmbeddedName, StringComparison.OrdinalIgnoreCase)) { log.Info($"FontRegistry: {EmbeddedName} is reserved for the embedded font; {key} ignored"); continue; }
-            var e = new Entry { Name = name, Source = path };
-            string? full = Resolve(path);
-            if (full == null) e.Refusal = "not found";
-            else
-            {
-                e.Source = full;
-                try { e.Bytes = File.ReadAllBytes(full); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
-            }
-            _entries[name] = e;
-            log.Info(e.Refusal == null ? $"FontRegistry: {name} = {e.Source} ({e.Bytes!.Length} bytes)"
-                                       : $"FontRegistry: {name} = {e.Source} REFUSED ({e.Refusal}); falls back to {DefaultName}");
+            _entries[name] = Declared(name, path);
         }
         if (!_entries.ContainsKey(MonospaceName))
         {
@@ -249,18 +239,34 @@ public static class FontRegistry
         _boot = _entries[DefaultName];
     }
 
+    /// <summary>The entry a <c>font.&lt;name&gt;=&lt;path&gt;</c> line declares: the file read whole, or the reason it was refused.</summary>
+    private static Entry Declared(string name, string path)
+    {
+        var e = new Entry { Name = name, Source = path };
+        string? full = Resolve(path);
+        if (full == null) e.Refusal = "not found";
+        else
+        {
+            e.Source = full;
+            try { e.Bytes = File.ReadAllBytes(full); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
+        }
+        _log?.Info(e.Refusal == null ? $"FontRegistry: {name} = {e.Source} ({e.Bytes!.Length} bytes)"
+                                     : $"FontRegistry: {name} = {e.Source} REFUSED ({e.Refusal}); falls back to {DefaultName}");
+        return e;
+    }
+
     /// <summary>Declares <paramref name="name"/> from bytes the caller read, such as a font the game's own resources hold.
     /// Replaces an earlier declaration of the name.</summary>
     public static void Declare(string name, byte[] bytes, string source)
     {
-        lock (_entries) _entries[name] = new Entry { Name = name, Source = source, Bytes = bytes };
+        lock (_entries) { _entries[name] = new Entry { Name = name, Source = source, Bytes = bytes }; _keys.Clear(); }
         _log?.Info($"FontRegistry: {name} = {source} ({bytes.Length} bytes)");
     }
 
     /// <summary>Forgets a name <see cref="Declare"/> declared; a self-check's stand-ins leave the player's registry as it was.</summary>
     internal static void Undeclare(string name)
     {
-        lock (_entries) _entries.Remove(name);
+        lock (_entries) { _entries.Remove(name); _keys.Clear(); }
     }
 
     /// <summary>Bytes for <paramref name="name"/>, or the default's when unknown or refused. Null only when the
@@ -321,24 +327,73 @@ public static class FontRegistry
     public readonly record struct Place(string Path, int Index, int Weight, bool Italic);
 
     /// <summary>Draw installed fonts from <paramref name="catalog"/> from now on; the catalog it replaces comes back.</summary>
-    public static FontCatalog UseCatalog(FontCatalog catalog) => FontCatalog.Empty;
+    public static FontCatalog UseCatalog(FontCatalog catalog)
+    {
+        lock (_entries)
+        {
+            FontCatalog was = Catalog();
+            _catalog = catalog;
+            _names = null;
+            _faces.Clear();
+            _keys.Clear();
+            return was;
+        }
+    }
 
-    /// <summary>The registry name of <paramref name="family"/> at <paramref name="weight"/> and <paramref name="style"/>.</summary>
-    public static string FaceKey(string family, int weight, int style) => family;
+    /// <summary>The registry name of <paramref name="family"/> at <paramref name="weight"/> and <paramref name="style"/>: a face
+    /// name for an installed family, else <paramref name="family"/> itself -- a declared name, <c>default</c> or a font a hak
+    /// supplies is one face, drawn as it is.</summary>
+    public static string FaceKey(string family, int weight, int style)
+    {
+        lock (_entries)
+        {
+            if (_keys.TryGetValue((family, weight, style), out string? key)) return key;
+            key = _entries.ContainsKey(family) || Settings.Raw(Prefix + family) != null || !Catalog().Holds(family) ? family
+                : $"{family}{KeySep}{weight}{KeySep}{(style == StyleItalic ? 'i' : 'n')}";
+            _keys[(family, weight, style)] = key;
+            return key;
+        }
+    }
+
+    /// <summary>True when <paramref name="name"/> is an installed family, so a weight or a style can pick its face.</summary>
+    public static bool IsFamily(string name) => FaceKey(name, 400, StyleNormal) != name;
 
     /// <summary>Where <paramref name="name"/> draws from, an installed family's face or a declared name's file; null for a name nobody knows.</summary>
-    public static Place? Where(string name) => null;
+    public static Place? Where(string name)
+    {
+        if (Face(name) is (FontCatalog.Face f, int w)) return new Place(f.Path, f.Index, w, f.Italic);
+        if (Find(name) is not { Bytes: byte[] b } e) return null;
+        Sfnt.Info? info = Sfnt.Read(b, e.Index);
+        return new Place(e.Source, e.Index, info?.Weight ?? 400, info?.Italic ?? false);
+    }
 
     /// <summary>The face a run of text draws with: its own weight and style when it asks (non-zero), else the window's.
     /// <paramref name="slant"/> is true when the run is slanted (<paramref name="runSlant"/>) and the face drawn is upright.</summary>
     public static string RunFace(string family, int weight, int style, int runWeight, int runStyle, bool runSlant, out bool slant)
     {
-        slant = false;
-        return family;
+        string key = FaceKey(family, runWeight > 0 ? runWeight : weight, runStyle > 0 ? runStyle : style);
+        slant = runSlant && Where(key) is not { Italic: true };
+        return key;
     }
 
-    /// <summary>The family, weight and style an older stored typeface (a font's full name) stands for; null when it names none.</summary>
-    public static (string Family, int Weight, int Style)? Migrate(string stored) => null;
+    /// <summary>The family, weight and style an older stored typeface (a font's full name) stands for; null when it names
+    /// no installed font, or names a family already.</summary>
+    public static (string Family, int Weight, int Style)? Migrate(string stored)
+    {
+        if (Catalog().Holds(stored) || Catalog().ByFullName(stored) is not FontCatalog.Face f) return null;
+        return (f.Family, f.Weight, f.Italic ? StyleItalic : StyleNormal);
+    }
+
+    /// <summary>Rewrites an older stored typeface under <paramref name="typefaceKey"/> as its family, and writes its weight and
+    /// style under the two keys beside it when the file sets none. Cold; before the rows bind.</summary>
+    internal static void MigrateStored(string typefaceKey, string weightKey, string styleKey)
+    {
+        if (Settings.Raw(typefaceKey) is not string raw || Catalog().Holds(raw) || Migrate(raw) is not var (family, weight, style)) return;
+        var sb = new StringBuilder($"{typefaceKey}={family}\n");
+        if (Settings.Raw(weightKey) == null) sb.Append($"{weightKey}={weight}\n");
+        if (Settings.Raw(styleKey) == null) sb.Append($"{styleKey}={(style == StyleItalic ? "Italic" : "Normal")}\n");
+        Settings.Read(sb.ToString());
+    }
 
     /// <summary>The file and the index in it of fontconfig's <c>%{file}:%{index}</c> answer; null for anything else.</summary>
     internal static (string Path, int Index)? ParseFcMatch(string output) => null;
@@ -370,7 +425,7 @@ public static class FontRegistry
         check.Expect(FullName(new MemoryStream(Encoding.ASCII.GetBytes("not a font, not at all"))) == null, "a non-sfnt stream has no name");
         string[] names = Names;
         check.Expect(names.Length >= 1 && names[0] == DefaultName && names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length,
-          $"the choices start with {DefaultName} and repeat nothing ({names.Length} names, {SystemFonts().Count} installed)");
+          $"the choices start with {DefaultName} and repeat nothing ({names.Length} names, {Catalog().Families.Length} installed families)");
         check.Expect(!names.Contains(EmbeddedName, StringComparer.OrdinalIgnoreCase), "the reserved embedded name is not a choice");
         byte[]? boot = Bytes(DefaultName);
         check.Expect(!Bind("no-such-face"), "binding an unknown name is refused");

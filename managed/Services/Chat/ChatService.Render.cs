@@ -308,14 +308,19 @@ public sealed unsafe partial class ChatService
     /// loaded, so a miss here is the bake having refused -- the UI face stands in.</summary>
     private static GlyphAtlas WindowAtlas(ChatWindow win, GlyphAtlas atlas)
     {
-        if (win.FontPx <= 0 && win.Typeface.Length == 0) return atlas;
-        return TextRig.BakedFace(win.Typeface.Length > 0 ? win.Typeface : FontRegistry.DefaultName, WindowFacePx(win)) ?? atlas;
+        if (FollowsUi(win)) return atlas;
+        return TextRig.BakedFace(FaceName(win), WindowFacePx(win)) ?? atlas;
     }
 
     private static float WindowFacePx(ChatWindow win) => TextRig.FacePx(win.FontPx);
 
     /// <summary>The registry name a window's text draws with: its typeface, Default weight and Default style rows applied.</summary>
-    internal static string FaceName(ChatWindow win) => win.Typeface.Length > 0 ? win.Typeface : FontRegistry.DefaultName;
+    internal static string FaceName(ChatWindow win)
+        => FontRegistry.FaceKey(win.Typeface.Length > 0 ? win.Typeface : UiKnobs.Typeface.V, win.Weight > 0 ? win.Weight : UiKnobs.Weight.V,
+                                win.Style > 0 ? win.Style : UiKnobs.Style.V);
+
+    /// <summary>True when the window draws with the UI face: every font row of its own follows the UI.</summary>
+    private static bool FollowsUi(ChatWindow win) => win.FontPx <= 0 && win.Typeface.Length == 0 && win.Weight == 0 && win.Style == 0;
 
     /// <summary>Bake a window's own face if it has one. COLD (a miss re-bakes the sheet): a gear pick, or the
     /// scale edge where the frame host re-bakes the UI atlas anyway. A refused bake logs and the window draws with
@@ -323,8 +328,8 @@ public sealed unsafe partial class ChatService
     /// back to the UI face once it fills; upgrade = release a window's previous face when nothing shares it.</summary>
     private static void EnsureFace(ChatWindow win)
     {
-        if (!TextRig.Ready || (win.FontPx <= 0 && win.Typeface.Length == 0)) return;
-        string face = win.Typeface.Length > 0 ? win.Typeface : FontRegistry.DefaultName;
+        if (!TextRig.Ready || FollowsUi(win)) return;
+        string face = FaceName(win);
         if (TextRig.Face(face, WindowFacePx(win)) == null)
             _log?.Info($"[chat] window face {face} @ {WindowFacePx(win)}px refused; drawing with the UI face");
     }

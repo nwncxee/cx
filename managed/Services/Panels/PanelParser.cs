@@ -220,7 +220,7 @@ internal static class PanelParser
         b.Size = st.Snap(Num(e, "size", 1f));
         b.Color = Col(e, "color", default);
         if (Bool(e, "dim", false)) b.Color = (b.Color.Set ? b.Color : st.DimColor).WithAlpha(st.DimAlpha);
-        b.Runs = Runs(e, "text", Bool(e, "italic", false), st);
+        b.Runs = Runs(e, "text", Bool(e, "italic", false), st, Weight(e));
         b.Icon = Str(e, "icon", "");
         if (b.Icon.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
         if (!PanelLimits.NameOk(b.Icon)) throw new Refusal($"icon '{b.Icon}' is over {PanelLimits.MaxResref} characters, the longest resref");
@@ -265,12 +265,25 @@ internal static class PanelParser
     private static float? Opt(JsonElement e, string name, float lo)
         => e.TryGetProperty(name, out _) ? Clamped(e, name, 0f, lo, PanelLimits.MaxLen) : null;
 
-    private static Run[] Runs(JsonElement e, string name, bool italic, PanelStyle st)
+    private static Run[] Runs(JsonElement e, string name, bool italic, PanelStyle st, int weight = 0)
     {
         string s = Str(e, name, "");
         if (!PanelMarkup.TryParse(s, out Run[] runs, out string why, st)) throw new Refusal($"{name}: {why}");
-        if (italic) for (int i = 0; i < runs.Length; i++) runs[i] = new Run(runs[i].Text, runs[i].Icon, runs[i].Rgba, runs[i].Size, true, runs[i].Break);
+        for (int i = 0; i < runs.Length; i++)
+        {
+            Run r = runs[i];
+            if (italic || (weight > 0 && r.Weight == 0))
+                runs[i] = new Run(r.Text, r.Icon, r.Rgba, r.Size, italic || r.Italic, r.Break, r.Weight > 0 ? r.Weight : weight, r.Style);
+        }
         return runs;
+    }
+
+    /// <summary>A text block's <c>weight</c>, 100 to 900; 0 when it names none.</summary>
+    private static int Weight(JsonElement e)
+    {
+        float w = Num(e, "weight", 0f);
+        if (w == 0f) return 0;
+        return PanelMarkup.IsWeight(w.ToString(System.Globalization.CultureInfo.InvariantCulture)) ? (int)w : throw new Refusal("weight is a whole number from 100 to 900");
     }
 
     private static string Str(JsonElement e, string name, string def)
