@@ -1,0 +1,1 @@
+sleep:52000;move:640,360;sleep:500;bdown:2;rel:12,0,30,15;btn:1;rel:12,0,30,15;bup:2;sleep:1500;bdown:2;rel:-12,0,30,15;btn:1;rel:-12,0,30,15;bup:2;sleep:1500;bdown:2;rel:10,0,30,15;btn:1;rel:10,0,30,15;bup:2;sleep:12000;shot:@SHOTS@/end.png

@@ -2137,6 +2137,10 @@ public readonly unsafe partial struct CNWCModule(IntPtr ptr)
     public ref byte MinutesPerHour => ref *(byte*)(Ptr + EngineLayout.ModuleMinutesPerHour);
     /// <inheritdoc cref="SymbolMap.ModuleSetTimeOfDayState"/>
     public void ModuleSetTimeOfDayState(byte state, uint elapsedMs, int force) => EngineFn.ModuleSetTimeOfDayState(Ptr, state, elapsedMs, force);
+    /// <inheritdoc cref="EngineLayout.ModulePredictPitchImpulse"/>
+    public ref float PredictPitchImpulse => ref *(float*)(Ptr + EngineLayout.ModulePredictPitchImpulse);
+    /// <inheritdoc cref="EngineLayout.ModulePredictYawImpulse"/>
+    public ref float PredictYawImpulse => ref *(float*)(Ptr + EngineLayout.ModulePredictYawImpulse);
     /// <inheritdoc cref="SymbolMap.TiltCamera"/>
     public void TiltCamera(float deg, int impulse) => EngineFn.TiltCamera(Ptr, deg, impulse);
     /// <inheritdoc cref="EngineLayout.ModuleTransitionElapsed"/>

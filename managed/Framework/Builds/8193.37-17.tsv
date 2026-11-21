@@ -415,6 +415,8 @@ offset	CPathfindInformation	spaceArgs	0xe0	0xe0	# PathfindSpaceArgs
 offset	CNWCCreature	vtbl.SetPosition	0x130	0x128	# CreatureSetPositionSlot
 offset	CNWCModule	chaseSuppressed	0x13c	0x13c	# ModuleChaseSuppressed
 offset	CNWCModule	chaseWasIdle	0x27c	0x27c	# ModuleChaseWasIdle
+offset	CNWCModule	predictYawImpulse	0x154	0x154	# ModulePredictYawImpulse
+offset	CNWCModule	predictPitchImpulse	0x150	0x150	# ModulePredictPitchImpulse
 offset	CNWCModule	cameraMaxDist	0x2b8	0x2b8	# ModuleCameraMaxDist
 offset	CNWCCreature	combatState	0x1f4	0x1d4	# CreatureCombatState
 offset	CGuiInGame	toggledOff	0x3d4	0x374	# GuiInGameToggledOff

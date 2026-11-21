@@ -45,7 +45,29 @@ cp -f "$SRC" "$WORK/$NAME.nss"
 cp -f "$(dirname "$SRC")"/inc_*.nss "$WORK/" 2>/dev/null || true
 # LADDER_NUI_CLOSE=<seconds> closes the ladder's NUI window then; unset, it stays open.
 [ -z "${LADDER_NUI_CLOSE:-}" ] || sed -i "s/^const float T_NUI_CLOSE = .*;/const float T_NUI_CLOSE = ${LADDER_NUI_CLOSE}.0;/" "$WORK/$NAME.nss"
+# The compiler takes `void main()` only from the file it compiles, never from an include, and skips a file without one
+# in silence -- and a showcase's main is inc_show's (or inc_perf's). So the local inc_*.nss it includes are written into
+# it, each once, before it compiles; a game include (nw_inc_nui) stays an #include.
+python3 - "$WORK/$NAME.nss" "$WORK" <<'PY'
+import os, re, sys
+path, work = sys.argv[1], sys.argv[2]
+done = set()
+def inline(text):
+    def one(m):
+        name = m.group(1)
+        f = os.path.join(work, name + ".nss")
+        if not name.startswith("inc_") or not os.path.isfile(f):
+            return m.group(0)
+        if name in done:
+            return ""
+        done.add(name)
+        return inline(open(f).read())
+    return re.sub(r'^[ \t]*#include[ \t]+"([^"]+)"[^\n]*$', one, text, flags=re.M)
+src = open(path).read()
+open(path, "w").write(inline(src))
+PY
 nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$NAME.ncs" "$WORK/$NAME.nss"
+[ -f "$WORK/$NAME.ncs" ] || { echo "build-ladder: $NAME.nss compiled to nothing (no main?)" >&2; exit 1; }
 # A showcase with a <name>_nui.nss beside it (an NUI event handler, set at runtime with SetEventScript) gets that compiled in too.
 EXTRA="${SRC%.nss}_nui"
 if [ -f "$EXTRA.nss" ]; then
