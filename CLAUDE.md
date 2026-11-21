@@ -41,9 +41,12 @@ Per-machine paths -- the game, the decomp dump, the Ghidra project, content corp
 resolve through `tools/paths.py`: the environment, then `local.env` (gitignored; copy `local.env.example`),
 then a stock default (your Steam library). `$NWN_DECOMP` and `$GHIDRA_PROJECT` below name those keys. No tracked file names one machine's path; `local-paths.sh` refuses it.
 
-CI builds only when a pull request touches a path in the `inputs` list of `.github/workflows/ci.yml`'s
-`changes` job; every other path skips the build by design (an allowlist, not "unknown paths build"). When
-`build.sh` or a script it calls reads a new file, add that file to the list in the same change.
+CI runs nothing on a draft pull request: its `changes` job fails first, and marking it ready starts the run.
+On a ready one, `tools/ci-changes.sh` maps the changed paths to the jobs they reach: the Linux build for a path
+on either of its lists, the Windows build for one on `both`, and neither for any other path (an allowlist, not
+"unknown paths build"). The rule gates run in `build.sh` when it runs, and in `no-decompiled` otherwise. When
+`build.sh` or a script it calls reads a new file, add it to the map and a row to
+`tools/ci-changes_approved_examples.sh` in the same change; when `build-win-native.sh` does, put it on `both`.
 
 `build.sh` stages a runtime folder `cx-linux-x64/` (launcher + 2 `.so` + the audio runtime) and a flat zip
 of its contents -- the install is "unpack into bin/linux-x86". It refuses to build (exit 3, naming the pid)
