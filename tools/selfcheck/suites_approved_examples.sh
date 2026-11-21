@@ -24,16 +24,15 @@ F=$(src HexColour.cs) || exit 2
 # And that mutant's boot takes under 4 seconds, against about 16 for a whole boot
 printf '%s\t%s\t%s\t%s\n' opaque "$F" 'v << 8 | 0xFF' 'v << 8' > "$tmp/one.tsv"
 python3 tools/selfcheck/mutants.py "$tmp/one.tsv" > "$tmp/e1.out" 2>&1
-grep -qE '^killed +opaque ' "$tmp/e1.out" && grep -qE '(^killed +opaque +| also )HexColour\.SelfCheck FAIL: #RRGGBB is opaque' "$tmp/e1.out" \
-  || fail "E1: opaque is not killed with HexColour's own check among its FAIL lines -- $(tail -3 "$tmp/e1.out")"
+if ! grep -qE '^killed +opaque ' "$tmp/e1.out" || ! grep -qE '(^killed +opaque +| also )HexColour\.SelfCheck FAIL: #RRGGBB is opaque' "$tmp/e1.out"; then fail "E1: opaque is not killed with HexColour's own check among its FAIL lines -- $(tail -3 "$tmp/e1.out")"; fi
 line=$(grep -E '^>> opaque: booting [0-9]+ of [0-9]+ suites: ' "$tmp/e1.out")
 [ -n "$line" ] || fail "E1: the runner does not say which suites the mutant's boot runs"
 k=$(sed -E 's/^>> opaque: booting ([0-9]+) of ([0-9]+) .*/\1/' <<< "$line"); n=$(sed -E 's/^>> opaque: booting ([0-9]+) of ([0-9]+) .*/\2/' <<< "$line")
 grep -q 'HexColour' <<< "$line" || fail "E1: HexColour's suite is not among the suites booted"
 # ponytail: "no others" is held as a bound, a few of the whole set, until a second reach oracle exists to compare with.
-[ -n "$k" ] && [ -n "$n" ] && [ $(( k * 4 )) -lt "$n" ] || fail "E1: $k of $n suites booted for one HexColour mutant, not the few that reach it"
+if [ -z "$k" ] || [ -z "$n" ] || [ $(( k * 4 )) -ge "$n" ]; then fail "E1: $k of $n suites booted for one HexColour mutant, not the few that reach it"; fi
 secs=$(sed -nE 's/^>> opaque: booted in ([0-9.]+)s$/\1/p' "$tmp/e1.out")
-[ -n "$secs" ] && awk -v s="$secs" 'BEGIN { exit !(s < 4) }' || fail "E1: the mutant's boot took '${secs}'s, not under 4"
+if [ -z "$secs" ] || ! awk -v s="$secs" 'BEGIN { exit !(s < 4) }'; then fail "E1: the mutant's boot took '${secs}'s, not under 4"; fi
 
 # E2
 # Given a mutant the filtered boot reports as survived

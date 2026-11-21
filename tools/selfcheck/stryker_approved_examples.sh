@@ -23,7 +23,7 @@ ln -s "$repo/build" "$wt/build"
 cp "$wt/$F" "$tmp/before.cs"
 sed -i -e 's/if (d < 0) return false;/if (d < 0) { return false; }/' -e 's/^\( *\)uint v = 0;$/&\n\1_ = s.Length * 2;/' "$wt/$F"
 [ "$(diff "$tmp/before.cs" "$wt/$F" | grep -c '^>')" = 2 ] || { echo ">> the two lines E1 changes are gone from $F" >&2; exit 2; }
-changed=$(diff --unchanged-line-format= --old-line-format= --new-line-format='%dn ' "$tmp/before.cs" "$wt/$F")
+read -ra changed <<< "$(diff --unchanged-line-format= --old-line-format= --new-line-format='%dn ' "$tmp/before.cs" "$wt/$F")"
 git -C "$wt" commit -qam "the lines the Stryker examples mutate" || exit 2
 
 # E1
@@ -38,7 +38,7 @@ echo ">> the Stryker run took ${took}s"
 report=$tmp/report/reports/mutation-report.json
 [ -f "$report" ] || fail "E1: no mutation-report.json under the output folder -- $(tail -3 "$tmp/e1.out")"
 if [ -f "$report" ]; then
-  python3 -I - "$report" "$F" $changed > "$tmp/e1.check" <<'PY' || fail "E1: $(cat "$tmp/e1.check")"
+  python3 -I - "$report" "$F" "${changed[@]}" > "$tmp/e1.check" <<'PY' || fail "E1: $(cat "$tmp/e1.check")"
 import json, sys
 r = json.load(open(sys.argv[1])); want, lines = sys.argv[2], {int(x) for x in sys.argv[3:]}
 ms = [(f, m) for f, v in r['files'].items() for m in v['mutants']]

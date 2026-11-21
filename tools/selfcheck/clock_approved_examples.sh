@@ -64,6 +64,7 @@ grep -E 'SelfCheck.*FAIL.*(holds no line|was not in the file)' "$tmp/e2.out" && 
 # When the mutant runner boots it five times on a busy machine
 # Then the texture upload suites pass every time
 printf '%s\t%s\t%s\t%s\n' tell_pending "$(src TellTarget.cs)" '_pending.Count > MaxPending' '_pending.Count >= MaxPending' > "$tmp/tell.tsv"
+# shellcheck disable=SC2016 # the loop is the inner shell's, so its $i and $1 expand there
 setsid nice -n 19 timeout 1800 sh -c 'i=0; while [ $i -lt "$1" ]; do (while :; do :; done) & i=$((i + 1)); done; wait' _ "$(nproc)" &
 load=$!
 for n in 1 2 3 4 5; do
