@@ -153,7 +153,7 @@ vec3 CxVfLight(vec3 world, vec3 V, float depth)
     if (uVfSun.w > 0.0) l += uVfAmbient * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
     // a rain-only build gathers no lamps at all: uVfLocal.x is 0 there, so the walk folds out here
     vec3 lamps = uVfLocal.x > 0.0 ? uVfLocal.x * CxVfLamps(world, V, depth) : vec3(0.0);
-    return CxVfScatter(l, lamps, uVfRain.y);
+    return CxLitFloor(CxVfScatter(l, lamps, uVfRain.y));
 }
 
 void main()

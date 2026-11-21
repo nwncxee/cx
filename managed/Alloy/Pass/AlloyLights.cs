@@ -336,8 +336,8 @@ internal static unsafe class AlloyLights
         // distance. The text pins hold the two transcriptions together; the sweep holds the claim.
         string build = ShaderStages.Source(ShdClusterCs);
         check.Expect(build.Contains("fade *= min((r2 - f2) / (r2 * 0.3), 1.0);") && FragmentLib.Contains("fade *= min((r2 - f2) / (r2 * 0.3), 1.0);")
-          && build.Contains("return fade / (at.x + at.y * f2) * dot(col, vec3(0.299, 0.587, 0.114));")
-          && FragmentLib.Contains("return fade / (at.x + at.y * f2) * dot(uLights[li * 2u + 1u].rgb, vec3(0.299, 0.587, 0.114));")
+          && build.Contains("return fade / (at.x + at.y * f2) * dot(abs(col), vec3(0.299, 0.587, 0.114));")
+          && FragmentLib.Contains("return fade / (at.x + at.y * f2) * dot(abs(uLights[li * 2u + 1u].rgb), vec3(0.299, 0.587, 0.114));")
           && build.Contains("if (u <= uRel.x * floorI && (uv < floorV || uv <= 0.0)) entry |= FLAG_CULL;")
           && FragmentLib.Contains("for (uint k = CxListLive(cl), e = CxListColdCand(cl); k < e; k++) relMax")
           // CX-188: ...and the walk's list source still resolves to the froxel table for every forward program,
@@ -396,7 +396,7 @@ internal static unsafe class AlloyLights
         check.Expect(FragmentLib.Contains("return clamp((lum - uLightFloor * at.x) / max(lum + uLightFloor * at.y, 1e-8), 0.0, 1.0);")
           && build.Contains("return clamp((lum - uLightFloor.x * at.x) / max(lum + uLightFloor.x * at.y, 1e-8), 0.0, 1.0);")
           && build.Contains("float lum = uLightFloor.y * dot(max(c, c * c * c), vec3(0.2126, 0.7152, 0.0722));")
-          && FragmentLib.Contains("float rw = min(uReach > 0.0 ? uReach * uReach : 1e30, CxReachCut(c));")
+          && FragmentLib.Contains("float rw = min(uReach > 0.0 ? uReach * uReach : 1e30, CxReachCut(abs(c)));")
           // ...and a zero window is a refusal, not a 0/0 in the fade (a light already under the floor)
           && FragmentLib.Contains("if (rw <= 0.0) return false;")
           && build.Contains("float ReachR(vec4 pr, vec3 col) { return pr.w * min(uReach, sqrt(ReachCut(col))); }"),
@@ -415,6 +415,9 @@ internal static unsafe class AlloyLights
                        + 0.0722f * MathF.Max(srgb.Z, srgb.Z * srgb.Z * srgb.Z);
             float lumL = 0.2126f * MathF.Pow(srgb.X, 2.2f) + 0.7152f * MathF.Pow(srgb.Y, 2.2f)
                        + 0.0722f * MathF.Pow(srgb.Z, 2.2f);
+            // ...and NEGATIVE ones (a darkness), which both cut on the magnitude: a channel at or under 0 linearises
+            // unchanged (GetColorSpaceFromSRGB), so the walk's magnitude is the channel's own, |c|
+            if (t % 4 == 1) lumL = 0.2126f * srgb.X + 0.7152f * srgb.Y + 0.0722f * srgb.Z;
             float cutW = Math.Clamp((lumL - fl * at.X) / MathF.Max(lumL + fl * at.Y, 1e-8f), 0f, 1f);
             float cutB = Math.Clamp((lumS - fl * at.X) / MathF.Max(lumS + fl * at.Y, 1e-8f), 0f, 1f);
             if (cutB < cutW - 1e-5f) narrower++;

@@ -57,7 +57,7 @@ vec3 CxWxLampsDir(vec3 P, float viewDepth, out vec3 dir)
         dir += normalize(pr.xyz - P) * dot(l, vec3(0.2126, 0.7152, 0.0722));
     }
     dir = dot(dir, dir) > 1e-12 ? normalize(dir) : vec3(0.0, 0.0, 1.0);
-    return acc * uDayDim;
+    return CxLitFloor(acc) * uDayDim;
 }
 
 /// Henyey-Greenstein over 4 pi: how much of a light travelling along `travel` a drop sends toward the eye at `V`;

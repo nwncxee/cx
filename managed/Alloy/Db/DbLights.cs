@@ -173,7 +173,9 @@ internal static class DbLights
         // The bake's verdict, asked the way the engine walk asks it -- except that the database, not a walk of
         // engine objects, says whether the light holds still. A static light is what a tile is LIT BY: tiles
         // are lit from the baked pages and objects dynamically.
-        bool isStatic = LightmapBake.RecordDb(l.Id, pos, adjR, rgb, ambient, l.Static, out int setIndex);
+        bool subtracts = Subtracts(rgb);
+        int setIndex = -1;
+        bool isStatic = !subtracts && LightmapBake.RecordDb(l.Id, pos, adjR, rgb, ambient, l.Static, out setIndex);
         if (blinded) return;
         FrameInputs.RecordAreaLight(l.Id, pos, adjR, rgb, ambient, isStatic, setIndex);
         _admitted++;
@@ -181,9 +183,13 @@ internal static class DbLights
         // A local (shadow-casting) light is a non-ambient one that asked to cast: a static placeable's says so in
         // its Lit record, an object light through its LightDef. A tile's own light is ambient, so never casts.
         bool casts = l.Lit >= 0 ? SceneDb.LitShadow[l.Lit] : l.Def is { Shadow: true };
-        if (ambient || !casts) return;
+        if (ambient || !casts || subtracts) return;
         FrameInputs.RecordLocalLight(l.Id, pos, adjR, rgb);
     }
+
+    /// <summary>A light with a negative channel subtracts (the Darkness spell's). Its colour reaches the shaders
+    /// signed, but it is never baked into the pages and never casts: the stock shader has no shadow term to take.</summary>
+    internal static bool Subtracts(Vector3 rgb) => rgb.X < 0f || rgb.Y < 0f || rgb.Z < 0f;
 
     /// <summary>Route one area light to the term its own kind drives. The colour goes through the receiver's
     /// own gamma here (<c>AlloyLights.SrgbGamma</c>) because every consumer of <c>FrameInputs.Area*</c>
@@ -408,6 +414,32 @@ internal static class DbLights
         check.Expect(FrameInputs.LightCount == 1, $"a tile light that also has a part is admitted once ({FrameInputs.LightCount})");
         SceneDb.Lights.Free(lid); SceneDb.Lights.TakeDirty();
         DbInputs.RegisterTileLight(p, -1);
+
+        // A NEGATIVE light (the Darkness spell's, colour -1): admitted with its colour signed, as the engine passes it,
+        // but never baked into the pages and never a shadow caster -- the stock shader has no shadow term, so a
+        // shadowed darkness would hand back the dark it takes wherever an object stands between it and a wall.
+        DbId nid = SceneDb.Lights.Alloc();
+        int nk = nid.Index;
+        SceneDb.LitObj[nk] = obj;
+        SceneDb.LitPart[nk] = -1;
+        SceneDb.LitPos[nk] = new Vector3(1f, 2f, 3f);
+        SceneDb.LitColour[nk] = new Vector3(-1f, -1f, -1f);
+        SceneDb.LitRange[nk] = 6f;
+        SceneDb.LitMultiplier[nk] = 8f;
+        SceneDb.LitDynamic[nk] = false;
+        SceneDb.LitShadow[nk] = true;
+        SceneDb.LitAmbientOnly[nk] = false;
+        Walk(scene, in noArea);
+        int ni = -1;
+        for (int i = 0; i < FrameInputs.LightCount; i++) if (FrameInputs.AreaLightId[i] == DbInputs.LitId(nk)) ni = i;
+        bool negCasts = false;
+        for (int i = 0; i < FrameInputs.LocalLightCount; i++) negCasts |= FrameInputs.LocalLightId[i] == DbInputs.LitId(nk);
+        check.Expect(ni >= 0 && FrameInputs.AreaLightColor[ni] == new Vector3(-1f, -1f, -1f)
+                     && MathF.Abs(FrameInputs.AreaLightPosRange[ni].W - 48f) < 1e-3f,
+                     "a negative light is admitted with its colour signed and its reach range x multiplier (48)");
+        check.Expect(ni >= 0 && !FrameInputs.AreaLightStatic[ni] && !negCasts,
+                     $"...and is neither baked nor a shadow caster (static {ni >= 0 && FrameInputs.AreaLightStatic[ni]}, casts {negCasts})");
+        SceneDb.Lights.Free(nid); SceneDb.Lights.TakeDirty();
 
         // The area PAIR's direction lands on the frame the engine moves it.
         Vector3 at0 = new(0f, 0f, 1f), at15 = new(0.0261769483f, 0f, 0.999657325f);   // sin/cos of 1.5 deg
