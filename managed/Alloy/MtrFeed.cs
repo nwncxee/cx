@@ -62,6 +62,18 @@ internal static unsafe class MtrFeed
         TileBuild.WarmMaterials = Warm;
     }
 
+    /// <summary>For a self-check: arm the feed (or not, <paramref name="on"/>) as the material provider over
+    /// <see cref="TexRegistry.ResourceStandIn"/>, forgetting what it read, and answer whether it was armed before. The
+    /// caller puts that back the same way and keeps <see cref="MtrDef"/>'s providers itself.</summary>
+    internal static bool ArmForCheck(bool on)
+    {
+        bool was = _armed;
+        ModuleEdge();
+        _armed = on;
+        if (on) { MtrDef.Bytes = Cached; MtrDef.Answered = Answered; }
+        return was;
+    }
+
     /// <summary>Has this material been ANSWERED -- read, or established absent? A name only
     /// <see cref="Hint"/> has queued has not, and a part built against it may still gain a material.</summary>
     private static bool Answered(string name)

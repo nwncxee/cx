@@ -387,7 +387,7 @@ internal static class RenderPasses
         {
             Name = "mesharena",
             Attach = l => { CX.Alloy.Db.MeshArena.Attach(l); CX.Alloy.Db.PartTree.Attach(l); },
-            SelfCheck = l => CX.Alloy.Db.DbSelfCheck.Run(l),
+            SelfCheck = l => { CX.Alloy.Db.DbSelfCheck.Run(l); CX.Alloy.Db.DbSelfCheck.MaterialResetHoldsTodaySelfCheck(l); },
             ContextLost = CX.Alloy.Db.MeshArena.ContextLost,
             // the live comparison is per AREA, so the world edge re-arms it
             Revoke = () => { CX.Alloy.Db.PartTree.AreaEdge(); },

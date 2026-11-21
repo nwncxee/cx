@@ -463,6 +463,18 @@ internal static unsafe partial class TexRegistry
         return true;
     }
 
+    /// <summary>A self-check's stand-in for the engine's resource tables.</summary>
+    private sealed class ResourceStandInState { public Func<string, ushort, byte[]?>? Read; }
+    private static ResourceStandInState _resStandIn = new();
+
+    /// <summary>Answers every resource read while set: a self-check's own files by name and type, with no engine.
+    /// Null in a session.</summary>
+    internal static Func<string, ushort, byte[]?>? ResourceStandIn
+    {
+        get => _resStandIn.Read;
+        set => _resStandIn.Read = value;
+    }
+
     /// <summary>One small text resource (a <c>.txi</c>), read through the same location record and file
     /// handles a texture is. Game thread -- it reads the engine's resource tables -- and cold: the caller
     /// caches by name. Null when there is no such resource, which the caller reports.</summary>
@@ -475,6 +487,7 @@ internal static unsafe partial class TexRegistry
     internal static byte[]? ReadResourceBytes(string resref, ushort resType, out string? why)
     {
         why = null;
+        if (_resStandIn.Read is { } stand) return stand(resref, resType);
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) return null;
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
         ResRef(resref, name);

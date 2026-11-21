@@ -12,7 +12,7 @@ namespace CX.Alloy.Seam;
 /// standing in for <c>Gob::SetTextureAttributes</c> @0x43f9d0, <c>SetOverrideTextureFilter</c> @0x43b600 and
 /// <c>SetMaterialParam</c> @0x43cb20, over <see cref="TexRegistry"/> and <see cref="DrawRecipe"/>. Each is
 /// change-driven: it writes a column and marks the records that read it, never per frame.</summary>
-internal static class TexSeam
+internal static partial class TexSeam
 {
     private static ExtenderLog? _log;
 
