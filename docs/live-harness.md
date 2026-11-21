@@ -12,7 +12,7 @@ runs the framework in a stub host with no GPU and no engine, cannot tell you.
     tools/live/run-live.sh --ladder                    # the scripted ladder below (70 s)
 
 Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out DIR` `--keys SCRIPT`
-`--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder`.
+`--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder` `--camera-mode N` (0 chase, 1 top-down, 2 driving).
 `--move-alias NAME` (repeatable) moves the run's folder for that `nwn.ini` alias (`NWSYNC`, `OVERRIDE`) to `$OUT/moved/` and points
 the alias there, as a player who keeps it off the default drive does. `--stage DIR` runs another staged `cx-linux-x64/`, such as an
 older build as the control for a fix.
@@ -494,6 +494,13 @@ a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each
 `nuiheld` is a server that holds things, in stock NWScript with an empty `.policy`: a drag, a click and a pick the server never confirms. Its keys log the pointer's shape as `cursor <tag>:` lines in `xtool.log`, so the held cursor reads differently from the arrow before and after.
 
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
+
+`camjerk` is the camera-jerk capture: in the middle of the module's first outdoor area the PC shoots three goblins with a longbow,
+closes on them with a spear and casts at them, with nothing but its own gear, the goblins, their corpses, the arrows and the spell
+between it and the camera. Its keys then middle-drag the camera three times with a left click halfway through each drag
+(`bdown:2`, `rel:dx,dy,n,ms`, `btn:1`, `bup:2`: buttons and relative motion where the pointer already is). Run it as
+`--showcase camjerk --camera-mode 0 --cfg chase.offsetx=1.5` (camera mode 0 is chase) and read the `[camera]` lines: `pull-in(s)` is the spring arm
+moving in, and `yaw jumps` counts frames that turned the camera more than 30 degrees.
 
 `rain` is the fixed rain capture: the PC jumps to the module's first outdoor area, heavy rain at noon there, a snap to one camera angle, then a slow scripted
 pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0.png` to `pan5.png`), so two builds
