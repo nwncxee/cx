@@ -463,13 +463,17 @@ internal static unsafe partial class TexRegistry
         return true;
     }
 
+    /// <summary>A self-check's read of one resource: its bytes, or null with <paramref name="why"/> set when it
+    /// exists and cannot be read (null <paramref name="why"/>: no such resource), as <see cref="ReadResourceBytes"/> answers.</summary>
+    internal delegate byte[]? StandInRead(string resref, ushort resType, out string? why);
+
     /// <summary>A self-check's stand-in for the engine's resource tables.</summary>
-    private sealed class ResourceStandInState { public Func<string, ushort, byte[]?>? Read; }
+    private sealed class ResourceStandInState { public StandInRead? Read; }
     private static ResourceStandInState _resStandIn = new();
 
     /// <summary>Answers every resource read while set: a self-check's own files by name and type, with no engine.
     /// Null in a session.</summary>
-    internal static Func<string, ushort, byte[]?>? ResourceStandIn
+    internal static StandInRead? ResourceStandIn
     {
         get => _resStandIn.Read;
         set => _resStandIn.Read = value;
@@ -487,7 +491,7 @@ internal static unsafe partial class TexRegistry
     internal static byte[]? ReadResourceBytes(string resref, ushort resType, out string? why)
     {
         why = null;
-        if (_resStandIn.Read is { } stand) return stand(resref, resType);
+        if (_resStandIn.Read is { } stand) return stand(resref, resType, out why);
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) return null;
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
         ResRef(resref, name);

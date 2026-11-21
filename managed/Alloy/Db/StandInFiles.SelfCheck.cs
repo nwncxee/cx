@@ -15,7 +15,8 @@ internal sealed class StandInFiles : IDisposable
     private readonly Func<string, byte[]?>? _bytes = MtrDef.Bytes;
     private readonly Func<string, bool>? _answered = MtrDef.Answered;
     private readonly Action<string>? _reread = MtrDef.Reread;
-    private readonly Func<string, ushort, byte[]?>? _read = TexRegistry.ResourceStandIn;
+    private readonly HashSet<(string, ushort)> _locked = new();
+    private readonly TexRegistry.StandInRead? _read = TexRegistry.ResourceStandIn;
     private readonly bool _feed;
 
     internal StandInFiles()
@@ -31,7 +32,19 @@ internal sealed class StandInFiles : IDisposable
     /// <summary>Take file <paramref name="name"/> of <paramref name="type"/> out of the tables.</summary>
     internal void Remove(string name, ushort type) => _files.Remove((name.ToLowerInvariant(), type));
 
-    private byte[]? Read(string name, ushort type) => _files.TryGetValue((name.ToLowerInvariant(), type), out byte[]? b) ? b : null;
+    /// <summary>Make file <paramref name="name"/> of <paramref name="type"/> exist but fail to read, or read again.</summary>
+    internal void Lock(string name, ushort type, bool locked)
+    {
+        if (locked) _locked.Add((name.ToLowerInvariant(), type));
+        else _locked.Remove((name.ToLowerInvariant(), type));
+    }
+
+    private byte[]? Read(string name, ushort type, out string? why)
+    {
+        var key = (name.ToLowerInvariant(), type);
+        why = _locked.Contains(key) ? "the self-check holds it locked" : null;
+        return why == null && _files.TryGetValue(key, out byte[]? b) ? b : null;
+    }
 
     public void Dispose()
     {

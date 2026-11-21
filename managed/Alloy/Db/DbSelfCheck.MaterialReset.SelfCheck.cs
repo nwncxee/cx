@@ -24,6 +24,8 @@ internal static partial class DbSelfCheck
             OtherMaterialStill(check);
             DynamicDanglyKeepsItsSkin(check);
             ResetReleasesOldTextures(check);
+            UnreadableMtrRetries(check);
+            ResetRestagesShadowMasks(check);
         }
         finally
         {
@@ -96,6 +98,67 @@ internal static partial class DbSelfCheck
         check.Expect(!gravel.IsNull && (st == TexState.Idle || st == TexState.Free),
                      $"the gravel texture is still held after the floor moved to the paving ({st})");
         ForgetFixture(model);
+    }
+
+    /// <summary>Frames a check waits for a retried read: two seconds at sixty.</summary>
+    private const int RetryTicks = 120;
+
+    /// <summary>An override whose <c>.mtr</c> exists but cannot be read for a moment keeps the floor on the material it
+    /// had, and the floor takes the override's once the file reads again, with no second override.</summary>
+    private static void UnreadableMtrRetries(Checker check)
+    {
+        using var files = new StandInFiles();
+        files.Put(RsFloor, StandInFiles.Mtr, GravelMtr);
+        var (model, p) = Floor();
+        files.Put(RsFloor, StandInFiles.Mtr, PavingMtr);
+        files.Lock(RsFloor, StandInFiles.Mtr, true);
+        Override(RsFloor);
+        check.Expect(Draws(p) == "cx_rs_gravel", $"an unreadable .mtr moved the floor off its material, to {Draws(p)}");
+        files.Lock(RsFloor, StandInFiles.Mtr, false);
+        int t = 0;
+        for (; t < RetryTicks && Draws(p) != "cx_rs_paving"; t++) TexRegistry.Tick();
+        check.Expect(Draws(p) == "cx_rs_paving",
+                     $"the floor still draws {Draws(p)} {RetryTicks} frames after its .mtr read again: the read was not retried");
+        ForgetFixture(model);
+    }
+
+    /// <summary>A reset that changes what a caster masks with re-stages every caster and rebakes the shadows, and so does
+    /// the reloaded mask landing: a standing staging keeps the mask it resolved, and a cached shadow the mask it baked.</summary>
+    private static void ResetRestagesShadowMasks(Checker check)
+    {
+        bool inv0 = CasterPass.InvalidateForCheck(false);
+        using (var files = new StandInFiles())
+        {
+            files.Put(RsFloor, StandInFiles.Mtr, GravelMtr);
+            var (model, p) = Floor();
+            int v0 = CasterPass.ListVersionForCheck;
+            files.Put(RsFloor, StandInFiles.Mtr, PavingMtr);
+            Override(RsFloor);
+            check.Expect(CasterPass.ListVersionForCheck != v0 && CasterPass.InvalidateForCheck(false),
+                         "a reset that gave the floor a new mask left the shadow staging and its bakes standing");
+            int r = SceneDb.PartRecipe[p];
+            int v1 = CasterPass.ListVersionForCheck;
+            if (r >= 0) TexRegistry.Land(DrawRecipe.Tex(r, 0), RsName, 16, RsHandle);
+            TexRegistry.Tick();
+            check.Expect(CasterPass.ListVersionForCheck != v1 && CasterPass.InvalidateForCheck(false),
+                         "the floor's new mask landed and the shadow staging and its bakes stood on the old one");
+            ForgetFixture(model);
+        }
+        using (var files = new StandInFiles())
+        {
+            var (model, p) = Floor();
+            int r = SceneDb.PartRecipe[p];
+            if (r >= 0) TexRegistry.Land(DrawRecipe.Tex(r, 0), RsName, 16, RsHandle);
+            Override(RsFloor);
+            int v2 = CasterPass.ListVersionForCheck;
+            CasterPass.InvalidateForCheck(false);
+            if (r >= 0) TexRegistry.Land(DrawRecipe.Tex(r, 0), RsName + 1, 16, RsHandle + 1);
+            TexRegistry.Tick();
+            check.Expect(CasterPass.ListVersionForCheck != v2 && CasterPass.InvalidateForCheck(false),
+                         "a texture-only override's image landed and the shadow staging stood on the image it replaced");
+            ForgetFixture(model);
+        }
+        CasterPass.InvalidateForCheck(inv0);
     }
 
     /// <summary>The per-instance key of the dynamic dangly fixture's range.</summary>
