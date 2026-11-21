@@ -13,6 +13,7 @@ import sys
 from fontTools import subset
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.ttCollection import TTCollection
+from fontTools.misc.roundTools import otRound
 from fontTools.varLib import instancer
 
 TEXT = "Hamburgefonstiv HOLx01"
@@ -50,9 +51,9 @@ def golden(var_path, out):
             coords, ends, flags = g.getCoordinates(glyf)
             pts, start = [], 0
             for end in ends:
-                pts.append(" ".join(f"{x},{y},{f & 1}" for (x, y), f in zip(coords[start:end + 1], flags[start:end + 1])))
+                pts.append(" ".join(f"{otRound(x)},{otRound(y)},{f & 1}" for (x, y), f in zip(coords[start:end + 1], flags[start:end + 1])))
                 start = end + 1
-            lines.append(f"{w}\tU+{ord(ch):04X}\t{hmtx[name][0]}\t" + " | ".join(pts))
+            lines.append(f"{w}\tU+{ord(ch):04X}\t{otRound(hmtx[name][0])}\t" + " | ".join(pts))
     with open(out, "w") as f:
         f.write("\n".join(lines) + "\n")
 

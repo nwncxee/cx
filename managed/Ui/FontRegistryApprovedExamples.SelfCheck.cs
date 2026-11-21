@@ -17,6 +17,7 @@ internal static partial class FontRegistryApprovedExamples
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "FontRegistryApprovedExamples.SelfCheck");
+        UiCategory.Declare();
         string dir = Path.Combine(Path.GetTempPath(), $"cx-fonts-{Environment.ProcessId}");
         FontCatalog? was = null;
         string[] names = FontRegistry.Names;
@@ -203,7 +204,7 @@ internal static partial class FontRegistryApprovedExamples
                 return FontRegistry.Migrate("DejaVu Sans Bold") == (DejaVu, 700, FontRegistry.StyleNormal)
                     && w.Typeface.V == DejaVu && w.Weight!.V == 700 && Drawn(w.FaceName) == "DejaVuSans-Bold.ttf#0@700";
             }
-            finally { Settings.Forget("cx-fontcheck-e15.typeface"); }
+            finally { foreach (string k in new[] { "typeface", "weight", "style" }) Settings.Forget("cx-fontcheck-e15." + k); }
         });
 
         // E16 Given a window whose typeface the player set before this change, such as Noto Sans Regular or DejaVu Sans
@@ -218,7 +219,7 @@ internal static partial class FontRegistryApprovedExamples
                 return Drawn(a.FaceName) == "NotoSans-VF.ttf#0@400" && Drawn(b.FaceName) == "DejaVuSans.ttf#0@400"
                     && FontRegistry.Bytes(a.FaceName) is byte[] bytes && bytes.AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(dir, "NotoSans-VF.ttf")));
             }
-            finally { Settings.Forget("cx-fontcheck-e16a.typeface"); Settings.Forget("cx-fontcheck-e16b.typeface"); }
+            finally { foreach (string k in new[] { "typeface", "weight", "style" }) { Settings.Forget("cx-fontcheck-e16a." + k); Settings.Forget("cx-fontcheck-e16b." + k); } }
         });
 
         // E17 Given Windows, or the game under Proton When the player picks Arial and sets the Weight to 700 Then the window

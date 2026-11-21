@@ -37,7 +37,7 @@ internal static partial class FontRegistryApprovedExamples
             return gear?.Choices is string[] c && c.SequenceEqual(new[] { "as UI", "Normal", "Italic" }) && gear.Selected == 0
                 && UiKnobs.Style!.Choices.SequenceEqual(new[] { "Normal", "Italic" }) && UiKnobs.Style.Default == Normal
                 && UiKnobs.Style.Label == "Default style" && w.Style!.Key == "cx-fontcheck-e20.style" && w.Style.Label == "Default style"
-                && w.Style.Choices.SequenceEqual(new[] { "as UI", "Normal", "Italic" }) && w.Style.V == FontRegistry.StyleAsUi;
+                && w.Style.Choices.SequenceEqual(new[] { "as UI", "Normal", "Italic" }) && w.Style.ChoiceIndex == 0;
         });
 
         // E21 Given a chat window whose typeface is Noto Sans at weight 700, or DejaVu Sans at weight 700 When the player
@@ -81,7 +81,7 @@ internal static partial class FontRegistryApprovedExamples
                 return FontRegistry.Migrate("DejaVu Sans Bold Oblique") == (DejaVu, 700, Italic)
                     && w.Typeface.V == DejaVu && w.Weight!.V == 700 && w.Style!.V == Italic && Drawn(w.FaceName) == "DejaVuSans-BoldOblique.ttf#0@700i";
             }
-            finally { Settings.Forget("cx-fontcheck-e24.typeface"); }
+            finally { foreach (string k in new[] { "typeface", "weight", "style" }) Settings.Forget("cx-fontcheck-e24." + k); }
         });
 
         // E28 Given a window whose Default style is Italic, drawing plain text and text that asks to be upright When the
