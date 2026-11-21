@@ -312,7 +312,7 @@ void main()
         cxClusterXY = (cc.xy / max(cc.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
         float ndl = clamp(dot(N, uAreaDir), 0.0, 1.0);
         vec3 sun = uAreaDiffuse * (ndl * CxSunShadow(P, N, ndl, ndl));
-        vLight = uAreaAmbient * mix(CX_SPLASH_AMB, 1.0, ndl) + sun + CxClusteredDiffuse(P, N, max(-cv.z, 1e-3));
+        vLight = CxLitFloor(uAreaAmbient * mix(CX_SPLASH_AMB, 1.0, ndl) + sun + CxClusteredDiffuse(P, N, max(-cv.z, 1e-3)));
     }
     if (uViz == CX_SPLASH_VIZ) vLight = mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.3, 1.0), standing);
     if (uViz == CX_SPLASH_FATE_VIZ)

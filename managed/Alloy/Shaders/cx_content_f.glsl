@@ -170,7 +170,7 @@ void CxConFillLights()
         uint li = uClIdx[cl * CX_CLUSTER_CAP + k];
         vec4 pr = uLights[li * 2u], cs = uLights[li * 2u + 1u];
         cxConLightPos[k] = vec4(pr.xyz - uEyePos, 1.0);
-        cxConLightCol[k] = vec4(CxLinear(cs.rgb), (CxLightSlot(int(cs.w)) == -2 ? -1.0 : 1.0) * pr.w * pr.w);
+        cxConLightCol[k] = vec4(CxLightLinear(cs.rgb), (CxLightSlot(int(cs.w)) == -2 ? -1.0 : 1.0) * pr.w * pr.w);
         cxConLightAmb[k] = vec4(0.0);
         cxConLightAtt[k] = 0.0;
     }

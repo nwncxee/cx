@@ -493,19 +493,18 @@ internal static unsafe class SceneSlots
     [UnmanagedCallersOnly]
     private static void ComputeStaticProjections(nint self) { Id(self); }
 
-    /// <summary><c>Scene::SetBlindLights</c> @0x45e010: from now on only <paramref name="obj"/>'s lights light the
-    /// scene (null = every light again). Cold -- an effect's apply and remove -- so each change is a log line.</summary>
+    /// <summary><c>Scene::SetBlindLights</c> @0x45e010: from now on only <paramref name="obj"/>'s lights light any
+    /// scene (null = every light again). The engine stores one global whichever scene it is called on, so the scene
+    /// argument only names the line. Cold -- an effect's apply and remove -- so each change is a log line.</summary>
     [UnmanagedCallersOnly]
     private static void SetBlindLights(nint self, nint obj)
     {
-        DbId s = Id(self);
-        if (s.IsNull) return;
         DbId o = Facade.ObjectId(obj);
-        if (SceneDb.SceneBlindLights[s.Index] == o) return;
-        SceneDb.SceneBlindLights[s.Index] = o;
+        if (SceneDb.BlindLights == o) return;
+        SceneDb.BlindLights = o;
         _log?.Info(o.IsNull
-            ? $"SceneSlots: blind lights OFF on scene {s.Index} -- every light lights it again"
-            : $"SceneSlots: blind lights ON on scene {s.Index} -- only '{SceneDb.ObjModel[o.Index]?.Name ?? "?"}' (object {o.Index}) lights it: no other light, no area ambient or sun, no baked pages, black fog");
+            ? $"SceneSlots: blind lights OFF (via scene {Id(self).Index}) -- every light lights again"
+            : $"SceneSlots: blind lights ON (via scene {Id(self).Index}) -- only '{SceneDb.ObjModel[o.Index]?.Name ?? "?"}' (object {o.Index}) lights: no other light, no area ambient or sun, no baked pages, black fog");
     }
 
     [UnmanagedCallersOnly]

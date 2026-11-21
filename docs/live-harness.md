@@ -507,6 +507,12 @@ pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0
 compare frame for frame. Run it once with `--cfg post.scale=1` (FSR) and once with `--cfg post.scale=1.5` (TAA), with
 `--cfg chat.enabled=0`.
 
+`screenfade` is everything that darkens the screen, one at a time: the PC stands mid-area in the module's first outdoor
+area at noon and takes the darkness duration visual (a negative light), a cutscene fade to black, blindness, the blind
+duration visual and a darkness area of effect. Blindness and the area of effect set the engine's blackout, which outlives
+them, so they come last. Its keys save `0-plain.png`, one shot per effect and `6-after.png`. Run it with
+`--cfg chat.enabled=0`, once as is and once with `--cfg alloy.enabled=0`, and compare each shot's brightness.
+
 `closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where
 each close button sits, and logs `CXSHOW: show_close open` or `gone` every 2 s. A NUI button needs `down`, a pause and `up`:
 `click` releases in the same frame and NUI ignores it.

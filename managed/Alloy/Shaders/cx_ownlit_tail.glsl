@@ -71,7 +71,7 @@
     // `(1.0 - fEnvironmentSpecularity) * (AmbientLight + DiffuseLight)`
     // ponytail: the sheen takes no ambient term (Filament's needs a DFG table of its own); cloth reads by
     // its direct rim, and a sheen that wants presence in shade is the table's cue.
-    vec3 total = (ambient + diffuse * matDiffuse) * (kd * coatT * wxTransmit) + d.emi.rgb;
+    vec3 total = CxLitFloor((ambient + diffuse * matDiffuse) * (kd * coatT * wxTransmit) + d.emi.rgb);
     // 9 = the LIGHT arriving here, with no albedo on it: vanilla's TotalLight, the value
     //     inc_lighting.shd multiplies ColorIO by. Paired with 31 it splits "the light is short"
     //     from "the surface is dark", which no composite frame can do.
@@ -85,7 +85,8 @@
     // and dividing by it drew every cutout's and decal's graded edge as a rim of highlight up to ten times over.
     float partA = d.rot.w;
     if (partA < 1.0 && partA > 0.001) specLight /= max(partA, 0.1);
-    vec3 lit = albedo * total + specLight;
+    // a negative light's highlight is signed too (stock's SpecularLight); the framebuffer floors what is left
+    vec3 lit = CxLitFloor(albedo * total + specLight);
     // ADR 0026: CxEmissiveStrength (KHR_materials_emissive_strength) scales the map into HDR, where the
     // bloom can see it; undeclared (-1) and the engine model take it at 1.
     if ((slots & CX_SLOT_ILLUM) != 0)

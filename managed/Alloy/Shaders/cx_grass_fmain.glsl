@@ -60,7 +60,7 @@ void main()
     // occlusion is whatever stands behind the blade, and it read as the scene showing through the
     // field; the ground tint is what grounds a blade now. A root ramp on everything.
     if (uViz == 9) { frag = vec4(ambient + sunpoint * uMatDiffuse, 1.0); return; }
-    vec3 lit = albedo * (ambient + sunpoint * uMatDiffuse) * mix(1.0 - uRootAo, 1.0, vRoot);
+    vec3 lit = albedo * CxLitFloor(ambient + sunpoint * uMatDiffuse) * mix(1.0 - uRootAo, 1.0, vRoot);
     // CX-24: the sun behind the field shines THROUGH it, tinted by the blade and strongest toward the tips,
     // and a faint glint rides the rounded normal.
     vec3 V = normalize(uEyePos - vWorld);

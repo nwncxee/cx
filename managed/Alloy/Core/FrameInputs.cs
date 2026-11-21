@@ -67,7 +67,7 @@ public static class FrameInputs
     public static Vector3 AreaAmbient { get => _cur.AreaAmbient; set => _cur.AreaAmbient = value; }
     public static Vector3 AreaDiffuse { get => _cur.AreaDiffuse; set => _cur.AreaDiffuse = value; }
     public static Vector3 AreaDiffuseDir { get => _cur.AreaDiffuseDir; set => _cur.AreaDiffuseDir = value; }
-    /// <summary><c>Scene::SetBlindLights</c> is up for the walked scene: one object's lights alone light it, so
+    /// <summary><c>Scene::SetBlindLights</c> is up (for every scene): one object's lights alone light the walk, so
     /// the baked pages (every static light) and the fog's sky term stand down with the area pair.</summary>
     public static bool Blind { get => _cur.Blind; set => _cur.Blind = value; }
     // --- The light snapshot: every active point light in the area, read from the LightManager MASTER list

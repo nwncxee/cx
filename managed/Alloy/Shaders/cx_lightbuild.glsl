@@ -85,7 +85,7 @@ float ReachCut(vec3 col)
 {
     if (uLightFloor.x <= 0.0) return 1e30;
     vec2 at = uAtten.x > 0.0 ? uAtten : vec2(1.0, 1.0);
-    vec3 c = max(col, vec3(0.0));
+    vec3 c = abs(col);   // a negative light reaches as far as its magnitude
     float lum = uLightFloor.y * dot(max(c, c * c * c), vec3(0.2126, 0.7152, 0.0722));
     return clamp((lum - uLightFloor.x * at.x) / max(lum + uLightFloor.x * at.y, 1e-8), 0.0, 1.0);
 }
@@ -106,7 +106,7 @@ float Importance(vec4 pr, vec3 col, float dd, vec2 at)
         if (f2 > r2) return 0.0;
         fade *= min((r2 - f2) / (r2 * 0.3), 1.0);
     }
-    return fade / (at.x + at.y * f2) * dot(col, vec3(0.299, 0.587, 0.114));
+    return fade / (at.x + at.y * f2) * dot(abs(col), vec3(0.299, 0.587, 0.114));
 }
 
 // cx_vanenv_f's CxVisionLight term for one light, also non-increasing in dd: that walk is a max with no

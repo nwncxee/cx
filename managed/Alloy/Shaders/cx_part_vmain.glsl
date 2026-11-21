@@ -60,6 +60,6 @@ void main()
         vec3 point = CxClusteredDiffuse(world, vNrm, max(-cv.z, 1e-3));
         // the 0.15 floor and the sun-facing wrap, as every other owned stage runs them (a content
         // lighting fork's term; stock's ambient is flat)
-        vLight = uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point;
+        vLight = CxLitFloor(uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point);
     }
 }

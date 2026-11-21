@@ -593,9 +593,15 @@ public static partial class SceneDb
     public static readonly bool[] SceneSkyOff = new bool[MaxScenes];
     /// <summary>Skybox objects a scene holds.</summary>
     public const int SkyBoxSlots = 4;
-    /// <summary><c>Scene::SetBlindLights</c>: the one object whose lights alone light the scene while a
-    /// blindness effect is up (the engine's own name for it). Null = normal lighting.</summary>
-    public static readonly DbId[] SceneBlindLights = new DbId[MaxScenes];
+    /// <summary><c>LightManager::m_pOnlyGob</c>, which <c>Scene::SetBlindLights</c> writes: the one object whose lights
+    /// alone light every scene while a blackout is up. One for the session, as the engine's is, and only that call
+    /// changes it -- the object leaving a scene's member list (attached to the creature) does not.</summary>
+    private sealed class BlindState { public DbId Only; }
+
+    private static BlindState _blind = new();
+
+    /// <inheritdoc cref="BlindState"/>
+    public static DbId BlindLights { get => _blind.Only; set => _blind.Only = value; }
     /// <summary><c>Scene::SetShadowGob</c>/<c>GetShadowGob</c>: the one object the engine's single-caster
     /// shadow path casts from.</summary>
     public static readonly DbId[] SceneShadowGob = new DbId[MaxScenes];

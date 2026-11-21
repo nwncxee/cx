@@ -175,7 +175,7 @@ internal static unsafe class SkyView
                   && GrassField.BladeFsHead.Contains("float CxSkyView(vec3 P, vec3 N)"),
                      "...and the lit, grass-card and blade heads all carry the library they call");
         check.Expect(ShaderSource.Get("cx_grass_fmain.glsl").Contains("float skyView = CxSkyView(vWorld, CX_SKY_UP);\n    vec3 ambient = uAreaAmbient * uMatAmbient * skyView;")
-                  && ShaderSource.Get("cx_gblade_fmain.glsl").Contains("float skyView = CxSkyView(vWorld, CX_SKY_UP);\n    vec3 lit = albedo * ((uAreaAmbient * vMatAmb * skyView + point * vMatDif) * ao"),
+                  && ShaderSource.Get("cx_gblade_fmain.glsl").Contains("float skyView = CxSkyView(vWorld, CX_SKY_UP);\n    vec3 lit = albedo * (CxLitFloor(uAreaAmbient * vMatAmb * skyView + point * vMatDif) * ao"),
                      "ground cover takes the same term off the WORLD UP -- a blade's own normal is not where its sky is");
         check.Expect(lib.Contains("#define CX_SKY_UP vec3(0.0, 0.0, 1.0)"),
                      "...and that up vector is the library's, not a third spelling");
