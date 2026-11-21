@@ -238,6 +238,7 @@ internal static unsafe partial class Particles
 
         log.Info(check.Ok ? "Particles.SelfCheck: passed" : "Particles.SelfCheck: FAILED");
         EmissiveSelfCheck(log);
+        EmissiveResetApprovedExamplesSelfCheck(log);
     }
 
     /// <summary>Two draw groups reference slots 13, 2 and 7 in that order. The expected bytes are the

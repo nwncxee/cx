@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Db;
@@ -132,6 +133,29 @@ public static partial class PartTree
         // against the file's names rather than the mesh bitmap's.
         SceneDb.TouchPart(p, Dirty.Material);
         return true;
+    }
+
+    /// <summary>A server's override changed the materials in <paramref name="names"/>: every live part whose mesh
+    /// draws one takes the material as it now reads -- or none, back to its mesh's own terms -- and is marked, which
+    /// rewrites its record. Answers how many parts moved. Game thread, cold.</summary>
+    internal static int Refold(HashSet<string> names)
+    {
+        int n = 0, high = SceneDb.Parts.High;
+        for (int p = 0; p < high; p++)
+        {
+            if (!SceneDb.Parts.LiveAt(p)) continue;
+            MeshDef? mesh = SceneDb.PartMeshDef[p];
+            if (mesh == null || !names.Contains(MtrDef.NameOf(mesh))) continue;
+            MtrDef? mtr = MtrDef.Of(mesh);
+            SceneDb.PartMtr[p] = mtr;
+            PartMaterial m = SceneDb.PartMtl[p];
+            m.RenderHint = mtr != null && mtr.RenderHint != 0 ? mtr.RenderHint : MtrDef.Hint(mesh.RenderHint);
+            SceneDb.PartMtl[p] = m;
+            if (mtr == null && MtrDef.Pending(mesh)) WaitForMaterial(p);
+            SceneDb.TouchPart(p, Dirty.Material);
+            n++;
+        }
+        return n;
     }
 
     /// <summary>One clause for the period line: what the late-material path has had to do. Silent until a
