@@ -81,6 +81,34 @@ public static unsafe class SceneRay
         return r != 0;
     }
 
+    /// <summary>Nearest STATIC hit on <paramref name="from"/>-&gt;<paramref name="to"/>: tiles and static placeables,
+    /// never an object -- the engine's own camera cast (<see cref="HitQuery.CameraWall"/>).</summary>
+    public static bool CastStatic(IntPtr scene, Vector3 from, Vector3 to, out Vector3 hit)
+    {
+        hit = default;
+        if (CX.Alloy.Renderer.On)
+        {
+            DbId s = Facade.SceneId(scene);
+            if (s.IsNull || !HitTest.Cast(HitQuery.CameraWall(s, from, to), out HitResult r)) return false;
+            hit = r.Point;
+            return true;
+        }
+        var info = new CHitInfo((IntPtr)_info);
+        _reset((IntPtr)_info, 0, -0x40000001L, 0);
+        // mode 1 = the BSP pass alone, as UpdateNormalCameraCollision sets it after the same Reset
+        info.Mode = 1;
+        info.IgnoreCount = 0;
+        Vec3 h;
+        Vec3 a = new() { X = from.X, Y = from.Y, Z = from.Z }, b = new() { X = to.X, Y = to.Y, Z = to.Z };
+        int was = _statics == null ? 0 : *_statics;
+        if (_statics != null) *_statics = 1;
+        int got = _hitCheck(scene, VectorArg.Of(&a), VectorArg.Of(&b), &h, (IntPtr)_info);
+        if (_statics != null) *_statics = was;
+        _reset((IntPtr)_info, 0, -0x40000001L, 0);
+        hit = new Vector3(h.X, h.Y, h.Z);
+        return got != 0;
+    }
+
     /// <summary>The ignore list, one slot, allocated once: a <see cref="HitQuery"/> carries it by reference and
     /// the spring arm casts fifteen times a frame.</summary>
     private static readonly DbId[] _dbIgnore = new DbId[1];
@@ -97,14 +125,12 @@ public static unsafe class SceneRay
         if (!_dbIgnore[0].IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
         if (!HitTest.Cast(q, out HitResult r)) return false;
         hit = r.Point;
-        // The callers speak in facade pointers (IsCreature / IsPlaceable read the shell's mirrored
+        // The callers speak in facade pointers (IsPlaceable reads the shell's mirrored
         // Gob+externalType), so the hit object goes back out as its shell, as a static hit goes back as zero.
         gob = r.Obj.IsNull ? IntPtr.Zero : (IntPtr)Facade.ObjectShell(r.Obj);
         return true;
     }
 
-    /// <summary>True when <paramref name="gob"/> is a creature's (never a camera obstacle, like the engine).</summary>
-    public static bool IsCreature(IntPtr gob) => gob != IntPtr.Zero && new Gob(gob).ExternalType == GobKindCreature;
     public static bool IsPlaceable(IntPtr gob) => gob != IntPtr.Zero && new Gob(gob).ExternalType == GobKindPlaceable;
 
     /// <summary>Is the hit object tile geometry -- ground, for a floor cast? The engine answers it with the

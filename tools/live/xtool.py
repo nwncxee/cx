@@ -213,6 +213,24 @@ def cmd_keys(dpy, script):
             dpy.sync()
             time.sleep(0.05)
             xtest.fake_input(dpy, X.ButtonPress if kind == "down" else X.ButtonRelease, 1)
+        elif kind == "btn":
+            # A press and release of button N where the pointer already is: no motion first, which under a
+            # captured (relative-mode) drag would itself be a jump.
+            n = int(arg)
+            xtest.fake_input(dpy, X.ButtonPress, n)
+            dpy.sync()
+            time.sleep(0.05)
+            xtest.fake_input(dpy, X.ButtonRelease, n)
+        elif kind in ("bdown", "bup"):
+            # Button N held or let go where the pointer already is, as separate steps (a middle-drag orbit).
+            xtest.fake_input(dpy, X.ButtonPress if kind == "bdown" else X.ButtonRelease, int(arg))
+        elif kind == "rel":
+            # rel:dx,dy,n,ms -- n RELATIVE pointer steps of (dx, dy), ms apart: what a mouse sends while dragging.
+            dx, dy, n, ms = (int(v) for v in arg.split(","))
+            for _ in range(n):
+                xtest.fake_input(dpy, X.MotionNotify, detail=1, x=dx, y=dy)
+                dpy.sync()
+                time.sleep(ms / 1000.0)
         elif kind == "move":
             # Pointer motion with no button: what makes the engine run its cursor hit-check over
             # whatever is under it, which is the "hovered a creature" half of a pick.

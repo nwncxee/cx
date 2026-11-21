@@ -108,6 +108,8 @@ public sealed unsafe class MouseLookService : IExtenderService
         bool want = ActionWanted();
         if (want != _action) SetAction(want);
         if (_action) return OnActionEvent(ev);
+        if (_state == State.Looking && *(uint*)ev is SdlMouseDown or SdlMouseUp && ((SdlEvent*)ev)->Button != _button)
+            return PinToOrigin(ev);
         switch (*(uint*)ev)
         {
             case SdlMouseDown:
@@ -172,6 +174,16 @@ public sealed unsafe class MouseLookService : IExtenderService
                 if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost && _state != State.Idle) Release();
                 break;
         }
+        return Forward(ev);
+    }
+
+    /// <summary>Another button during a look reaches the engine where the cursor was when the look began.
+    /// <c>CExoInputInternal::AddEvent</c> turns a button event's x/y into a mouse move before the click, and under
+    /// relative mode that x/y is SDL's drifted, window-clamped cursor: with the middle orbit armed, the whole drag
+    /// so far would land as one turn, and any click would land wherever the drift put it.</summary>
+    private static int PinToOrigin(IntPtr ev)
+    {
+        ((SdlEvent*)ev)->X = _originX; ((SdlEvent*)ev)->Y = _originY;
         return Forward(ev);
     }
 
