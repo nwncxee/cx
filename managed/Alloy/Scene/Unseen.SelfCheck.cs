@@ -200,6 +200,8 @@ internal static class UnseenLookSelfCheck
         Unseen.Undress();
         check.Expect(plain && lit.Contains("vec3(0.0, 0.02, 0.3)") && !VkPrograms.LitPair(log).Fs.Contains("vec3(0.0, 0.02, 0.3)"),
                      "the lit stage carries the look that is worn, and the stock one once it is taken off");
+        check.Expect(!lit.Contains("uniform sampler2D uTex;"),
+                     "a worn look keeps the lit stage's per-draw textures (the bindless rewrite), so every surface does not draw one texture");
 
         Unseen.Undress();
         string? early = Unseen.LookFile(null, chainUp: false, _ => blue);

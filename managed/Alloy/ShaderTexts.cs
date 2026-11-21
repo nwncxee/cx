@@ -23,14 +23,24 @@ internal static class ShaderTexts
     /// (<see cref="ShaderContract.BlocksSafe"/>). True when the texts handed back are the ones given: no override reached either, or one did and was refused.</summary>
     internal static bool Pair(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
                               out string vsSource, out string fsSource)
+        => Pair(vsRef, vs, fsRef, fs, log, what, out vsSource, out fsSource, out _);
+
+    /// <summary><see cref="Pair(string, string, string, string, ExtenderLog?, string, out string, out string)"/>, and
+    /// <paramref name="stagesStock"/>: no stage override won either stage. A library swap alone leaves it true.</summary>
+    internal static bool Pair(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
+                              out string vsSource, out string fsSource, out bool stagesStock)
     {
         // a dumped stage keeps its brackets, so a library override still reaches an overridden stage
         string? ovs = ShaderResource.Override(vsRef, log), ofs = ShaderResource.Override(fsRef, log);
         vsSource = ShaderSource.Content(ovs ?? vs, log); fsSource = ShaderSource.Content(ofs ?? fs, log);
         if (ShaderContract.BlocksSafe(vs, vsSource) && ShaderContract.BlocksSafe(fs, fsSource))
+        {
+            stagesStock = ovs == null && ofs == null;
             return ReferenceEquals(vsSource, vs) && ReferenceEquals(fsSource, fs);
+        }
         log?.Info($"{what}: an override .shd reads a uniform block's terms outside the block -- building the embedded default");
         vsSource = vs; fsSource = fs;
+        stagesStock = true;
         return true;
     }
 }

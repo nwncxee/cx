@@ -195,13 +195,13 @@ internal static class VkPrograms
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)
     {
-        // the pair FIRST: the bindless rewrite is a fact about both halves, so the fragment it rewrites is the
-        // embedded one and only when no override won either stage -- an override vertex that writes no vDraw
-        // would otherwise leave the rewritten fragment sampling by an index nothing wrote
-        bool plain = ShaderTexts.Pair(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs),
-                                     AlloyRenderer.ShdLitFs, ShaderStages.Source(AlloyRenderer.ShdLitFs),
-                                     log, what, out string v, out string f);
-        return (v, plain ? AlloyRenderer.BindlessFs(v, f) : f);
+        // the pair FIRST: the bindless rewrite is a fact about both halves, so it runs only when no override won either
+        // stage -- an override vertex that writes no vDraw would leave the rewritten fragment sampling by an index nothing
+        // wrote. A library swap (the silhouette look) keeps the embedded stages and so keeps the rewrite.
+        ShaderTexts.Pair(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs),
+                         AlloyRenderer.ShdLitFs, ShaderStages.Source(AlloyRenderer.ShdLitFs),
+                         log, what, out string v, out string f, out bool stagesStock);
+        return (v, stagesStock ? AlloyRenderer.BindlessFs(v, f) : f);
     }
 
     /// <summary>A stage's compile-time text: the vanilla splice, then the sizing tokens, as GL's compile makes it.</summary>
