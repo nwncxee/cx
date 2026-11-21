@@ -370,6 +370,7 @@ internal static unsafe partial class TexRegistry
     private static void ApplyResets()
     {
         if (_resetNames.Count == 0) return;
+        bool reloaded = false;
         lock (_lock)
         {
             for (int i = 1; i < _high; i++)
@@ -390,12 +391,47 @@ internal static unsafe partial class TexRegistry
                 }
                 CoverageSerial++; TableSerial++;
                 MarkDependents(i);
+                _maskWatch[i] = true;
+                reloaded = true;
             }
             _resetApplied.Clear();
             _resetApplied.UnionWith(_resetNames);
             _resetNames.Clear();
         }
-        OverrideReset.Apply(_resetApplied);
+        OverrideReset.Apply(_resetApplied, reloaded);
+    }
+
+    /// <summary>Slots whose next landing or failure changes what a caster masks with: a reset's reloads, and the
+    /// diffuse a material reset named afresh. Cleared when it lands, fails or retires.</summary>
+    private static readonly bool[] _maskWatch = new bool[MaxSlots];
+
+    /// <summary>A watched slot has landed or failed since <see cref="TakeMaskLanded"/> last asked.</summary>
+    private sealed class MaskWatchState { public bool Landed; }
+    private static MaskWatchState _maskLanded = new();
+
+    /// <summary>Watch <paramref name="id"/>'s next landing or failure (<see cref="_maskWatch"/>). Game thread.</summary>
+    internal static void WatchMask(TexId id)
+    {
+        lock (_lock) if (Valid(id)) _maskWatch[id.Index] = true;
+    }
+
+    /// <summary>Has a watched slot landed or failed since the last ask? Consumed. Game thread.</summary>
+    internal static bool TakeMaskLanded()
+    {
+        lock (_lock)
+        {
+            bool landed = _maskLanded.Landed;
+            _maskLanded.Landed = false;
+            return landed;
+        }
+    }
+
+    /// <summary>Slot <paramref name="i"/> landed or failed: note it when it was watched. Caller holds <see cref="_lock"/>.</summary>
+    private static void MaskSettled(int i)
+    {
+        if (!_maskWatch[i]) return;
+        _maskWatch[i] = false;
+        _maskLanded.Landed = true;
     }
 
     /// <summary>The names <see cref="ApplyResets"/> took this tick, handed on once the registry's lock is let go.</summary>
@@ -464,6 +500,7 @@ internal static unsafe partial class TexRegistry
     /// no holder needs a death notice. Caller holds <see cref="_lock"/>.</summary>
     private static void Retire(int i)
     {
+        _maskWatch[i] = false;
         DropHandle(i);
         if (_name[i] != 0) { _graveyard.Enqueue(_name[i]); _name[i] = 0; }
         _preview[i] = false;

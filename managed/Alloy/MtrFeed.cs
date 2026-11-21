@@ -83,11 +83,9 @@ internal static unsafe class MtrFeed
     }
 
     /// <summary>GAME thread: read <paramref name="name"/> again from the resource table as it stands now, over what
-    /// the cache held for it -- its bytes, its hint, or the answer that there is no such file.</summary>
-    private static void Reread(string name)
-    {
-        if (_armed) Read(name);
-    }
+    /// the cache held for it -- its bytes, its hint, or the answer that there is no such file. False when the file
+    /// exists and could not be read: the cache keeps what it held, and the caller asks again later.</summary>
+    private static bool Reread(string name) => !_armed || Read(name, keepUnreadable: true);
 
     /// <summary>Parse worker: the hint, or 0 and a queued read.</summary>
     private static int Hint(string name)
@@ -179,14 +177,18 @@ internal static unsafe class MtrFeed
             _log?.Info($"MtrFeed: '{model.Name}' -- {late} mesh(es) got their tangent frame from a late .mtr read");
     }
 
-    private static void Read(string name)
+    /// <summary>Read <paramref name="name"/> into the cache. False only with <paramref name="keepUnreadable"/>, for a file
+    /// that exists and could not be read: the cache is left as it was rather than told there is no such file.</summary>
+    private static bool Read(string name, bool keepUnreadable = false)
     {
+        bool unreadable = false;
         byte[]? data = null;
         try
         {
             data = TexRegistry.ReadResourceBytes(name, MtrResType, out string? why);
             if (data == null && why != null)
             {
+                unreadable = true;
                 _unreadable++;
                 if (_unreadable <= 8) _log?.Always($"MtrFeed: '{name}'.mtr exists but was NOT READ -- {why}; its meshes draw their bitmap as a texture");
             }
@@ -196,6 +198,7 @@ internal static unsafe class MtrFeed
         {
             _log?.Info($"MtrFeed: '{name}' faulted -- {e.Message}");
         }
+        if (unreadable && keepUnreadable) return false;
         int hint = 0;
         if (data != null)
         {
@@ -219,6 +222,7 @@ internal static unsafe class MtrFeed
         // A recipe interned before this read took its coverage mode and its declared-water term from a
         // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
         if (data != null) DrawRecipe.MaterialLanded();
+        return true;
     }
 
     private static void ReadNative(string half)

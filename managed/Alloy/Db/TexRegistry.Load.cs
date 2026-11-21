@@ -678,6 +678,7 @@ internal static unsafe partial class TexRegistry
     internal static void Tick()
     {
         ApplyResets();
+        OverrideReset.Tick();
         // The seven palettes, read where a resource read belongs: needed the first time a PLT record draws.
         // PltVerify loads them itself when Alloy is off, which is why this does not force it.
         if (Renderer.On && !PltPalettes.Loaded) PltPalettes.LoadDefaults();
@@ -752,6 +753,7 @@ internal static unsafe partial class TexRegistry
             }
             // Released while it loaded: Release already filed it on the idle list, and filing it twice links it to itself.
             if (_state[i] == TexState.Idle) { IdleUnlink(i); _idleBytes -= _bytes[i]; }
+            MaskSettled(i);
             _cov[i] = cov;
             _bumpyShiny[i] = bumpyShiny;
             CoverageSerial++; TableSerial++;
@@ -814,6 +816,7 @@ internal static unsafe partial class TexRegistry
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;
+            MaskSettled(i);
             name = _resref[i] ?? "?"; kind = _kind[i];
             MarkDependents(i);
             // Released while it loaded: Failed must not stay linked on the idle list an acquire would not unlink.

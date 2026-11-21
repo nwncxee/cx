@@ -277,6 +277,7 @@ internal static partial class DrawRecipe
             ReleaseMaterial(r);
             FillMaterial(r, model.Nodes[_node[r]], mesh);
             _flags[r] = (_flags[r] & ~RecipeFlag.Skinned) | skinned;
+            TexRegistry.WatchMask(Tex(r, 0));
             n++;
         }
         return n;

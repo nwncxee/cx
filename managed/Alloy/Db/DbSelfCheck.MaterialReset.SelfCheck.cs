@@ -26,6 +26,7 @@ internal static partial class DbSelfCheck
             ResetReleasesOldTextures(check);
             UnreadableMtrRetries(check);
             ResetRestagesShadowMasks(check);
+            UnreadableRetriesAreBudgeted(check);
         }
         finally
         {
@@ -122,6 +123,52 @@ internal static partial class DbSelfCheck
         ForgetFixture(model);
     }
 
+    /// <summary>Materials whose <c>.mtr</c> could not be read are read again eight to a frame, so a burst of them costs
+    /// a bounded share of one: of nine, eight take their new file at the first retry and the ninth at the next.</summary>
+    private static void UnreadableRetriesAreBudgeted(Checker check)
+    {
+        const int Names = 9, Budget = 8;
+        using var files = new StandInFiles();
+        var names = new string[Names];
+        for (int k = 0; k < Names; k++)
+        {
+            names[k] = "cx_rs_burst" + k;
+            files.Put(names[k], StandInFiles.Mtr, GravelMtr);
+            MtrFeed.Pump();
+            MtrDef.Resolve(names[k]);
+        }
+        MtrFeed.Pump(Names);
+        for (int k = 0; k < Names; k++)
+        {
+            files.Put(names[k], StandInFiles.Mtr, PavingMtr);
+            files.Lock(names[k], StandInFiles.Mtr, true);
+            TexRegistry.QueueReset(names[k]);
+        }
+        TexRegistry.Tick();
+        for (int k = 0; k < Names; k++) files.Lock(names[k], StandInFiles.Mtr, false);
+        int first = 0, after = 0;
+        for (int t = 0; t < RetryTicks && first == 0; t++)
+        {
+            TexRegistry.Tick();
+            first = Took(names);
+        }
+        for (int t = 0; t < RetryTicks && after < Names; t++)
+        {
+            TexRegistry.Tick();
+            after = Took(names);
+        }
+        check.Expect(first == Budget && after == Names,
+                     $"of {Names} unreadable .mtr files, {first} were read again at the first retry (not {Budget}) and {after} in all");
+    }
+
+    /// <summary>How many of <paramref name="names"/> resolve to the paving material now.</summary>
+    private static int Took(string[] names)
+    {
+        int n = 0;
+        foreach (string name in names) if (MtrDef.Resolve(name)?.Textures[0] == "cx_rs_paving") n++;
+        return n;
+    }
+
     /// <summary>A reset that changes what a caster masks with re-stages every caster and rebakes the shadows, and so does
     /// the reloaded mask landing: a standing staging keeps the mask it resolved, and a cached shadow the mask it baked.</summary>
     private static void ResetRestagesShadowMasks(Checker check)
@@ -149,9 +196,11 @@ internal static partial class DbSelfCheck
             var (model, p) = Floor();
             int r = SceneDb.PartRecipe[p];
             if (r >= 0) TexRegistry.Land(DrawRecipe.Tex(r, 0), RsName, 16, RsHandle);
+            int vReset = CasterPass.ListVersionForCheck;
             Override(RsFloor);
+            check.Expect(CasterPass.ListVersionForCheck != vReset && CasterPass.InvalidateForCheck(false),
+                         "a texture-only override retired the floor's image and the shadow staging went on masking with it");
             int v2 = CasterPass.ListVersionForCheck;
-            CasterPass.InvalidateForCheck(false);
             if (r >= 0) TexRegistry.Land(DrawRecipe.Tex(r, 0), RsName + 1, 16, RsHandle + 1);
             TexRegistry.Tick();
             check.Expect(CasterPass.ListVersionForCheck != v2 && CasterPass.InvalidateForCheck(false),
