@@ -35,6 +35,7 @@ internal static partial class FontRegistryApprovedExamples
                 Styles(check, dir);
                 Variable(check, dir);
                 Scan(check, dir);
+                BuiltIn(check, dir);
                 FontRegistryRegressions.SelfCheck(check, dir);
                 return true;
             });
@@ -296,8 +297,7 @@ internal static partial class FontRegistryApprovedExamples
         });
     }
 
-    /// <summary>Faces no row re-weights: the regular width's own file, a <c>font.&lt;name&gt;=</c> line, the
-    /// built-in face and the console's.</summary>
+    /// <summary>Faces no row re-weights: the regular width's own file, a <c>font.&lt;name&gt;=</c> line and the console's.</summary>
     private static void Faces(Checker check, string dir)
     {
         // E32 Given DejaVu Sans and DejaVu Sans Condensed both installed When the player sets a window in DejaVu Sans to
@@ -326,13 +326,6 @@ internal static partial class FontRegistryApprovedExamples
             }
             return off.Count == 0;
         });
-
-        // E34 Given the UI typeface left at default, the built-in DejaVu Sans When the player sets the UI Default weight to
-        // 700 Then the UI draws the built-in face at its own weight, with no thickened letters
-        Example(check, "E34 the built-in face is never thickened", () =>
-            ReferenceEquals(FontRegistry.Bytes(FontRegistry.FaceKey(FontRegistry.DefaultName, 700, FontRegistry.StyleNormal)), FontRegistry.Bytes(FontRegistry.DefaultName))
-            && WithUi(FontRegistry.DefaultName, 700, FontRegistry.StyleNormal,
-                      () => ReferenceEquals(FontRegistry.Bytes(ChatService.FaceName(Chat(""))), FontRegistry.Bytes(FontRegistry.DefaultName))));
 
         // E35 Given the UI Default weight is 900 and its Default style Italic When the console draws Then it draws with the
         // monospace face exactly as before, and the console offers no weight or style row
