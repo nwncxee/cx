@@ -122,7 +122,8 @@ python3 tools/engine/views.py
 
 # CX-192: every rule in CLAUDE.md that a script can check is a gate under tools/gates/ (after views.py: the
 # engine-views gate reads the generated members). CI and the Claude Code hook run the same runner.
-# --no-gates: the release build, whose tagged tree already passed ci / gates on its pull request.
+# --no-gates: the release build, whose tagged tree already passed them on its pull request, and the pull-request
+# build, whose gates and approved examples run in jobs of their own beside it.
 # The rules' own approved examples plant trees and, for the compiler rules, compile them, which needs the SDK the gates
 # job does not carry; the build that has it runs them.
 # They run once per exact tree: ./run-demo.sh starts with a ./build.sh of its own, and the tree it passed on is recorded.

@@ -44,7 +44,7 @@ then a stock default (your Steam library). `$NWN_DECOMP` and `$GHIDRA_PROJECT` b
 CI runs nothing on a draft pull request: its `changes` job fails first, and marking it ready starts the run.
 On a ready one, `tools/ci-changes.sh` maps the changed paths to the jobs they reach: the Linux build for a path
 on either of its lists, the Windows build for one on `both`, and neither for any other path (an allowlist, not
-"unknown paths build"). The rule gates run in `build.sh` when it runs, and in `no-decompiled` otherwise. When
+"unknown paths build"). CI's build runs `build.sh --no-gates`: the rule gates run in `no-decompiled` and the approved examples in `examples`, beside it. When
 `build.sh` or a script it calls reads a new file, add it to the map and a row to
 `tools/ci-changes_approved_examples.sh` in the same change; when `build-win-native.sh` does, put it on `both`.
 

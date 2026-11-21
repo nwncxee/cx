@@ -73,12 +73,13 @@ jobs:
           name: westgate
           skipPush: true
 
+      # The gates and approved examples run beside this job, in no-decompiled and examples.
       # run-demo.sh runs what build.sh just staged instead of building it a second time.
       - name: Build + load smoke
         run: |
           nix develop .#ci --command bash -c '
             set -euo pipefail
-            ./build.sh
+            ./build.sh --no-gates
             CX_NO_BUILD=1 ./run-demo.sh | tee demo.out
             # The fast self-check path must run what the AOT image runs: the same verdict and the same suites. Not
             # tools/selfcheck/fast_approved_examples.sh: that one needs a systemd user manager and a timing bound.
@@ -115,6 +116,28 @@ jobs:
         shell: bash
         run: ./build-win-native.sh
 
+  # The rules' and build checks' own approved examples need the SDK but not the build, so they run beside it.
+  examples:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: westgate
+          skipPush: true
+
+      - name: Approved examples
+        run: nix develop .#ci --command bash tools/approved-examples.sh
+
   no-decompiled:
     needs: changes
     runs-on: ubuntu-24.04
@@ -134,7 +157,6 @@ jobs:
       - name: No decompiled code in the tree
         run: nix develop .#gates --command bash -c 'bash tools/no-decompiled-contract.sh && bash tools/no-decompiled.sh'
 
-      # The rule gates (tools/gates/), for a pull request that runs no build: build.sh runs them itself.
+      # The rule gates (tools/gates/); the build job skips them (build.sh --no-gates) so they run here, in parallel.
       - name: Rule gates
-        if: needs.changes.outputs.build != 'true'
         run: nix develop .#gates --command bash tools/gates/run.sh
