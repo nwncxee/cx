@@ -34,7 +34,7 @@ public sealed class FontCatalog
         foreach (Face f in faces)
         {
             if (!_families.TryGetValue(f.Family, out List<Face>? l)) _families[f.Family] = l = new List<Face>();
-            if (!l.Exists(o => o.Weight == f.Weight && o.Italic == f.Italic && o.Variable == f.Variable)) l.Add(f);
+            l.Add(f);
         }
         _byFullName = byFullName;
         Families = _families.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -102,7 +102,6 @@ public sealed class FontCatalog
     {
         if (!_families.TryGetValue(family, out List<Face>? all)) return null;
         List<Face> styled = all.FindAll(f => f.Italic == italic);
-        if (styled.Count == 0) styled = all.FindAll(f => !f.Italic);
         if (styled.Count == 0) styled = all;
         if (styled.Find(f => f.Variable) is Face v) return (v, Math.Clamp(weight, v.VarMin, v.VarMax));
         int at = Nearest(styled.ConvertAll(f => f.Weight), weight);
@@ -133,12 +132,13 @@ public sealed class FontCatalog
 /// whether stb_truetype can draw it. Three small reads per table, never the outlines.</summary>
 internal static class Sfnt
 {
-    /// <summary>One font's facts; <see cref="Drawable"/> is false for CFF2 outlines, which stb_truetype cannot draw.</summary>
+    /// <summary>One font's facts; <see cref="Drawable"/> is false for a font with neither <c>glyf</c> nor <c>CFF </c>
+    /// outlines, such as a CFF2 font, which stb_truetype cannot draw.</summary>
     internal sealed record Info(string? Family, string? Typographic, string? FullName, int Weight, int Width, bool Italic, int VarMin, int VarMax, bool Drawable);
 
     /// <summary>Tags as big-endian numbers.</summary>
     private const uint TrueType = 0x00010000, Otto = 0x4F54544F, TrueMac = 0x74727565, Ttcf = 0x74746366;   // not-an-offset: sfnt tags
-    private const uint NameTag = 0x6E616D65, Os2Tag = 0x4F532F32, FvarTag = 0x66766172, Cff2Tag = 0x43464632, GlyfTag = 0x676C7966, CffTag = 0x43464620;   // not-an-offset: table tags
+    private const uint NameTag = 0x6E616D65, Os2Tag = 0x4F532F32, FvarTag = 0x66766172, GlyfTag = 0x676C7966, CffTag = 0x43464620;   // not-an-offset: table tags
     private const uint WghtTag = 0x77676874;   // not-an-offset: the weight axis tag
     /// <summary>OS/2 fsSelection's italic and oblique bits.</summary>
     private const int ItalicBit = 1, ObliqueBit = 1 << 9;
@@ -164,7 +164,7 @@ internal static class Sfnt
             int at = Offset(b, index);
             int n = BinaryPrimitives.ReadUInt16BigEndian(b.AsSpan(at + 4));
             int name = -1, os2 = -1, fvar = -1;
-            bool cff2 = false, outlines = false;
+            bool outlines = false;
             for (int i = 0; i < n; i++)
             {
                 int rec = at + 12 + i * 16;
@@ -173,7 +173,6 @@ internal static class Sfnt
                 if (tag == NameTag) name = off;
                 else if (tag == Os2Tag) os2 = off;
                 else if (tag == FvarTag) fvar = off;
-                else if (tag == Cff2Tag) cff2 = true;
                 else if (tag is GlyfTag or CffTag) outlines = true;
             }
             if (name < 0) return null;
@@ -198,9 +197,7 @@ internal static class Sfnt
                 }
             }
             ReadOnlySpan<byte> t = b.AsSpan(name);
-            string? style = Name(t, 17) ?? Name(t, 2);
-            bool italic = (sel & (ItalicBit | ObliqueBit)) != 0 || (style != null && (style.Contains("Italic") || style.Contains("Oblique")));
-            return new Info(Name(t, 1), Name(t, 16), Name(t, 4), weight, width, italic, vmin, vmax, outlines && !cff2);
+            return new Info(Name(t, 1), Name(t, 16), Name(t, 4), weight, width, (sel & (ItalicBit | ObliqueBit)) != 0, vmin, vmax, outlines);
         }
         catch (ArgumentOutOfRangeException) { return null; }   // a table directory pointing past the file
     }

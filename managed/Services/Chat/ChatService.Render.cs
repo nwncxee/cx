@@ -320,7 +320,7 @@ public sealed unsafe partial class ChatService
                                 win.Style > 0 ? win.Style : UiKnobs.Style.V);
 
     /// <summary>True when the window draws with the UI face: every font row of its own follows the UI.</summary>
-    private static bool FollowsUi(ChatWindow win) => win.FontPx <= 0 && win.Typeface.Length == 0 && win.Weight == 0 && win.Style == 0;
+    internal static bool FollowsUi(ChatWindow win) => win.FontPx <= 0 && win.Typeface.Length == 0 && win.Weight == 0 && win.Style == 0;
 
     /// <summary>Bake a window's own face if it has one. COLD (a miss re-bakes the sheet): a gear pick, or the
     /// scale edge where the frame host re-bakes the UI atlas anyway. A refused bake logs and the window draws with

@@ -166,7 +166,7 @@ public static class FontRegistry
             if (e.Bytes != null && face.Variable && weight != face.Weight)
             {
                 if (VarFont.Instance(e.Bytes, face.Index, weight) is byte[] inst) { e.Bytes = inst; e.Index = 0; e.Source = $"{face.Path} at {weight}"; }
-                else e.Refusal = $"its weight {weight} could not be made";
+                else { e.Refusal = $"its weight {weight} could not be made"; e.Bytes = null; }
             }
             _faces[name] = e;
             _log?.Info(e.Refusal == null ? $"FontRegistry: {name} = {e.Source} ({e.Bytes!.Length} bytes)"
