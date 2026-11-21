@@ -82,6 +82,13 @@ public sealed class ExtenderLog
         lock (_fileLock) _parts.MoveTo(dir);
     }
 
+    /// <summary>Everything queued so far onto disk, then cx.log as it stands copied to cx-report.log beside it.</summary>
+    internal static LogParts.Saved SaveReport()
+    {
+        WriteQueued();
+        lock (_fileLock) return _parts.SaveReport();
+    }
+
     /// <summary>Block until everything queued so far is on disk. Off-device only (the self-checks).</summary>
     public static void Flush()
     {

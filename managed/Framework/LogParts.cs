@@ -78,6 +78,32 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
         catch (IOException e) { WriteFailed(e); }
     }
 
+    /// <summary>A saved copy's full path, or why there is none.</summary>
+    internal readonly record struct Saved(string? Path, string? Why);
+
+    /// <summary>Copy cx.log as it stands to <see cref="LogReport.FileName"/> beside it, written under a temporary name and
+    /// renamed over the last copy, so a browser never picks up half a file.</summary>
+    internal Saved SaveReport()
+    {
+        if (_file == null) return new(null, "cx.log holds no lines this launch could write");
+        string to = Path.GetFullPath(Path.Combine(dir, LogReport.FileName)), part = to + ".part";
+        try
+        {
+            _file.Flush();
+            using (var from = new FileStream(PathOf(0), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var copy = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None))
+                from.CopyTo(copy);
+            File.Move(part, to, overwrite: true);
+            return new(to, null);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            try { File.Delete(part); }
+            catch (Exception d) when (d is IOException or UnauthorizedAccessException) { }
+            return new(null, e.Message);
+        }
+    }
+
     internal void Flush()
     {
         try { _file?.Flush(); }
