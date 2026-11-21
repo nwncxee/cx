@@ -22,6 +22,13 @@ public static class FontRegistry
     /// in the cfg overrides it like any declared name.</summary>
     public const string MonospaceName = "monospace";
     private const string EmbeddedResource = "DejaVuSans";
+    /// <summary>The built-in DejaVu Sans files CX ships, each with its weight and whether it slants: the faces
+    /// <c>default</c> offers while no <c>font.default=</c> line rebinds it. The first is the embedded regular.</summary>
+    private static readonly (string Resource, int Weight, bool Italic)[] BuiltIn =
+    {
+        (EmbeddedResource, Regular, false), ("DejaVuSans-Bold", 700, false), ("DejaVuSans-ExtraLight", 200, false),
+        ("DejaVuSans-Oblique", Regular, true), ("DejaVuSans-BoldOblique", 700, true),
+    };
     private const string Prefix = "font.";
 
     /// <summary>One declared typeface: where it came from and why it was refused, if it was.</summary>
@@ -105,6 +112,7 @@ public static class FontRegistry
         {
             if (_entries.TryGetValue(name, out Entry? e) || _faces.TryGetValue(name, out e)) return e;
             if (Settings.Raw(Prefix + name) is string declared && name != EmbeddedName) return _entries[name] = Declared(name, declared);
+            if (name.StartsWith(DefaultName + KeySep, StringComparison.Ordinal)) return _faces[name] = Shipped(name, name[(DefaultName.Length + 1)..]);
             if (Face(name) is not (FontCatalog.Face face, int weight)) return null;
             e = new Entry { Name = name, Source = face.Path, Index = face.Index };
             try { e.Bytes = File.ReadAllBytes(face.Path); } catch (Exception ex) { e.Refusal = ex.GetType().Name; }
@@ -182,6 +190,16 @@ public static class FontRegistry
             _entries[DefaultName] = e;
         }
         _boot = _entries[DefaultName];
+    }
+
+    /// <summary>The entry of a font CX ships, read from the image: one of the built-in DejaVu Sans files.</summary>
+    private static Entry Shipped(string name, string resource)
+    {
+        var e = new Entry { Name = name, Source = $"embedded {resource}" };
+        using Stream? s = typeof(FontRegistry).Assembly.GetManifestResourceStream(resource);
+        if (s == null) e.Refusal = "resource missing from the image";
+        else { e.Bytes = new byte[s.Length]; s.ReadExactly(e.Bytes); }
+        return e;
     }
 
     /// <summary>The entry a <c>font.&lt;name&gt;=&lt;path&gt;</c> line declares: the file read whole, or the reason it was refused.</summary>
@@ -308,15 +326,30 @@ public static class FontRegistry
         lock (_entries)
         {
             if (_keys.TryGetValue((family, weight, style), out string? key)) return key;
-            key = _entries.ContainsKey(family) || Settings.Raw(Prefix + family) != null || !Catalog().Holds(family) ? family
+            key = family == DefaultName ? BuiltInKey(weight, style)
+                : _entries.ContainsKey(family) || Settings.Raw(Prefix + family) != null || !Catalog().Holds(family) ? family
                 : $"{family}{KeySep}{weight}{KeySep}{(style == StyleItalic ? 'i' : 'n')}";
             _keys[(family, weight, style)] = key;
             return key;
         }
     }
 
-    /// <summary>True when <paramref name="name"/> is an installed family, so a weight or a style can pick its face.</summary>
-    public static bool IsFamily(string name) => FaceKey(name, Regular, StyleNormal) != name;
+    /// <summary>True when <paramref name="name"/> is an installed family, or the built-in one, so a weight or a style can pick its face.</summary>
+    public static bool IsFamily(string name)
+        => name == DefaultName ? BuiltInDefault : FaceKey(name, Regular, StyleNormal) != name;
+
+    /// <summary>True while <c>default</c> is the built-in DejaVu Sans, which no <c>font.default=</c> line rebound.</summary>
+    private static bool BuiltInDefault => Settings.Raw(Prefix + DefaultName) == null;
+
+    /// <summary>The built-in face a weight and style pick: <c>default</c> itself for the regular, else its file's name.</summary>
+    private static string BuiltInKey(int weight, int style)
+    {
+        if (!BuiltInDefault) return DefaultName;
+        var styled = BuiltIn.Where(b => b.Italic == (style == StyleItalic)).ToArray();
+        int at = FontCatalog.Nearest(styled.Select(b => b.Weight).ToArray(), weight);
+        string resource = styled.First(b => b.Weight == at).Resource;
+        return resource == EmbeddedResource ? DefaultName : $"{DefaultName}{KeySep}{resource}";
+    }
 
     /// <summary>The family a row names: an empty or <c>default</c> typeface follows <c>ui.typeface</c>.</summary>
     public static string UiFamily(string typeface) => typeface.Length == 0 || typeface == DefaultName ? UiKnobs.Typeface.V : typeface;
