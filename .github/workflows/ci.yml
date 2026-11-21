@@ -1,12 +1,15 @@
 # Pull-request validation. `ci` builds the extender and proves it loads C# into a foreign process
 # (run-demo.sh, no game needed); there is no unit-test project yet, so the build + load smoke is the gate.
 # `windows` builds the Windows leg with build-win-native.sh, the script release.yml ships, beside `ci`.
+# tools/ci-changes.sh maps the changed paths to the jobs they reach; a draft runs none of them.
 # `no-decompiled` runs the decompiled-code check and the rule gates on every pull request: a listing can
 # hide in any file, Markdown included, and checks the decision records. Releases are built by release.yml on a v* tag.
 name: ci
 
+# ready_for_review starts the run a draft never had; the other three are the default set.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -25,74 +28,30 @@ jobs:
     timeout-minutes: 2
     outputs:
       build: ${{ steps.match.outputs.build }}
+      windows: ${{ steps.match.outputs.windows }}
     steps:
+      # A draft fails here and every job needs this one, so a draft runs nothing. Failing, not skipping:
+      # a skipped job reports as passed. Marking it ready starts the run that counts.
+      - name: Refuse a draft
+        if: github.event.pull_request.draft
+        run: |
+          echo "draft: CI runs when the pull request is marked ready" >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci-changes.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      # tools/ci-changes.sh is the map, and tools/ci-changes_approved_examples.sh its sample table.
       - id: match
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        # Only a build input builds: the sources, the build scripts, the toolchain pin and the tools build.sh
-        # runs. When build.sh, or a script it calls, reads a file outside this list, add the file here.
-        # LICENSE and third_party/ are here because packaging/licenses.sh copies their notices into LICENSES.txt,
-        # and the settings spec because the knob-spec-rows gate reads its rows.
         run: |
           set -euo pipefail
-          inputs=(
-            'managed/*'
-            'native/*'
-            'third_party/*'
-            build.sh
-            build-win-native.sh
-            run-demo.sh
-            flake.nix
-            flake.lock
-            .gitmodules
-            .github/workflows/ci.yml
-            'tools/engine/*'
-            'tools/analyzers/*'
-            'tools/anim/*'
-            'tools/gates/*'
-            tools/build-openal.sh
-            tools/approved-examples.sh
-            tools/no-loaded-runtime.sh
-            tools/codehash.py
-            tools/keep-staged.sh
-            tools/stub-host.sh
-            tools/where.sh
-            'tools/selfcheck/*'
-            tools/live/session-log.sh
-            tools/live/docks_run.sh
-            tools/live/keymap.py
-            tools/live/keymap_test.py
-            tools/live/harness-lib.sh
-            tools/live/xtool.py
-            tools/live/run-live.sh
-            tools/vk/report.py
-            tools/vk/mutants.sh
-            tools/vk/mutate.py
-            'tools/*_approved_examples*'
-            'tools/*_regression*'
-            'tools/release/*'
-            'tools/ffx/*'
-            tools/deps.json
-            tools/deps.py
-            tools/paths.py
-            docs/spec/unified-settings.md
-            packaging/cx-launch
-            packaging/licenses.sh
-            packaging/README.txt
-            packaging/README-win.txt
-            LICENSE
-          )
-          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
-            --jq '.[] | .filename, (.previous_filename // empty)')
-          build=false
-          while read -r f; do
-            for p in "${inputs[@]}"; do
-              # shellcheck disable=SC2053 # $p is a glob pattern on purpose
-              if [[ $f == $p ]]; then echo "build input: $f"; build=true; break 2; fi
-            done
-          done <<< "$files"
-          echo "build=$build" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' \
+            | bash tools/ci-changes.sh | tee -a "$GITHUB_OUTPUT"
 
   ci:
     needs: changes
@@ -114,12 +73,13 @@ jobs:
           name: westgate
           skipPush: true
 
+      # The gates and approved examples run beside this job, in no-decompiled and examples.
       # run-demo.sh runs what build.sh just staged instead of building it a second time.
       - name: Build + load smoke
         run: |
           nix develop .#ci --command bash -c '
             set -euo pipefail
-            ./build.sh
+            ./build.sh --no-gates
             CX_NO_BUILD=1 ./run-demo.sh | tee demo.out
             # The fast self-check path must run what the AOT image runs: the same verdict and the same suites. Not
             # tools/selfcheck/fast_approved_examples.sh: that one needs a systemd user manager and a timing bound.
@@ -134,7 +94,7 @@ jobs:
 
   windows:
     needs: changes
-    if: needs.changes.outputs.build == 'true'
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 20
     steps:
@@ -156,7 +116,30 @@ jobs:
         shell: bash
         run: ./build-win-native.sh
 
+  # The rules' and build checks' own approved examples need the SDK but not the build, so they run beside it.
+  examples:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: westgate
+          skipPush: true
+
+      - name: Approved examples
+        run: nix develop .#ci --command bash tools/approved-examples.sh
+
   no-decompiled:
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -174,6 +157,6 @@ jobs:
       - name: No decompiled code in the tree
         run: nix develop .#gates --command bash -c 'bash tools/no-decompiled-contract.sh && bash tools/no-decompiled.sh'
 
-      # The rule gates (tools/gates/), here too so a pull request that skips the local build still fails.
+      # The rule gates (tools/gates/); the build job skips them (build.sh --no-gates) so they run here, in parallel.
       - name: Rule gates
         run: nix develop .#gates --command bash tools/gates/run.sh
