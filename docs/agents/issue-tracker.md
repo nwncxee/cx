@@ -19,7 +19,7 @@ The Plane MCP server in `.mcp.json` reaches the same instance for reads and edit
 
 | Action | Command |
 | --- | --- |
-| Read, whole (body, comments, relations) | `bin/plane show CX-12` |
+| Read, whole (body, comments, relations) | `bin/plane show <id>` |
 | Search titles | `bin/plane find CX "<text>"` |
 | File, with project and labels | `bin/plane file CX "<title>" --body-file body.md --label Kind/Bug` |
 | Comment | `bin/plane comment CX-12 --body-file comment.md` |
