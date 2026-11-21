@@ -80,9 +80,14 @@ internal static unsafe partial class Unseen
     }
 
     /// <summary>The look file the lit stage splices, or null for the stock one.</summary>
-    internal static string? LookFile(ExtenderLog? log)
+    internal static string? LookFile(ExtenderLog? log) => LookFile(log, ShaderResource.ChainUp, r => ShaderResource.Override(r, log));
+
+    /// <summary><see cref="LookFile(ExtenderLog?)"/> with the resource chain stood in by <paramref name="chain"/>. Until
+    /// <paramref name="chainUp"/> the stock look answers and nothing is kept, so the chain is asked again once it is up.</summary>
+    internal static string? LookFile(ExtenderLog? log, bool chainUp, Func<string, string?> chain)
     {
-        if (!_look.Asked) Wear(ShaderResource.Override(LookRef, log), log);
+        if (!_look.Asked && chainUp && Wear(chain(LookRef), log) && _look.File != null)
+            log?.Info($"Unseen: {LookRef}.shd is worn -- opacity {_look.Look.Opacity * 100f:F0}%, glowing parts {(_look.Look.Glow ? "drawn" : "hidden")}");
         return _look.File;
     }
 
