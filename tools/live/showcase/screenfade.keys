@@ -1,1 +1,1 @@
-sleep:12000;shot:@SHOTS@/0-plain.png;sleep:3500;shot:@SHOTS@/1-vfxdark.png;sleep:8500;shot:@SHOTS@/2-fade.png;sleep:7500;shot:@SHOTS@/3-blindness.png;sleep:8000;shot:@SHOTS@/4-vfxblind.png;sleep:8500;shot:@SHOTS@/5-aoedark.png;sleep:10000;shot:@SHOTS@/6-after.png
+sleep:12000;shot:@SHOTS@/0-plain.png;sleep:3500;shot:@SHOTS@/1-vfxdark.png;sleep:6500;shot:@SHOTS@/2-fade.png;sleep:9500;shot:@SHOTS@/3-blindness.png;sleep:8000;shot:@SHOTS@/4-vfxblind.png;sleep:8500;shot:@SHOTS@/5-aoedark.png;sleep:10000;shot:@SHOTS@/6-after.png

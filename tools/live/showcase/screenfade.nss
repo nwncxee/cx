@@ -48,7 +48,7 @@ void Settle(object oPC)
     ShowMark("settled in " + GetName(GetArea(oPC)));
     DelayCommand(5.0, DarkVfx(oPC));
     DelayCommand(13.0, Fade(oPC));
-    DelayCommand(18.0, Unfade(oPC));
+    DelayCommand(19.0, Unfade(oPC));
     DelayCommand(21.0, Blind(oPC));
     DelayCommand(29.0, BlindVfx(oPC));
     DelayCommand(37.0, DarkAoe(oPC));
