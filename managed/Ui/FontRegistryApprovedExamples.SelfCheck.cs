@@ -27,12 +27,17 @@ internal static partial class FontRegistryApprovedExamples
             Settings.Read($"{Mine}static={Path.Combine(dir, "DejaVuSans-ExtraLight.ttf")}\n{Mine}variable={Path.Combine(dir, "NotoSans-VF.ttf")}\n"
                         + $"{Mine}collection={Path.Combine(dir, "pair", "cambria.ttc")}\n");
             was = FontRegistry.UseCatalog(FontCatalog.Scan(null, new[] { dir }));
-            Families(check, dir);
-            Faces(check, dir);
-            Styles(check, dir);
-            Variable(check, dir);
-            Scan(check, dir);
-            FontRegistryRegressions.SelfCheck(check, dir);
+            // the suite runs at client boot too: the player's own ui rows stand at their defaults, as the Givens assume
+            WithUi(FontRegistry.DefaultName, FontRegistry.Regular, FontRegistry.StyleNormal, () =>
+            {
+                Families(check, dir);
+                Faces(check, dir);
+                Styles(check, dir);
+                Variable(check, dir);
+                Scan(check, dir);
+                FontRegistryRegressions.SelfCheck(check, dir);
+                return true;
+            });
         }
         finally
         {

@@ -182,7 +182,10 @@ public sealed class TextStyle
         var want = new List<(string Typeface, float Px)>();
         s.Size.V = 26;
         check.Expect(Metrics.GameUiScale == 1f, "off-device the game UI scale is 1, so a face's px is its size");
-        Wanted(new List<TextStyle> { s, bare }, want);
+        (string ut, int uw, int us) = (UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V);
+        (UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V) = (FontRegistry.DefaultName, FontRegistry.Regular, FontRegistry.StyleNormal);
+        try { Wanted(new List<TextStyle> { s, bare }, want); }   // at client boot the player's ui rows stand at their defaults here
+        finally { (UiKnobs.Typeface.V, UiKnobs.FontWeight.V, UiKnobs.FontStyle.V) = (ut, uw, us); }
         check.Expect(want.Count == 1 && want[0] == ("default", 26f), "a bake wants the own-size style's face at 26 px, not the following one's");
         s.Size.V = 0;
         check.Expect(!s_all.Contains(s), "a style of an unregistered group is never baked ahead");
