@@ -74,6 +74,7 @@ public static class ServiceHost
         CommandRegistry.Global.Log = log;
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
+        Clock.SelfCheck(log);   // a stepped clock's alarms fire at their due time, once
         MemorySettle.SelfCheck(log);   // when a load's garbage and malloc's free pages go back, off-device
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         LogPartsApprovedExamples.SelfCheck(log);   // launch rotation, rolling and the part cap

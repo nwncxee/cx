@@ -35,6 +35,7 @@ internal static unsafe partial class TexRegistry
             Cx569E4(check);
             Cx569E5(check);
             Cx569E7(check);
+            RetryFallsDueOnTime(check);
         }
         finally { _log = saved; UseRetryClock(was); }
         log.Info(check.Ok ? "TexRegistry.UploadApprovedExamples.SelfCheck: passed" : "TexRegistry.UploadApprovedExamples.SelfCheck: FAILED");
@@ -117,6 +118,20 @@ internal static unsafe partial class TexRegistry
         FinishFailed(id);
         check.Expect(Reports(heard, "cx_e7") == 1, $"E7: an upload failing twice was reported {Reports(heard, "cx_e7")} times, not once");
         for (int k = 0; k < 2001; k++) Release(id);
+    }
+
+    /// <summary>A failed upload is offered again at exactly <see cref="RetryMs"/>, not a millisecond before. Oracle: the
+    /// hand-written step sizes, one short of the retry and then the last millisecond.</summary>
+    private static void RetryFallsDueOnTime(Checker check)
+    {
+        TexId id = FailUpload("cx_retry_due");
+        _clk.Clock.Step(999);
+        Alloc("cx_retry_due", TexKind.Plain, 0, out bool early);
+        _clk.Clock.Step(1);
+        Alloc("cx_retry_due", TexKind.Plain, 0, out bool due);
+        check.Expect(!early && due, $"a failed upload was offered {(early ? "at 999 ms" : "not even at 1000 ms")}, not at its 1000 ms retry");
+        if (due) FinishFailed(id);
+        for (int k = 0; k < 3; k++) Release(id);
     }
 
     /// <summary>Longer than the approved once-a-second retry.</summary>

@@ -100,11 +100,11 @@ public sealed class ExtenderLog
 
     /// <summary>Wait until every line queued before the call is on disk, or false once the writer has taken longer
     /// than the budget. Off-device only (the self-checks): a caller that reads the file asks <see cref="Checker.ExpectFlushed"/>.</summary>
-    public static bool Flush()
+    public static bool Flush(int budgetMs = FlushBudgetMs)
     {
         long want = Interlocked.Read(ref _queued);
         _wake.Set();
-        for (int i = 0; i < FlushBudgetMs && Interlocked.Read(ref _written) < want; i++)
+        for (int i = 0; i < budgetMs && Interlocked.Read(ref _written) < want; i++)
             BlockingWait.Sleep(1, "self-checks only, never a frame hook");
         return Interlocked.Read(ref _written) >= want;
     }
@@ -125,11 +125,19 @@ public sealed class ExtenderLog
         ear.Info("plain");
         ear.Info(quiet);
         bool flushed = Flush();
+        bool honest;
+        lock (_fileLock)
+        {
+            log.Info("ExtenderLog.SelfCheck: a line the held writer cannot write yet");
+            honest = !Flush(20);
+        }
+        flushed &= Flush();
         bool tapped = heard.Count == 2 && heard[0] == "plain" && heard[1] == quiet && !TailHas(quiet);
         string mark = $"ExtenderLog.SelfCheck: on disk before return {Environment.TickCount64}";
         log.AlwaysNow(mark);
         bool now = TailHas(mark);
-        log.Info(now && tapped && flushed ? "ExtenderLog.SelfCheck: passed"
+        log.Info(now && tapped && flushed && honest ? "ExtenderLog.SelfCheck: passed"
+                 : !honest ? "ExtenderLog.SelfCheck: FAILED -- the log flush said done while the held writer had a line to write"
                  : !flushed ? $"ExtenderLog.SelfCheck: FAILED -- the log flush gave up with {Unwritten} line(s) not yet written"
                  : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log heard [{string.Join("|", heard)}]"
                  : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
