@@ -15,6 +15,7 @@ public static class ServiceHost
     [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Assembly is rooted; parameterless ctors preserved.")]
     public static void Run()
     {
+        EngineLink.Wire(Native.UserDirectory, Native.AliasPath, static () => Native.Sym(SymbolMap.AppManager) != IntPtr.Zero);
         var log = new ExtenderLog();
         // Which build produced the lines below. build.sh already stamps this from `git describe`, and a log
         // that does not say it is a log you cannot act on: half a debugging round trip is spent establishing

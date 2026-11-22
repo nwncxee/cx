@@ -107,7 +107,7 @@ public static class KnobFile
         Interlocked.Increment(ref _fires);
         string path = Settings.Path;
         if (path.Length == 0) { KnobGroup.Log?.Info("settings: no file path latched -- write skipped"); return; }
-        if (Native.Sym(SymbolMap.AppManager) == IntPtr.Zero)
+        if (!EngineLink.InClient())
         { KnobGroup.Log?.Info($"settings: off-device -- {path} is the real user's, write skipped"); return; }
         try
         {

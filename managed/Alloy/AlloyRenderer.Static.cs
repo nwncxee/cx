@@ -22,7 +22,7 @@ public sealed unsafe partial class AlloyRenderer
                   && ShaderSource.Get("cx_content_v.glsl").Contains(TexHandleFn.TrimEnd('\n'))
                   && !ShaderSource.Get("cx_conbuf.glsl").Contains("uvec2 uTexH"),
           "the handle table is not one uint per slot widened by the one CxTexHandle a content sampler2D takes");
-        check.Expect(ShaderContract.RecordSafe(DrawBufDecl), "the GLSL CxDraw declaration does not add up to DrawFloats");
+        check.Expect(RendererContract.RecordSafe(DrawBufDecl), "the GLSL CxDraw declaration does not add up to DrawFloats");
         check.Expect(DrawBufDecl.Contains($"binding = {BindDraw})"), $"CxDrawBuf is not declared at binding {BindDraw}");
         check.Expect(DrawBufDecl.Contains($"binding = {BindDrawIdx})"), $"CxDrawIdxBuf is not declared at binding {BindDrawIdx}");
         check.Expect(CullPass.SourceStrideSafe(),

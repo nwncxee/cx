@@ -226,7 +226,7 @@ internal static unsafe partial class PostStack
         }
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
                         log, $"PostStack {st.Name}", out string vs, out string fs);
-        if (!(ShaderContract.DisplaySafe(fs) && ShaderContract.SlotSafe(fs, "uSrc")))
+        if (!(ShaderContract.DisplaySafe(fs) && RendererContract.SlotSafe(fs, "uSrc")))
         {
             log.Info($"PostStack: the {st.Name} override is refused on Vulkan too -- it converts colour space or dropped uSrc");
             vs = PostChain.FullscreenVs;

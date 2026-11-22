@@ -153,7 +153,7 @@ public sealed partial class KnobGroup
         var live = CommandRegistry.Global;
         check.Expect(live.Knows("/settings"), "/settings dispatches regardless of general.commands");
         foreach (KnobGroup lg in All)
-            check.Expect(live.Knows("/" + lg.Name) == General.Commands.V, $"/{lg.Name} is gated by general.commands");
+            check.Expect(live.Knows("/" + lg.Name) == KnobGroup.Find("general.commands") is Knob<bool> { V: true }, $"/{lg.Name} is gated by general.commands");
 
         log.Info(check.Ok ? "KnobGroup.SelfCheck: passed" : "KnobGroup.SelfCheck: FAILED");
     }

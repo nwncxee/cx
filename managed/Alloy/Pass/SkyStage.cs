@@ -195,7 +195,7 @@ internal static unsafe class SkyStage
         }
         // The vertex half reads the per-draw record, so it owes the same two contracts the unlit program's
         // build checks -- an override that dropped them would put every dome at its neighbour's matrix.
-        if (!ReferenceEquals(vs, evs) && !(ShaderContract.RecordSafe(vs) && ShaderContract.SlotIndexSafe(vs)))
+        if (!ReferenceEquals(vs, evs) && !(RendererContract.RecordSafe(vs) && ShaderContract.SlotIndexSafe(vs)))
         {
             _log?.Info($"{What(resref, native)}: the {AlloyRenderer.ShdFullbrightVs} override does not declare the "
                      + "per-draw record -- the sky takes the embedded vertex stage");

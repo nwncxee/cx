@@ -332,7 +332,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !BatchMergeSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MotionSelfCheck(log) || !Highlight.SelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !PassBlockSelfCheck(log) || !PassBlockEdgesSelfCheck(log) || !LooseStagingSelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !ShaderContract.SelfCheck(log)
+            || !RendererContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
         // A regression in the canonicaliser should cost /alloy framedump, not drop every user back to vanilla.

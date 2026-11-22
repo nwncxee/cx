@@ -212,7 +212,7 @@ internal static unsafe partial class GrassField
         }
         string fs = EmbeddedFs, vs = ShaderStages.Source(ShdGrassVs);
         ShaderTexts.Pair(ShdGrassVs, vs, ShdGrassFs, fs, log, what, out string gv, out string gf);
-        if (!(ShaderContract.LinearSafe(gf) && ShaderContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
+        if (!(ShaderContract.LinearSafe(gf) && RendererContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
         return (gv, gf);
     }
 

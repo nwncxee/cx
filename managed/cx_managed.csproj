@@ -49,6 +49,14 @@
     <PackageReference Include="Vortice.VulkanMemoryAllocator" Version="1.8.0" />
   </ItemGroup>
 
+  <!-- The engine-free core (Core/cx_core.csproj) compiles its own sources; this project references it, and the
+       NativeAOT publish compiles both into the one image. -->
+  <Import Project="Core/core.files.props" />
+  <ItemGroup>
+    <Compile Remove="@(CxCoreSource);Core/**" />
+    <ProjectReference Include="Core/cx_core.csproj" />
+  </ItemGroup>
+
   <!-- The leg replay console (tools/anim) reads the engine-free leg core and the recording format as internals. -->
   <ItemGroup>
     <InternalsVisibleTo Include="replay" />
@@ -59,6 +67,7 @@
        extender saves nothing; rooting it removes all reflection/AOT fragility. -->
   <ItemGroup>
     <TrimmerRootAssembly Include="cx_managed" />
+    <TrimmerRootAssembly Include="cx_core" />
   </ItemGroup>
 
   <!-- SMAA's precomputed area/search tables (third_party/smaa/LICENSE.txt), read once per context, and the

@@ -295,14 +295,18 @@ def overlay(work, mutants, switched):
         dest = os.path.join(work, path)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, 'w', encoding='utf-8').write(text)
-    os.makedirs(os.path.join(work, 'managed'), exist_ok=True)
-    with open(os.path.join(work, 'managed', SWITCH + '.cs'), 'w', encoding='utf-8') as f:
+    os.makedirs(os.path.join(work, 'managed', 'Core'), exist_ok=True)
+    with open(os.path.join(work, 'managed', 'Core', SWITCH + '.cs'), 'w', encoding='utf-8') as f:
         f.write(SWITCH_CS.replace('@WORK@', work))
+    with open(os.path.join(work, 'managed', SWITCH + 'Units.cs'), 'w', encoding='utf-8') as f:
+        f.write(UNITS_CS)
 
 
 
 # The switch class, and the registry's filter seam, in the overlay only. An unmutated boot (mutant 0) writes down which
 # unit was running each time a mutant's site ran, and every unit it was asked about; a mutant boot reads the units to run.
+# The switch goes under managed/Core/, so cx_core compiles it and a mutant in either assembly can call it; the seam is a
+# part of SelfCheckUnits, which only cx_managed compiles, so the switch reads the running unit by name.
 SWITCH_CS = '''namespace CX
 {
     /// <summary>Which mutant the runner turned on, read once from its own folder, and where each site ran.</summary>
@@ -324,14 +328,15 @@ SWITCH_CS = '''namespace CX
         /// <summary>Writes down the unit running site k, once per pair.</summary>
         private static void Note(int k)
         {
-            string unit = global::CX.Framework.SelfCheckUnits.Current ?? "(host)";
+            string unit = System.Type.GetType("CX.Framework.SelfCheckUnits, cx_managed")?.GetField("Current")?.GetValue(null) as string ?? "(host)";
             lock (Seen)
                 if (Seen.Add((k, unit))) System.IO.File.AppendAllText(Work + "/cx-mutant-reach", k + "\\t" + unit + "\\n");
         }
     }
 }
+'''
 
-namespace CX.Framework
+UNITS_CS = '''namespace CX.Framework
 {
     public static partial class SelfCheckUnits
     {

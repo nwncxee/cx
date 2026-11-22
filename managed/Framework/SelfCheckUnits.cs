@@ -37,7 +37,7 @@ public static partial class SelfCheckUnits
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "cx_managed.csproj roots this assembly (TrimmerRootAssembly), so no type is trimmed.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "cx_managed.csproj roots this assembly (TrimmerRootAssembly), so no method is trimmed.")]
     public static List<Suite> Discover(SuitePhase phase) =>
-        Assembly.GetExecutingAssembly().GetTypes()
+        new[] { Assembly.GetExecutingAssembly(), typeof(Checker).Assembly }.Distinct().SelectMany(a => a.GetTypes())
             .SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
             .Where(m => m.GetCustomAttribute<SelfCheckSuiteAttribute>()?.Phase == phase)
             .Select(m => new Suite(m.DeclaringType!.FullName!.Replace('+', '.') + "." + m.Name, m))

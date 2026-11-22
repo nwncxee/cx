@@ -145,7 +145,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The block's std140 size, 3620 by glslang reflection, rounded to a vec4.</summary>
     internal const int PassBytes = 3632;
     /// <summary>Member byte offsets in <c>CxPass</c>, read off glslang's std140 reflection of
-    /// <c>cx_pass.glsl</c>. The declaration is pinned by <see cref="ShaderContract.SelfCheck"/>; reorder a
+    /// <c>cx_pass.glsl</c>. The declaration is pinned by <see cref="RendererContract.SelfCheck"/>; reorder a
     /// member and these move with it. The two float arrays are std140's 16-byte stride.</summary>
     internal const int PbLight = 0, PbDynPage = 1024, PbFade = 2048, PbSunVp = 3072, PbSunTexel = 3328,
                        PbSunBias = 3344, PbSunDyn = 3360, PbSunRadius = 3376, PbLocalSoft = 3392, PbLocalPcss = 3408,

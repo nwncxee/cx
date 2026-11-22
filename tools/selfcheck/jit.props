@@ -10,4 +10,8 @@
     <!-- the AOT build's own obj/ and bin/ stay under managed/, and their generated sources are not ours to compile -->
     <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'cx_core'">
+    <BaseIntermediateOutputPath>$(CxJitOut)/core/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(CxJitOut)/core/bin/</BaseOutputPath>
+  </PropertyGroup>
 </Project>

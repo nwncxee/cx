@@ -6,8 +6,8 @@ a2_maxcolors	VkBackend.Execute.cs	colors > RenderPassDesc.MaxColors	colors >= Re
 a3_postlevels	PostChainVk.cs	levels < MaxLevels && Math.Min(Level(w, levels), Level(h, levels)) >= 8	levels <= MaxLevels && Math.Min(Level(w, levels), Level(h, levels)) >= 8	MaxLevels	survivor
 a4_uboFull	PostChainVk.cs	at + bytes > UboBytes	at + bytes >= UboBytes	UboBytes	survivor
 a5_attachlayer	VkBackend.Images.cs	layer >= layers	layer > layers	array layer	survivor
-b4_slotsafe_kind	ShaderContract.cs	d.Kind == VkBindKind.Sampled && d.Name == s	d.Name == s	bind kind	survivor
-b5_extent_max	ShaderContract.cs	end = Math.Max(end, at + size)	end = Math.Min(end, at + size)	furthest	survivor
+b4_slotsafe_kind	RendererContract.cs	d.Kind == VkBindKind.Sampled && d.Name == s	d.Name == s	bind kind	survivor
+b5_extent_max	RendererContract.cs	end = Math.Max(end, at + size)	end = Math.Min(end, at + size)	furthest	survivor
 b6_cl_grow	CommandList.cs	Math.Max(_buf.Length * 2, _len + padded)	Math.Max(_buf.Length, _len + padded)	doubles	survivor
 b11_initorder	ServiceHost.cs	.OrderBy(s => s.InitOrder)	.OrderByDescending(s => s.InitOrder)	init order	survivor
 b13_nevercull	AlloyRenderer.Table.cs	radius >= NeverCull	radius > NeverCull	NeverCull	survivor

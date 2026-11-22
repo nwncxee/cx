@@ -303,7 +303,7 @@ public static class FontRegistry
         if (Path.IsPathRooted(path)) return File.Exists(path) ? path : null;
         string? exe = Path.GetDirectoryName(Environment.ProcessPath);
         if (exe != null && File.Exists(Path.Combine(exe, path))) return Path.GetFullPath(Path.Combine(exe, path));
-        string user = Native.ConfigPath(path);
+        string user = EngineLink.ConfigPath(path);
         return File.Exists(user) ? user : null;
     }
 

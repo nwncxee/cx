@@ -7,7 +7,7 @@ namespace CX.Framework;
 /// <summary>
 /// The boot read of <c>cx.cfg</c> (ADR 0025): one flat <c>key=value</c> file, read once pre-main, that every
 /// <see cref="Knob{T}"/> binds its saved value from and <see cref="KnobFile"/> writes back. The PATH is latched
-/// here, not lazily: <see cref="Native.ConfigPath"/> answers differently before and after the engine exists and
+/// here, not lazily: <see cref="EngineLink.ConfigPath"/> answers differently before and after the engine exists and
 /// boot knobs are read at both moments, so <see cref="Load"/> runs once, pre-main, beside <c>nwn.ini</c>.
 /// </summary>
 public static class Settings
@@ -20,7 +20,7 @@ public static class Settings
     private static string _path = "";
 
     /// <summary>The file <see cref="Load"/> actually read, resolved at that one pre-main moment. Reported
-    /// rather than re-resolved: <see cref="Native.ConfigPath"/> answers differently once the engine exists,
+    /// rather than re-resolved: <see cref="EngineLink.ConfigPath"/> answers differently once the engine exists,
     /// so asking it again at command time would name a file nothing reads.</summary>
     public static string Path => _path;
 
@@ -40,7 +40,7 @@ public static class Settings
         Read(ConfigFile.ReadTextNow(FileName, log, out _path));
         if (_values.Count > 0) log?.Info($"settings: {_values.Count} key(s) from {_path}");
         // On-device only: off-device the path is the real user's, and the demo never writes it.
-        if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.ArmFirstRun();
+        if (!File.Exists(_path) && EngineLink.InClient()) KnobFile.ArmFirstRun();
     }
 
     /// <summary>Keys an older CX wrote for a setting that is gone: dropped on read, so the next write leaves them out.</summary>

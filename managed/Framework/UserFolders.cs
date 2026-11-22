@@ -26,11 +26,11 @@ internal static class UserFolders
     /// <summary>The folder cx.log, funchook.log and the diagnostic dumps go in: the game's LOGS, or before the game has
     /// read nwn.ini, the logs folder of the default user directory.</summary>
 #pragma warning disable RS0030 // the pre-main logs folder: before the engine names its own, this is the one CX can know
-    internal static string Logs => _st.Logs ?? Path.Combine(Native.DefaultUserDirectory(), LogsName);
+    internal static string Logs => _st.Logs ?? Path.Combine(EngineLink.DefaultUserDirectory(), LogsName);
 #pragma warning restore RS0030
 
     /// <summary>The folder CX's caches go in: <c>cx</c> inside the game's CACHE.</summary>
-    internal static string Cache => _st.Cache ?? Native.ConfigPath(Path.Combine(CacheName, Own));
+    internal static string Cache => _st.Cache ?? EngineLink.ConfigPath(Path.Combine(CacheName, Own));
 
     /// <summary>The removal of the cache folders an older CX left beside nwn.ini, while it runs.</summary>
     internal static Thread? Removal => _st.Removal;
@@ -40,8 +40,8 @@ internal static class UserFolders
     internal static bool Settle(ExtenderLog log)
     {
         if (_st.Logs != null) return true;
-        string? user = Native.UserDirectory();
-        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo, HostEnv.Home))
+        string? user = EngineLink.UserDirectory();
+        if (user == null || !Settle(EngineLink.AliasPath, user, Logs, log, ExtenderLog.MoveTo, HostEnv.Home))
         {
             log.Info($"UserFolders: the game's folders are not readable yet{(user == null ? " (no user directory)" : " (no LOGS alias)")}; logs stay in {Logs}, caches in {Cache}");
             return false;

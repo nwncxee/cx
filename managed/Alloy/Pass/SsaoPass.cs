@@ -124,8 +124,8 @@ internal static unsafe class SsaoPass
         {
             string fs = ShaderStages.Source(ShdSsaoFs), bl = ShaderStages.Source(ShdSsaoBlurFs);
             check.Expect(fs.Contains("float CxViewDist(float depth)") && bl.Contains("float CxViewDist(float depth)"), "both stages carry the reconstruction");
-            check.Expect(ShaderContract.SlotSafe(fs, "uDepth") && ShaderContract.SlotSafe(bl, "uSrc", "uDepth")
-              && ShaderContract.SlotSafe(AccumFs, "uSrc", "uHist", "uDepth"), "the samplers the C# side binds are declared");
+            check.Expect(RendererContract.SlotSafe(fs, "uDepth") && RendererContract.SlotSafe(bl, "uSrc", "uDepth")
+              && RendererContract.SlotSafe(AccumFs, "uSrc", "uHist", "uDepth"), "the samplers the C# side binds are declared");
             check.Expect(ShaderSource.Get("cx_ssaolib.glsl").Contains($"layout(binding = {SlotDepth}) uniform sampler2D uDepth;")
               && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;")
               && AccumFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;")

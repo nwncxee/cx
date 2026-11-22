@@ -2,6 +2,7 @@ build/
 cx-linux-x64/
 dist/
 /managed/bin/
+/managed/Core/bin/
 obj/
 build-managed.log
 __pycache__/

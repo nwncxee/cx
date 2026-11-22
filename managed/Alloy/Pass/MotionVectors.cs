@@ -145,7 +145,7 @@ internal static unsafe class MotionVectors
         check.Expect(AlloyRenderer.MotionVs.Contains($"binding = {AlloyRenderer.BindDanglyPrev})")
           && AlloyRenderer.MotionVs.Contains("int k = gl_VertexID - gl_BaseVertex;") && AlloyRenderer.MotionVs.Contains("k < uDangly.y"),
           "a dangly mover (CX-26) reads its own vertex's pre-solve position, bounded by the snapshot");
-        check.Expect(ShaderContract.RecordSafe(AlloyRenderer.MotionVs),
+        check.Expect(RendererContract.RecordSafe(AlloyRenderer.MotionVs),
           "the mover stage's CxDraw declaration does not add up to the record stride C# stages");
         _hist.PendingPrev = Matrix4x4.CreateTranslation(1f, 0f, 0f); _hist.PendingSeq = 3; _hist.LastSeq = 2;
         RollHistory();
