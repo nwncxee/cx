@@ -24,5 +24,9 @@ key=$(grep -oE "hashFiles\([^)]*\)" "$act" | grep -oE "'[^']+'" | tr -d "'" | so
 want=$(printf '%s\n' "$key" "$act" .github/workflows/ffx-cache.yml | sort)
 got=$(sed -n '/^  push:/,/^  [a-z_]*:$/p' .github/workflows/ffx-cache.yml | sed -n "s/^ *- '*\([^']*\)'*$/\1/p" | sort)
 [ "$got" = "$want" ] || { echo "!! ci cache: ffx-cache.yml's push paths are not the cache key's inputs:" >&2; diff <(echo "$want") <(echo "$got") >&2; rc=1; }
+# and what build.sh fetches into the cached build/deps, main's job fetches too, so a restored copy is the whole of it
+for d in $(grep -oE 'deps\.py [a-z-]+ build/deps[^ ]*' build.sh | tr ' ' '|'); do
+  grep -qF "${d//|/ }" .github/workflows/ffx-cache.yml || { echo "!! ci cache: ffx-cache.yml does not fetch ${d//|/ } as build.sh does" >&2; rc=1; }
+done
 [ $rc = 0 ] && echo "ci cache approved examples: E5 passes"
 exit $rc

@@ -37,7 +37,8 @@ jobs:
       - id: ffx
         uses: ./.github/actions/ffx-cache
 
-      # On a hit the restore is the whole job; on a miss the cache step saves what these two build when the job ends.
+      # On a hit the restore is the whole job; on a miss the cache step saves what the last step builds and fetches
+      # when the job ends: the audio sources too, so the copy a pull request restores holds what build.sh reads there.
       - if: steps.ffx.outputs.cache-hit != 'true'
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
@@ -47,6 +48,8 @@ jobs:
           name: westgate
           skipPush: true
 
-      - name: Build FSR
+      - name: Build FSR and fetch the audio sources
         if: steps.ffx.outputs.cache-hit != 'true'
-        run: nix develop .#ci --command bash -c 'bash tools/ffx/prepare.sh python3 glslang && bash tools/ffx/build-lib.sh'
+        run: >-
+          nix develop .#ci --command bash -c 'bash tools/ffx/prepare.sh python3 glslang && bash tools/ffx/build-lib.sh
+          && python3 tools/deps.py openal-src build/deps && python3 tools/deps.py steamaudio build/deps/sa'

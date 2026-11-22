@@ -178,7 +178,7 @@ exists, and give every "should have gone through X" review finding its ban in th
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
 `build.sh`, CI and a Claude Code `PostToolUse` hook (`.claude/settings.json`), so a violation shows the moment
 it is written. The gates run side by side; the hook passes the edited file (`run.sh --for <path>`), which keeps
-the gates whose `# reaches: <globs>` line on line 2 matches it, and a gate with no such line reaches every path.
+the gates whose first `# reaches: <globs>` line matches it, and a gate with no such line reaches every path.
 `run.sh --list` names the gates it would run. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gates/ratchet.sh`): it may only
 shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
 the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
@@ -246,7 +246,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
   describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
 - `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP (a clip to animated WebP: GitHub cannot show a WebM).
-- `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
+- `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses, or a composite action under `.github/actions/` that zizmor refuses, fails --
   bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
   release, a checkout that keeps its token.
 - `ssbo-bindings.sh`: an `std430` or `scalar` STORAGE block's binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
