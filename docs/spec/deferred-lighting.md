@@ -63,9 +63,13 @@ lost at those pixels.
 A see-through sheet (every triangle within 45 degrees of horizontal or of the first triangle's plane, judged off
 the triangles, so a decal hung on a wall counts) that
 is not a ground decal -- alpha-tested, refused by `DbDecal`, or a cover meant to hide what it lies on -- keeps
-its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`): under a polygon offset
-(-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
-ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha draws in the blended class, as
+its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`): pulled toward the eye by a
+fixed fraction of its distance (`WorldDepth.EyePull`, 2^-16, added to clip z by `WorldDepth.Pull`), so it does
+not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock ones at exactly 0). The
+pull has no slope term, so a sheet buried 1 cm under the ground stays hidden at any pitch out to 655 m. A wash
+drawn against its own prepass depth (an equal test) is not pulled; the highlight mask pulls a wash as the colour
+pass does, so its test meets the depth that pass wrote. An alpha-tested wash whose diffuse measures
+graded alpha draws in the blended class, as
 vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
 the texture keeps under alpha 0, white on many decal sheets. A blending wash that is not a decal is
 **split** (`AlloyRenderer.WashSplit`): its fully covered texels (coverage times part alpha at least 0.99,
@@ -127,7 +131,7 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
   Its fragment half's surface body only edits the surface inputs, so it writes the G-buffer like any other; a pair
   that edits the lit colour or lights itself has no twin and draws forward. A post body that only sets its alpha and
   cuts on it is no such edit: the twin runs it ahead of the lights, the way the depth twin does. A plain-blended
-  content part whose pair has a twin splits the way a wash does (`Issue.SplitsSolid`), with no polygon offset: its
+  content part whose pair has a twin splits the way a wash does (`Issue.SplitsSolid`), with no pull toward the eye: its
   fully covered texels draw through the twin and the rest blends.
 - A forward draw in those passes (a content pair with no twin, a viz batch) writes no G-buffer
   and can land on a pixel a twin already wrote. The record carries the twin's view depth; the reader drops it when the frame's depth no longer

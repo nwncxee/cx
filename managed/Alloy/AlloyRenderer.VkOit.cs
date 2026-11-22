@@ -155,7 +155,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             if (!BlendLaysDepth(g)) continue;
             push.AlphaCut = AlloyClasses.Discard(_gCls[g]);
-            VkBatch(side, ref b, p, g, VkTargets.ForwardDepth, 0, depth, VkRaster(g, false), slots, 0, ref push, vp, viewport,
+            VkBatch(side, ref b, p, g, VkTargets.ForwardDepth, 0, depth, VkRaster(g), slots, 0, ref push, vp, viewport,
                     near, far, CullPassVk.PhaseColour, indirect);
         }
     }

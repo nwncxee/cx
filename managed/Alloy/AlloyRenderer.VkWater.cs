@@ -195,10 +195,9 @@ public sealed unsafe partial class AlloyRenderer
             if (cls != (byte)AlloyClass.Water) { c.Skipped += _gLen[g]; continue; }
             bool blend = AlloyClasses.Blends(cls);
             int blendKey = blend ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
-            bool wash = _gWash[g] != 0;
             push.AlphaCut = AlloyClasses.Discard(cls);
             if (!VkBatch(side, ref b, s.Prog, g, VkTargets.Forward, blendKey, new DepthState(true, true, WorldDepth.NearerOrEqual),
-                         VkRaster(g, wash), slots, _gTex[g], ref push, vp, viewport, near, far, CullPassVk.PhaseColour, indirect))
+                         VkRaster(g), slots, _gTex[g], ref push, vp, viewport, near, far, CullPassVk.PhaseColour, indirect))
                 continue;
             Counters._batches++;
             Counters._draws += _gLen[g];

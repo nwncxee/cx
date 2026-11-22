@@ -90,9 +90,6 @@ internal static unsafe class Issue
          : _gDis[g] ? AoKeyhole
          : AoOutOfPrepass;
 
-    /// <summary>Polygon offset for wash batches: a wash's own depth sits where its unsplit draw put it.</summary>
-    internal const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
-
     /// <summary>Aurora blend-mode indices (see <see cref="BlendGl"/>) of the one pair OIT accumulates.</summary>
     internal const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1, AuroraOne = 2;
 

@@ -98,7 +98,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             // every ground decal is lit by construction (AlloyRenderer.DbDecal); an unlit one has no writer here
             if (!_gLit[g]) { s.Skipped += _gLen[g]; continue; }
-            if (!VkBatch(side, ref b, d.Prog!, g, VkTargets.Decal, 0, depth, VkRaster(g, false), slots, 0, ref push,
+            if (!VkBatch(side, ref b, d.Prog!, g, VkTargets.Decal, 0, depth, VkRaster(g), slots, 0, ref push,
                          vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
             Counters._batches++;
             Counters._draws += _gLen[g];

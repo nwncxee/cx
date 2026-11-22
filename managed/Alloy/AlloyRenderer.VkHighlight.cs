@@ -66,6 +66,7 @@ public sealed unsafe partial class AlloyRenderer
         VkProg? prog = null;
         Vector3 bound = new(float.NaN);
         var push = new VkBatchPush { AlphaCut = -1f };
+        float pull = WorldDepth.Pull(near, far);
         for (int k = 0; k < n; k++)
         {
             (int j, int g, Vector3 colour, bool cutout) = Highlight.VkDraw(k);
@@ -112,6 +113,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             push.AlphaCut = p == plain ? -1f : AlloyClasses.Discard(_gCls[g]);
             push.DrawBase = j;
+            push.Pull = _gWash[g] != 0 ? pull : 0f;
             side.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkBatchPush>(in push)));
             side.DrawIndexed(_dCount[j], 1, (int)(_dOff[j] / sizeof(ushort)), _dBase[j]);
             s.Drawn = true;

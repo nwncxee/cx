@@ -20,7 +20,7 @@ internal readonly record struct VkLoose(string Type, string Name, string Array)
     internal int Count => Array.Length == 0 ? 1 : int.Parse(Array.AsSpan(1, Array.Length - 2), System.Globalization.CultureInfo.InvariantCulture);
 }
 
-/// <summary>One push member a program adds after <see cref="VkGlsl.Push"/>'s seven: the GLSL type and name the
+/// <summary>One push member a program adds after <see cref="VkGlsl.Push"/>'s fixed ones: the GLSL type and name the
 /// block declares, and the byte offset and CLR type the C# compiler gave the field that fills it.</summary>
 internal readonly record struct VkPush(string Type, string Name, int At, Type Fill)
 {
@@ -64,7 +64,7 @@ internal sealed class VkProgramText
 }
 
 /// <summary>GL 4.6 GLSL as Vulkan GLSL, for a program the Vulkan backend links from the text GL would compile. Loose
-/// uniforms move into one std140 block both stages declare alike, the per-batch seven into a push block, bindless
+/// uniforms move into one std140 block both stages declare alike, the per-batch values into a push block, bindless
 /// constructions into an index into set 1's sampler array, varyings get locations by name, unbound samplers the
 /// units the caller names, and GL's draw built-ins Vulkan's spellings. Pure text; cold.</summary>
 internal static partial class VkGlsl
@@ -81,8 +81,12 @@ internal static partial class VkGlsl
     internal static readonly (string Type, string Name)[] Push =
     [
         ("int", "uDrawBase"), ("float", "uAlphaCut"), ("int", "uSsaoOn"), ("float", "uAoDirect"),
-        ("int", "uDecal"), ("int", "uSolid"), ("int", "uOitGob"),
+        ("int", "uDecal"), ("int", "uSolid"), ("int", "uOitGob"), ("float", PullMember),
     ];
+
+    /// <summary>The push member a pulled vertex stage adds to its clip z after its own main (<see cref="Translate"/>'s
+    /// <c>pull</c>). What the number means is the host's; every host that draws such a stage pushes it.</summary>
+    internal const string PullMember = "uPull";
 
     /// <summary>Bytes one push member takes: every member of the block is a scalar.</summary>
     private const int PushWord = 4;
@@ -112,7 +116,7 @@ internal static partial class VkGlsl
             (string type, string name, int at, Type fill) = members[i];
             if (!PushTypes.TryGetValue(type, out Type[]? fills)) return $"push member {name} is {type}; the block carries scalars only";
             if (Array.IndexOf(fills, fill) < 0) return $"push member {name} is {type} in the block and {fill.Name} in the struct that stages it";
-            if (Array.FindIndex(Push, x => x.Name == name) >= 0) return $"push member {name} is already one of the per-batch seven";
+            if (Array.FindIndex(Push, x => x.Name == name) >= 0) return $"push member {name} is already one of the fixed per-batch values";
             for (int j = 0; j < i; j++)
                 if (members[j].Name == name) return $"push member {name} is declared twice in the tail";
             if (at != i * PushWord) return $"push member {name} is member {i} of the tail, at {i * PushWord}, and its field stages {at}";
@@ -201,9 +205,10 @@ internal static partial class VkGlsl
 
     /// <summary>Both stages of one program as Vulkan GLSL. <paramref name="samplerUnits"/> names the binding of every
     /// sampler or image declared without one; a declaration it does not name is an error. <paramref name="pushTail"/>
-    /// names the per-pass scalars this program takes from the push block instead of its loose one.</summary>
+    /// names the per-pass scalars this program takes from the push block instead of its loose one; <paramref name="pull"/>
+    /// adds <see cref="PullMember"/> to the vertex stage's clip z after its own main.</summary>
     internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> samplerUnits,
-                                            bool glDepth = true, VkPushTail pushTail = default)
+                                            bool glDepth = true, VkPushTail pushTail = default, bool pull = false)
     {
         var r = new VkProgramText { Tail = pushTail };
         if (TailError(pushTail) is { } te) { r.Error = te; return r; }
@@ -221,6 +226,7 @@ internal static partial class VkGlsl
             var outLoc = new Dictionary<string, int>(StringComparer.Ordinal);
             r.Vs = Emit(tv, sv, true, bv, dv, samplerUnits, outLoc, r);
             r.Fs = Emit(tf, sf, false, bf, df, samplerUnits, outLoc, r);
+            if (pull && r.Error == null) r.Vs = AfterMain(r.Vs, "cxPullMain", $"gl_Position.z += {PullMember};", "the eye pull", r);
             if (glDepth && r.Error == null) r.Vs = DepthToZeroOne(r.Vs, r);
         }
         catch (FormatException e) { r.Error = e.Message; }
@@ -389,11 +395,16 @@ internal static partial class VkGlsl
     /// stage gets the same last step, so the prepass and colour stages still compute one expression, and the depth
     /// a fragment writes is the window depth GL's default range would have given it.</summary>
     private static string DepthToZeroOne(string vs, VkProgramText r)
+        => AfterMain(vs, "cxGlMain", "gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;", "the depth remap", r);
+
+    /// <summary>The vertex stage's main renamed <paramref name="inner"/>, and a new main that calls it and then runs
+    /// <paramref name="step"/>; an error naming <paramref name="what"/> when the stage has no main.</summary>
+    private static string AfterMain(string vs, string inner, string step, string what, VkProgramText r)
     {
         Match m = MainDecl.Match(Mask(vs));
-        if (!m.Success) { r.Error ??= "the vertex stage has no main to follow with the depth remap"; return vs; }
-        return vs[..m.Index] + "void cxGlMain()" + vs[(m.Index + m.Length)..]
-             + "\nvoid main()\n{\n    cxGlMain();\n    gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
+        if (!m.Success) { r.Error ??= $"the vertex stage has no main to follow with {what}"; return vs; }
+        return vs[..m.Index] + "void " + inner + "()" + vs[(m.Index + m.Length)..]
+             + "\nvoid main()\n{\n    " + inner + "();\n    " + step + "\n}\n";
     }
 
     private static bool Taken(HashSet<int> used, int at, int n)

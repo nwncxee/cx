@@ -102,9 +102,9 @@ internal static partial class VkGlsl
     {
         check.Expect(r.Error == null, $"the loose fixture translates ({r.Error})");
         const string Block = "layout(std140, binding = 4) uniform CxLoose {\n    mat4 uVP;\n    vec4 uPlanes[6];\n    vec4 uTint;\n    float uGain;\n};";
-        const string PushBlock = "layout(push_constant) uniform CxBatch { int uDrawBase; float uAlphaCut; int uSsaoOn; float uAoDirect; int uDecal; int uSolid; int uOitGob; };";
+        const string PushBlock = "layout(push_constant) uniform CxBatch { int uDrawBase; float uAlphaCut; int uSsaoOn; float uAoDirect; int uDecal; int uSolid; int uOitGob; float uPull; };";
         check.Expect(r.Vs.Contains(Block) && r.Fs.Contains(Block), "both stages declare the one loose block: the union in vertex-stage order, the comma list and its array kept, deduped");
-        check.Expect(r.Vs.Contains(PushBlock) && r.Fs.Contains(PushBlock), "both stages declare the fixed seven-value push block");
+        check.Expect(r.Vs.Contains(PushBlock) && r.Fs.Contains(PushBlock), "both stages declare the fixed eight-value push block");
         check.Expect(!r.Vs.Contains("\nuniform ") && !r.Fs.Contains("\nuniform "), "no loose declaration is left at file scope");
         check.Expect(r.Loose.Count == 4 && r.Loose[1] == new VkLoose("vec4", "uPlanes", "[6]"), "four loose members, the array sized [6]; the push values are not among them");
         check.Expect(r.Initializers.Contains("uGain = 2.0"), "a GL initializer is reported for the caller to write");
@@ -179,15 +179,15 @@ internal static partial class VkGlsl
         VkPush bias = sound[0], dither = sound[1];
         VkProgramText r = TailText(TailSound());
         check.Expect(r.Error == null, $"a program with a push tail translates ({r.Error})");
-        check.Expect(r.Fs.Contains("int uOitGob; int uBias; float uDither; };", StringComparison.Ordinal),
-            "the tail's members follow the fixed seven in the one push block");
+        check.Expect(r.Fs.Contains("float uPull; int uBias; float uDither; };", StringComparison.Ordinal),
+            "the tail's members follow the fixed eight in the one push block");
         check.Expect(r.Loose.Count == 1 && r.Loose[0] == new VkLoose("vec4", "uTint", ""),
             $"a pushed scalar is no loose member: the block is the fixture's one vec4 ({string.Join(", ", r.Loose)})");
         Refused(check, "a tail member that is not a scalar", "uTint",
                 new VkPushTail([new VkPush("vec4", "uTint", 0, typeof(System.Numerics.Vector4))], 16));
         Refused(check, "a tail member the struct fills with another type", "uBias",
                 new VkPushTail([new VkPush("float", "uBias", 0, typeof(int)), dither], 8));
-        Refused(check, "a tail member the fixed seven already name", "uSolid",
+        Refused(check, "a tail member the fixed block already names", "uSolid",
                 new VkPushTail([new VkPush("int", "uSolid", 0, typeof(int))], 4));
         Refused(check, "a tail that declares a member twice", "twice",
                 new VkPushTail([bias, new VkPush("int", "uBias", 4, typeof(int))], 8));

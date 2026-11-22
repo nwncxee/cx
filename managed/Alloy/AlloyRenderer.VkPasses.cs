@@ -297,13 +297,11 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>Viewport, index buffer and depth-bias constants for a pass recorded aside.</summary>
+    /// <summary>Viewport and index buffer for a pass recorded aside.</summary>
     private static void VkPassStart(CommandList side, int w, int h)
     {
         side.SetViewport(0, 0, w, h);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
-        // GL's offset pulls toward the eye by going down; the world's reversed depth goes up
-        side.SetDepthBias(-Issue.WashOffsetFactor, -Issue.WashOffsetUnits);
     }
 
     /// <summary>Hand over every image an earlier pass of this frame WROTE and the draws here read, OUTSIDE the pass:
@@ -446,7 +444,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int g = 0; g < groups; g++)
             {
                 if (ShaderFeatures.OutOfPrepass(_gFeat[g]) || _gCls[g] >= (byte)AlloyClass.Cutout || _gDis[g] != dis) continue;
-                if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g, false), slots, 0, ref push, vp,
+                if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g), slots, 0, ref push, vp,
                              viewport, near, far, phase, indirect)) continue;
                 _gPrepassed[g] = true;
             }
@@ -460,7 +458,7 @@ public sealed unsafe partial class AlloyRenderer
                 VkProg? p = ContentPrograms.OwnDepth(_gFeat[g]) ? VkContent(_gFeat[g], ContentVariant.Depth) : plain;
                 if (p == null) continue;
                 push.AlphaCut = AlloyClasses.Discard(_gCls[g]);
-                if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g, false), slots, 0, ref push, vp,
+                if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g), slots, 0, ref push, vp,
                              viewport, near, far, phase, indirect)) continue;
                 _gPrepassed[g] = true;
             }
@@ -487,7 +485,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One range of batches, deciding per batch: the program, the
-    /// cut, the blend pair, the depth rule, the wash offset, the cull. Water sits out (its pass is not on Vulkan); a
+    /// cut, the blend pair, the depth rule, the wash's pull toward the eye, the cull. Water sits out (its pass is not on Vulkan); a
     /// content pair draws through the plain lit program until content programs port. False only on a refused bind.</summary>
     private static bool VkIssue(CommandList side, ref VkBound b, int from, int to, VkRange r, in Matrix4x4 vp, int* viewport,
                                 float near, float far, bool indirect, int phase = CullPassVk.PhaseColour)
@@ -496,6 +494,7 @@ public sealed unsafe partial class AlloyRenderer
         int viz = _capturing ? 0 : _lightViz;
         BufferId slots = indirect ? CullPassVk.Slots(phase) : s.Slots;
         var push = new VkBatchPush { Solid = r.Interior ? 1 : 0 };
+        float pull = WorldDepth.Pull(near, far);
         for (int g = from; g < to; g++)
         {
             byte cls = _gCls[g];
@@ -526,7 +525,8 @@ public sealed unsafe partial class AlloyRenderer
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
             // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
             push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
-            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, p.TexBound ? _gTex[g] : 0, ref push,
+            push.Pull = wash ? pull : 0f;
+            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g), slots, p.TexBound ? _gTex[g] : 0, ref push,
                          vp, viewport, near, far, phase, indirect)) continue;
             Counters._batches++;
             Counters._draws += _gLen[g];
@@ -536,7 +536,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror.</summary>
-    private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, _planar, wash);
+    private static RasterState VkRaster(int g) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, _planar);
 
     /// <summary>One batch: the program bound (its loose block captured) when it or the bound diffuse changed, the
     /// pipeline and dynamic state when they did, the per-batch constants, then the draw. False = sat out, counted.</summary>
