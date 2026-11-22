@@ -32,6 +32,7 @@ user-visible, not renamed (#530).
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
     tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host, inside a 2G cap; adds to
                             # run-demo.sh, never replaces it. tools/selfcheck/mutants.py: hand mutants, one compile
+    tools/stryker.sh        # Stryker.NET over the core lines changed since the merge-base; by hand, never a CI gate
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session
                             # PASS/FAIL + screenshots; nothing reaches the desktop, nothing of the user's
