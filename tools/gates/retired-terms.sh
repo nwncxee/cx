@@ -7,8 +7,8 @@ cd "$(dirname "$0")/../.." || exit 2
 list=tools/gates/retired-terms.txt
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 awk -F'\t' '$1 != "" && $1 !~ /^#/ { print $1 }' "$list" > "$tmp/terms"
-{ git grep --untracked -niIP -f "$tmp/terms" -- managed docs check-shaders.py 2>/dev/null ||
-  git grep --untracked -niIE -f "$tmp/terms" -- managed docs check-shaders.py 2>/dev/null; } \
+kind=-E; git grep -qP x -- "$list" 2>/dev/null; [ $? -le 1 ] && kind=-P
+git grep --untracked -niI "$kind" -f "$tmp/terms" -- managed docs check-shaders.py 2>/dev/null \
   | grep -v '^docs/adr/' | grep -v '^docs/handoff/' > "$tmp/hits"
 [ -s "$tmp/hits" ] || exit 0
 sed -E 's/^[^:]*:[0-9]+://' "$tmp/hits" > "$tmp/text"
