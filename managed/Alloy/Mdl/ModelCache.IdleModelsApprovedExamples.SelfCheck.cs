@@ -93,9 +93,9 @@ public static partial class ModelCache
                      $"idle models: only the idle model's 1MiB texture counts, not the 7MiB one no model uses, yet the line does not show held by idle models 1 MiB: \"{line}\"");
     }
 
-    /// <summary>The frame line's memory part on hand-written device figures, with the idle-model figure as the frame reads it.</summary>
-    private static string IdleLine()
-        => AlloyRenderer.VramLine(900 * IdleMiB, 2000 * IdleMiB, 8000 * IdleMiB, [], idleModelBytes: DrawRecipe.IdleModelTextureBytes());
+    /// <summary>The frame line's memory part through its own writer, on hand-written device figures; the writer reads
+    /// what idle models hold itself.</summary>
+    private static string IdleLine() => AlloyRenderer.FrameVram(900 * IdleMiB, 2000 * IdleMiB, 8000 * IdleMiB, 0, []);
 
     /// <summary>Acquire fixture model <paramref name="name"/>, one node per texture, intern each node's recipe and land
     /// each texture at its bytes. Null when the model or a recipe is refused.</summary>

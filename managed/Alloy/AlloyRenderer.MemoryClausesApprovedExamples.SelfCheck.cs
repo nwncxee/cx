@@ -19,8 +19,21 @@ public sealed partial class AlloyRenderer
         return long.Parse(line.AsSpan(start, i - start), System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>The count a frame line gives after <paramref name="clause"/>, read as "clause N" with no unit after
+    /// it; null when the line has no such clause.</summary>
+    internal static long? ClauseCount(string line, string clause)
+    {
+        int at = line.IndexOf(clause + " ", StringComparison.Ordinal);
+        if (at < 0) return null;
+        int i = at + clause.Length + 1, start = i;
+        while (i < line.Length && char.IsAsciiDigit(line[i])) i++;
+        if (i == start || (i < line.Length && char.IsAsciiLetter(line[i]))) return null;
+        return long.Parse(line.AsSpan(start, i - start), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>Approved-spec: the frame line's two new memory clauses stay off a line no frame has read the device for.
-    /// Oracles: hand-written device, system-RAM and idle-model figures in MiB, and a line with a budget as the control.</summary>
+    /// Oracles: hand-written device and system-RAM figures in MiB, and a line with a budget, through the same writer, as
+    /// the control.</summary>
     [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void MemoryClausesSelfCheck(ExtenderLog log)
     {
@@ -36,10 +49,10 @@ public sealed partial class AlloyRenderer
     {
         const long MiB = 1 << 20;
         (string, long)[] top = [("golden vram first", 48 * MiB)];
-        string read = VramLine(900 * MiB, 2000 * MiB, 8000 * MiB, top, systemRamBytes: 96 * MiB, idleModelBytes: 3 * MiB);
-        check.Expect(ClauseMiB(read, "in system RAM") == 96 && ClauseMiB(read, "held by idle models") == 3,
-                     $"control: a line read off a device with 96MiB in system RAM and 3MiB held by idle models does not show both: \"{read}\"");
-        string unread = VramLine(900 * MiB, 0, 0, top, systemRamBytes: 96 * MiB, idleModelBytes: 3 * MiB);
+        string read = FrameVram(900 * MiB, 2000 * MiB, 8000 * MiB, 96 * MiB, top);
+        check.Expect(ClauseMiB(read, "in system RAM") == 96,
+                     $"control: a line read off a device with 96MiB in system RAM does not show in system RAM 96 MiB: \"{read}\"");
+        string unread = FrameVram(900 * MiB, 0, 0, 96 * MiB, top);
         check.Expect(!unread.Contains("in system RAM", StringComparison.Ordinal) && !unread.Contains("held by idle models", StringComparison.Ordinal),
                      $"no frame has read the device, yet the line shows a memory clause: \"{unread}\"");
     }

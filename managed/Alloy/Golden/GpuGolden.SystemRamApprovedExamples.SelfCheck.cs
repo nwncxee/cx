@@ -40,14 +40,6 @@ internal static partial class GpuGolden
         }
     }
 
-    /// <summary>Tapped lines naming <paramref name="label"/>.</summary>
-    private static int Naming(List<string> heard, string label)
-    {
-        int n = 0;
-        foreach (string s in heard) if (s.Contains(label, StringComparison.Ordinal)) n++;
-        return n;
-    }
-
     /// <summary>The one tapped line naming <paramref name="label"/> also gives <paramref name="mib"/> as MiB.</summary>
     private static bool NamesSize(List<string> heard, string label, long mib)
     {
@@ -71,7 +63,7 @@ internal static partial class GpuGolden
             string line = AlloyRenderer.FrameVram(vk, ear);
             check.Expect(AlloyRenderer.ClauseMiB(line, "in system RAM") == 0,
                          $"system RAM staging: with only 96MiB of upload and 96MiB of readback in system RAM the line does not show in system RAM 0 MiB: \"{line}\"");
-            check.Expect(Naming(heard, "golden sysram upload") == 0 && Naming(heard, "golden sysram readback") == 0,
+            check.Expect(Count(heard, "golden sysram upload") == 0 && Count(heard, "golden sysram readback") == 0,
                          $"system RAM staging: a staging or readback buffer was warned about: {string.Join(" | ", heard)}");
         }
         finally
@@ -97,7 +89,7 @@ internal static partial class GpuGolden
             string again = AlloyRenderer.FrameVram(vk, ear);
             check.Expect(AlloyRenderer.ClauseMiB(line, "in system RAM") >= 96 && AlloyRenderer.ClauseMiB(again, "in system RAM") >= 96,
                          $"system RAM spill: a 96MiB buffer past the cap, and the line does not show at least 96 MiB in system RAM: \"{line}\"");
-            check.Expect(Naming(heard, "golden sysram spill") == 1 && NamesSize(heard, "golden sysram spill", 96),
+            check.Expect(Count(heard, "golden sysram spill") == 1 && NamesSize(heard, "golden sysram spill", 96),
                          $"system RAM spill: over two frame lines cx.log did not warn exactly once naming golden sysram spill and 96MiB: {string.Join(" | ", heard)}");
         }
         finally
@@ -120,13 +112,13 @@ internal static partial class GpuGolden
             if (first.IsNull) return;
             heard.Clear();
             AlloyRenderer.FrameVram(vk, ear);
-            check.Expect(Naming(heard, "golden sysram first") == 1, $"system RAM second: the first allocation in system RAM was not warned about once: {string.Join(" | ", heard)}");
+            check.Expect(Count(heard, "golden sysram first") == 1, $"system RAM second: the first allocation in system RAM was not warned about once: {string.Join(" | ", heard)}");
             second = vk.CreateBuffer(new BufferDesc(96 * MiB, BufferUse.Storage, MemoryKind.Device, "golden sysram second"));
             check.Expect(!second.IsNull, "system RAM second: the second 96MiB buffer was refused");
             if (second.IsNull) return;
             heard.Clear();
             AlloyRenderer.FrameVram(vk, ear);
-            check.Expect(Naming(heard, "golden sysram second") == 1 && Naming(heard, "golden sysram first") == 0,
+            check.Expect(Count(heard, "golden sysram second") == 1 && Count(heard, "golden sysram first") == 0,
                          $"system RAM second: the next frame line's warnings are not about the second allocation only: {string.Join(" | ", heard)}");
         }
         finally
@@ -158,7 +150,7 @@ internal static partial class GpuGolden
             AlloyRenderer.FrameVram(vk, ear);
             check.Expect(AlloyRenderer.ClauseMiB(line, "in system RAM") >= 128,
                          $"system RAM group: a 128MiB alias group past the cap, and the line does not show at least 128 MiB in system RAM: \"{line}\"");
-            check.Expect(Naming(heard, "golden sysram group") == 1 && NamesSize(heard, "golden sysram group", 128),
+            check.Expect(Count(heard, "golden sysram group") == 1 && NamesSize(heard, "golden sysram group", 128),
                          $"system RAM group: over two frame lines cx.log did not warn exactly once naming golden sysram group and 128MiB: {string.Join(" | ", heard)}");
         }
         finally

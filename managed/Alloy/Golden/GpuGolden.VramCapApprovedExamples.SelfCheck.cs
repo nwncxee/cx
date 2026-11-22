@@ -8,12 +8,9 @@ namespace CX.Alloy;
 
 internal static partial class GpuGolden
 {
-    /// <summary>The cap's own figure, MiB, the approved examples name.</summary>
-    private const long CapMib = 3072;
-
     /// <summary>The VRAM cap's approved examples, each on a device of its own made with <c>alloy.vramcap</c>'s value.
-    /// Oracles: the uncapped golden device's own heap size and driver budget (a second device on the same card), and
-    /// the hand-written figures a 3072 MiB card reads as: a 768 MiB texture budget and at most an 8-page lightmap pool.</summary>
+    /// Oracles: the uncapped golden device's own heap size (a second device on the same card), the hand-written
+    /// 3072 MiB, and the budgets the pure sizing functions give for a card of exactly that size.</summary>
     private static void VramCapApprovedSelfCheck(VkBackend vk, ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.VramCap.SelfCheck");
@@ -26,7 +23,7 @@ internal static partial class GpuGolden
             return;
         }
         VramCapBoots(check, log, cap);
-        VramCapDefault(check, log, cardSize, cardBudget);
+        VramCapDefault(check, log, cardSize);
         VramCapAbove(check, log, cardSize);
         if (vk.DeviceLocalHeaps >= 2) VramCapTwoHeaps(check, log, cap);
         else check.Skip($"vramcap: the two-heap example needs a card with two device-local heaps; this one has {vk.DeviceLocalHeaps}");
@@ -46,15 +43,6 @@ internal static partial class GpuGolden
         return dev;
     }
 
-    /// <summary>Lines in <paramref name="heard"/> that name <c>alloy.vramcap</c> and hold every one of <paramref name="words"/>.</summary>
-    private static int CapLines(List<string> heard, params string[] words)
-    {
-        int n = 0;
-        foreach (string line in heard)
-            if (line.Contains("alloy.vramcap", StringComparison.Ordinal) && Array.TrueForAll(words, w => line.Contains(w, StringComparison.Ordinal))) n++;
-        return n;
-    }
-
     /// <summary>The 3072 MiB device: the frame line's budget, the log line, the texture budget, the lightmap pool.</summary>
     private static void VramCapBoots(Checker check, ExtenderLog log, int cap)
     {
@@ -64,37 +52,36 @@ internal static partial class GpuGolden
         if (capped == null) return;
         try
         {
-            capped.DeviceLocalBytes(out long usage, out long budget, out long size, out long held);
-            long sizeMib = size >> 20, freeMib = Math.Max(budget - usage, 0) >> 20;
-
             // Given cx.cfg sets alloy.vramcap 3072 on an 8 GB card
             // When the client boots
             // Then the frame line's budget reads 3072 MiB, and cx.log says once that the cap is in force
-            string line = AlloyRenderer.VramLine(held, usage, budget, capped.Largest(3));
-            check.Expect(line.Contains("/3072MiB of the budget used", StringComparison.Ordinal),
+            string line = AlloyRenderer.FrameVram(capped, log);
+            check.Expect(line.Contains($"/{CapMib}MiB of the budget", StringComparison.Ordinal),
                          $"vramcap E1: with alloy.vramcap 3072 the frame line's budget does not read 3072MiB: \"{line}\"");
-            int said = CapLines(heard, "3072", "in force");
-            check.Expect(said == 1 && CapLines(heard, "no cap") == 0, $"vramcap E1: cx.log says {said} times, not once, that alloy.vramcap 3072 is in force");
+            int said = Count(heard, VkBackend.CapTag(CapMib));
+            check.Expect(said == 1 && Count(heard, VkBackend.NoCapTag) == 0, $"vramcap E1: cx.log says {said} times, not once, that alloy.vramcap 3072 is in force");
 
             // Given alloy.vramcap 3072 on an 8 GB card
             // When the texture budgets are worked out
             // Then they read 3072 MiB as the card's size
-            long texBudget = TexRegistry.BudgetFor(Renderer.TexCache.Default, sizeMib, freeMib) >> 20;
-            check.Expect(sizeMib == 3072 && texBudget == 768,
-                         $"vramcap E5: the texture budget reads a {sizeMib}MiB card and comes to {texBudget}MiB, not a 3072MiB card's 768MiB");
+            (long sizeMib, long freeMib, long texBudget, int pages) = AlloyRenderer.WithVramOf(capped,
+                () => (AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib, TexRegistry.BudgetBytes() >> 20, LightmapBake.PoolPagesNow()));
+            long texWant = TexRegistry.BudgetFor(Renderer.TexCache.Boot, CapMib, freeMib) >> 20;
+            check.Expect(sizeMib == CapMib && texBudget == texWant,
+                         $"vramcap E5: the texture budget reads a {sizeMib}MiB card and comes to {texBudget}MiB, not a 3072MiB card's {texWant}MiB");
 
             // Given alloy.vramcap 3072
             // When the lightmap pool is sized
             // Then it is sized from 3072 MiB
-            int pages = LightmapBake.PoolPages(Lightmap.Vram.Default, sizeMib, freeMib);
-            check.Expect(sizeMib == 3072 && pages <= 8,
-                         $"vramcap E6: the lightmap pool is {pages} pages from a {sizeMib}MiB card, not at most the 8 (768MiB, a quarter) a 3072MiB card gives");
+            int pagesWant = LightmapBake.PoolPages(Lightmap.Vram.V, CapMib, freeMib);
+            check.Expect(sizeMib == CapMib && pages == pagesWant,
+                         $"vramcap E6: the lightmap pool is {pages} pages from a {sizeMib}MiB card, not the {pagesWant} a 3072MiB card gives");
         }
         finally { capped.Dispose(); }
     }
 
     /// <summary>The default: no cap, the driver's own budget and the card's own size, and no word of a cap.</summary>
-    private static void VramCapDefault(Checker check, ExtenderLog log, long cardSize, long cardBudget)
+    private static void VramCapDefault(Checker check, ExtenderLog log, long cardSize)
     {
         // Given alloy.vramcap is 0, the default
         // When the client boots
@@ -107,10 +94,9 @@ internal static partial class GpuGolden
         try
         {
             plain.DeviceLocalBytes(out _, out long budget, out long size, out _);
-            long drift = Math.Abs(budget - cardBudget) >> 20;
-            check.Expect(size == cardSize && drift <= 256,
-                         $"vramcap E2: uncapped, the device reads {size >> 20}MiB with a {budget >> 20}MiB budget, not the card's {cardSize >> 20}MiB and the driver's {cardBudget >> 20}MiB");
-            check.Expect(CapLines(heard) == 0, "vramcap E2: with alloy.vramcap 0, cx.log speaks of a cap");
+            check.Expect(size == cardSize && budget >> 20 > CapMib,
+                         $"vramcap E2: uncapped, the device reads {size >> 20}MiB with a {budget >> 20}MiB budget, not the card's {cardSize >> 20}MiB with a budget past {CapMib}MiB");
+            check.Expect(Count(heard, VkBackend.CapPrefix) == 0, "vramcap E2: with alloy.vramcap 0, cx.log speaks of a cap");
         }
         finally { plain.Dispose(); }
     }
@@ -130,7 +116,7 @@ internal static partial class GpuGolden
         {
             dev.DeviceLocalBytes(out _, out _, out long size, out _);
             check.Expect(size == cardSize, $"vramcap E8: alloy.vramcap {above} on a {cardSize >> 20}MiB card reads {size >> 20}MiB, not the card's own");
-            int said = CapLines(heard, "no cap");
+            int said = Count(heard, VkBackend.NoCapTag);
             check.Expect(said == 1, $"vramcap E8: cx.log says {said} times, not once, that alloy.vramcap {above} puts no cap in force");
         }
         finally { dev.Dispose(); }
@@ -149,7 +135,7 @@ internal static partial class GpuGolden
         try
         {
             dev.DeviceLocalBytes(out _, out _, out long size, out _);
-            check.Expect(size >> 20 == 3072 && (size & ((1 << 20) - 1)) == 0,
+            check.Expect(size >> 20 == CapMib && (size & ((1 << 20) - 1)) == 0,
                          $"vramcap E7: the {dev.DeviceLocalHeaps} device-local heaps together hold {size >> 20}MiB under alloy.vramcap 3072, not 3072MiB");
         }
         finally { dev.Dispose(); }

@@ -15,8 +15,8 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The texture examples' cap, alloy.vramcap's value in their Given.</summary>
-    private const int TextureCapMiB = 3072;
+    /// <summary>The cap and texture examples' cap, MiB: alloy.vramcap's value in their Given.</summary>
+    private const int CapMib = 3072;
 
     /// <summary>The spill examples' cap: small enough that a few hundred MiB of filler reaches it.</summary>
     private const int SpillCapMiB = 512;
@@ -44,10 +44,10 @@ internal static partial class GpuGolden
     {
         UnifiedHeapNothingSpills(vk, log);
         vk.DeviceLocalBytes(out _, out _, out long heap, out _);
-        if (heap < (TextureCapMiB + 1024) * MiB)
+        if (heap < (CapMib + 1024) * MiB)
         {
             new Checker(log, "GpuGolden.Residency.SelfCheck").Skip(
-                $"the texture examples cap a {TextureCapMiB}MiB heap and this device's is {heap / MiB}MiB");
+                $"the texture examples cap a {CapMib}MiB heap and this device's is {heap / MiB}MiB");
             return;
         }
         TextureExamples(check, log);
@@ -83,7 +83,9 @@ internal static partial class GpuGolden
     private static ImageId OwnedTexture(VkBackend vk, uint gl, int side, string label)
         => VkTextures.Create(vk, gl, Format.Rgba8, side, side, 1, false, ResidencySampler, label);
 
-    private static int Count(List<string> lines, params string[] words)
+    /// <summary>Lines in <paramref name="lines"/> holding every one of <paramref name="words"/>: the one line count
+    /// every approved example over a tapped log reads.</summary>
+    internal static int Count(List<string> lines, params string[] words)
     {
         int n = 0;
         foreach (string l in lines)
@@ -111,7 +113,7 @@ internal static partial class GpuGolden
     private static void TextureExamples(Checker check, ExtenderLog log)
     {
         var heard = new List<string>();
-        VkBackend? dev = Capped(check, heard, TextureCapMiB, "E1");
+        VkBackend? dev = Capped(check, heard, CapMib, "E1");
         if (dev == null) return;
         PriorityOn(dev, heard, log);
         PriorityAbsent(dev, heard, log);
@@ -129,7 +131,7 @@ internal static partial class GpuGolden
             foreach (uint gl in names) VkTextures.Forget(gl);
             names.Clear();
             Settle(dev, log, rb);
-            BufferId fill = Filler(dev, TextureCapMiB, 8 * MiB, "golden residency texture filler");
+            BufferId fill = Filler(dev, CapMib, 8 * MiB, "golden residency texture filler");
             check.Expect(!fill.IsNull, "E2: the filler that leaves 8MiB of room was refused");
             uint refused = RefusedOnce(dev, check, heard);
             EachNamedOnce(dev, check, heard);
@@ -153,7 +155,7 @@ internal static partial class GpuGolden
     // Given a driver with VK_EXT_memory_priority
     // When the device is created
     // Then cx.log says priorities are on: render targets, shadows and the mesh arena high, textures low
-    /// <summary>E3: the creation lines of a device whose driver offers the extension. Oracle: the words, by hand.</summary>
+    /// <summary>E3: the creation lines of a device whose driver offers the extension. Oracle: the marker the backend declares.</summary>
     private static void PriorityOn(VkBackend dev, List<string> heard, ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.PriorityOn.SelfCheck");
@@ -162,15 +164,15 @@ internal static partial class GpuGolden
             check.Skip("this host's driver does not offer VK_EXT_memory_priority");
             return;
         }
-        int on = Count(heard, "VK_EXT_memory_priority", "render targets", "shadows", "mesh arena", "high", "textures", "low");
+        int on = Count(heard, VkBackend.PriorityOnTag);
         check.Expect(on == 1, $"E3: {on} creation lines say priorities are on for render targets, shadows and the mesh arena high and textures low, not 1");
     }
 
     // Given a driver without it
     // When the device is created
     // Then cx.log says once that it is absent, and nothing else changes
-    /// <summary>E4: the creation lines of a device whose driver lacks the extension. Oracle: the words, by hand,
-    /// and a target that still clears to a hand-written colour.</summary>
+    /// <summary>E4: the creation lines of a device whose driver lacks the extension. Oracle: the marker the backend
+    /// declares, and a target that still clears to a hand-written colour.</summary>
     private static void PriorityAbsent(VkBackend dev, List<string> heard, ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.PriorityAbsent.SelfCheck");
@@ -179,7 +181,7 @@ internal static partial class GpuGolden
             check.Skip("this host's driver offers VK_EXT_memory_priority, so the device that lacks it is not here");
             return;
         }
-        int absent = Count(heard, "VK_EXT_memory_priority", "absent");
+        int absent = Count(heard, VkBackend.PriorityAbsentTag);
         check.Expect(absent == 1, $"E4: {absent} creation lines say VK_EXT_memory_priority is absent, not 1");
         BufferId rb = dev.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden residency absent read"));
         ImageId t = Target(dev, 4, "golden residency absent target", null);
@@ -200,8 +202,8 @@ internal static partial class GpuGolden
         check.Expect(arena, "E1: the arena holds live meshes, so the grow half cannot run");
         int small = arena ? ResidencyMesh(6391, 1000) : 0;
         if (arena) MeshArena.VkPumpForCheck(dev);
-        long cap = TextureCapMiB * MiB;
-        for (int i = 0; i < TextureCapMiB / 16 + 2; i++)
+        long cap = CapMib * MiB;
+        for (int i = 0; i < CapMib / 16 + 2; i++)
         {
             dev.DeviceLocalBytes(out _, out _, out _, out long held);
             if (held + IdleBytes > cap) break;
@@ -446,31 +448,37 @@ internal static partial class GpuGolden
     // Given neither VRAM nor system RAM takes it
     // When it is allocated
     // Then that pass stands down for now, says so once, and is tried again at the next move back
-    /// <summary>E8: the caster asks for a 256 GiB array every frame for two periods. Oracle: one stand-down line
-    /// that is not for the session, and the device's own refusal count rising only at a period.</summary>
+    /// <summary>E8: the caster asks for a 256 GiB array every frame for two periods. Oracle: a refusal that names heap
+    /// room, one stand-down line that is not for the session, and frames whose refusals rose: at most one in any
+    /// period's run of frames, whatever frame the period starts on, and at least one over two.</summary>
     private static void NeitherHeap(VkBackend dev, Checker check, ExtenderLog log, BufferId rb, List<string> heard)
     {
-        int faults = dev.Faults;
         CasterPass.VkSunArrayForCheck(dev, HugeSide, HugeLayers);
+        check.Expect(dev.LastFault.Contains(VkBackend.NoRoomTag, StringComparison.Ordinal),
+                     $"E8: precondition: the {HugeSide}x{HugeSide}x{HugeLayers} array was refused for something other than heap room: \"{dev.LastFault}\"");
         check.Expect(CasterPass.BakeStoodDown, "E8: the caster bake did not stand down when no heap took its array");
-        int first = dev.Faults - faults;
-        for (int f = 0; f < Period / 2; f++)
-        {
-            ResidencyFrame(dev, log);
-            CasterPass.VkSunArrayForCheck(dev, HugeSide, HugeLayers);
-        }
-        check.Expect(dev.Faults - faults == first, $"E8: the stood-down bake retried {dev.Faults - faults - first} times inside one period");
-        for (int f = 0; f <= Period; f++)
-        {
-            ResidencyFrame(dev, log);
-            CasterPass.VkSunArrayForCheck(dev, HugeSide, HugeLayers);
-        }
-        check.Expect(dev.Faults - faults > first, "E8: the stood-down bake was not tried again at the next move back");
-        int said = Count(heard, "CasterPass", "REFUSED");
+        int inFirst = RetryFrames(dev, log, Period), inSecond = RetryFrames(dev, log, Period);
+        check.Expect(inFirst <= 1, $"E8: the stood-down bake was retried on {inFirst} frames inside one period");
+        check.Expect(inFirst + inSecond >= 1, "E8: the stood-down bake was not tried again at the next move back");
+        int said = Count(heard, CasterPass.StandDownNowTag);
         check.Expect(said == 1, $"E8: the stand-down was said {said} times, not once");
-        check.Expect(Count(heard, "CasterPass", "this session") == 0, "E8: the stand-down says it is for the session, not for now");
+        check.Expect(Count(heard, CasterPass.StandDownSessionTag) == 0, "E8: the stand-down says it is for the session, not for now");
         CasterPass.VkResetForCheck();
         Settle(dev, log, rb);
+    }
+
+    /// <summary>Frames out of <paramref name="frames"/> on which the move back or the caster's ask for the huge array added a refusal.</summary>
+    private static int RetryFrames(VkBackend dev, ExtenderLog log, int frames)
+    {
+        int rose = 0;
+        for (int f = 0; f < frames; f++)
+        {
+            int before = dev.Faults;
+            ResidencyFrame(dev, log);
+            CasterPass.VkSunArrayForCheck(dev, HugeSide, HugeLayers);
+            if (dev.Faults > before) rose++;
+        }
+        return rose;
     }
 
     // Given a mesh arena grow that does not fit after eviction

@@ -3,6 +3,7 @@ using System.IO;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Ladder = CX.Alloy.VramLadderApprovedExamples;
 
 namespace CX.Alloy;
 
@@ -16,7 +17,6 @@ internal static unsafe partial class LightmapBake
     private const long FullScratchMiB = 448;
     /// <summary>Half of <see cref="FullScratchMiB"/>, with room for the device's alignment.</summary>
     private const long HalfScratchMiB = 232;
-    private const long GoldBudget = 8000, GoldPast = 7360, GoldBand = 6800, GoldUnder = 5600;
 
     /// <summary>Every bake example on <paramref name="vk"/>, with the bake's own state put back after each.</summary>
     internal static void VramGoldens(VkBackend vk, Checker check, ExtenderLog log)
@@ -51,7 +51,7 @@ internal static unsafe partial class LightmapBake
             VkFreeScratch();
             _vkb = saved; _bakePage = page; _log = oldLog;
             if (!down) _down.Forget();
-            VramLadder.AreaChanged(0, GoldBudget, 0);
+            VramLadder.AreaChanged(0, Ladder.Budget, 0);
             VramLadder.Reset(null, cube, dyn);
         }
     }
@@ -71,8 +71,8 @@ internal static unsafe partial class LightmapBake
     /// <summary>E2, half the scratch. Oracle: the scratch's MiB by hand, 448 whole and at most 232 halved.</summary>
     private static void HalfWhenPast(VkBackend vk, Checker check)
     {
-        VramLadder.Period(GoldPast, GoldBudget);
-        VramLadder.Period(GoldPast, GoldBudget);
+        VramLadder.Period(Ladder.Past, Ladder.Budget);
+        VramLadder.Period(Ladder.Past, Ladder.Budget);
         long mib = ScratchMib();
         check.Expect(VramLadder.HalfScratch && mib > 0 && mib <= HalfScratchMiB,
                      $"E2: past 90% the bake's scratch took {mib} MiB, not half of the {FullScratchMiB} MiB whole (at most {HalfScratchMiB})");
@@ -95,19 +95,18 @@ internal static unsafe partial class LightmapBake
         _vkb = new BakeVkState { Dev = capped };
         BufferId ballast = capped.CreateBuffer(new BufferDesc(400 * GoldMiB, BufferUse.Storage, MemoryKind.Device, "golden vram ballast"));
         BufferId rb = capped.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden vram read"));
-        Span<byte> four = stackalloc byte[4];
         try
         {
             check.Expect(!ballast.IsNull, "E2: the 400 MiB ballast did not fit under the 512 MiB cap");
             if (ballast.IsNull) return;
-            VramLadder.Period(GoldPast, GoldBudget);
-            VramLadder.Period(GoldPast, GoldBudget);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
             VkScratch();
             check.Expect(ScratchWaits && !_vkb.Scratched && !_down.Failed,
                          $"E2: with no room for half the scratch the bake did not wait (waits {ScratchWaits}, scratch {_vkb.Scratched}, stood down {_down.Failed})");
             capped.Destroy(ballast); ballast = default;
-            for (int i = 0; i < 6; i++) { capped.Submit(new CommandList("golden vram settle", 1 << 8, log)); capped.ReadBack(rb, four); }
-            VramLadder.Period(GoldBand, GoldBudget);
+            GpuGolden.Settle(capped, log, rb);
+            VramLadder.Period(Ladder.Band, Ladder.Budget);
             bool went = VkScratch();
             check.Expect(went && _vkb.Scratched && !ScratchWaits && !_down.Failed,
                          $"E11: under 90% in the same area the waiting bake did not go on (scratch {_vkb.Scratched}, waits {ScratchWaits})");
@@ -131,9 +130,9 @@ internal static unsafe partial class LightmapBake
     {
         long mib = ScratchMib();
         check.Expect(_vkb.Scratched && mib >= FullScratchMiB, $"E9: the whole scratch took {mib} MiB, not {FullScratchMiB}");
-        VramRung first = VramLadder.Period(GoldPast, GoldBudget);
+        VramRung first = VramLadder.Period(Ladder.Past, Ladder.Budget);
         check.Expect(first == VramRung.Textures && _vkb.Scratched, $"E9: the first period past 90% gave {first} with the scratch held {_vkb.Scratched}");
-        VramLadder.Period(GoldPast, GoldBudget);
+        VramLadder.Period(Ladder.Past, Ladder.Budget);
         check.Expect(!_vkb.Scratched, "E9: the period after the textures did not free the idle scratch");
     }
 
@@ -143,12 +142,12 @@ internal static unsafe partial class LightmapBake
     /// <summary>E10. Oracle: the scratch's MiB by hand -- at most 232 past 90%, then the whole 448 once use is under 80%.</summary>
     private static void FullUnder(VkBackend vk, Checker check)
     {
-        VramLadder.Period(GoldPast, GoldBudget);
-        VramLadder.Period(GoldPast, GoldBudget);
+        VramLadder.Period(Ladder.Past, Ladder.Budget);
+        VramLadder.Period(Ladder.Past, Ladder.Budget);
         long half = ScratchMib();
         check.Expect(half > 0 && half <= HalfScratchMiB, $"E10: past 90% the scratch took {half} MiB, not half");
         VkFreeScratch();
-        VramLadder.Period(GoldUnder, GoldBudget);
+        VramLadder.Period(Ladder.Under, Ladder.Budget);
         long full = ScratchMib();
         check.Expect(!VramLadder.HalfScratch && full >= FullScratchMiB, $"E10: under 80% the next page's scratch took {full} MiB, not the whole {FullScratchMiB}");
     }
@@ -163,15 +162,15 @@ internal static unsafe partial class LightmapBake
         try
         {
             ulong look = ShadowLook();
-            byte[]? plain = FixtureBake(vk, log, false, dir, out _);
-            VramLadder.Period(GoldPast, GoldBudget);
-            VramLadder.Period(GoldPast, GoldBudget);
-            VramLadder.AreaChanged(GoldPast, GoldBudget, 960);
-            VramLadder.Period(GoldPast, GoldBudget);
+            byte[]? plain = FixtureBake(vk, log, dir, out _, out _);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.AreaChanged(Ladder.Past, Ladder.Budget, 960);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
             check.Expect(VramLadder.ShadowsLowered && CasterPass.CubeFaceSize * 2 == cube, $"E7: the climb did not lower the cubes from {cube}");
             check.Expect(BakeCubeSize == cube && ShadowLook() == look,
                          $"E7: lowered, the bake renders its cubes at {BakeCubeSize}, not {cube}, or its key moved");
-            byte[]? lowered = FixtureBake(vk, log, false, dir, out int hits);
+            byte[]? lowered = FixtureBake(vk, log, dir, out int hits, out _);
             check.Expect(plain != null && lowered != null && plain.AsSpan().SequenceEqual(lowered) && hits > 0,
                          $"E7: lowered, the fixture's pages {(plain == null || lowered == null ? "did not bake" : "differ")} or the cache hit {hits} times");
         }
@@ -181,22 +180,40 @@ internal static unsafe partial class LightmapBake
     // Given one area baked once with half the scratch and once with all of it
     // When the pages are compared
     // Then they match, and each session reads the other's cache files
-    /// <summary>E13. Oracle: the fixture baked twice, half and whole, each into a cache of its own, then each read from the other's.</summary>
+    /// <summary>E13. Oracle: the fixture baked twice, once with the ladder past 90% and once under 80%, each into a cache
+    /// of its own, then each read from the other's; the scratch each bake took, by hand, says which one it was.</summary>
     private static void HalfMatchesFull(VkBackend vk, Checker check, ExtenderLog log)
     {
         string halfDir = GoldDir(), fullDir = GoldDir();
         try
         {
-            byte[]? half = FixtureBake(vk, log, true, halfDir, out _);
-            byte[]? full = FixtureBake(vk, log, false, fullDir, out _);
+            byte[]? half = LadderBake(vk, check, log, true, halfDir, out _);
+            byte[]? full = LadderBake(vk, check, log, false, fullDir, out _);
             check.Expect(half != null && full != null && half.AsSpan().SequenceEqual(full),
                          $"E13: the half and whole scratch's pages {(half == null || full == null ? "did not bake" : "differ")}");
-            FixtureBake(vk, log, false, halfDir, out int fullReadsHalf);
-            FixtureBake(vk, log, true, fullDir, out int halfReadsFull);
+            LadderBake(vk, check, log, false, halfDir, out int fullReadsHalf);
+            LadderBake(vk, check, log, true, fullDir, out int halfReadsFull);
             check.Expect(fullReadsHalf > 0 && halfReadsFull > 0,
                          $"E13: the whole bake read the half one's cache {fullReadsHalf} times and the half the whole's {halfReadsFull}");
         }
         finally { Directory.Delete(halfDir, true); Directory.Delete(fullDir, true); }
+    }
+
+    /// <summary>The fixture baked into <paramref name="dir"/> after two periods past 90% (<paramref name="past"/>) or one
+    /// under 80%, with the scratch that bake took checked against the half or the whole by hand.</summary>
+    private static byte[]? LadderBake(VkBackend vk, Checker check, ExtenderLog log, bool past, string dir, out int hits)
+    {
+        VramLadder.Period(past ? Ladder.Past : Ladder.Under, Ladder.Budget);
+        if (past) VramLadder.Period(Ladder.Past, Ladder.Budget);
+        byte[]? pages = FixtureBake(vk, log, dir, out hits, out long scratch);
+        long mib = scratch / GoldMiB;
+        if (past)
+            check.Expect(VramLadder.HalfScratch && mib > 0 && mib <= HalfScratchMiB,
+                         $"E13: precondition: past 90% the bake took {mib} MiB of scratch (half {VramLadder.HalfScratch}), not at most {HalfScratchMiB}");
+        else
+            check.Expect(!VramLadder.HalfScratch && mib >= FullScratchMiB,
+                         $"E13: precondition: under 80% the bake took {mib} MiB of scratch (half {VramLadder.HalfScratch}), not the whole {FullScratchMiB}");
+        return pages;
     }
 
     private static string GoldDir()

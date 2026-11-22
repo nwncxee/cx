@@ -37,6 +37,7 @@ stood_down() {
     line "$1" "UiHostService: [frame] avg 7,40ms (135fps) max 13,0ms, >6.9ms 60/900, >16.7ms 0/900, gc 0/0/0 on 10KiB allocated"
   done
 }
+no_gpu_time=$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import revisit; print(revisit.NO_GPU_TIME)' "$ROOT/tools/live")
 grade() { out=$(python3 -I "$ROOT/tools/live/revisit.py" "$1" 2>&1); rc=$?; }
 no() { echo "!! revisit $1: $2 -- exit $rc, said: $out" >&2; fail=1; }
 
@@ -61,7 +62,7 @@ grep -qE '2[.,]25' <<<"$out" && grep -qE '2[.,]60' <<<"$out" || no E4 "the PASS 
 # Then it FAILS, since no GPU time was measured
 stood_down "$T/down.log"
 grade "$T/down.log"
-[ "$rc" = 1 ] && grep -q '^FAIL' <<<"$out" && grep -qi 'no GPU time' <<<"$out" || no E9 "a session with no [vkgpu] line does not FAIL saying no GPU time was measured"
+[ "$rc" = 1 ] && grep -q '^FAIL' <<<"$out" && grep -qF "$no_gpu_time" <<<"$out" || no E9 "a session with no [vkgpu] line does not FAIL saying no GPU time was measured"
 
 # Given alloy.vramcap 0 on main
 # When the ladder runs

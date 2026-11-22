@@ -9,17 +9,17 @@ namespace CX.Alloy;
 /// budgets and use, the page and shadow sizes they work out to by hand, and the log lines they must give.</summary>
 internal static class VramLadderApprovedExamples
 {
-    private const long Budget = 8000;
+    /// <summary>The budget every ladder example's device reports, MiB; the bake's ladder examples read the same figures.</summary>
+    internal const long Budget = 8000;
     /// <summary>92% of <see cref="Budget"/>: past the 90% the ladder gives way at.</summary>
-    private const long Past = 7360;
+    internal const long Past = 7360;
     /// <summary>85% of <see cref="Budget"/>: inside the band the ladder holds in.</summary>
-    private const long Band = 6800;
+    internal const long Band = 6800;
     /// <summary>70% of <see cref="Budget"/>: under the 80% the ladder takes back at.</summary>
-    private const long Under = 5600;
+    internal const long Under = 5600;
     /// <summary>The <c>lightmap.vram</c> figure the pool examples size from: 10 pages of 96 MiB when nothing gave way.</summary>
     private const int PoolVram = 960;
     private const long PoolMib = 960;
-    private const string ShadowLine = "shadow quality was lowered to fit VRAM";
 
     /// <summary>Every CPU example, each on a freshly armed ladder; the ladder is disarmed after.</summary>
     [SelfCheckSuite(SuitePhase.BeforeServices)]
@@ -51,18 +51,15 @@ internal static class VramLadderApprovedExamples
 
     private static ExtenderLog Ear(List<string> heard) => new() { Tap = heard.Add };
 
-    private static int Count(List<string> heard, string what)
-    {
-        int n = 0;
-        foreach (string l in heard) if (l.Contains(what, StringComparison.OrdinalIgnoreCase)) n++;
-        return n;
-    }
+    /// <summary>Lines in <paramref name="heard"/> holding <paramref name="tag"/>.</summary>
+    private static int Count(List<string> heard, string tag) => GpuGolden.Count(heard, tag);
 
+    /// <summary>Textures lines in <paramref name="heard"/> that say how many MiB the eviction freed.</summary>
     private static int TextureLines(List<string> heard)
     {
         int n = 0;
         foreach (string l in heard)
-            if (l.Contains("texture", StringComparison.OrdinalIgnoreCase) && l.Contains("MiB", StringComparison.Ordinal)) n++;
+            if (l.Contains(VramLadder.TexturesTag, StringComparison.Ordinal) && AlloyRenderer.ClauseMiB(l, VramLadder.FreedKey) != null) n++;
         return n;
     }
 
@@ -135,7 +132,7 @@ internal static class VramLadderApprovedExamples
         VramLadder.Period(Past, Budget);
         check.Expect(VramLadder.Draws(512) == 256 && CasterPass.CubeFaceSize * 2 == cube,
                      $"E4: two more periods past 90% halved again: 512 draws at {VramLadder.Draws(512)}, the cubes at {CasterPass.CubeFaceSize}");
-        check.Expect(Count(heard, ShadowLine) == 1, $"E4: cx.log said \"{ShadowLine}\" {Count(heard, ShadowLine)} times, not once");
+        check.Expect(Count(heard, VramLadder.ShadowsTag) == 1, $"E4: cx.log said shadow quality was lowered {Count(heard, VramLadder.ShadowsTag)} times, not once");
     }
 
     // Given use falls under 80% of the budget
@@ -190,7 +187,7 @@ internal static class VramLadderApprovedExamples
         VramLadder.Period(Past, Budget);
         check.Expect(VramLadder.Draws(256) == 256 && !VramLadder.ShadowsLowered && CasterPass.CubeFaceSize == before,
                      $"E8: a 256 cube size draws at {VramLadder.Draws(256)}, the cubes at {CasterPass.CubeFaceSize}");
-        check.Expect(Count(heard, "shadow") == 0, $"E8: cx.log has {Count(heard, "shadow")} shadow lines, not none");
+        check.Expect(Count(heard, VramLadder.ShadowsTag) == 0, $"E8: cx.log has {Count(heard, VramLadder.ShadowsTag)} shadow lines, not none");
     }
 
     // Given the ladder gave way and use sits between 80% and 90%
@@ -222,19 +219,19 @@ internal static class VramLadderApprovedExamples
         VramLadder.Reset(Ear(heard), cube, dyn);
         Climb();
         VramLadder.Period(Past, Budget);
-        int one = Count(heard, ShadowLine);
+        int one = Count(heard, VramLadder.ShadowsTag);
         VramLadder.AreaChanged(Under, Budget, 768);
         check.Expect(!VramLadder.ShadowsLowered, "E15: an area change under 80% did not take the shadows back");
         Climb();
         VramLadder.Period(Past, Budget);
-        int two = Count(heard, ShadowLine);
-        check.Expect(one == 1 && two == 2, $"E15: cx.log said \"{ShadowLine}\" {one} then {two} times, not 1 then 2");
+        int two = Count(heard, VramLadder.ShadowsTag);
+        check.Expect(one == 1 && two == 2, $"E15: cx.log said shadow quality was lowered {one} then {two} times, not 1 then 2");
     }
 
     // Given shadows lowered to fit VRAM
     // When /settings opens
     // Then the shadow.cubesize row still reads its value and says it is lowered to fit VRAM, and cx.cfg is unchanged
-    /// <summary>E14. Oracle: the knob's stored text from before the lowering, and the words "lowered to fit VRAM".</summary>
+    /// <summary>E14. Oracle: the knob's stored text from before the lowering, and the note the ladder declares.</summary>
     private static void PanelSaysLowered(Checker check, int cube, int dyn)
     {
         string stored = Shadows.CubeSize.FormatStored(), shown = Shadows.CubeSize.Format();
@@ -257,7 +254,7 @@ internal static class VramLadderApprovedExamples
         row.Refresh();
         string text = row.Text + " " + string.Join(" ", row.Label) + " " + string.Join(" ", row.Help) + " " + row.HelpText;
         check.Expect(row.Value == shown, $"E14: lowered, the shadow.cubesize row reads \"{row.Value}\", not \"{shown}\"");
-        check.Expect(text.Contains("lowered to fit VRAM", StringComparison.OrdinalIgnoreCase),
+        check.Expect(text.Contains(VramLadder.LoweredNote, StringComparison.Ordinal),
                      $"E14: the shadow.cubesize row does not say it is lowered to fit VRAM: \"{text}\"");
         check.Expect(Shadows.CubeSize.FormatStored() == stored, $"E14: cx.cfg's shadow.cubesize became \"{Shadows.CubeSize.FormatStored()}\", not \"{stored}\"");
     }

@@ -164,7 +164,7 @@ internal static partial class DbSelfCheck
                          && TexRegistry.StateOf(tex[2]) == TexState.Resident && TexRegistry.StateOf(tex[3]) == TexState.Resident,
                          "E4: a texture the area draws was evicted to meet the budget");
             string line = TexRegistry.BudgetLine();
-            check.Expect(line.Contains("texture budget exceeded by 100MiB", StringComparison.Ordinal),
+            check.Expect(AlloyRenderer.ClauseMiB(line, TexRegistry.OverKey) == 100,
                          $"E4: 300MiB the area draws against a 200MiB budget, the frame line does not say exceeded by 100MiB: \"{line}\"");
         }
         finally { EndEviction("cx_rsd4_a", "cx_rsd4_b", "cx_rsd4_c"); }
@@ -217,7 +217,7 @@ internal static partial class DbSelfCheck
             TexBudget.BeginPeriod(new TexBudgetInputs(250, 5169 * EvictMiB, 0));
             TexRegistry.Tick();
             string line = TexRegistry.BudgetLine();
-            check.Expect(line.Contains("2 models evicted", StringComparison.Ordinal) && line.Contains("texture budget 250MiB", StringComparison.Ordinal),
+            check.Expect(AlloyRenderer.ClauseCount(line, TexRegistry.EvictedKey) == 2 && AlloyRenderer.ClauseMiB(line, TexRegistry.BudgetKey) == 250,
                          $"E9: 400MiB against a 250MiB budget evicts two models, and the frame line does not say 2 models evicted and texture budget 250MiB: \"{line}\"");
         }
         finally { EndEviction("cx_rsd9_area_t", "cx_rsd9_m1_t", "cx_rsd9_m2_t", "cx_rsd9_m3_t"); }

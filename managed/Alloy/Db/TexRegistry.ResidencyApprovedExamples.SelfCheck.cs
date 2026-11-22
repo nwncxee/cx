@@ -40,7 +40,9 @@ internal static unsafe partial class TexRegistry
             // E13 Given a device without VK_EXT_memory_budget
             // When the budget is worked out
             // Then it uses the allocator's estimate
-            check.Expect(PeriodMib(-1, 6400, 1000) == 4760, $"E13: VMA's 6400MiB estimate for an 8000MiB heap, 1000MiB not textures: budget {PeriodMib(-1, 6400, 1000)}MiB, not 4760MiB");
+            TexBudget.BeginPeriod(TexBudget.InputsFrom(-1, false, 6400 * ResidencyMiB, 8000 * ResidencyMiB, 1000 * ResidencyMiB));
+            long estimated = BudgetBytes() >> 20;
+            check.Expect(estimated == 4760, $"E13: VMA's 6400MiB estimate for an 8000MiB heap, 1000MiB not textures: budget {estimated}MiB, not 4760MiB");
 
             // E7 Given world and owned textures
             // When the budget is worked out
