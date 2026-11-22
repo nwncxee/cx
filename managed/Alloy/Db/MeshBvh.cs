@@ -80,6 +80,33 @@ public sealed class MeshBvh
     /// <summary>Trees dropped by a model eviction.</summary>
     public static int Evicted { get; private set; }
 
+    /// <summary>Trees built on any thread but the tree worker: the game thread's share of <see cref="Built"/>.</summary>
+    public static int BuiltOnGame => Built;
+    /// <summary>Trees the tree worker built: the rest of <see cref="Built"/>.</summary>
+    public static int BuiltOnWorker => 0;
+
+    /// <summary>True when <paramref name="mesh"/>'s tree is filed, so a pick reads it without building.</summary>
+    public static bool Filed(MeshDef mesh)
+    {
+        lock (_cache) return _cache.ContainsKey(mesh);
+    }
+
+    /// <summary>True while a job for <paramref name="mesh"/> waits in the tree worker's queue.</summary>
+    public static bool Queued(MeshDef mesh) => false;
+
+    /// <summary>Game thread: file the trees the worker has finished, dropping any whose model was evicted meanwhile.</summary>
+    public static void FileFinished() { }
+
+    /// <summary>True when the tree worker has nothing queued and nothing in hand.</summary>
+    public static bool WorkerIdle => true;
+
+    /// <summary>Self-check seam: the tree worker parks on the next job it takes, mid-build, until <see cref="ReleaseWorker"/>.</summary>
+    internal static void HoldWorker() { }
+    /// <inheritdoc cref="HoldWorker"/>
+    internal static void ReleaseWorker() { }
+    /// <summary>The mesh the held worker is parked on, mid-build; null while it is not parked.</summary>
+    internal static MeshDef? ParkedOn => null;
+
     /// <summary>Faces plane-tested since boot -- the one unit the pick report counts, written on every arm
     /// (the BVH's leaves, the untreed linear walk and the MDL's own AABB tree alike).</summary>
     public static long FacesTested;
