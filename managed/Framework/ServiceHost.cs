@@ -59,6 +59,8 @@ public static class ServiceHost
         // nothing is filtered here any more. Alloy was the last Linux-only namespace and it came off
         // with the stand-down lift; its Windows refusal, if any, is EngineLayout.Require inside AlloyGate.
         log.Info($"host: {all.Count} service(s) discovered");
+        log.Info($"host: init order: {string.Join(", ", all.Select(s => s.GetType().Name))}");
+        CheckInitOrder(all, log);
         // Shared engine accessors, before any service can reach for one. AurTex is the only real init-time
         // dependency in this host so far -- four services call it and none of them owns it.
         AurTex.Attach(log);
@@ -100,5 +102,20 @@ public static class ServiceHost
         log.Info($"KnobFile: the debounce runs on {KnobFile.ClockName}");
         log.Info($"TexRegistry: the upload retry runs on {CX.Alloy.Db.TexRegistry.RetryClockName}");
         ExtenderLog.FlushNow();   // boot lines on disk before the host returns: the demo exits right after
+    }
+
+    /// <summary>Each service initializes after the one before it by InitOrder, then by name, and the seam goes first.
+    /// Oracle: the rule checked pair by pair, apart from the sorts that made the list.</summary>
+    private static void CheckInitOrder(List<IExtenderService> all, ExtenderLog log)
+    {
+        var check = new Checker(log);
+        for (int i = 1; i < all.Count; i++)
+        {
+            IExtenderService a = all[i - 1], b = all[i];
+            int byName = Comparer<string>.Default.Compare(a.GetType().Name, b.GetType().Name);
+            check.Expect(a.InitOrder < b.InitOrder || (a.InitOrder == b.InitOrder && byName < 0),
+                $"init order: {b.GetType().Name} ({b.InitOrder}) comes after {a.GetType().Name} ({a.InitOrder})");
+        }
+        check.Expect(all.Count > 0 && all[0] is CX.Alloy.Seam.SeamService, "init order: the seam does not initialize first");
     }
 }
