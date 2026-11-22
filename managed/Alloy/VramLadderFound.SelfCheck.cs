@@ -53,6 +53,12 @@ internal static class VramLadderFound
             VramLadder.Reset(null, 512, 256);
             check.Expect(CasterPass.CubeFaceSize == 512 && CasterPass.CubeDynFaceSize == 256,
                          $"re-armed while lowered, the cubes draw at {CasterPass.CubeFaceSize}/{CasterPass.CubeDynFaceSize}, not 512/256");
+
+            int eased = VramLadder.Eased;
+            VramLadder.Period(Ladder.Band, Ladder.Budget);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.Period(Ladder.Under, Ladder.Budget);
+            check.Expect(VramLadder.Eased - eased == 2, $"a band period, a past one and an under one eased the ladder {VramLadder.Eased - eased} times, not 2");
         }
         finally
         {
