@@ -137,6 +137,10 @@ internal static class VkTextures
     /// <summary>Does <paramref name="gl"/> hold an image?</summary>
     internal static bool Has(uint gl) => _s.ByName.ContainsKey(gl);
 
+    /// <summary>Owned name <paramref name="gl"/>'s image is on the device now, not evicted to make room. Every
+    /// mirrored name is, until eviction exists.</summary>
+    internal static bool Resident(uint gl) => Has(gl);
+
     /// <summary>The bytes <paramref name="gl"/>'s image holds over every level; 0 when it has none.</summary>
     internal static long Bytes(uint gl) => _s.ByName.TryGetValue(gl, out Entry e) ? e.Bytes : 0;
 

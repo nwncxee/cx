@@ -71,6 +71,18 @@ public static unsafe partial class MeshArena
     {
         // never makes the device: a pump at boot runs before anything can name the GPU the device is picked by
         if (!Renderer.OnVulkan || AlloyDevice.VulkanMade is not VkBackend vk) return;
+        PumpVk(vk);
+    }
+
+    /// <summary>A golden's pump onto its own device <paramref name="vk"/>, under the lock as the frame's is.</summary>
+    internal static void VkPumpForCheck(VkBackend vk) { lock (_gate) PumpVk(vk); }
+
+    /// <summary>A golden is done with its device: the arena holds no buffer of it.</summary>
+    internal static void VkForgetForCheck() { lock (_gate) VkForget(); }
+
+    /// <summary><see cref="PumpVk()"/> onto <paramref name="vk"/>.</summary>
+    private static void PumpVk(VkBackend vk)
+    {
         if (_vk.Dev != vk)
         {
             _vk = new VkArenaState { Dev = vk };

@@ -127,6 +127,7 @@ internal static partial class GpuGolden
         CasterGatherVk.GoldenCheck(vk, check, log);
         ContentSolidSelfCheck(vk, check, log);
         ContentTintSelfCheck(vk, check, log);
+        ResidencyApprovedSelfCheck(vk, check, log);
         ContentTintApprovedSelfCheck(vk, check, log);
         ContentSelfIllumSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);

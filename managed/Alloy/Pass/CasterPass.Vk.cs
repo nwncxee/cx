@@ -118,6 +118,29 @@ public sealed unsafe partial class CasterPass
     /// Null until the first bake makes it. The deferred passes bind this where GL binds <c>CascadeTex</c>.</summary>
     internal static ImageId VkCascadeMap => _vk.Cascades;
 
+    /// <summary>A golden's ask for the sun array on its own device <paramref name="vk"/>, through the bake's own
+    /// remake; a new device starts the bake's state over.</summary>
+    internal static ImageId VkSunArrayForCheck(VkBackend vk, int size, int layers)
+    {
+        if (_vk.Dev != vk) _vk = new CasterVkState { Dev = vk };
+        CasterVkState s = _vk;
+        return VkArray(ref s.Cascades, ref s.SunSize, ref s.SunLayers, ImageKind.Tex2DArray, size, layers, "vk sun cascades", copySrc: true);
+    }
+
+    /// <summary>The bake stood down over a refused program or target.</summary>
+    internal static bool BakeStoodDown => _vk.Failed;
+
+    /// <summary>A golden is done with its device: the bake holds nothing of it.</summary>
+    internal static void VkResetForCheck() => _vk = new CasterVkState();
+
+    /// <summary>Point the bake's log at <paramref name="log"/> for a golden; the log it had.</summary>
+    internal static ExtenderLog? VkLogForCheck(ExtenderLog? log)
+    {
+        ExtenderLog? was = _log;
+        _log = log;
+        return was;
+    }
+
     /// <summary>The sun's moving-caster mirror, where <c>/shadow split</c> keeps one.</summary>
     internal static ImageId VkSunDynMap => _vk.SunDyn;
 
