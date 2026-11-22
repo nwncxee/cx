@@ -39,15 +39,15 @@ internal sealed unsafe partial class VkBackend
         _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
         _inSystemRamNow.Clear();
         long sum = 0;
-        foreach (VkImg g in _images.Live()) if (g.Group == null && !g.Window) sum += Spilled(mp, g, g.Desc.Label, g.Alloc, log);
+        foreach (VkImg g in _images.Live()) sum += Spilled(mp, g, g.Desc.Label, g.Alloc, log);
         foreach (AliasGroup g in _alias.Values) sum += Spilled(mp, g, "alias " + g.Name, g.Alloc, log);
         foreach (VkBuf b in _buffers.Live()) if (b.Desc.Memory == MemoryKind.Device) sum += Spilled(mp, b, b.Desc.Label, b.Alloc, log);
         _inSystemRam.IntersectWith(_inSystemRamNow);
         return sum;
     }
 
-    /// <summary>The bytes of <paramref name="a"/> when it sits off the device-local heaps, else 0; warned about when
-    /// <paramref name="owner"/> was not in system RAM at the last walk.</summary>
+    /// <summary>The bytes of <paramref name="a"/> when it sits off the device-local heaps, else 0 (and for no allocation:
+    /// an alias member's or the window's); warned about when <paramref name="owner"/> was not in system RAM at the last walk.</summary>
     private long Spilled(in VkPhysicalDeviceMemoryProperties mp, object owner, string label, VmaAllocation a, ExtenderLog log)
     {
         if (a.IsNull) return 0;

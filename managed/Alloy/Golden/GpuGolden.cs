@@ -82,6 +82,7 @@ internal static partial class GpuGolden
         VramCapApprovedSelfCheck(vk, log);
         VramSelfCheck(vk, check, log);
         SystemRamSelfCheck(check, log);
+        SystemRamFound(check, log);
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
         DestroyedBufferSelfCheck(vk, check, log);
