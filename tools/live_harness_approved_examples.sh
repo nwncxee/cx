@@ -10,6 +10,7 @@ fail=0
 # Then shifted characters keep their shift
 python3 -I "$ROOT/tools/live/keymap_test.py" || fail=1
 
+# shellcheck source=tools/live/harness-lib.sh disable=SC1091 # linted on its own
 . "$ROOT/tools/live/harness-lib.sh"
 expect() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: wanted [$3], got [$2]"; fail=1; fi; }
 
