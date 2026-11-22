@@ -41,9 +41,8 @@ internal static class TexBudget
 
     /// <summary>A period's inputs from the device's figures: <paramref name="vmaBudgetBytes"/> is the allocator's
     /// budget for the device-local heaps (the driver's own figure with <c>VK_EXT_memory_budget</c>, the allocator's
-    /// estimate without, so <paramref name="memoryBudget"/> changes nothing here) and <paramref name="heapSizeBytes"/>
-    /// their size, which stands in only when the allocator gave no budget.</summary>
-    internal static TexBudgetInputs InputsFrom(int texCacheMib, bool memoryBudget, long vmaBudgetBytes, long heapSizeBytes, long otherBytes)
+    /// estimate without) and <paramref name="heapSizeBytes"/> their size, which stands in only when it gave none.</summary>
+    internal static TexBudgetInputs InputsFrom(int texCacheMib, long vmaBudgetBytes, long heapSizeBytes, long otherBytes)
         => new(texCacheMib, vmaBudgetBytes > 0 ? vmaBudgetBytes : heapSizeBytes, otherBytes);
 
     /// <summary>The budget <paramref name="inputs"/> give: <c>alloy.texcache</c> when set, else nine tenths of the

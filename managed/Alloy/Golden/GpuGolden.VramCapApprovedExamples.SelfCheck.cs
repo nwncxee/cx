@@ -10,7 +10,7 @@ internal static partial class GpuGolden
 {
     /// <summary>The VRAM cap's approved examples, each on a device of its own made with <c>alloy.vramcap</c>'s value.
     /// Oracles: the uncapped golden device's own heap size (a second device on the same card), the hand-written
-    /// 3072 MiB, and the budgets the pure sizing functions give for a card of exactly that size.</summary>
+    /// 3072 MiB, and the lightmap pool such a card gives, worked by hand.</summary>
     private static void VramCapApprovedSelfCheck(VkBackend vk, ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.VramCap.SelfCheck");
@@ -32,6 +32,17 @@ internal static partial class GpuGolden
         else check.Skip($"vramcap: the two-heap example needs a card with two device-local heaps; this one has {heaps.Length}");
         log.Info(check.Ok ? "GpuGolden.VramCap.SelfCheck: passed" : "GpuGolden.VramCap.SelfCheck: FAILED");
     }
+
+    /// <summary>One lightmap page by hand, MiB: 4096 x 4096 texels at six bytes over its three planes.</summary>
+    private const int PoolPageMib = 96;
+
+    /// <summary>Free MiB the lightmap pool leaves for what streams in after it: 1024, larger than an eighth of a
+    /// 3072 MiB card.</summary>
+    private const int PoolReserveMib = 1024;
+
+    /// <summary>The pool a 3072 MiB card gives by hand while the knob and free memory leave it room: a quarter of
+    /// the card, in pages.</summary>
+    private const int CappedPoolPages = CapMib / 4 / PoolPageMib;
 
     /// <summary>A device made with <paramref name="capMib"/>, with the lines its creation wrote; the lines are logged
     /// again once the tap is off, so cx.log still holds them.</summary>
@@ -79,9 +90,12 @@ internal static partial class GpuGolden
             // Given alloy.vramcap 3072
             // When the lightmap pool is sized
             // Then it is sized from 3072 MiB
-            int pagesWant = LightmapBake.PoolPages(Lightmap.Vram.V, CapMib, freeMib);
-            check.Expect(sizeMib == CapMib && pages == pagesWant,
-                         $"vramcap E6: the lightmap pool is {pages} pages from a {sizeMib}MiB card, not the {pagesWant} a 3072MiB card gives");
+            if (Lightmap.Vram.V < CapMib / 4 || freeMib < CapMib / 4 + PoolReserveMib)
+                check.Skip($"vramcap E6: the pool is a quarter of the card only with lightmap.vram at {CapMib / 4}MiB or more and "
+                           + $"{CapMib / 4 + PoolReserveMib}MiB free; here lightmap.vram is {Lightmap.Vram.V}MiB and {freeMib}MiB is free");
+            else
+                check.Expect(sizeMib == CapMib && pages == CappedPoolPages,
+                             $"vramcap E6: the lightmap pool is {pages} pages from a {sizeMib}MiB card, not the {CappedPoolPages} a 3072MiB card gives");
         }
         finally { capped.Dispose(); }
     }

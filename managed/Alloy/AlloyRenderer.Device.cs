@@ -42,7 +42,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         vk.DeviceLocalBytes(out _, out long budget, out long size, out long held);
         long other = Math.Max(0, held - TexRegistry.HeldBytes - OwnedTextures.CacheBytes);
-        TexBudget.BeginPeriod(TexBudget.InputsFrom(Renderer.TexCache.Boot, vk.MemoryBudget, budget, size, other));
+        TexBudget.BeginPeriod(TexBudget.InputsFrom(Renderer.TexCache.Boot, budget, size, other));
     }
 
     private static void SampleVram(VkBackend vk, ExtenderLog? log)
