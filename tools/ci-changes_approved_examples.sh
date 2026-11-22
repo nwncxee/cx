@@ -8,6 +8,9 @@ row() { # <path> <build> <windows>
   want="build=$2 windows=$3 "
   [ "$got" = "$want" ] || { echo "!! ci-changes $1: got '$got', want '$want'" >&2; fail=1; }
 }
+# Given a pull request that changes a path both builds read
+# When tools/ci-changes.sh maps its changed paths
+# Then it starts the Linux build and the Windows build
 row managed/Alloy/AlloyRenderer.cs true true
 row native/bootstrap.c true true
 row third_party/funchook/LICENSE true true
@@ -19,6 +22,9 @@ row packaging/README-win.txt true true
 row LICENSE true true
 row .github/workflows/ci.yml true true
 row tools/ci-changes.sh true true
+# Given a pull request that changes a path only the Linux build reads
+# When tools/ci-changes.sh maps its changed paths
+# Then it starts the Linux build and not the Windows build
 row build.sh true false
 row run-demo.sh true false
 row tools/live/run-live.sh true false
@@ -27,6 +33,9 @@ row tools/release/sign.sh true false
 row tools/gates/comments.sh true false
 row packaging/cx-launch true false
 row docs/spec/unified-settings.md true false
+# Given a pull request that changes a path no build reads
+# When tools/ci-changes.sh maps its changed paths
+# Then it starts neither build
 row docs/adr/0031-coding-standards.md false false
 row README.md false false
 row media/shot.webp false false
