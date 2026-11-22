@@ -21,6 +21,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$since" ] || since=$(git merge-base HEAD origin/main) || exit 2
+since=$(git rev-parse --verify --quiet --end-of-options "$since^{commit}") || { echo "!! --since names no commit" >&2; exit 2; }
 mapfile -t files < <(sed -n 's/.*Include="\([^"]*\)".*/managed\/\1/p' managed/Core/core.files.props)
 mapfile -t spans < <(python3 -I - "$since" "${files[@]}" <<'PY'
 import re, subprocess, sys

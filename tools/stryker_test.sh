@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tools/stryker_summary.py reads a Stryker report: a mutant no test covers is UNTESTED and fails the run, as a
-# survivor does. Oracle: the hand-written report below. Exit 0 PASS, 1 FAIL.
+# survivor does. tools/stryker.sh refuses a --since that is not a commit before git reads it. Oracle: the hand-written
+# report below, and the file an option-shaped --since would make git write. Exit 0 PASS, 1 FAIL.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/cx-stryker-summary.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
@@ -13,5 +14,8 @@ out=$(python3 -I tools/stryker_summary.py "$tmp/blind.json"); e=$?
 grep -qx 'A.cs: 1 killed, 0 survived, 0 timed out, 1 untested' <<<"$out" || fail "no untested count: $out"
 grep -qx 'UNTESTED A.cs:7 Boolean x' <<<"$out" || fail "the NoCoverage mutant is not named UNTESTED: $out"
 python3 -I tools/stryker_summary.py "$tmp/clean.json" >/dev/null || fail "an all-killed report did not exit 0"
-[ $rc = 0 ] && echo ">> stryker summary: PASS" || echo "!! stryker summary: FAILED (above)" >&2
+tools/stryker.sh --since "--output=$tmp/pwn" --output "$tmp/out" >/dev/null 2>&1; e=$?
+[ "$e" = 2 ] || fail "an option-shaped --since exited $e, not 2"
+[ ! -e "$tmp/pwn" ] || fail "an option-shaped --since reached git as an option"
+[ $rc = 0 ] && echo ">> stryker: PASS" || echo "!! stryker: FAILED (above)" >&2
 exit $rc
