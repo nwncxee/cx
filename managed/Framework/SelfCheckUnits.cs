@@ -34,8 +34,8 @@ public static partial class SelfCheckUnits
 
     /// <summary>Every method marked <see cref="SelfCheckSuiteAttribute"/> for <paramref name="phase"/>, by name, since
     /// <c>GetTypes()</c> order is unstable.</summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Assembly is rooted; nothing trimmed.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Assembly is rooted; every method kept.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "cx_managed.csproj roots this assembly (TrimmerRootAssembly), so no type is trimmed.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "cx_managed.csproj roots this assembly (TrimmerRootAssembly), so no method is trimmed.")]
     public static List<Suite> Discover(SuitePhase phase) =>
         Assembly.GetExecutingAssembly().GetTypes()
             .SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))

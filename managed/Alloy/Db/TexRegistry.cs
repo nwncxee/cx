@@ -73,24 +73,13 @@ internal static unsafe partial class TexRegistry
     private const long RetryMs = 1000;
 
     /// <summary>The clock a failed upload's retry waits on: the system's, or a self-check's stepped one.</summary>
-    private static TexClockState _clk = new(Clock.System);
-
-    /// <summary>The retry's clock, replaced whole when a self-check steps its own.</summary>
-    private sealed class TexClockState(Clock clock)
-    {
-        public readonly Clock Clock = clock;
-    }
+    private static readonly ClockSlot _clk = new();
 
     /// <summary>What cx.log calls the clock the upload retry runs on.</summary>
-    internal static string RetryClockName => _clk.Clock.Name;
+    internal static string RetryClockName => _clk.Name;
 
     /// <summary>Runs the retry on <paramref name="clock"/> and returns the clock it ran on.</summary>
-    private static Clock UseRetryClock(Clock clock)
-    {
-        Clock was = _clk.Clock;
-        _clk = new TexClockState(clock);
-        return was;
-    }
+    private static Clock UseRetryClock(Clock clock) => _clk.Use(clock);
     private static readonly TexKind[] _kind = new TexKind[MaxSlots];
     /// <summary>The kind the slot was asked for. <see cref="_kind"/> is what the resource tables resolved it to,
     /// and a reset resolves again from this.</summary>

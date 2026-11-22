@@ -104,7 +104,8 @@ public sealed class ExtenderLog
     {
         long want = Interlocked.Read(ref _queued);
         _wake.Set();
-        for (int i = 0; i < budgetMs && Interlocked.Read(ref _written) < want; i++)
+        long end = Environment.TickCount64 + budgetMs;
+        while (Interlocked.Read(ref _written) < want && Environment.TickCount64 < end)
             BlockingWait.Sleep(1, "self-checks only, never a frame hook");
         return Interlocked.Read(ref _written) >= want;
     }

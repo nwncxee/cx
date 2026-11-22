@@ -19,7 +19,7 @@ public static class KnobFile
     /// <summary>The header. No <c>=</c> in it: <see cref="ConfigFile.ForEachPair"/> would read one as a key.</summary>
     public const string Header = "# cx.cfg -- written by CX; comments are not preserved; edit with the client closed";
 
-    private static KnobClockState _clk = new(Clock.System);
+    private static readonly ClockSlot _clk = new(Write);
     private static readonly BootWriteHold _hold = new();
     private static int _writes;
     private static int _fires;
@@ -45,23 +45,11 @@ public static class KnobFile
     }
 
     /// <summary>What cx.log calls the clock the debounce runs on.</summary>
-    public static string ClockName => _clk.Clock.Name;
+    public static string ClockName => _clk.Name;
 
     /// <summary>Runs the debounce on <paramref name="clock"/> and returns the clock it ran on: a self-check steps its
     /// own and puts the old one back.</summary>
-    internal static Clock UseClock(Clock clock)
-    {
-        Clock was = _clk.Clock;
-        _clk = new KnobClockState(clock);
-        return was;
-    }
-
-    /// <summary>The debounce's clock and its one alarm, replaced together.</summary>
-    private sealed class KnobClockState(Clock clock)
-    {
-        public readonly Clock Clock = clock;
-        public readonly Clock.Alarm Alarm = clock.NewAlarm(Write);
-    }
+    internal static Clock UseClock(Clock clock) => _clk.Use(clock);
 
     /// <summary>A first run has no text to keep: the one arm that outlives the boot hold.</summary>
     public static void ArmFirstRun() => _hold.ArmFirstRun();

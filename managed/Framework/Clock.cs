@@ -103,3 +103,35 @@ public sealed class Clock
         }
     }
 }
+
+/// <summary>The clock one wait runs on, swapped whole when a self-check steps its own. A slot made with a fire action
+/// also holds the wait's one alarm on that clock, made again with each swap.</summary>
+public sealed class ClockSlot(Action? fire = null)
+{
+    private readonly Action? _fire = fire;
+    private Held _held = new(Clock.System, fire);
+
+    /// <summary>The clock the wait reads now.</summary>
+    public Clock Clock => _held.Clock;
+
+    /// <summary>The wait's alarm on <see cref="Clock"/>.</summary>
+    public Clock.Alarm Alarm => _held.Alarm ?? throw new InvalidOperationException("this clock slot has no alarm");
+
+    /// <summary>What cx.log calls the clock the wait runs on.</summary>
+    public string Name => _held.Clock.Name;
+
+    /// <summary>Runs the wait on <paramref name="clock"/> and returns the clock it ran on.</summary>
+    public Clock Use(Clock clock)
+    {
+        Clock was = _held.Clock;
+        _held = new Held(clock, _fire);
+        return was;
+    }
+
+    /// <summary>A clock and its alarm, replaced together so a reader never sees one without the other.</summary>
+    private sealed class Held(Clock clock, Action? fire)
+    {
+        public readonly Clock Clock = clock;
+        public readonly Clock.Alarm? Alarm = fire == null ? null : clock.NewAlarm(fire);
+    }
+}
