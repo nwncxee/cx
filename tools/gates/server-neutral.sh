@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX is engine-generic: its code names no one server or its content (a measurement says "a persistent-world
 # area", a contract says "the server end"). Product.cs is exempt: it holds where the project is hosted.
 cd "$(dirname "$0")/../.."

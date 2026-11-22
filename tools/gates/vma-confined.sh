@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* tools/analyzers/*
 # The device is the backend's, so Vulkan and VMA entry points live under managed/Graphics/ and VMA's virtual
 # blocks keep books in a named set of files. The RULE is CX0005 (tools/analyzers/VulkanDevice.cs), which the
 # compiler checks: it knows an entry point from an enum member and a virtual block from an allocator, which a

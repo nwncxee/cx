@@ -7,8 +7,8 @@ cd "$(dirname "$0")/../.."
 . tools/ffx/stamp.sh
 # shellcheck disable=SC1091 # tools/ffx/cxxflags.sh only sets F and FFX_CXXFLAGS, read below
 . tools/ffx/cxxflags.sh
-key=$(inputs_hash native/ffx/cxfsr.cpp native/ffx/compat.h tools/ffx/sources.txt tools/ffx/cxxflags.sh \
-  tools/ffx/build-lib.sh build/ffx/shaders/.stamp)
+key=$( { inputs_hash native/ffx/cxfsr.cpp native/ffx/compat.h tools/ffx/sources.txt tools/ffx/cxxflags.sh \
+  tools/ffx/build-lib.sh tools/ffx/stamp.sh build/ffx/shaders/.stamp; c++ --version | head -1; } | sha256sum | cut -d' ' -f1)
 [ -f build/libcxfsr.a ] && ! stale build/libcxfsr.a.key "$key" && exit 0
 echo ">> building FSR 3.1 (libcxfsr.a)..."
 mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-503: a knob's declared effect matches how its readers read it -- Restart readers take Boot, Live readers
 # take V. No baseline on the rules: the tree is clean, so any hit is new. A bare read of a field several
 # classes declare names no one declaration, and such a read can hide a Restart knob read through V, so the

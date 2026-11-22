@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-196: a .cs file under managed/ past 1,500 lines is split by responsibility -- partials or sibling
 # classes, one job each, the way AlloyRenderer's are. Generated files (*.g.cs) and SymbolMap.cs (a flat
 # symbol table that grows with every hook, not a responsibility to split) are exempt. Ratchet:

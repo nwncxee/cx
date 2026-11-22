@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-316: a non-opaque uniform belongs in a std140 block on a UboSlots point, not in a loose glUniform call --
 # Vulkan refuses the GLSL, and the call traffic is per term per program switch. Alloy writes the Vulkan block
 # itself, so every site left is CX's own text rig drawn on the engine's renderer. Counts the

@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../.."
 PY=$1; GLSLANG=$2
 "$PY" tools/deps.py ffx-sdk build/deps
 "$PY" tools/deps.py vulkan-headers build/deps
-patched=$(inputs_hash native/ffx/sdk-1.1.4.patch build/deps/.ffx-sdk.sha256)
+patched=$(inputs_hash native/ffx/sdk-1.1.4.patch build/deps/.ffx-sdk.sha256 tools/ffx/prepare.sh tools/ffx/stamp.sh)
 if stale build/ffx/sdk/.patched "$patched"; then
   rm -rf build/ffx/sdk && mkdir -p build/ffx
   cp -r build/deps/FidelityFX-SDK-1.1.4/sdk build/ffx/sdk

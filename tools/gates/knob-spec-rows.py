@@ -53,7 +53,10 @@ def balanced(text, start, open_c='(', close_c=')'):
             if i < 0:
                 return text[start + 1:], n
         elif text.startswith('/*', i):
-            i = text.find('*/', i) + 1
+            i = text.find('*/', i)
+            if i < 0:
+                return text[start + 1:], n
+            i += 1
         elif c == open_c:
             depth += 1
         elif c == close_c:

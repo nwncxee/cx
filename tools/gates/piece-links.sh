@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # The owned-piece list is keyed by record INDEX, so a second link of one index rings it and every walk over it
 # then runs forever on the game thread. One file owns the three columns: SceneDb.Pieces.cs links, unlinks and
 # walks them with a cap, a ring check and one owner per piece. A raw read or write anywhere else is a walk

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* docs/* check-shaders.py tools/gates/*
 # CX-195/CX-198: a name this codebase retired may not survive in managed/, docs/ or check-shaders.py, which mirrors managed/'s shader build. The list and the format
 # are tools/gates/retired-terms.txt; retiring a stage, mode or knob adds its name there in the same change.
 # One git grep over every term finds the candidate lines (PCRE when git has it, the same lines and faster);

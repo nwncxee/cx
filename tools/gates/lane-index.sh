@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-403: `a[i * N + k]` is a record flattened into lanes -- every reader has to know the stride and which lane
 # is which, and a wrong k stays inside the array, so nothing catches it. A record type with named fields and an
 # array of it says the layout once, and MemoryMarshal.Cast reinterprets a byte buffer from outside. Counts the

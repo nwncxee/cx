@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-200: a self-check assertion must be able to fail. Refuses, inside a *SelfCheck* file or a SelfCheck
 # method, an Expect whose condition is a compile-time constant, one comparing a const to its own kind of
 # literal (over == != < > <= >=, the const named bare or as Type.CONST), one whose two operands are the

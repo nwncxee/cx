@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # An SSBO binding point past the driver's budget fails to compile and costs the whole program (Intel's Windows GL has
 # 16 points, which left the whole GUI undrawn). The budget and every slot live in managed/Alloy/Core/SsboSlots.cs, read
 # here by that file name. Refused: an std430 or scalar STORAGE block's binding literal at or past the budget (the

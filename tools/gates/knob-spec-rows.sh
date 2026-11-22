@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* docs/spec/*
 # CX-484: every declared knob has its row in docs/spec/unified-settings.md, and every key the spec rows is
 # declared. No baseline: the tree is clean, so any hit is new. `python3 tools/gates/knob-spec-rows.py -v`
 # prints the whole census, including the factory calls no registered group claims.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* tools/analyzers/*
 # GL's depth (casters, shadow cascades, the GUI) survives in a named set of files. The RULE is CX0006
 # (tools/analyzers/DepthConvention.cs), which the compiler checks; this gate refuses a name in that list that no file in
 # the tree answers to, so a deleted or renamed file leaves no standing permission behind it. The list is read out

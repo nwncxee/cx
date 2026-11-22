@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* tools/analyzers/*
 # A cache file is read and written through CacheFile, which checks its header and writes through a temporary name. The
 # RULE is CX0009 (tools/analyzers/CacheIo.cs), which the compiler checks: it can tell File.ReadAllBytes from a
 # FileStream opened to read. This gate does the one thing the compiler cannot -- refuse a name in that list that no

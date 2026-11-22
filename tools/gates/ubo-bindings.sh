@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-316: every non-opaque uniform lives in a std140 or scalar block on an explicit binding point, and the points live in
 # managed/Alloy/Core/UboSlots.cs, read here by that file name. A point past the driver's budget fails to compile
 # and costs the whole program; two blocks on one point are no error at all -- the reader gets the other block.

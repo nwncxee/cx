@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* tools/analyzers/*
 # One reader of GLSL sampler and image declarations (VkGlsl.Opaques), and a named set of files that REWRITE one.
 # The RULE is CX0008 (tools/analyzers/SamplerRegex.cs), which the compiler checks: it can tell a regex pattern
 # argument from any other string, which a grep cannot. This gate does the one thing the compiler cannot -- refuse

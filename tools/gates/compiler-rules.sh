@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/* tools/analyzers/* *.csproj *.props *.targets *.editorconfig *.globalconfig
 # ADR 0031: a compiler rule stays on. CX0001 is never switched off; RS0030 is disabled only by the helper its ban
 # names, under managed/Framework/, with the reason on the pragma line; no project, props or editorconfig lowers either rule,
 # and every CX rule an analyzer declares has its error line in managed/.editorconfig.

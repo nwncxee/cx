@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: tools/* tools/gates/*
 # An approved-examples script carries its examples' Given / When / Then lines, which the approved-test lock guards;
 # one with none is a regression test and is named *_regression (CX-633, E10). Scope: every tracked or new
 # *_approved_examples*.sh under tools/, the files tools/approved-examples.sh and the by-hand runs take.

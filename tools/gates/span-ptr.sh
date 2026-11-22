@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-284: `new Span<T>(p, n)` checks nothing -- the caller supplies the length, and `.Slice(i * size, size)` on
 # the result is the pointer-plus-offset ADR 0031 refuses, one step removed. Two arguments is always the pointer
 # constructor. A view builds its span from its count row, a NativeBuffer<T> from its allocation, and only

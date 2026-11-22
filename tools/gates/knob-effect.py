@@ -50,7 +50,10 @@ def balanced_end(text, start, open_c='(', close_c=')'):
             i = k + 1
             continue
         if t == '/*':
-            i = text.find('*/', j) + 2
+            k = text.find('*/', j)
+            if k < 0:
+                return n
+            i = k + 2
             continue
         depth += 1 if t == open_c else -1
         if depth == 0:

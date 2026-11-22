@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # A `///` block with two <summary> elements is a doc left behind by a declaration that moved or went away, and
 # the compiler does not warn. Counts the blocks per file under managed/; the ratchet lets a file's count fall only.
 # `python3 tools/gates/doc-stack.py -v` lists each.

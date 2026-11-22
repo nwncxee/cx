@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # An alias lane names memory two render targets SHARE, so it is a member of AliasLanes and never a literal at
 # the call site: equal strings alias, and a typo buys a second allocation in silence instead of failing. The
 # goldens are exempt -- they invent lanes to test the sharing itself. No baseline: the tree is clean, so any
