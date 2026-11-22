@@ -39,13 +39,14 @@ internal sealed unsafe partial class VkBackend
     internal int LiveShaders => _shaders.Count;
 
     /// <summary>What the device-local heaps hold, their budget, their size and what Alloy's own allocations in them
-    /// take, bytes: the driver's figures with VK_EXT_memory_budget, the allocator's estimate without. One walk, so
-    /// the frame line reads every figure of one moment. Any thread that owns the device.</summary>
+    /// take, bytes, as the allocator sees them, so under <c>alloy.vramcap</c> the size and budget are the cap's. One
+    /// walk, so the frame line reads every figure of one moment. Any thread that owns the device.</summary>
     internal void DeviceLocalBytes(out long usage, out long budget, out long size, out long held)
     {
         usage = 0; budget = 0; size = 0; held = 0;
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        VkPhysicalDeviceMemoryProperties* props;
+        Vma.vmaGetMemoryProperties(_vma, &props);
+        ref readonly VkPhysicalDeviceMemoryProperties mp = ref *props;
         VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
         Vma.vmaGetHeapBudgets(_vma, b);
         Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
@@ -78,18 +79,47 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The marker a refusal carries when no heap, device-local or system RAM, has room for the allocation.</summary>
     internal const string NoRoomTag = "[vram] no heap room";
 
-    /// <summary>How many of the device's memory heaps are device-local.</summary>
-    internal int DeviceLocalHeaps
+    /// <summary>Fills <paramref name="limits"/> so the device-local heaps together hold <paramref name="capMib"/> MiB, each
+    /// its share by size, whole MiB, and every other heap unlimited; false, with no limit set, for a cap of 0 or one
+    /// the card does not exceed. Says once in cx.log which it was.</summary>
+    private bool HeapLimits(long capMib, ulong* limits)
     {
-        get
+        if (capMib <= 0) return false;
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        long card = 0;
+        int last = -1;
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) { card += (long)mp.memoryHeaps[i].size; last = i; }
+        long cap = capMib << 20;
+        if (last < 0 || cap >= card)
         {
-            VkPhysicalDeviceMemoryProperties mp;
-            _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-            int n = 0;
-            for (int i = 0; i < mp.memoryHeapCount; i++)
-                if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) n++;
-            return n;
+            _log.Always($"VkBackend: {NoCapTag} -- alloy.vramcap {capMib}MiB is not below the card's {card >> 20}MiB device-local, so nothing is capped");
+            return false;
         }
+        long given = 0;
+        for (int i = 0; i < (int)VK_MAX_MEMORY_HEAPS; i++)
+        {
+            limits[i] = VK_WHOLE_SIZE;
+            if (i >= mp.memoryHeapCount || (mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
+            long share = i == last ? cap - given : (long)((Int128)cap * (long)mp.memoryHeaps[i].size / card) >> 20 << 20;
+            limits[i] = (ulong)share;
+            given += share;
+        }
+        _log.Always($"VkBackend: {CapTag(capMib)} -- alloy.vramcap holds the device-local heaps to {capMib}MiB of the card's {card >> 20}MiB");
+        return true;
+    }
+
+    /// <summary>The size of each device-local heap in bytes, in heap order, as the allocator sees it: under
+    /// <c>alloy.vramcap</c>, each heap's share of the cap.</summary>
+    internal long[] DeviceLocalHeapSizes()
+    {
+        VkPhysicalDeviceMemoryProperties* props;
+        Vma.vmaGetMemoryProperties(_vma, &props);
+        var sizes = new System.Collections.Generic.List<long>();
+        for (int i = 0; i < props->memoryHeapCount; i++)
+            if ((props->memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) sizes.Add((long)props->memoryHeaps[i].size);
+        return sizes.ToArray();
     }
 
     /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers

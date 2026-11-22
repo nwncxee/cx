@@ -24,9 +24,12 @@ internal static partial class GpuGolden
         }
         VramCapBoots(check, log, cap);
         VramCapDefault(check, log, cardSize);
-        VramCapAbove(check, log, cardSize);
-        if (vk.DeviceLocalHeaps >= 2) VramCapTwoHeaps(check, log, cap);
-        else check.Skip($"vramcap: the two-heap example needs a card with two device-local heaps; this one has {vk.DeviceLocalHeaps}");
+        VramCapAbove(check, log, cardSize, (cardSize >> 20) + 1024);
+        if ((cardSize & ((1 << 20) - 1)) == 0) VramCapAbove(check, log, cardSize, cardSize >> 20);
+        else check.Skip($"vramcap: the at-the-card example needs a card of whole MiB; this one has {cardSize} bytes");
+        long[] heaps = vk.DeviceLocalHeapSizes();
+        if (heaps.Length >= 2) VramCapTwoHeaps(check, log, cap, heaps);
+        else check.Skip($"vramcap: the two-heap example needs a card with two device-local heaps; this one has {heaps.Length}");
         log.Info(check.Ok ? "GpuGolden.VramCap.SelfCheck: passed" : "GpuGolden.VramCap.SelfCheck: FAILED");
     }
 
@@ -101,14 +104,13 @@ internal static partial class GpuGolden
         finally { plain.Dispose(); }
     }
 
-    /// <summary>A cap past the card's size caps nothing, and says so once.</summary>
-    private static void VramCapAbove(Checker check, ExtenderLog log, long cardSize)
+    /// <summary>A cap of <paramref name="above"/> MiB, at or past the card's size, caps nothing, and says so once.</summary>
+    private static void VramCapAbove(Checker check, ExtenderLog log, long cardSize, long above)
     {
-        // Given alloy.vramcap above the card's size
+        // Given alloy.vramcap at or above the card's size
         // When the device is created
         // Then no cap is in force and cx.log says so
         var heard = new List<string>();
-        long above = (cardSize >> 20) + 1024;
         VkBackend? dev = CappedDevice(log, above, heard);
         check.Expect(dev != null, $"vramcap E8: the device made with alloy.vramcap {above} was refused (logged above)");
         if (dev == null) return;
@@ -122,8 +124,9 @@ internal static partial class GpuGolden
         finally { dev.Dispose(); }
     }
 
-    /// <summary>Two device-local heaps share the one cap.</summary>
-    private static void VramCapTwoHeaps(Checker check, ExtenderLog log, int cap)
+    /// <summary>Two device-local heaps share the one cap, each by its size on the uncapped card,
+    /// <paramref name="card"/>.</summary>
+    private static void VramCapTwoHeaps(Checker check, ExtenderLog log, int cap, long[] card)
     {
         // Given a card with two device-local heaps and alloy.vramcap 3072
         // When the device is created
@@ -135,8 +138,19 @@ internal static partial class GpuGolden
         try
         {
             dev.DeviceLocalBytes(out _, out _, out long size, out _);
+            long[] shares = dev.DeviceLocalHeapSizes();
             check.Expect(size >> 20 == CapMib && (size & ((1 << 20) - 1)) == 0,
-                         $"vramcap E7: the {dev.DeviceLocalHeaps} device-local heaps together hold {size >> 20}MiB under alloy.vramcap 3072, not 3072MiB");
+                         $"vramcap E7: the {shares.Length} device-local heaps together hold {size >> 20}MiB under alloy.vramcap 3072, not 3072MiB");
+
+            // Found, not approved: no heap is starved for another's sake; each holds its share of the cap by its size
+            long whole = 0;
+            foreach (long h in card) whole += h;
+            for (int i = 0; i < card.Length && i < shares.Length; i++)
+            {
+                long want = (long)((Int128)CapMib * card[i] / whole);
+                check.Expect(Math.Abs((shares[i] >> 20) - want) <= 1,
+                             $"vramcap E7: device-local heap {i}, {card[i] >> 20}MiB of the card's {whole >> 20}MiB, holds {shares[i] >> 20}MiB of the cap, not its {want}MiB share");
+            }
         }
         finally { dev.Dispose(); }
     }

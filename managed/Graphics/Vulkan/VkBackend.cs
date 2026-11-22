@@ -378,7 +378,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             log.Always($"VkBackend: REFUSED in Alloy's context -- {late}");
             return null;
         }
-        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue); }
+        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue, capMib); }
         catch (InvalidOperationException e)
         {
             log.Always($"VkBackend: REFUSED -- {e.Message}");
@@ -386,7 +386,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
     }
 
-    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue)
+    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue, long capMib)
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
@@ -496,7 +496,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _async = asyncFamily >= 0 ? OpenLane((uint)asyncFamily, "async") : null;
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
-        _vma = CreateAllocator(inst);
+        _vma = CreateAllocator(inst, capMib);
         _stagePool = MakeStagePool();
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
@@ -563,7 +563,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <inheritdoc cref="_memBudget"/>
     public bool MemoryBudget => _memBudget;
 
-    private VmaAllocator CreateAllocator(VkInstance inst)
+    private VmaAllocator CreateAllocator(VkInstance inst, long capMib)
     {
         // VMA resolves the rest of Vulkan itself from the two loaders it is handed
         delegate* unmanaged<void> gipa = vkGetInstanceProcAddr(inst, "vkGetInstanceProcAddr"u8);
@@ -578,6 +578,8 @@ internal sealed unsafe partial class VkBackend : IDevice
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
             flags = _memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None,
         };
+        ulong* limits = stackalloc ulong[(int)VK_MAX_MEMORY_HEAPS];
+        if (HeapLimits(capMib, limits)) ci.pHeapSizeLimit = limits;
         Check(Vma.vmaCreateAllocator(&ci, out VmaAllocator a), "vmaCreateAllocator");
         return a;
     }
