@@ -102,8 +102,16 @@ bash tools/stub-host.sh "$host" native/selfcheck_host.c || exit 2
 home=$out/home
 rm -rf "$home"; mkdir -p "$home"
 log="$home/.local/share/Neverwinter Nights/logs/cx.log"
+# The Vulkan loader the machine's own vulkaninfo runs with, found on its runpath: the dev shell's glibc resolves no
+# soname, and a NixOS loader sits at no fixed path. With it the GPU goldens run; a machine with none SKIPs them.
+vkdir=""
+if vi=$(command -v vulkaninfo) && command -v readelf > /dev/null; then
+  for d in $(readelf -d "$(readlink -f "$vi")" 2> /dev/null | sed -n 's/.*[Rr]unpath: \[\(.*\)\]/\1/p' | tr ':' ' '); do
+    if [ -e "$d/libvulkan.so.1" ]; then vkdir=$d; break; fi
+  done
+fi
 echo ">> booting the self-checks in the JIT host..."
-HOME="$home" XDG_DATA_HOME="$home/.local/share" DOTNET_ROOT="$dotnet_root" LD_LIBRARY_PATH="$native:$bin" \
+HOME="$home" XDG_DATA_HOME="$home/.local/share" DOTNET_ROOT="$dotnet_root" LD_LIBRARY_PATH="$native:$bin${vkdir:+:$vkdir}" \
   "$host" "$fxr" "$bin/cx_managed.runtimeconfig.json" "$bin/cx_managed.dll" > "$out/host.log" 2>&1
 rc=$?
 [ -f "$log" ] || { echo ">> FAIL: the host wrote no cx.log (exit $rc):"; tail -20 "$out/host.log"; exit 1; }

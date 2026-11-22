@@ -114,7 +114,7 @@ public static unsafe partial class VulkanToolchain
     /// <summary>Oracle: Vulkan's own contract -- a loader that initializes reports an instance version, and
     /// a create with no layers and no extensions either succeeds with a live handle or returns one of the
     /// results the specification reserves for a machine with no usable driver. No loader, no ICD and each of
-    /// those results skip rather than fail, so a headless runner and a stale driver both stay green.</summary>
+    /// those results skip. The loader stays loaded: the backend holds its entry points for the session.</summary>
     private static void CheckInstance(Checker check, ExtenderLog log)
     {
         VkResult init = InitLoader();
@@ -123,25 +123,21 @@ public static unsafe partial class VulkanToolchain
             check.Skip($"the Vulkan loader would not initialize ({init})");
             return;
         }
-        try
-        {
-            VkVersion api = vkEnumerateInstanceVersion();
-            check.Expect(api.Major >= 1, $"the loader reports a Vulkan 1.x instance version, not {api}");
+        VkVersion api = vkEnumerateInstanceVersion();
+        check.Expect(api.Major >= 1, $"the loader reports a Vulkan 1.x instance version, not {api}");
 
-            var app = new VkApplicationInfo { apiVersion = VkVersion.Version_1_0 };
-            var create = new VkInstanceCreateInfo { pApplicationInfo = &app };
-            VkResult made = vkCreateInstance(&create, null, out VkInstance instance);
-            if (Array.IndexOf(NoUsableDriver, made) >= 0)
-            {
-                check.Skip($"this machine has a Vulkan loader but no usable driver behind it ({made})");
-                return;
-            }
-            check.Expect(made == VkResult.Success, $"a layerless, extensionless instance is created ({made})");
-            if (made != VkResult.Success) return;
-            check.Expect(instance.IsNotNull, "a created instance comes back as a live handle");
-            new VkInstanceApi(in instance).vkDestroyInstance(null);
-            log.Info($"VulkanToolchain: loader reports Vulkan {api}, instance created and destroyed");
+        var app = new VkApplicationInfo { apiVersion = VkVersion.Version_1_0 };
+        var create = new VkInstanceCreateInfo { pApplicationInfo = &app };
+        VkResult made = vkCreateInstance(&create, null, out VkInstance instance);
+        if (Array.IndexOf(NoUsableDriver, made) >= 0)
+        {
+            check.Skip($"this machine has a Vulkan loader but no usable driver behind it ({made})");
+            return;
         }
-        finally { vkShutdown(); }
+        check.Expect(made == VkResult.Success, $"a layerless, extensionless instance is created ({made})");
+        if (made != VkResult.Success) return;
+        check.Expect(instance.IsNotNull, "a created instance comes back as a live handle");
+        new VkInstanceApi(in instance).vkDestroyInstance(null);
+        log.Info($"VulkanToolchain: loader reports Vulkan {api}, instance created and destroyed");
     }
 }

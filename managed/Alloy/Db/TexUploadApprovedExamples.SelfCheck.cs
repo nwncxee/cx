@@ -23,11 +23,10 @@ internal static unsafe partial class TexRegistry
         var check = new Checker(log, "TexRegistry.UploadApprovedExamples.SelfCheck");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         { check.Skip("in a session: the suite closes the log gate and waits out the retry, which a player's boot does not pay for"); return true; }
-        if (VkTextures.Device(log) != null)
-        { check.Skip("the stub host has a Vulkan device for textures, so no upload here fails for want of one"); return true; }
         ExtenderLog? saved = _log;
         _log ??= log;
         Clock was = UseRetryClock(Clock.Stepped());
+        bool armed = OwnedTextures.ArmForCheck(VkTextures.Device(log) == null && OwnedTextures.Armed);
         try
         {
             Cx569E3(check);
@@ -37,7 +36,8 @@ internal static unsafe partial class TexRegistry
             Cx569E7(check);
             RetryFallsDueOnTime(check);
         }
-        finally { _log = saved; UseRetryClock(was); }
+        finally { _log = saved; UseRetryClock(was); OwnedTextures.ArmForCheck(armed); }
+        check.Expect(OwnedTextures.Armed == armed, "the suite left the owned-texture path armed as it did not find it");
         log.Info(check.Ok ? "TexRegistry.UploadApprovedExamples.SelfCheck: passed" : "TexRegistry.UploadApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }

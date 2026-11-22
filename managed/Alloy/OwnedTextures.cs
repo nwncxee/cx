@@ -53,6 +53,10 @@ internal static unsafe partial class OwnedTextures
     /// discipline entirely on the answer (see <c>Issue.WipeHandles</c>).</summary>
     internal static bool Armed => _armed;
 
+    /// <summary>A self-check's own arming, which it restores with the answer: off stands the device down for
+    /// textures, so a check of the no-device path runs on a machine that has one.</summary>
+    internal static bool ArmForCheck(bool on) { bool was = _armed; _armed = on; return was; }
+
     /// <summary>Engine textures Alloy samples BORROWED, distinct by GL name. Not a refusal any more --
     /// nothing is attempted and declined; these are the names that never came through the upload funnel at
     /// all (see the class remarks for which, and why).</summary>
