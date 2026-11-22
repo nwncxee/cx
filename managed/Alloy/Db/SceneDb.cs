@@ -464,6 +464,9 @@ public static partial class SceneDb
     public static readonly int[] PartNode = new int[MaxParts];
     /// <summary>Parent part index (absolute, into <see cref="Parts"/>), -1 for an object root.</summary>
     public static readonly int[] PartParent = new int[MaxParts];
+    /// <summary>The <see cref="Lights"/> record a tile light part reads. Keyed by part, so the link outlives the
+    /// part being filed again; it holds only while that record's <see cref="LitPart"/> names the part back.</summary>
+    public static readonly int[] PartLit = new int[MaxParts];
     /// <summary>Animated local pose (parent-relative); the rest pose until an animation writes it.</summary>
     public static readonly Vector3[] PartPos = new Vector3[MaxParts];
     public static readonly Quaternion[] PartRot = new Quaternion[MaxParts];

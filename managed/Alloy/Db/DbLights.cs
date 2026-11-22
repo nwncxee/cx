@@ -424,11 +424,45 @@ internal static class DbLights
         SceneDb.Tiles.Free(tileId);
 
         // ...and the same light reached through a part is ONE light, not two.
-        SceneDb.LitPart[lk] = p;
         DbInputs.RegisterTileLight(p, lk);
         Walk(scene, in noArea);
         check.Expect(FrameInputs.LightCount == 1, $"a tile light that also has a part is admitted once ({FrameInputs.LightCount})");
+
+        // ...and still reads its record once the record fold files the part again: reach 6 is the record's,
+        // 12 the node's rest key. First a recycled index (destroyed and created while linked)...
+        DbInputs.PartDestroyed(p);
+        DbInputs.PartCreated(p);
+        Walk(scene, in noArea);
+        check.Expect(FrameInputs.LightCount == 1 && MathF.Abs(FrameInputs.AreaLightPosRange[0].W - 6f) < 1e-3f,
+                     $"a tile light's part filed again still reads its record: one light, reach 6 "
+                   + $"({FrameInputs.LightCount}, {(FrameInputs.LightCount > 0 ? FrameInputs.AreaLightPosRange[0].W : 0f)})");
+        // ...then a part the tiles stream linked while it was a stub, filed once it is live.
+        DbInputs.PartDestroyed(p);
+        SceneDb.Parts.Free(h);
+        DbInputs.RegisterTileLight(p, lk);
+        h = SceneDb.Parts.Alloc();
+        check.Expect(h.Index == p, $"the part table hands the freed index back ({h.Index}, {p})");
+        DbFeed.InitPart(p);
+        DbInputs.PartCreated(p);
+        Walk(scene, in noArea);
+        check.Expect(FrameInputs.LightCount == 1 && MathF.Abs(FrameInputs.AreaLightPosRange[0].W - 6f) < 1e-3f,
+                     $"a tile light's part linked before it was live reads its record: one light, reach 6 "
+                   + $"({FrameInputs.LightCount}, {(FrameInputs.LightCount > 0 ? FrameInputs.AreaLightPosRange[0].W : 0f)})");
+        // ...but an index another object now holds is that object's light, not the tile's...
+        DbId tenant = SceneDb.Objects.Alloc();
+        SceneDb.PartObj[p] = tenant;
+        check.Expect(DbInputs.LitOf(p) == -1, $"a part index another object took does not read the old tile's record ({DbInputs.LitOf(p)})");
+        SceneDb.PartObj[p] = obj;
+        SceneDb.Objects.Free(tenant);
+        // ...nor is a record linked on to another part this one's...
+        int q = p + 1;
+        DbInputs.RegisterTileLight(q, lk);
+        check.Expect(DbInputs.LitOf(p) == -1, $"a record linked to another part is not this part's ({DbInputs.LitOf(p)})");
+        DbInputs.RegisterTileLight(q, -1);
+        DbInputs.RegisterTileLight(p, lk);
+        // ...nor a freed one.
         SceneDb.Lights.Free(lid); SceneDb.Lights.TakeDirty();
+        check.Expect(DbInputs.LitOf(p) == -1, $"a part whose record was freed reads no record ({DbInputs.LitOf(p)})");
         DbInputs.RegisterTileLight(p, -1);
 
         // A NEGATIVE light (the Darkness spell's, colour -1): admitted with its colour signed, as the engine passes it,
