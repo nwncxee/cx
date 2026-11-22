@@ -22,6 +22,7 @@ public sealed class HitTestService : IExtenderService
         // only place it is ever checked. It builds and frees records in the real tables, which is safe HERE
         // and nowhere else -- see HitTestCheck.Run's own precondition.
         HitTestCheck.Run(log);
+        OccludeApprovedExamples.SelfCheck(log);
         HitProbe.Install(log, hooks);
         TooltipProbe.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 35, Period, "HitTest.period", log);

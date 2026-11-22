@@ -60,6 +60,9 @@ public struct HitQuery
     /// <summary>Honour the door fade, the engine's <c>CHitInfo+0x7d</c> (set by <c>Reset</c>): a door whose
     /// fade alpha is at or below <see cref="MinDoorAlpha"/> is not hit-tested at all.</summary>
     public bool DoorAlpha;
+    /// <summary>Report a <c>PartTriMesh</c> triangle hit's face normal, which the engine leaves zero: the occluder
+    /// fade asks for it to tell a wall from a floor. Clear in every query that answers the engine.</summary>
+    public bool FaceNormal;
     /// <summary>Isotropic box expansion for box-only mode -- the engine's <c>g_HitCheckBoxExpansion</c>
     /// global (<c>AurSetHitcheckBoxExpansion</c>), which widens a creature's pick box.</summary>
     public Vector3 BoxExpand;
@@ -81,16 +84,6 @@ public struct HitQuery
         Objects = true, StaticPlaceables = false, WalkMesh = HitTest.WalkMeshDefault, BoxOnly = true, DoorAlpha = true,
         Ground = HitTest.GroundPlane,
     };
-
-    /// <summary>The camera's wall cast: the area's static geometry and static placeables, no object at all --
-    /// <c>UpdateNormalCameraCollision</c> sets <c>CHitInfo+0x00</c>, so no creature, gear, projectile, effect, door
-    /// or dynamic placeable can pull the camera in.</summary>
-    public static HitQuery CameraWall(DbId scene, Vector3 from, Vector3 to)
-    {
-        HitQuery q = Ray(scene, from, to, statics: true);
-        q.Objects = false;
-        return q;
-    }
 
     /// <summary>A geometry cast (footstep, item drop): triangles, no triggers, statics as the caller asks.</summary>
     public static HitQuery Ray(DbId scene, Vector3 from, Vector3 to, bool statics = false) => new()
@@ -675,11 +668,11 @@ public static class HitTest
             // The surface mask is NOT consulted here, and that is the engine's behaviour, not an oversight:
             // only HitCheckAABBnode @0x43da50 tests it, so a plain PartTriMesh's triangles are hit whatever
             // the mask says. A walkmesh part (PartAABB) is the one that filters.
-            f = MeshBvh.For(HitBounds.Geometry(p, nd.Mesh)).Cast(a, ref b, 1f, HitQuery.All, out _);
+            f = MeshBvh.For(HitBounds.Geometry(p, nd.Mesh)).Cast(a, ref b, 1f, HitQuery.All, out Vector3 tn);
             if (f < 0) return false;
             // The triangle arm ClearOutputs and then writes only the two points: no normal (the 7-argument
             // polyhit has none to give), no surface bit, and the face index stays at ClearOutput's -1.
-            nrm = Vector3.Zero;
+            nrm = q.FaceNormal ? tn : Vector3.Zero;
             surf = -1;
             f = -1;
         }

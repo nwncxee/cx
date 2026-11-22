@@ -907,9 +907,9 @@ mode's master is on. Mouse-look is a per-mode toggle, not a group of its own.
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
-| walls.fade | Fade objects that hide you | T | on | U | L | Fade | Placeables between the camera and your character turn see-through. |
+| walls.fade | Fade objects that hide you | T | on | U | L | Fade | Trees, walls and props between the camera and your character turn see-through. Needs Alloy: with it off the row is greyed and says so. |
 | walls.floor | Faded opacity | S | 0–1 step 0.05 · 0.5 | U | L | Fade | How solid a faded object stays. 0 hides it entirely. |
-| walls.radius / margin / armin / armout / armradius | — | S | as declared | C | L | Fade, Spring arm | the ray fan's half-width and the spring arm (which only acts while a sideways or height offset is set) |
+| walls.radius | Fade ray width | S | 0–5 m step 0.1 · 0.5 | C | L | Fade | Half-width of the ray fan that finds occluders. |
 | free.enter | Enter the free camera | B | — | U | — | — | Fly the camera freely: move keys fly, Space/C up and down, Z/X roll, Shift is fast, the wheel sets speed, right-drag looks. Escape returns. Closes this panel. |
 | free.speed | Fly speed | S | 0.1–200 m/s step 0.5 · 8 | U | L | Feel | How fast the move keys fly the camera; Shift is four times this. |
 | free.leash | Range from your character | S | 1–25 m step 1 · 25 | U | L | Feel | The camera stops this far from your character. A server that sets its own camera limit overrides it. |

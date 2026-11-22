@@ -25,7 +25,7 @@ internal static unsafe class HitProbe
 
     /// <summary>Which cast this is; averaging them together makes the measurement useless, because
     /// <c>Scene::HitCheck</c>'s callers include <c>PartEmitter::moveParticle*</c>, <c>ComputeZValue</c> and the
-    /// camera spring arm, and only the pickers are what a CX pick must beat. Bucketed on the record's own input
+    /// camera's own pull-in, and only the pickers are what a CX pick must beat. Bucketed on the record's own input
     /// fields: PICK is box-only (<c>+0x20 != 0</c>, only the pickers set it), GROUND statics-only (<c>+0x00</c>).</summary>
     private enum Kind { Pick, Ground, Ray, Count }
     private static readonly long[] _calls = new long[(int)Kind.Count];

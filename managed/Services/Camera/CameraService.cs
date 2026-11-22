@@ -113,7 +113,6 @@ public sealed unsafe class CameraService : IExtenderService
         _log = log;
         CameraKnobs.SelfCheck(log);
         SelfCheck(log);
-        SpringArm.SelfCheck(log);
         if (!EngineLayout.Require(log, "CameraService", "CAurBehavior", "CAurBehaviorCameraFollow", "CNWCModule",
                                   "CClientExoAppInternal", "CClientOptions", "Camera", "CNWCObject")) return;
         if (!SymbolMap.Require(log, "CameraService", SymbolMap.CameraFollowControl, SymbolMap.AppManager,
@@ -237,19 +236,25 @@ public sealed unsafe class CameraService : IExtenderService
         mod.PredictPitchImpulse = 0f;
     }
 
-    /// <summary>The one writer of <c>CAMERA_FLAG_DISABLE_COLLISION</c>: set while the spring arm or the
+    /// <summary>The one writer of <c>CAMERA_FLAG_DISABLE_COLLISION</c>: set while an offset or the
     /// occlusion fade wants the engine's pull-in off, cleared only if this session set it, never
     /// rewritten when it already holds -- the server's own bits stay untouched.</summary>
     public static void SettleCollision(IntPtr module)
     {
         if (module == IntPtr.Zero) return;
         var mod = new CNWCModule(module);
-        ref int flags = ref mod.CameraFlags;
-        if (_wantNoCollision || AlloyRenderer.OccludeFadeWanted)
+        SettleFlag(ref mod.CameraFlags, _wantNoCollision, AlloyRenderer.OccludeFadeWanted, ref _weSetFlag);
+    }
+
+    /// <summary>One settle of the flag word <paramref name="flags"/>: set while the rig or the fade wants the pull-in
+    /// off, cleared only when <paramref name="weSet"/> says this session set it, untouched when it already holds.</summary>
+    internal static void SettleFlag(ref int flags, bool rigWantsOff, bool fadeWantsOff, ref bool weSet)
+    {
+        if (rigWantsOff || fadeWantsOff)
         {
-            if ((flags & EngineLayout.CameraFlagDisableCollision) == 0) { flags |= EngineLayout.CameraFlagDisableCollision; _weSetFlag = true; }
+            if ((flags & EngineLayout.CameraFlagDisableCollision) == 0) { flags |= EngineLayout.CameraFlagDisableCollision; weSet = true; }
         }
-        else if (_weSetFlag) { flags &= ~EngineLayout.CameraFlagDisableCollision; _weSetFlag = false; }
+        else if (weSet) { flags &= ~EngineLayout.CameraFlagDisableCollision; weSet = false; }
     }
 
     /// <summary>Where the layer reads and writes the camera pose. With Alloy off it is the engine's one
@@ -319,13 +324,13 @@ public sealed unsafe class CameraService : IExtenderService
             // The free camera owns the pose; the frame it lets go is a weld (snap + cut) like any gate's.
             // _fovWritten is kept: Leave() puts the entry angle back, which is the layer's last write or nothing.
             FreeCameraService.Frame(c, g, dt);
-            if (FreeCameraService.Active) { _welded = true; _wantNoCollision = true; _offsetOn = false; SpringArm.Rest(); return; }
+            if (FreeCameraService.Active) { _welded = true; _wantNoCollision = true; _offsetOn = false; return; }
         }
         if (g != Gate.Active)
         {
             // Off is enterable by the free camera: the seed it reads (Rendered) must be the engine's pose, not a stale lag.
             if (g == Gate.Off) { RestoreFov(c); _sYaw = _yaw; _outPitch = _pitch; }
-            _welded = true; _offsetOn = _wantNoCollision = false; SpringArm.Rest(); _yawWatch.Prev = float.NaN; return;
+            _welded = true; _offsetOn = _wantNoCollision = false; _yawWatch.Prev = float.NaN; return;
         }
 
         // Anything rewriting the view angle between our writes shows up here.
@@ -362,16 +367,21 @@ public sealed unsafe class CameraService : IExtenderService
         _outPitch = pitch;
         Quaternion q = Pose(_sYaw, pitch);
         Vector3 pos = _sFocus + _sDist * Forward(q);
-        float offX = m.OffsetX.V, offY = m.OffsetY.V;
-        _offsetOn = offX != 0f || offY != 0f;
+        pos = Rig(pos, q, m.OffsetX.V, m.OffsetY.V, out _offsetOn);
         _wantNoCollision = _offsetOn;
-        if (_offsetOn) pos = SpringArm.Place(focus, pos + offX * Right(q) + offY * Vector3.UnitZ, dt);
-        else SpringArm.Rest();
         c.Place(pos, q);
         _pos = pos;
         // No magic zero (ADR 0025): the slider is written whenever the layer drives the mode.
         float fov = m.Fov.V;
         c.SetViewAngle(fov); _fovWritten = fov;
+    }
+
+    /// <summary>Where the camera goes for the rig at <paramref name="pos"/> with the mode's offsets: the full rig,
+    /// whatever stands in the way. <paramref name="offsetOn"/> is whether either offset is on.</summary>
+    internal static Vector3 Rig(Vector3 pos, Quaternion q, float offX, float offY, out bool offsetOn)
+    {
+        offsetOn = offX != 0f || offY != 0f;
+        return offsetOn ? pos + offX * Right(q) + offY * Vector3.UnitZ : pos;
     }
 
     /// <summary>The mode's master went off, or the mode changed into one whose master is off, with the layer's
@@ -585,8 +595,6 @@ public sealed unsafe class CameraService : IExtenderService
 
     /// <summary>The mode byte the last Control saw (-1 before the first).</summary>
     internal static int Mode => _mode;
-    /// <summary>The spring arm's current fraction of the offset rig, for the <c>/walls</c> status line.</summary>
-    internal static float ArmFraction => SpringArm.S.Arm;
 
     internal static IntPtr Module()
     {
@@ -668,12 +676,20 @@ public sealed unsafe class CameraService : IExtenderService
         if (c < _callsMin) _callsMin = c;
         if (c > _callsMax) _callsMax = c;
         if (++_frames < 600) return;
-        _log?.Info(Inv($"[camera] Control {_callsMin}..{_callsMax} call(s)/present over {_frames} presents; ")
-                 + Inv($"view angle first read {_fovFirst:0.##}, {_fovRewrites} rewrite(s) between ours; gate: {GateNames[(int)_gate]}, ")
-                 + Inv($"mode {_mode}, yaw {_yaw:0.#} pitch {_pitch:0.#} dist {_dist:0.#}, offset {(_offsetOn ? "on" : "off")}; ")
-                 + Inv($"engine pull-ins {_pullIns} (offset off) / {_pullInsOffset} (offset on), ")
-                 + SpringArm.Period() + "; " + _yawWatch.Period());
+        _log?.Info(PeriodLine(_offsetOn));
+    }
+
+    /// <summary>The <c>[camera]</c> period line for cx.log, with the offset <paramref name="offsetOn"/>; the
+    /// period's counts are zeroed.</summary>
+    internal static string PeriodLine(bool offsetOn)
+    {
+        string line = Inv($"[camera] Control {_callsMin}..{_callsMax} call(s)/present over {_frames} presents; ")
+                    + Inv($"view angle first read {_fovFirst:0.##}, {_fovRewrites} rewrite(s) between ours; gate: {GateNames[(int)_gate]}, ")
+                    + Inv($"mode {_mode}, yaw {_yaw:0.#} pitch {_pitch:0.#} dist {_dist:0.#}, offset {(offsetOn ? "on" : "off")}; ")
+                    + Inv($"engine pull-ins {_pullIns} (offset off) / {_pullInsOffset} (offset on); ")
+                    + _yawWatch.Period();
         _frames = 0; _callsMin = int.MaxValue; _callsMax = 0; _pullIns = _pullInsOffset = 0;
+        return line;
     }
 
     // ---- the /knobs note (cold) ----------------------------------------------------------------
@@ -681,13 +697,15 @@ public sealed unsafe class CameraService : IExtenderService
     private static string Inv(FormattableString f) => FormattableString.Invariant(f);
 
     /// <summary>The layer's last solve: pose, gate, the live mode's knobs and the recenter's hold reason.</summary>
-    private static string Report()
+    private static string Report() => Report(_mode, _offsetOn);
+
+    /// <summary>The <c>/knobs</c> note for camera <paramref name="mode"/> with the offset <paramref name="offsetOn"/>.</summary>
+    internal static string Report(int mode, bool offsetOn)
     {
-        CameraModeKnobs? m = _mode is >= 0 and < 3 ? CameraModes.ByMode[_mode] : null;
+        CameraModeKnobs? m = mode is >= 0 and < 3 ? CameraModes.ByMode[mode] : null;
         string knobs = m == null ? "" :
             Inv($"; {m.G.Name}: fov {m.Fov.V:0.#} lag {m.LagPos.V:0.##}/{m.LagRot.V:0.##}/{m.LagZoom.V:0.##} pitchcurve {m.PitchCurve.V:0.##}@{m.PitchRef.V:0.#}")
-          + Inv($" offset {m.OffsetX.V:0.##} {m.OffsetY.V:0.##}")
-          + (_offsetOn ? Inv($" arm {SpringArm.S.Arm:0.00} (margin {Walls.Margin.V:0.##} in {Walls.ArmIn.V:0.#} out {Walls.ArmOut.V:0.#} radius {Walls.ArmRadius.V:0.##})") : "");
+          + Inv($" offset {m.OffsetX.V:0.##} {m.OffsetY.V:0.##}");
         string recenter = m == null ? "" : !m.Recenter.V ? "; recenter off" :
             Inv($"; recenter {HoldNames[(int)_hold]}{(_hold == Hold.Recentering ? Inv($" {_recenterVel:+0;-0} deg/s") : "")} (rate {m.Rate.V:0} deadzone {m.DeadZone.V:0} grace {m.Grace.V:0.#} idle {m.Idle.V:0.#}@{m.IdleRate.V:0})");
         string curve = _gate == Gate.Active && _outPitch != _pitch ? Inv($"->{_outPitch:0.#}") : "";

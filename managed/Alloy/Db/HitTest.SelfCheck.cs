@@ -59,30 +59,12 @@ public static unsafe partial class HitTestCheck
         ok &= Scene(log);
         ok &= MergedHead(log);
         ok &= OneWalkmeshPerCell(log);
-        ok &= CameraWall(log);
         ok &= Bench(log);
         log.Info(ok ? "HitTest.SelfCheck: passed" : "HitTest.SelfCheck: see failures above");
     }
 
     private static bool Fail(ExtenderLog log, string what)
     { log.Info("HitTest.SelfCheck: FAILED -- " + what); return false; }
-
-    /// <summary>The camera's wall cast down each of the fixture's lanes (its records sit on y = 0, each in its own x
-    /// column, at the fixture's literal positions): the static placeable stops it; the creature, the door, the plain
-    /// object and the effect do not, as none of them can pull the engine's camera in.</summary>
-    private static bool CameraWall(ExtenderLog log)
-    {
-        bool ok = true;
-        var world = Fixture.Build();
-        bool Hits(float x, out HitResult r)
-            => HitTest.Cast(HitQuery.CameraWall(world.Scene, new Vector3(x, -5f, 0.5f), new Vector3(x, 5f, 0.5f)), out r);
-        if (!Hits(70f, out HitResult hr) || hr.Obj != world.StaticProp || MathF.Abs(hr.Point.Y + 0.5f) > 1e-3f)
-            ok = Fail(log, $"the camera's wall cast missed the static placeable's face at y=-0.5 (hit {hr.Kind}, y={hr.Point.Y:F3})");
-        foreach ((float x, string what) in new[] { (50f, "creature"), (30f, "door"), (0f, "plain object"), (110f, "effect") })
-            if (Hits(x, out hr)) ok = Fail(log, $"the camera's wall cast stopped on the {what} (y={hr.Point.Y:F3}): only static geometry pulls the camera in");
-        Fixture.Tear();
-        return ok;
-    }
 
     /// <summary>A walkmesh bridge's floor casts, against the engine's BSP rule as the oracle: one walkmesh per
     /// 10 m cell, the last filed (<c>SceneBSPAddPart</c>), tested only inside that cell (<c>HitPartOnBSPNode</c>).
