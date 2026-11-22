@@ -103,16 +103,16 @@ internal static class UboSlots
         // stage whose member was always loose, a stale block body is refused, and the shipped stages pass.
         string def = ShaderSource.Get("cx_deferred_cs.glsl");
         string loose = "#version 460 core\nuniform mat4 uInvVp;\nvoid main() { }";
-        check.Expect(!ShaderContract.BlocksSafe(def, loose), "a cx_deferred_cs override declaring uInvVp loose is refused");
-        check.Expect(ShaderContract.BlocksSafe(ShaderSource.Get("cx_defshadow_cs.glsl"), loose),
+        check.Expect(!RendererContract.BlocksSafe(def, loose), "a cx_deferred_cs override declaring uInvVp loose is refused");
+        check.Expect(RendererContract.BlocksSafe(ShaderSource.Get("cx_defshadow_cs.glsl"), loose),
           "...and the same text passes for cx_defshadow_cs, whose own uInvVp was never a block member");
-        check.Expect(!ShaderContract.BlocksSafe(def, def.Replace("int uTiles;", "int uTileN;", StringComparison.Ordinal)),
+        check.Expect(!RendererContract.BlocksSafe(def, def.Replace("int uTiles;", "int uTileN;", StringComparison.Ordinal)),
           "...and so is a block whose body is not the library's");
         foreach (string stage in new[] { "cx_ssao_f.glsl", "cx_ssaoblur_f.glsl",
                                          "cx_cull_c.glsl", "cx_cullsort_c.glsl", "cx_deferred_cs.glsl" })
-            check.Expect(ShaderContract.BlocksSafe(ShaderSource.Get(stage), ShaderSource.Get(stage)),
+            check.Expect(RendererContract.BlocksSafe(ShaderSource.Get(stage), ShaderSource.Get(stage)),
               $"the shipped {stage} passes the guard");
-        check.Expect(ShaderContract.BlocksSafe(def, "#version 460 core\nvoid main() { }"), "a stage that reads no block is untouched");
+        check.Expect(RendererContract.BlocksSafe(def, "#version 460 core\nvoid main() { }"), "a stage that reads no block is untouched");
         var owner = new Dictionary<uint, string>();
         foreach ((string block, (uint at, string[] _)) in Blocks)
             if (at < Shared && !owner.TryAdd(at, block))

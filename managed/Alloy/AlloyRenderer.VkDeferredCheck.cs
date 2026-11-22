@@ -29,6 +29,7 @@ public sealed unsafe partial class AlloyRenderer
     /// own verdict on each text; <see cref="VkDefContract"/>, a hand-written binding list, against what the
     /// translator gathered; the GLSL's own image-format qualifiers against the formats the pass allocates; and the
     /// compiled module's loose block against the translator's member list, a second artifact.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkDeferredSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkDeferredSelfCheck");

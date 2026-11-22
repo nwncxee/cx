@@ -9,6 +9,7 @@ namespace CX.Rhi;
 /// the check reads back and compares against the same literal, never against the encoder's own output.</summary>
 public static class RhiSelfCheck
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void Run(ExtenderLog log)
     {
         var check = new Checker(log, "Rhi.SelfCheck");

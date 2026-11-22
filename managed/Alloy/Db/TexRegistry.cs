@@ -71,6 +71,15 @@ internal static unsafe partial class TexRegistry
     private static readonly long[] _retryAt = new long[MaxSlots];
     /// <summary>The least time between two tries of a failed upload, in milliseconds.</summary>
     private const long RetryMs = 1000;
+
+    /// <summary>The clock a failed upload's retry waits on: the system's, or a self-check's stepped one.</summary>
+    private static readonly ClockSlot _clk = new();
+
+    /// <summary>What cx.log calls the clock the upload retry runs on.</summary>
+    internal static string RetryClockName => _clk.Name;
+
+    /// <summary>Runs the retry on <paramref name="clock"/> and returns the clock it ran on.</summary>
+    private static Clock UseRetryClock(Clock clock) => _clk.Use(clock);
     private static readonly TexKind[] _kind = new TexKind[MaxSlots];
     /// <summary>The kind the slot was asked for. <see cref="_kind"/> is what the resource tables resolved it to,
     /// and a reset resolves again from this.</summary>
@@ -291,7 +300,7 @@ internal static unsafe partial class TexRegistry
                 // whatever its state says, so re-asking for it has to re-offer it.
                 if ((_name[hit] == 0 || _preview[hit]) && _state[hit] != TexState.Failed && _pend[hit] == PendNone)
                 { _state[hit] = TexState.Loading; offer = true; TableSerial++; }
-                else if (_state[hit] == TexState.Failed && _retryAt[hit] != 0 && Environment.TickCount64 >= _retryAt[hit] && _pend[hit] == PendNone)
+                else if (_state[hit] == TexState.Failed && _retryAt[hit] != 0 && _clk.Clock.NowMs >= _retryAt[hit] && _pend[hit] == PendNone)
                 { _state[hit] = TexState.Loading; _retryAt[hit] = 0; offer = true; TableSerial++; }
                 // CX-188 (review): NOT on the plain cache hit. A hit changes nothing a record reads -- the
                 // name, handle, kind and env bit are all where they were -- and callers acquire every frame

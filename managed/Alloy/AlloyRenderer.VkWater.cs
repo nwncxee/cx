@@ -213,6 +213,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Off-device: the snapshot pair matches the scene targets it is copied from, and the stage reads the
     /// pair with <c>texture()</c>, which is why both samplers filter linearly as GL's copy does. Oracles: the
     /// formats <c>VkEnsure</c> gives the scene targets, written again here, and the embedded GLSL text.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkWaterSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkWaterSelfCheck");

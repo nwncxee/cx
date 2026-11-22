@@ -9,6 +9,7 @@ internal static partial class ShaderCache
     /// reads. Oracle: a hand-written table of leaf names, ages and the verdict each one is owed -- this driver's
     /// own blob kept however old it is, the same GPU under a retired driver identity dropped, another GPU's and a
     /// blob younger than the window left alone.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "ShaderCache.SelfCheck");

@@ -6,6 +6,7 @@ internal static class LogPartsEdges
 {
     private const int TestCap = 100;
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

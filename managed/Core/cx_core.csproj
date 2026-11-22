@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The engine-free core: text and file parsers, config, logs, shader text rules and the command list. It names no
+       engine view and no Vulkan call, so it builds and tests on its own; cx_managed references it, and the NativeAOT
+       publish compiles both into the one shipped image. The files stay where their namespaces put them. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>cx_core</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- The analyzers grant files by their path under managed/, so the sources are named without a "..". -->
+    <CxManaged>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..'))</CxManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" PrivateAssets="all" />
+    <AdditionalFiles Include="../BannedSymbols.txt" />
+    <ProjectReference Include="../../tools/analyzers/cx_analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="cx_managed" />
+    <InternalsVisibleTo Include="cx_core.Tests" />
+  </ItemGroup>
+
+  <Import Project="core.files.props" />
+  <ItemGroup>
+    <Compile Include="@(CxCoreSource->'$(CxManaged)%(Identity)')" />
+  </ItemGroup>
+
+</Project>

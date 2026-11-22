@@ -8,6 +8,7 @@ internal static class LogReportApprovedExamples
     private const string CopyLabel = "Copy my settings for a bug report";
     private const string SaveLabel = "Save my log for a bug report";
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LogReportApprovedExamples.SelfCheck");
@@ -61,7 +62,7 @@ internal static class LogReportApprovedExamples
             string d = Fresh();
             var parts = Rig(d, "one", "two");
             Press();
-            check.Expect(Read(d, LogReport.FileName) == "one\ntwo\n", $"R1 the press saves cx.log as it stands: {Read(d, LogReport.FileName) ?? "no file"}");
+            check.Expect(Read(d, "cx-report.log") == "one\ntwo\n", $"R1 the press saves cx.log as it stands: {Read(d, "cx-report.log") ?? "no file"}");
 
             // Given the player pressed Save my log for a bug report
             // When the game goes on and cx.log gets more lines

@@ -552,4 +552,7 @@ public sealed unsafe partial class AlloyRenderer
         _skinning = on;
         return was;
     }
+
+    /// <summary>A sphere this large is never culled.</summary>
+    internal static bool Uncullable(float radius) => radius >= NeverCull;
 }

@@ -1,0 +1,720 @@
+using System;
+using System.Linq;
+using CX.Framework;
+using CX.Graphics;
+using CX.Graphics.Rhi;
+
+namespace CX.Alloy;
+
+using static AlloyRenderer;
+using static ShaderContract;
+
+/// <summary>The shader-contract rules that read the renderer's own constants, the embedded stages or the GLSL lexer,
+/// and the suite that pins them off-device. The pure text rules are <see cref="ShaderContract"/>'s; together they gate
+/// arming, since each desync they cover fails silently as a misrender.</summary>
+internal static class RendererContract
+{
+    /// <summary>A vertex stage whose depth the prepass may re-test: it computes <see cref="ClipExpr"/> and
+    /// declares it invariant. The embedded stages satisfy this by construction (SelfCheck asserts it); a
+    /// content override has to say so in its own text.</summary>
+    public static bool DepthSafe(string vs)
+        => vs.Contains(ClipExpr) && vs.Contains("invariant gl_Position;");
+
+    /// <summary>Does this stage's text declare the per-draw record the CPU is staging? The layout is a
+    /// contract between <see cref="AlloyRenderer.DrawFloats"/> and whatever GLSL actually compiled, and a
+    /// content override is a copy of that GLSL that goes stale the moment the record grows: a short
+    /// declaration reads each draw's matrix and colours out of its NEIGHBOUR's record. Counted, not matched.</summary>
+    public static bool RecordSafe(string src) => ShaderContract.RecordSafe(src, "CxDraw", AlloyRenderer.DrawFloats);
+
+    /// <summary><c>feat.y</c> as a content recipe seeds it: the UNPOSED sentinel <c>CxSkinned</c> reads, which a 0 (the
+    /// lane's own default) would turn into "posed off bone slot 0" on every static part.</summary>
+    private static float ContentUnposedSentinel
+    {
+        get
+        {
+            var param = new ParamRow();
+            Span<float> feat = stackalloc float[4];
+            feat.Clear();
+            feat[0] = (int)ShaderFeature.Content0;
+            Db.MtrParams.Fold(null, ref param, feat);
+            return feat[1];
+        }
+    }
+
+    /// <summary>Does this FRAGMENT stage still declare the samplers the C# side binds units to? An override
+    /// that renamed or dropped one links perfectly and leaves that sampler on unit 0 beside the diffuse: two
+    /// of one type read each other's texture, two of DIFFERENT types are <c>INVALID_OPERATION</c> and every
+    /// lit draw is dropped. Bound samplers only (meaningless under bindless); the names are the CALLER's.</summary>
+    public static bool SlotSafe(string fs, params string[] samplers)
+    {
+        var declared = VkGlsl.Opaques(fs);
+        foreach (string s in samplers)
+            if (!declared.Exists(d => d.Kind == VkBindKind.Sampled && d.Name == s)) return false;
+        return true;
+    }
+
+    /// <summary>The sampler guard against declarations written the ways GLSL allows. Oracle: the five
+    /// hand-written stages below, each a shape a content override may use and a text match does not see.</summary>
+    private static bool SlotSafeSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "RendererContract.SlotSafeSelfCheck");
+        check.Expect(SlotSafe("uniform sampler2DArray uSunShadowRaw;\nvoid main() { }\n", "uSunShadowRaw"),
+          "an array sampler is a declaration");
+        check.Expect(!SlotSafe("/* uniform sampler2D uSrc; */\nvoid main() { }\n", "uSrc"),
+          "a commented-out declaration declares nothing");
+        check.Expect(SlotSafe("uniform  sampler2D  uSrc;\nvoid main() { }\n", "uSrc"),
+          "the whitespace between the words is the author's");
+        check.Expect(SlotSafe("uniform sampler2D uA, uSrc;\nvoid main() { }\n", "uSrc"),
+          "the second declarator on a line is a declaration");
+        check.Expect(!SlotSafe("uniform sampler2D uSrcAtlas;\nvoid main() { }\n", "uSrc"),
+          "a name is not a prefix of another name");
+        check.Expect(!SlotSafe("layout(binding = 0, rgba8) uniform image2D uSrc;\nvoid main() { }\n", "uSrc"),
+          "an image of the sampler's name is the wrong bind kind");
+        return check.Ok;
+    }
+
+    /// <summary>Does a stage that reads the pass terms read them from the <c>CxPass</c> block
+    /// <see cref="AlloyRenderer.BindPass"/> fills? An override still declaring
+    /// <c>uniform vec4 uLocalLight[64];</c> links cleanly and reads zeros -- a world with no local shadows and
+    /// nothing in the log -- and one declaring a stale block reads every later member at the wrong offset.</summary>
+    public static bool PassSafe(string src)
+    {
+        string? got = Std140.Members(src, "CxPass");
+        if (got != null) return got == Std140.Members(ShaderSource.Get("cx_pass.glsl"), "CxPass");
+        // every stage that read the pass terms before the block declared one of these three loose (the cube,
+        // cascade and area libraries); the cluster build's own loose uGrid / uZ are not pass terms
+        return !HasIdent(src, "uLocalLight") && !HasIdent(src, "uSunVp") && !HasIdent(src, "uAreaAmbient");
+    }
+
+    /// <summary>Every Alloy uniform block this text reads is the one the extender fills: it declares the
+    /// library's body, or names no member of it. <paramref name="embedded"/> is the shipped text
+    /// <paramref name="src"/> stands in for, and it says which blocks the stage reads -- <c>uProj</c> and
+    /// <c>uRect</c> are loose uniforms of other stages, which this must not refuse.</summary>
+    public static bool BlocksSafe(string embedded, string src)
+        => PassSafe(src)
+        && BlockSafe(embedded, src, "CxCull", "cx_cullblk.glsl")
+        && BlockSafe(embedded, src, "CxDeferred", "cx_defblk.glsl")
+        && BlockSafe(embedded, src, "CxSsao", "cx_ssaolib.glsl")
+        && BlockSafe(embedded, src, "CxEngine", "cx_envblk.glsl");
+
+    /// <summary>One block of <see cref="BlocksSafe"/>. An override that kept a member as a loose uniform links
+    /// cleanly and reads zeros -- an uncalled cull, a world lit from nowhere, nothing in the log -- so a text
+    /// whose shipped counterpart declares the block is refused unless it declares the same body, and no
+    /// member name of it may appear loose.</summary>
+    private static bool BlockSafe(string embedded, string src, string block, string lib)
+    {
+        string? want = Std140.Members(ShaderSource.Get(lib), block);
+        string? got = Std140.Members(src, block);
+        if (got != null) return got == want;
+        if (want == null || Std140.Members(embedded, block) == null) return true;
+        foreach (string m in Std140.Names(want)) if (HasIdent(src, m)) return false;
+        return true;
+    }
+
+    /// <summary>Every stage head that sets <c>CX_LIGHT_LITE</c> (ADR 0029) -- the forward consumers of the
+    /// point-light walk, vertex and fragment both.</summary>
+    private static readonly string[] LightLiteHeads =
+    {
+        "cx_grass_vhead.glsl", "cx_grass_fhead.glsl", "cx_gblade_vhead.glsl", "cx_gblade_fhead.glsl",
+        "cx_water_fhead.glsl", "cx_part_vhead.glsl", "cx_part_fhead.glsl", "cx_wx_cull_cs.glsl", "cx_wx_sphead.glsl",
+    };
+
+    /// <summary>...and that each of them still sets it. A head that lost the line renders identically and
+    /// silently compiles the baked receiver's whole walk back into a blade of grass.</summary>
+    private static bool LightLiteSet => LightLiteHeads.All(h => ShaderSource.Get(h).Contains("#define CX_LIGHT_LITE 1"));
+
+    /// <summary>The <c>CxPass</c> contract, off-device. <see cref="AlloyRenderer"/>'s <c>Pb*</c> offsets
+    /// against a std140 layout computed from the GLSL declaration itself -- a member moved in the file and not
+    /// in C# stages every term after it into its neighbour, silently -- then every embedded stage through
+    /// <see cref="PassSafe"/>, and the predicate against a stale override, a reordered block and a restyled one.</summary>
+    internal static bool PassCheck(ExtenderLog log)
+    {
+        var bad = new System.Collections.Generic.List<string>();
+        string decl = ShaderSource.Get("cx_pass.glsl");
+        string members = Std140.Members(decl, "CxPass") ?? "";
+        if (!members.StartsWith($"layout(std140,binding={AlloyRenderer.PassBinding})uniformCxPass{{", StringComparison.Ordinal))
+            bad.Add("binding");
+        var pinned = new[] {
+            ("uLocalLight", AlloyRenderer.PbLight), ("uLocalDynPage", AlloyRenderer.PbDynPage), ("uLocalFade", AlloyRenderer.PbFade),
+            ("uSunVp", AlloyRenderer.PbSunVp), ("uSunTexel", AlloyRenderer.PbSunTexel), ("uSunBias", AlloyRenderer.PbSunBias),
+            ("uSunDyn", AlloyRenderer.PbSunDyn), ("uSunRadius", AlloyRenderer.PbSunRadius), ("uLocalSoft", AlloyRenderer.PbLocalSoft),
+            ("uLocalPcss", AlloyRenderer.PbLocalPcss), ("uSunFocus", AlloyRenderer.PbSunFocus), ("uSunCascades", AlloyRenderer.PbSunCascades),
+            ("uAreaAmbient", AlloyRenderer.PbAmbient), ("uLocalFloor", AlloyRenderer.PbLocalFloor), ("uAreaDiffuse", AlloyRenderer.PbDiffuse),
+            ("uProbeMips", AlloyRenderer.PbProbeMips), ("uAreaDir", AlloyRenderer.PbDir), ("uProbeGain", AlloyRenderer.PbProbeGain),
+            ("uLocalPlane", AlloyRenderer.PbLocalPlane), ("uSceneEnv", AlloyRenderer.PbSceneEnv),
+            ("uTile", AlloyRenderer.PbTile), ("uGrid", AlloyRenderer.PbGrid), ("uReach", AlloyRenderer.PbReach),
+            ("uFalloff", AlloyRenderer.PbFalloff), ("uWrap", AlloyRenderer.PbWrap), ("uZ", AlloyRenderer.PbZ),
+            ("uAtten", AlloyRenderer.PbAtten), ("uHot", AlloyRenderer.PbHot), ("uSss", AlloyRenderer.PbSss),
+            ("uWrapN", AlloyRenderer.PbWrapN), ("uDayDim", AlloyRenderer.PbDayDim), ("uRelevance", AlloyRenderer.PbRelevance),
+            ("uBounds", AlloyRenderer.PbBounds), ("uShBudget", AlloyRenderer.PbShBudget),
+            ("uLightFloor", AlloyRenderer.PbLightFloor), ("uFullModel", AlloyRenderer.PbFullModel),
+            ("uSunPenum", AlloyRenderer.PbSunPenum), ("uSearchTaps", AlloyRenderer.PbSearchTaps) };
+        int end = PinnedEnd(members, pinned, bad);
+        if (end > AlloyRenderer.PassBytes || members.Split(';').Length - 1 != pinned.Length) bad.Add($"the block is {end}B / has a member C# does not stage");
+        foreach (string res in typeof(RendererContract).Assembly.GetManifestResourceNames())
+        {
+            if (!res.EndsWith(".glsl", StringComparison.Ordinal)) continue;
+            string src = ShaderSource.Get(res);
+            if (src.Contains("#version") && !PassSafe(src)) bad.Add(res);
+        }
+        string stale = "#version 460 core\nuniform vec4 uLocalLight[64];\nvoid main() { }\n";
+        string restyled = "// restyled\n" + decl.Replace("    vec4 uLocalLight[64];", "vec4   uLocalLight[64];  // moved comment");
+        string swapped = decl.Replace("    vec3 uAreaAmbient;", "    vec3 uAreaXAmbient;").Replace("    vec3 uAreaDiffuse;", "    vec3 uAreaAmbient;");
+        if (PassSafe(stale) || !PassSafe(restyled) || PassSafe(swapped) || !PassSafe("uniform ivec3 uGrid;\nvoid main() { }") || !PassSafe(decl))
+            bad.Add("the predicate itself");
+        if (bad.Count > 0) log.Info("RendererContract.PassCheck: FAILED -- " + string.Join(", ", bad));
+        return bad.Count == 0;
+    }
+
+    /// <summary>The flare pair's own contract. The list is drawn one texture group at a time, the group's first
+    /// element the draw's <c>firstInstance</c>, so a vertex stage that indexes the raw <c>gl_InstanceID</c> draws
+    /// the first group's elements for every group -- silently -- and a fragment stage with no
+    /// <c>uFlare</c>/<c>uTextured</c> samples the material diffuse left on unit 0.</summary>
+    public static bool FlareSafe(string vs, string fs)
+        => vs.Contains("gl_BaseInstance + gl_InstanceID")
+        && fs.Contains("uniform int uTextured;") && SlotSafe(fs, "uFlare");
+
+    /// <summary>Headless check of the one desync that fails SILENTLY: the per-draw SSBO's binding point and
+    /// record stride live twice, as C# constants driving the staging writes and as literal GLSL in
+    /// <see cref="AlloyRenderer.DrawBufDecl"/>. Verified against glslang reflection: model@0 rot@64 amb@80
+    /// dif@96 emi@112 pbr@128 spc@144, array stride 160. False = do not arm; a log line would ship it.</summary>
+    internal static bool SelfCheck(ExtenderLog log)
+    {
+        // #208: run FIRST and unconditionally -- it names the slot that disagreed, which the && chain below
+        // would swallow.
+        bool slots = TextureSlots.Check(log);
+        bool ssbo = SsboSlots.Check(log);
+        bool ubo = UboSlots.Check(log);
+        bool pass = PassCheck(log);
+        bool slotSafe = SlotSafeSelfCheck(log);
+        bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
+        // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
+        bool ok = slots && ssbo && ubo && pass && slotSafe && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
+                  && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
+                  && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
+                  && DrawBufDecl.Contains("vec4 feat")
+                  // the feature ids are a contract between the ShaderFeature enum (staged into d.feat.x) and the
+                  // GLSL that switches on it: drift routes the skin class or a content pair through the wrong arm,
+                  // with nothing in the log
+                  && FeatDecl.Contains($"#define CX_FEAT_SKIN      {(int)ShaderFeature.Skin}\n")
+                  && FeatDecl.Contains($"#define CX_FEAT_CONTENT0  {(int)ShaderFeature.Content0}\n")
+                  // #137: the skinning half. The binding point and the two attribute locations live twice
+                  // (C# consts, literal GLSL) and neither disagreement is visible -- a wrong binding reads an
+                  // empty block and collapses the mesh to the origin, a wrong location reads whatever stream
+                  // the engine left at 8/9. The weight guards are bounds protection on an SSBO index, not a
+                  // micro-optimisation, so their absence is checked as well.
+                  && BoneVs.Contains($"binding = {BindBones})")
+                  && BoneVs.Contains($"layout(location = {LocBoneIdx}) in vec4 aBoneIdx;")
+                  && BoneVs.Contains($"layout(location = {LocBoneW}) in vec4 aBoneWeight;")
+                  && BoneVs.Contains("aBoneWeight.w > 0.0")
+                  && BoneVs.Contains("CxSkinned(d.feat) ? int(d.feat.y) : -1")
+                  && BoneFloats * sizeof(float) == 4096
+                  // ...and both stages take the skinned arm BEFORE the displaced test, which is what keeps
+                  // the literal clip expression below reachable for every part that is still in the prepass.
+                  && OwnedVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * pos;")
+                  && OwnedLitVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * pos;")
+                  // ...which is also the token SkinSafe reads to spot a pre-#137 content override. It has to
+                  // be in the COMPOSED stage, not merely in BoneVs, or the guard passes on text that never
+                  // reached the program. #262: the DEPTH stages carry it too now, and that is the pairing
+                  // that lets the skinmesh class back into the prepass -- a skinned batch whose prepass had
+                  // no bone arm would write a BIND-POSE silhouette and LEQUAL would punch the cloak full of
+                  // holes, so the two must move together or not at all.
+                  && OwnedVs.Contains("CX_FEAT_SKIN") && OwnedLitVs.Contains("CX_FEAT_SKIN")
+                  && DepthVs.Contains("CX_FEAT_SKIN") && DepthKeyVs.Contains("CX_FEAT_SKIN")
+                  // ...and the assigning statement is the SAME LITERAL in all four stages, which is the form
+                  // of `invariant gl_Position` this renderer keeps everywhere else. An equivalent expression
+                  // tree would probably do; "probably" is not what #119 is for.
+                  && DepthVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * pos;")
+                  && DepthKeyVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * pos;")
+                  // The keyhole prepass discards on vWorld, so it must be the SKINNED world position or the
+                  // two passes punch different apertures -- silent LEQUAL culling behind a dissolving cloak.
+                  && DepthKeyVs.Contains("vWorld = (d.model * pos).xyz;")
+                  && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Skin)
+                  // ...and every Alloy vertex stage's rigid arm is the literal clip expression the prepass compiled
+                  && OwnedLitVs.Contains("else " + ClipExpr) && OwnedVs.Contains("else " + ClipExpr)
+                  // CX-303: the content range. A pair keeps its id while posed -- the record's own feature routes the
+                  // batch to its program and resolves its content row -- and the vertex stage still finds the bone
+                  // base, because CxSkinned names both ids and reads the -1 in feat.y as unposed.
+                  && ShaderFeatures.PosedToo((int)ShaderFeature.Content0)
+                  && !ShaderFeatures.PosedToo((int)ShaderFeature.None)
+                  && ShaderFeatures.WithPose((int)ShaderFeature.Content0, posed: true) == (int)ShaderFeature.Content0
+                  && ShaderFeatures.WithPose((int)ShaderFeature.None, posed: true) == (int)ShaderFeature.Skin
+                  && FeatDecl.Contains("return (fx == CX_FEAT_SKIN || fx >= CX_FEAT_CONTENT0) && feat.y >= 0.0;")
+                  && ContentUnposedSentinel == -1f
+                  && ShaderFeatures.IsContent((int)ShaderFeature.Content0)
+                  && ShaderFeatures.IsContent(ShaderFeatures.FeatureCount - 1)
+                  && !ShaderFeatures.IsContent((int)ShaderFeature.Skin)
+                  && !ShaderFeatures.IsContent(ShaderFeatures.FeatureCount)
+                  // ...until its pair proves its depth its own, a content part takes the plain prepass, and its
+                  // coverage is the diffuse alpha the caster samples too
+                  && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Content0)
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.Content0)
+                  // ...a content program skips Alloy's own coverage cut for the stand-in's, and takes the body's alpha
+                  && OwnedLitFsMain.Contains("#ifndef CX_CONTENT_PROGRAM\n    if (CxCoverCut(coverage, d.rot.w)) discard;")
+                  && OwnedLitFsMain.Contains("        coverage = FragmentColor.a;\n")
+                  && ContentStandardFs.Contains("void SetupStandardShaderInputs()")
+                  && ContentStandardFs.Contains("#if ENVIRONMENT_MAP != 1 && NO_TEXTURE != 1")
+                  // ...CX-316: both halves' environment takes the engine-named set out of the CxEngine block and
+                  // names it with macros, which is what lets a stage's own declaration of one be stripped
+                  && Std140.Members(AlloyRenderer.ContentEnvFs, "CxEngine") != null
+                  && Std140.Members(AlloyRenderer.ContentEnvVs, "CxEngine") != null
+                  && AlloyRenderer.ContentEnvFs.Contains("#define moduleYear uModYear")
+                  && !AlloyRenderer.ContentEnvFs.Contains("uniform int moduleYear")
+                  && !AlloyRenderer.ContentEnvVs.Contains("uniform mat4 m_proj")
+                  // ...its depth and caster twins stop right after the body, its post body runs on the composed colour,
+                  // and the lit vertex stage hands a content vertex half its own work to start from
+                  && OwnedLitFsMain.Contains("#ifdef CX_DEPTH_ONLY\n")
+                  // ...the depth twin, not the casters, doubling as the outline-highlight mask under Highlight's name
+                  && OwnedLitFsMain.Contains("#ifndef CX_CAST\n    frag = vec4(uHlColor, 1.0);\n#endif\n    return;")
+                  && OwnedLitFsMain.Contains("outC = CxHostPost(outC);")
+                  && OwnedLitVs.Contains("CxHostVertex(d, id, bb);\n}") && OwnedLitVs.Contains("cxTanW = mat3(d.model) * aT;")
+                  && ContentStandardVs.Contains("TransformMainCoordinates();")
+                  // ...and the map slots must stay BELOW the probe's unit. A samplerCube and a sampler2D
+                  // pointed at one image unit is INVALID_OPERATION: every lit batch is dropped, and the log
+                  // says nothing at all. #123 grew the slots into exactly that collision once.
+                  && PbrUnit0 + MapSlots <= EnvProbe.ProbeUnit
+                  // #146: the AO map is one more slot on that same ladder, and its GLSL bit is a HAND-WRITTEN
+                  // copy of AoSlot/EnvSlot. Drift there is silent twice over: an AO bit that reads as the env
+                  // bit turns every AO material legacy-shiny, and a lost multiply just renders unoccluded --
+                  // which is what shipped content looks like today, so nothing would look wrong.
+                  && OwnedLitFsHead.Contains($"CX_SLOT_AO = {AoBit};")
+                  && OwnedLitFsHead.Contains($"CX_SLOT_ENV = {EnvSlot};")
+                  && OwnedLitFsMain.Contains("vec3 orm = CxMapOrm(slots, uv, tapDx, tapDy, uAoMapOff, occl);")
+                  && OwnedLitFsMain.Contains("occl *= mix(orm.r, 1.0, off);")
+                  && OwnedLitFsMain.Contains("float ambDir = mix(0.15, 1.0, sunRaw);")
+                  && OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;")
+                  && OwnedVs.Contains("uDrawBase + gl_DrawID") && OwnedLitVs.Contains("uDrawBase + gl_DrawID")
+                  // #242: ...and every one of them reaches its record THROUGH the draw-to-slot index. The
+                  // records are persistent and indexed by ownership slot now; a stage that still indexed by
+                  // draw would read a neighbour's record -- the wrong matrix and the wrong textures on every
+                  // part, which is a misrender with nothing in the log. The binding lives twice (this const,
+                  // that literal) for the same reason BindDraw does.
+                  && DrawBufDecl.Contains($"binding = {BindDrawIdx})")
+                  && DrawBufDecl.Contains("int CxSlot(int draw) { return uDrawIdx[draw]; }")
+                  && OwnedVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
+                  && DepthVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
+                  && OwnedLitVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
+                  && DepthKeyVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
+                  && FrameSnapshot.Vs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
+                  // ...and the guard that says the same thing about a stage this file never sees. It must
+                  // refuse the pre-#242 spelling, which is the one an override written yesterday carries.
+                  && SlotIndexSafe(OwnedVs) && SlotIndexSafe(OwnedLitVs) && SlotIndexSafe(FrameSnapshot.Vs)
+                  && SlotIndexSafe(OwnedFs) && SlotIndexSafe(FrameSnapshot.Fs)
+                  && !SlotIndexSafe("CxDraw d = uDraw[uDrawBase + gl_DrawID];")
+                  // #119: the prepass depth is only re-testable by the colour pass while all three stages
+                  // compute the SAME clip expression and declare it invariant. Drift either and lit
+                  // surfaces lose fragments to LEQUAL -- a hole, with nothing in the log.
+                  && OwnedVs.Contains(ClipExpr) && OwnedLitVs.Contains(ClipExpr) && DepthVs.Contains(ClipExpr)
+                  && OwnedVs.Contains("invariant gl_Position;") && OwnedLitVs.Contains("invariant gl_Position;")
+                  && DepthVs.Contains("invariant gl_Position;")
+                  // #124: ...and the keyhole depth stage is a FOURTH copy of the same contract. It writes the
+                  // depth a dissolving batch is tested against, so drift here is the #119 hole again.
+                  && DepthKeyVs.Contains(ClipExpr) && DepthKeyVs.Contains("invariant gl_Position;")
+                  // #102/#132: the lit stage lights in LINEAR and now STAYS there -- the frame's one encode
+                  // is PostChain's resolve. Both halves are silent when they drift: a stage that stopped
+                  // linearising its texel renders washed out, one that re-encoded renders twice-encoded, and
+                  // neither says anything. So assert both, including the absence.
+                  && OwnedLitFsMain.Contains("CxLinear(texel.rgb)")
+                  && !OwnedLitFsMain.Contains("CxRevert")
+                  && !AlloyLights.FragmentLib.Contains("CxRevert")
+                  // #120: the lobe the whole ticket exists to restore, and the one-walk light function it
+                  // rides in. A stage that lost either still compiles and still renders -- flat, exactly as
+                  // it did before.
+                  && AlloyLights.FragmentLib.Contains("float CxSpecLobe(")
+                  && AlloyLights.FragmentLib.Contains("float CxSpecBase(")
+                  && OwnedLitFsMain.Contains("sunSpec * CxLoopSpec(CxSpecLobe(N, V, uAreaDir")
+                  // ...fed the softened dot, UNWRAPPED. #143's wrap is diffuse-only; a lobe on the wrapped dot
+                  // lights the side of a glossy surface the sun cannot reach, and only at uWrapN > 0.
+                  && OwnedLitFsMain.Contains("vec3 sun = CxSunLight(N, sunVis, sunFade, sunSpec);")
+                  && AlloyLights.FragmentLib.Contains("spec = uAreaDiffuse * (CxWrap(ndl, 0.0) * vis * fade);")
+                  // ...and the base modifier is applied exactly once per lobe: ADR 0026 moved it INTO
+                  // CxLoopSpec (distributed over the sum, the same product), so a second copy outside is
+                  // silent and wrong by exactly itself.
+                  && OwnedLitFsMain.Contains("cxSpecScale = CxSpecScaleOf(uMaterial.x > 0.5 ? F0 : specColor, NoV, rough, cxCoat);")
+                  && MaterialLib.Contains("return s * (CxSpecBase(NoV, rough) * CxCoatT(coat, NoV));")
+                  && !OwnedLitFsMain.Contains("* (specColor * CxSpecBase(")
+                  && AlloyLights.FragmentLib.Contains("vec3 spc = dif * CX_LOOP_SPEC(lobe, N, V, L, spread);")
+                  && MaterialLib.Contains("vec3 s = lobe * cxSpecScale;")
+                  && OwnedLitFsHead.Contains("#define CX_LIT_MATERIAL 1")
+                  && AlloyLights.FragmentLib.Contains("vec3 CxClusteredLight(")
+                  // CX-188 step 5: the walk is bracketed into a slim half for the forward consumers and the
+                  // full one for everything else, the forward opaque lit stage included -- the A/B at
+                  // light.deferred 0 is only an A/B while this program keeps the walk it is compared against.
+                  && AlloyLights.FragmentLib.Contains("#ifdef CX_LIGHT_LITE")
+                  && !OwnedLitFsHead.Contains("CX_LIGHT_LITE") && LightLiteSet
+                  // #143: the wrapped-diffuse helper, and the sun actually going THROUGH it --
+                  // a lit tail that keeps the raw dot is the punctual terminator back with no other sign.
+                  && AlloyLights.FragmentLib.Contains("float CxWrap(float ndl, float w)")
+                  && AlloyLights.FragmentLib.Contains("max(s, uWrapN)")
+                  && OwnedLitFsMain.Contains("CxWrap(dot(N, uAreaDir), uWrapN)")
+                  // ...and every program that walks lights over a G-buffer pixel gates the softened dot as the lit stage
+                  // did: a reader that leaves cxFragNormal false keeps lights past a normal map's terminator the walk dropped
+                  && OwnedLitFsMain.Contains("cxFragNormal = (slots & CX_SLOT_NORMAL) != 0;")
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  && ShaderSource.Get("cx_moverdebt.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  && ShaderSource.Get("cx_defshadow_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  // ...while the ambient hemisphere keeps the RAW dot -- the hemisphere is Alloy's (stock's
+                  // ambient is flat), and wrapping it would move every surface's shade side.
+                  && OwnedLitFsMain.Contains("mix(0.15, 1.0, sunRaw)")
+                  // ...and the fullbright stage must DECODE, unconditionally: #132 made the target linear,
+                  // so a stage that passed its display-space texel through would be wrong by a gamma
+                  // wherever the engine is not drawing beside it.
+                  && OwnedFs.Contains("vec3($SRGB$)") && OwnedFs.Contains("t.rgb * uTint") && !OwnedFs.Contains("uCapture")
+                  // #121: the ambient-specular term, and the capture pairing that keeps the probe linear.
+                  // A stage that lost the sample still renders (flat, as before #121); one that kept the
+                  // sample but lost the capture branch samples the cube it is drawing into -- undefined --
+                  // and stores display-space values a mip filter then darkens. Both are silent.
+                  && OwnedLitFsMain.Contains("CxProbeFetch(uProbe, vWorld, R, sqrt(rough)")
+                  && OwnedLitFsMain.Contains("uCapture != 1 && uProbeMips > 0.0")
+                  && OwnedLitFsMain.Contains("if (CxSkinned(d.feat) || d.feat.w < 0.0) discard;")
+                  && OwnedLitFsMain.Contains("frag = vec4(lit, 1.0 / max(distance(vWorld, uEyePos), 1e-3));")
+                  // ...and CX-51's record: the weight the probe term took is the one Ssr swaps the screen in
+                  // under -- R4 widened it to the stronger of the base weight and the water film's, at the
+                  // roughness the film's own lobe has where it dominates (both collapse to the base dry), less the
+                  // lit legacy env share, which is not the probe and has no screen to swap in
+                  && OwnedLitFsMain.Contains("CxReflOut(N, mix(rough, cxCoatRough, wxFilm), max(reflW * ((1.0 - envMix) * reflShade), reflFilm)")
+                  // #124/#132: the dissolve and the fog, and the order they apply in. Both are LINEAR now --
+                  // #124 welded the engine's keyhole-then-encode-then-fog order and #132 unwelded it, so the
+                  // whole tail is one linear expression and the encode is the resolve's. Swap the two and
+                  // the world still renders, just with fog that dissolves and a border that does not darken;
+                  // nothing says so in the log.
+                  && KeyFogFs.Contains("float CxKeyhole(") && KeyFogFs.Contains("vec3 CxFog(")
+                  // CX-120: the lit stage fogs through the REVEAL form, whose fourth argument is the per-draw
+                  // fog-of-war term in the record's last spare lane. Pinned together: a stage that fogged
+                  // without it would draw every unexplored tile fully lit (vanilla hides them), and a lane
+                  // index that drifted from the C# stride would fog by whatever the neighbouring field held.
+                  && OwnedLitFsMain.Contains("CxFogReveal(lit * kh, vWorld, vDepth, d.ext2.w)")
+                  // ...and the lane is HIDDEN, not reveal: the stage must early-out on <= 0, which is what
+                  // makes an unwritten record (every engine-mode record) fog exactly as it always did.
+                  && KeyFogFs.Contains("if (hidden <= 0.0) return CxFogMix(")
+                  && KeyFogFs.Contains("float CxFogRevealFactor(") && AlloyRenderer.RevealFloat == AlloyRenderer.ExtFloat + 11
+                  // #341: the fog target is direction-dependent, so the WORLD position is an argument and
+                  // not a convenience -- a stage that passed the wrong point fogs toward the sky over
+                  // somewhere else. And the ramp stays the area author's: the factor is still the engine's
+                  // linear lerp between fogParams.y and its reciprocal span, with the height layer as a
+                  // MULTIPLIER on it rather than a second curve. What the ramp is measured ALONG is the one
+                  // thing that changed: radial from the player when uFogOrigin.w says so, else view depth --
+                  // and CullPass measures the same way (its own SelfCheck), or the cut shows.
+                  && FogFs.Contains("float d = uFogOrigin.w > 0.0 ? distance(world, uFogOrigin.xyz) : depth;")
+                  && FogFs.Contains("float f = (d - uFogParams.y) * uFogParams.w;")
+                  && FogFs.Contains("f *= exp(-max(world.z - uFogSky.z, 0.0) * uFogSky.y);")
+                  // ...and the sky and sun pulls are scaled by the fog itself, so a lightly fogged surface
+                  // keeps the colour the area builder set and only a saturated one converges on the sky.
+                  && FogFs.Contains("* smoothstep(-0.35, 0.0, dir.z) * f;")
+                  // #139: ...and the two terms whose loss is silent. A stage that dropped the wrap or the
+                  // soft cube taps just renders harder -- nothing about either fails to compile or shows in
+                  // the log.
+                  && AlloyLights.FragmentLib.Contains("float s = uWrap <= 0.0 ? 0.0 : clamp(uWrap * uFalloff.y")
+                  // #140: the engine's own range-normalised curve. A stage that kept the old absolute
+                  // 1/d^n plateau still renders -- blinding at a metre, black at five -- and says nothing,
+                  // so the shape is asserted rather than trusted to stay put.
+                  && AlloyLights.FragmentLib.Contains("att = uFalloff.x * fade / (at.x + at.y * f2);")
+                  // #674: the per-light body is ONE function the loop and the bake stage both run, the static
+                  // bit decodes off the record's w, and a baked receiver skips a static light there -- a loop
+                  // that lost the skip lights every baked surface twice, brighter and with nothing in the log.
+                  && AlloyLights.FragmentLib.Contains("bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,")
+                  && AlloyLights.FragmentLib.Contains("bool isStatic = CxLightIsStatic(w);") && AlloyLights.FragmentLib.Contains("int slot = CxLightSlot(w);")
+                  // CX-56: the bake-set index rides above the static bit (C# encodes it, GLSL decodes it) and a
+                  // surface's pick names page C's bytes by it -- a skew darkens under a mover by another light's share
+                  && AlloyLights.FragmentLib.Contains("const int CX_LIGHT_SET = 512;") && AlloyLights.LightSetStride == 512f
+                  && LightmapBake.Channels == 4 && LightmapBake.ChartBufDecl.Contains("struct CxChart { vec4 rec; vec4 pick; };")
+                  && LightmapBake.BakeFs.Contains("oC = uBakeChan < 4 ? vec4(equal(ivec4(uBakeChan), ivec4(0, 1, 2, 3)))")
+                  && LightmapBake.EncCs.Contains("c = clamp(sc / max(dot(sa.rgb, CX_LUM), 1e-6), 0.0, 1.0);")
+                  && LightmapBake.EncCs.Contains("const vec3 CX_LUM = vec3(0.2126, 0.7152, 0.0722);")
+                  && LightmapBake.ChartBufDecl.Contains($"layout(binding = {LightmapBake.UnitC}) uniform sampler2DArray uLmC;")
+                  && AlloyLights.FragmentLib.Contains("bool inPages = isStatic && baked > 0.5;")
+                  && AlloyLights.FragmentLib.Contains("if (inPages && !hot && !mirror) continue;")
+                  // the deferred walk takes G1's weights only after it: decoded at the top they sat live across the
+                  // walk and cost the pass 2.6 ms of occupancy, and nothing but the bench would have said so
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains("CxGbufReadWalk(g0, texelFetch(uGb1, p, 0).w, viewDepth,")
+                  && !ShaderSource.Get("cx_deferred_cs.glsl").Contains("CxGbufRead(texelFetch")
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains($"const uint CX_TILE_LIGHTS = {DeferredLights.TileLights}u;")
+                  && AlloyLights.FragmentLib.Contains("CX_LIGHT_STATIC = 256.0;") && AlloyLights.LightStatic == 256f
+                  && LightmapBake.BakeFs.Contains("CxPointLight(uBakeLight, uBakeColor, vWorld, N, c, L, att, f2, ndlRaw, ndl)")
+                  && LightmapBake.BakeFs.Contains("vec3 unsh = CxPointDiffuse(c, att, ndlRaw, ndl);") && LightmapBake.BakeFs.Contains("vec3 lit = unsh * mix(uLocalFloor, 1.0, sh);")
+                  && OwnedLitFsMain.Contains("bool baked = CxLightmap(chart.rec, vChart, lmIrr, lmDir);")
+                  && OwnedLitFsMain.Contains("lm *= (1.0 - min(lmSub.x / max(dot(lm, vec3(0.2126, 0.7152, 0.0722)), 1e-5) + lmSub.y, 1.0)) * uDayDim;")
+                  // the daylight ratio: a loop or baked term that lost it keeps every lamp at night strength at noon
+                  && AlloyLights.FragmentLib.Contains("return acc * uDayDim;")
+                  && OwnedLitFsHead.Contains(LightmapBake.ChartBufDecl) && OwnedLitVs.Contains("vChart = aChart;")
+                  // CX-221: the arena's two packed streams. Their LOCATIONS live twice -- MeshArena's VAO
+                  // binds them, this stage declares them -- and a disagreement pulls whatever the other
+                  // stream left at that slot, with nothing in the log. The zero-word arm is pinned too:
+                  // lose it and a mesh with no tangent pool reads a zero frame and its normal map inverts.
+                  && OwnedLitVs.Contains($"layout(location = {LocTangent}) in vec4 aTangent;")
+                  && OwnedLitVs.Contains($"layout(location = {LocPaint}) in vec4 aPaint;")
+                  && OwnedLitVs.Contains("out vec4 vTan;") && OwnedLitFsHead.Contains("in vec4 vTan;")
+                  && OwnedLitFsMain.Contains("if (vTan.w != 0.0)")
+                  && OwnedLitFsMain.Contains("B = cross(N, T) * vTan.w;")
+                  && LightmapBake.ChartBufDecl.Contains($"binding = {LightmapBake.BindChart})")
+                  // the live receiver widens a mover's static half to the lightmap texel the bake did: one density
+                  && MeshChart.AtlasTexelsPerUnit == 8f && LightmapBake.ChartBufDecl.Contains("1.0 / (8.0 * rec.w)")
+                  // #142: the near-field term, and the guard that makes an unset uHot mean "off". A stage
+                  // that lost it renders every light flat at the gain the BODY wants -- which is the exact
+                  // symptom the term exists to fix, and says nothing.
+                  // CX-188 budget: cxLod is light.fullmodel's weight, 1 at every caller but the walk's faint tail
+                  && AlloyLights.FragmentLib.Contains("att += cxLod * uHot.x * fade * t * t / at.x;")
+                  && AlloyLights.FragmentLib.Contains("max(1.0 - f2 / (uHot.y * uHot.y), 0.0)")
+                  && AlloyLights.FragmentLib.Contains("f2 = dd / rr;")
+                  // ...and the fallback pair, so a program that never gets uAtten falls back instead of
+                  // dividing every light by zero and rendering the world white.
+                  && AlloyLights.FragmentLib.Contains("uAtten.x > 0.0 ? uAtten : vec2(1.0, 1.0)")
+                  && AlloyLights.LocalShadowLib.Contains("if (onMover > 0.5 && m < uLocalSoft.y) return 1.0;")
+                  // ...and every one of them must read "off" from the ZERO a program that never sets the
+                  // uniform leaves behind, or a stale content override (#92) does something wrong rather
+                  // than something old. This is the whole reason none of them rides in uFalloff's spare lane.
+                  && AlloyLights.LocalShadowLib.Contains("if (!soft || uLocalSoft.x <= 0.0 || (uLocalSoft.z > 0.0 && texel * uLocalSoft.x < viewDepth * uLocalSoft.z)) return mix(1.0, v, uLocalFade[slot]);")
+                  // ...and the dissolve has to reach the fragment stage at all: it rides in rot.z, which was
+                  // a dead float, so a stage reading the wrong lane dissolves nothing and says nothing.
+                  && OwnedLitFsMain.Contains("CxKeyhole(d.rot.z, vWorld, vDepth)")
+                  // ...and the FULLBRIGHT stage must have NEITHER. The textured unlit stages the client runs
+                  // (fst/fst_sm/fstc/fsglu) compile FOG 0 and KEYHOLING 0, and the untextured fs/fsc KEYHOLING 0
+                  // (they keep FOG 1, which this stage does not reproduce) -- so an unlit part that fogged or
+                  // dissolved here would mostly be doing to a part something vanilla never does to it. Asserted rather than commented:
+                  // both are one line to add back and neither would look obviously wrong. What it DOES
+                  // carry is the SKY's fog alone, on sky draws (SceneFog.SkyBand > 0): the ramp's horizon band --
+                  // an elevation term, never the distance ramp -- or the volume's whole ray where the pass reads it.
+                  && !OwnedFs.Contains("CxKeyhole") && !OwnedFs.Contains("CxFogFactor") && !OwnedFs.Contains("CxFog(")
+                  && OwnedFs.Contains("if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);")
+                  && OwnedFs.Contains("return CxFogMix(rgb, world, 1.0 - smoothstep(0.0, band, normalize(world - uEyePos).z));")
+                  // ...and the prepass punches the SAME aperture the colour pass will. Both stages call the
+                  // one CxKeyhole out of KeyFogFs, so they cannot drift by a constant -- but a stage that
+                  // lost the call writes depth over fragments the colour pass then discards, and the room
+                  // behind the wall goes dark with nothing in the log.
+                  && DepthKeyFs.Contains("float CxKeyhole(")
+                  && DepthKeyFs.Contains("CxKeyhole(uDraw[vDraw].rot.z, vWorld, vDepth)")
+                  && DepthFeatFs.Contains("CxKeyhole(uDraw[vDraw].rot.z, vWorld, vDepth)")
+                  // #126: the cutout, in both colour stages -- and spelled the engine's way, so a stage that
+                  // kept the uniform but lost the >= 0.0 guard would discard every fragment of the OPAQUE
+                  // set (which passes -1.0) and render an empty world.
+                  // ...the same alpha in the feature prepass, so its depth and the GL_EQUAL colour draw keep the same holes
+                  && OwnedFs.Contains("if (uAlphaCut >= 0.0 && t.a <= uAlphaCut) discard;")
+                  && OwnedLitFsMain.Contains("return uAlphaCut >= 0.0 && coverage <= uAlphaCut")
+                  && OwnedLitFsMain.Contains("if (CxCoverCut(coverage, d.rot.w)) discard;")
+                  && DepthFeatFs.Contains("if (CxDiffuse(uTex, vUV, uLodBias, vDraw).a * mul <= uAlphaCut) discard;")
+                  // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
+                  // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
+                  // engine spends it once: inc_standard.shd:290 multiplies only .rgb through there. A stage
+                  // that loses this line spends it twice and every reflective surface draws as a ghost --
+                  // which is invisible in a screenshot of anything that is not shiny, hence the guard.
+                  && OwnedLitFsMain.Contains("bool alphaIsEnv = (slots & CX_SLOT_ENV) != 0;")
+                  && OwnedLitFsMain.Contains("alphaIsEnv = alphaIsEnv || feat >= CX_FEAT_CONTENT0;")
+                  && OwnedLitFsMain.Contains("float coverage = alphaIsEnv ? 1.0 : texel.a;")
+                  // ...the other half of that one spend, and the reason the coverage arm above is 1.0: the
+                  // channel becomes the reflectivity level, inc_standard.shd:248's own expression. The two
+                  // lines are a pair -- a stage that kept one and lost the other either cuts a reflective
+                  // texel away or draws it flat.
+                  && OwnedLitFsMain.Contains("float envLevel = alphaIsEnv ? 1.0 - texel.a : 0.0;")
+                  // ...and the per-draw alpha reaching the framebuffer, which is the whole of the blended
+                  // class: a stage writing a constant 1.0 there renders every transparent surface solid.
+                  && OwnedFs.Contains("t.a * vAlpha") && OwnedVs.Contains("vAlpha = d.rot.w;")
+                  && OwnedLitFsMain.Contains("coverage * d.rot.w")
+                  // ...and the embedded stages themselves satisfy the override guard, so a wrong guard fails
+                  // here rather than rebuilding every program from the embedded text every session (which
+                  // would look like the override silently not applying).
+                  && CutoutSafe(OwnedVs, OwnedFs)
+                  && CutoutSafe(OwnedLitVs, OwnedLitFsHead + OwnedLitFsMain)
+                  // #132: ...and the same for the colour-space guard, over every stage it polices. A guard
+                  // the embedded text itself trips rebuilds every program from that same text, every
+                  // session -- an infinite "your override is stale" that no override caused.
+                  && LinearSafe(OwnedFs) && LinearSafe(OwnedLitFsHead + OwnedLitFsMain)
+                  // #153: the bindless rewrite must produce a complete swap on the embedded lit stage --
+                  // extension + handle block in, every bound-sampler declaration out -- and must leave
+                  // foreign text (no known decls) untouched rather than half-rewritten.
+                  && BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("CxTexH")
+                  && BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("GL_ARB_bindless_texture")
+                  && !BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uTex;")
+                  && !BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uAoTex;")
+                  && BindlessFs(OwnedVs, "void main() { }") == "void main() { }"
+                  // ...and the same swap on the embedded UNLIT stage, whose vertex half forwards the record
+                  // index for it. Without the varying the rewrite must leave the bound declaration standing:
+                  // that is what tells the issue loop to keep binding the diffuse (VkProg.TexBound).
+                  && BindlessFs(OwnedVs, OwnedFs).Contains("CxTexH")
+                  && !BindlessFs(OwnedVs, OwnedFs).Contains("uniform sampler2D uTex;")
+                  && OwnedVs.Contains("flat out int vDraw;") && OwnedFs.Contains("flat in int vDraw;")
+                  && BindlessFs(OwnedVs, OwnedFs.Replace("flat in int vDraw;", "")).Contains("uniform sampler2D uTex;")
+                  // ...and the pair is read on BOTH sides: a hak vertex override that drops the varying
+                  // leaves the embedded fragment on its bound declaration too (CX-530 review)
+                  && BindlessFs(OwnedVs.Replace("flat out int vDraw;", ""), OwnedFs).Contains("uniform sampler2D uTex;")
+                  && LinearSafe(FrameSnapshot.Fs) && LinearSafe(GrassField.EmbeddedFs)
+                  // #161: the record guard reaches every stage that declares the record, and the embedded
+                  // text passes it, for the same reason as above: a guard its own defaults trip rebuilds
+                  // from them every session.
+                  && RecordSafe(FrameSnapshot.Vs) && RecordSafe(FrameSnapshot.Fs)
+                  // ...and it REFUSES a record that disagrees. A predicate that only ever returns true is
+                  // precisely the silent failure it was written to prevent, and nothing else would notice.
+                  && !RecordSafe("struct CxDraw { mat4 model; vec4 rot; };")
+                  // #392: ...and the pre-#392 record, which counts the same vec4s and differs only by the
+                  // trailing mat4 -- the growth a vec4-only count could not see.
+                  && !RecordSafe("struct CxDraw { mat4 model; vec4 rot; vec4 amb; vec4 dif; vec4 emi; vec4 pbr; vec4 spc; vec4 feat; };")
+                  && RecordSafe("void main() { }")   // a stage that declares no record cannot disagree
+                  // #161: the resolve's inverted colour-space guard, both directions. It is the frame's one
+                  // encode, so it must hold on the embedded text and must catch a stage that decodes first
+                  // (pre-#132) or performs no encode at all -- each of which washes out the whole frame.
+                  && ResolveSafe(PostChain.ResolveFs)
+                  && !ResolveSafe(PostChain.ResolveFs.Replace("CxEncode", "CxLinear"))
+                  && !ResolveSafe(PostChain.ResolveFs.Replace("CxEncode", "CxPassthrough"))
+                  // ...and the bloom chain runs in the same linear space every other Alloy stage writes.
+                  && LinearSafe(PostChain.BloomDownFs) && LinearSafe(PostChain.BloomUpFs)
+                  // ...and the four text-matching guards REFUSE, not just accept. A predicate that only ever
+                  // returns true is the silent failure it was written to prevent, and the embedded text can
+                  // never exercise the refusing direction on its own.
+                  && !LinearSafe("void main() { frag = CxRevert(c); }")
+                  && !LinearSafe("void main() { frag = CxSoftClip(c); }")
+                  && !CutoutSafe(OwnedVs, OwnedFs.Replace("uAlphaCut", "uNothing"))
+                  && !CutoutSafe(OwnedVs.Replace("vAlpha", "vNothing"), OwnedFs)
+                  && ChartSafe(OwnedLitVs, OwnedLitFsHead + OwnedLitFsMain) && !ChartSafe(OwnedLitVs.Replace("vChart", "vNothing"), OwnedLitFsHead)
+                  // SkinSafe's refusing direction is NOT assertable here: it short-circuits on _skinning,
+                  // which Initialize sets AFTER this runs, so the predicate is unconditionally true at
+                  // SelfCheck time. Its guard site is covered instead by the CutoutSafe pair beside it.
+                  // #208: the slot guard, both directions. The embedded lit stage must pass it (a guard its
+                  // own text trips rebuilds from that text every session), and a stage with one sampler
+                  // renamed must fail -- which is the only case it exists for.
+                  && SlotSafe(OwnedLitFsHead, "uTex") && SlotSafe(OwnedLitFsHead, TextureSlots.MapSamplers)
+                  && SlotSafe(OwnedLitFsHead, "uProbe")
+                  && !SlotSafe(OwnedLitFsHead.Replace("uniform sampler2D uAoTex;", "uniform sampler2D uNope;"),
+                               TextureSlots.MapSamplers)
+                  && !SlotSafe(OwnedLitFsHead.Replace("uniform samplerCube uProbe;", ""), "uProbe")
+                  // ...and the same over every other overridable stage that binds a unit, so the embedded
+                  // text of each passes the guard its own override will be held to.
+                  // the flare pair's own guard, and a stage override that predates the element chain failing it
+                  && FlareSafe(ShaderStages.Source(Halos.ShdHaloVs), ShaderStages.Source(Halos.ShdHaloFs))
+                  && !FlareSafe(ShaderStages.Source(Halos.ShdHaloVs).Replace("gl_BaseInstance + gl_InstanceID", "gl_InstanceID"),
+                                ShaderStages.Source(Halos.ShdHaloFs))
+                  && !FlareSafe(ShaderStages.Source(Halos.ShdHaloVs),
+                                ShaderStages.Source(Halos.ShdHaloFs).Replace("uniform sampler2D uFlare;", ""))
+                  && SlotSafe(FrameSnapshot.FsHead, "uTex", "uFbColor", "uFbDepth", "uNoise", "uEnvMap")
+                  && SlotSafe(PostChain.ResolveFs, "uHdr", "uBloom")
+                  && SlotSafe(GrassField.GrassFsHead, "uTex")
+                  && !SlotSafe(PostChain.ResolveFs, "uNotASampler")
+                  && !DepthSafe(OwnedVs.Replace("invariant gl_Position;", ""))
+                  && !DepthSafe(OwnedVs.Replace(ClipExpr, "gl_Position = uVP * (d.model * vec4(aPos, 1.0));"))
+                  // ...and the ownable list is the DRAW list: nothing else renders the world since #264, so
+                  // a bucket missing here is a class that goes dark rather than one that stays vanilla.
+                  && AlloyCensus.OwnableBucket(0) && AlloyCensus.OwnableBucket(1)
+                  && AlloyCensus.OwnableBucket(4) && AlloyCensus.OwnableBucket(7)
+                  && AlloyCensus.OwnableBucket(8)
+                  // #134: the dynamic gob pair joins, and joins TOGETHER -- the engine walks 2 then 3, and
+                  // owning one without the other splits one instance's geometry across two renderers.
+                  && AlloyCensus.OwnableBucket(2) && AlloyCensus.OwnableBucket(3)
+                  // CX-90: 5, the late class, joins. `sample_framebuffer 1` is a draw-ORDER keyword and
+                  // nothing else, so its parts are classified off their material like any other and the
+                  // residue in the bucket is `volumetric`, refused on the material.
+                  // #129: 6 is deliberately NOT asserted here. OwnableBucket evaluates it AS
+                  // FrameSnapshot.Usable, so any check of the two against each other is a tautology -- it would
+                  // read as cover and catch nothing. What actually governs the water draw is _waterArmed
+                  // (Usable && lightingOn && the program), which is structural and not assertable here.
+                  && AlloyCensus.OwnableBucket(AlloyCensus.LateBucket)
+                  // ...and the list still REFUSES: bucket 15 is the beams', drawn by Beams from its own
+                  // capture and never from the part table, so a predicate that said yes to everything would
+                  // be caught here rather than by a doubled draw.
+                  && !AlloyCensus.OwnableBucket(15)
+                  // ...and the keyword precedence behind it, both directions (CX-90).
+                  && !AlloyCensus.RefusedByLateKeywords(AlloyCensus.SampleFbLate, false, false)
+                  && !AlloyCensus.RefusedByLateKeywords(0, false, false)
+                  && !AlloyCensus.RefusedByLateKeywords(AlloyCensus.SampleFbWater, false, true)
+                  && AlloyCensus.RefusedByLateKeywords(0, true, false)
+                  && AlloyCensus.RefusedByLateKeywords(AlloyCensus.SampleFbLate, true, false)
+                  && AlloyCensus.RefusedByLateKeywords(AlloyCensus.SampleFbWater, false, false)
+                  && AlloyCensus.RefusedByLateKeywords(3, false, false)
+                  // #92: a resref past the CResRef limit can never name a resource, so an override
+                  // dropped under it would go silently unread.
+                  && ShdFullbrightVs.Length <= ShaderResource.ResRefBytes
+                  && ShdFullbrightFs.Length <= ShaderResource.ResRefBytes
+                  && ShdLitVs.Length <= ShaderResource.ResRefBytes
+                  && ShdLitFs.Length <= ShaderResource.ResRefBytes
+                  && ShdWaterVs.Length <= ShaderResource.ResRefBytes
+                  && ShdWaterFs.Length <= ShaderResource.ResRefBytes
+                  // CX-93: the targeting shape is ALLOY's, not a spliced stock include -- the library declares
+                  // the shape uniforms itself, computes the weight and lays it on. Asserted here rather than
+                  // discovered as a compile failure, because that failure stands the LIT program down and
+                  // reverts the world to engine drawing. The absence of a splice is part of the contract: a
+                  // $VANILLA region back in this file is the engine dependency this ticket removed.
+                  && !VanillaShader.HasSplice(TargetFs)
+                  && TargetFs.Contains("float CxTargetStrength()")
+                  && TargetFs.Contains("void CxTargetApply(inout vec4")
+                  && TargetFs.Contains("uniform int targetShape;")
+                  && TargetFs.Contains("CxDisplayOverlays")
+                  // #347/#348: the CONTENT hook region, and the two signatures that are its whole contract.
+                  // A missing one is not a missing feature -- it is a lit program that does not link, which
+                  // takes the world with it.
+                  && VanillaShader.HasSplice(HookFs)
+                  && HookFs.Contains("vec3 CxDisplayHook(vec3 c)")
+                  // #350: the surface hook is GONE -- a material's own FS is hosted instead. Its
+                  // reappearance would be the content contract this ticket deleted coming back.
+                  && !HookFs.Contains("CxSurfaceHook")
+                  // ...and the content hosts: a stub each that hosts nothing, called where a stock body runs
+                  && ShaderSource.Get("cx_host_f.glsl").Contains("bool CxHostSurface(int feat) { return false; }")
+                  && ShaderSource.Get("cx_host_v.glsl").Contains("bool CxHostVertex(CxDraw d, int id, int bb) { return false; }")
+                  && OwnedLitFsMain.Contains("CxHostSurface(feat))")
+                  // ...and what a hosted body reads and writes, under the engine's own names.
+                  && VanillaEnvFs.Contains("vec4 FragmentColor;")
+                  && VanillaEnvFs.Contains("#define MATERIAL_ROUGHNESS_VALUE fRoughness")
+                  && VanillaEnvFs.Contains("vec3 SpecularColor;")
+                  && VanillaStandardFs.Contains("void SetupStandardShaderInputs() { FragmentColor *= CxHostTexel; }")
+                  && VanillaEnvFs.Contains("vec4 CxHostTexel;")
+                  && OwnedLitFsMain.Contains("CxHostTexel = vec4(albedo, coverage);")
+                  && VanillaStandardFs.Contains("void ApplyStandardShader() { }")
+                  && VanillaStandardFs.Contains("#include \"inc_scriptable\"")
+                  && ShaderSource.Get("cx_plt.glsl").Contains("float CxPltScheme(int draw, int layer)")
+                  // ...and the environment they share, ahead of all three. Declared twice (once per file)
+                  // it would be a compile error, declared nowhere a link error; this is the one copy.
+                  && VanillaEnvFs.Contains("#define CX_ALLOY")
+                  && VanillaEnvFs.Contains("#define m_proj uEngProj")
+                  // #551: the environment must NOT declare the scriptable block. Every spliced file
+                  // includes inc_scriptable for it and the bridge resolves that include, so a declaration
+                  // here is a redefinition -- which fails the whole lit program, not just the feature.
+                  && !VanillaEnvFs.Contains("uniform float scriptableFloat")
+                  && !VanillaEnvFs.Contains("uniform int scriptableInt")
+                  && VanillaEnvFs.Contains("float CxVisionLight()")
+                  // #347: the stage identity a spliced file branches on. Asserted because its absence is
+                  // SILENT -- an undefined SHADER_TYPE makes `#if SHADER_TYPE == 2` read 0, so a content
+                  // file's fragment half preprocesses away and its hook becomes an empty function that
+                  // links and does nothing. That is how racial vision was inert here.
+                  && VanillaEnvFs.Contains("#define SHADER_TYPE 2")
+                  // #348: what a content file's own normal work writes through. inc_ripple's TiltNormal is
+                  // written against a VIEW-space normal and these two matrices; Alloy's is world-space, so
+                  // they are identity and the conversion collapses to the tilt the helper performs anyway.
+                  && VanillaEnvFs.Contains("vec3 vFragmentNormal")
+                  && VanillaEnvFs.Contains("const mat4 m_view =")
+                  && VanillaEnvFs.Contains("const mat4 m_view_inv =")
+                  // ...and the marker surgery itself is lossless: with nothing to substitute, splicing must
+                  // give back exactly what it was handed. An unterminated marker or an off-by-one in the
+                  // region bounds silently eats GLSL, which is the one failure mode of string surgery.
+                  && VanillaShader.Splice(HookFs, null, "selfcheck", false) == HookFs;
+        log.Info(ok
+            ? "RendererContract.SelfCheck: passed"
+            : $"RendererContract.SelfCheck: FAILED -- {(slots ? "" : "a texture slot disagreed (named above), ")}" +
+              $"the per-draw SSBO contract (binding {BindDraw}, " +
+              $"stride {DrawFloats * sizeof(float)}B) or the #102 linear/display-space pairing drifted; " +
+              "standing down rather than drawing from the wrong records");
+        return ok;
+    }
+
+    /// <summary>Where the furthest pinned member ends, with a line in <paramref name="bad"/> for each member that
+    /// is not where C# stages it.</summary>
+    internal static int PinnedEnd(string members, (string Name, int Off)[] pinned, System.Collections.Generic.List<string> bad)
+    {
+        int end = 0;
+        foreach ((string name, int off) in pinned)
+        {
+            int at = Std140.Offset(members, name, out int size);
+            if (at != off) bad.Add($"{name} at {at}, C# stages {off}");
+            end = Math.Max(end, at + size);
+        }
+        return end;
+    }
+
+    /// <summary>The block's end is its furthest member's end, whatever order the members are pinned in. Oracle:
+    /// std140 offsets worked by hand for a vec4 then a float.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    internal static void PinnedEndSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "RendererContract.PinnedEndSelfCheck");
+        string members = Std140.Members("layout(std140, binding = 0) uniform CxT { vec4 uA; float uB; };", "CxT") ?? "";
+        var bad = new System.Collections.Generic.List<string>();
+        int end = PinnedEnd(members, [("uB", 16), ("uA", 0)], bad);
+        check.Expect(end == 20 && bad.Count == 0, $"furthest: a vec4 then a float end at byte 20, not {end} ({string.Join("; ", bad)})");
+        log.Info(check.Ok ? "RendererContract.PinnedEndSelfCheck: passed" : "RendererContract.PinnedEndSelfCheck: FAILED");
+    }
+}

@@ -240,6 +240,7 @@ public static unsafe class Native
     }
 
     /// <summary>The std::string and CExoString readers against hand-built layouts -- the stub host has no engine to call.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         byte* s = stackalloc byte[32];
@@ -344,52 +345,4 @@ public static unsafe class Native
             return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
         }
     }
-
-    /// <summary>
-    /// Absolute path for a CX file in the client's user directory (next to nwn.ini/settings.tml): a setting, or a folder
-    /// whose default the game keeps there.
-    /// Falls back to <see cref="DefaultUserDirectory"/> when the engine dir is unresolvable -- pre-main, or
-    /// headless under run-demo.
-    /// </summary>
-    public static string ConfigPath(string fileName) =>
-#pragma warning disable RS0030 // a settings file before the engine names its user directory reads the default one
-        System.IO.Path.Combine(UserDirectory() ?? DefaultUserDirectory(), fileName);
-#pragma warning restore RS0030
-
-    /// <summary>
-    /// Where the client would put its user directory with no <c>-userdirectory</c> override: SDL's pref path,
-    /// <c>$XDG_DATA_HOME</c> or <c>~/.local/share</c>, plus the app name -- read off the client's own SDL block
-    /// rather than assumed, so it agrees with <see cref="UserDirectory"/>. This is the PRE-MAIN answer every boot
-    /// knob is read through, and the launch line is askable there, so <c>-userdirectory</c> still wins.
-    /// </summary>
-    public static string DefaultUserDirectory()
-    {
-        string? launched = LaunchUserDirectory();
-        if (launched != null) return launched;
-        if (OperatingSystem.IsWindows())
-            return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Neverwinter Nights");
-        return System.IO.Path.Combine(HostEnv.DataHome, "Neverwinter Nights");
-    }
-
-    /// <summary>The <c>-userdirectory</c> the client was launched with, or null. Read from the command line, the one
-    /// thing available before the engine has resolved anything: without it a client launched with the switch reads
-    /// its BOOT knobs from the default directory while the engine uses the one it was given. Case-insensitive and
-    /// LAST occurrence wins, as the engine's own <c>SetUpUserDirectory</c> parse is; a valueless switch is ignored.</summary>
-    private static string? LaunchUserDirectory()
-    {
-        if (_launchDirTried) return _launchDir;
-        _launchDirTried = true;
-        string[] args;
-        try { args = Environment.GetCommandLineArgs(); } catch { return null; }
-        for (int i = args.Length - 2; i >= 0; i--)
-            if (string.Equals(args[i], "-userdirectory", StringComparison.OrdinalIgnoreCase)
-                && args[i + 1].Length > 0)
-            { _launchDir = args[i + 1]; break; }
-        return _launchDir;
-    }
-
-    /// <inheritdoc cref="LaunchUserDirectory"/>
-    private static string? _launchDir;
-    /// <inheritdoc cref="LaunchUserDirectory"/>
-    private static bool _launchDirTried;
 }

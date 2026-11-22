@@ -9,6 +9,7 @@ public static partial class MeshArena
 {
     /// <summary>Approved-spec: V1 to V3, where a mesh lands and what the arena holds across loads and frees.
     /// Oracles: hand-written vertex counts and the places they add up to.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void ArenaSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MeshArena.ArenaSelfCheck");

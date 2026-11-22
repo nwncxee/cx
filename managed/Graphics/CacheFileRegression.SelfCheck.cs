@@ -11,6 +11,7 @@ namespace CX.Graphics;
 /// of fresh compiles.</summary>
 internal static class CacheFileRegression
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "CacheFileRegression.SelfCheck");

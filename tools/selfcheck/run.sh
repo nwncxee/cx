@@ -9,6 +9,7 @@
 #   --out      the build folder (default build/selfcheck); the mutant runner gives each run its own
 #   --overlay  a folder whose managed/ holds .cs files that replace or add to managed/ in this build only
 #   --no-build boot what --out already holds (the mutant runner boots one build once per mutant)
+#   --no-analyzers  compile without the analyzers, which judge the tree and not a mutant (the mutant runner's compiles)
 #
 # Exit 0 when no self-check failed, 1 when one did, 2 for a setup problem.
 set -uo pipefail
@@ -17,19 +18,21 @@ repo=$PWD
 out=$repo/build/selfcheck
 overlay=""
 build=1
+analyzers=true
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) out=$(realpath -m -- "$2"); shift 2 ;;
     --overlay) overlay=$(realpath -- "$2"); shift 2 ;;
     --no-build) build=0; shift ;;
+    --no-analyzers) analyzers=false; shift ;;
     -h|--help) awk 'NR > 1 { if (!/^#/) exit; print }' "$0"; exit 0 ;;
     *) echo ">> unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 command -v dotnet >/dev/null || { echo ">> no dotnet on PATH: run this inside nix develop" >&2; exit 2; }
 dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
-fxr=$(ls -d "$dotnet_root"/host/fxr/*/libhostfxr.so 2>/dev/null | sort -V | tail -1)
-[ -n "$fxr" ] || { echo ">> no libhostfxr.so under $dotnet_root/host/fxr" >&2; exit 2; }
+fxr=$(printf '%s\n' "$dotnet_root"/host/fxr/*/libhostfxr.so | sort -V | tail -1)
+[ -f "$fxr" ] || { echo ">> no libhostfxr.so under $dotnet_root/host/fxr" >&2; exit 2; }
 bin=$out/bin/Release/net10.0/linux-x64
 # Shared by every --out, so a mutant run's own build folders do not rebuild funchook and FSR each time.
 native=$repo/build/selfcheck-native
@@ -52,10 +55,11 @@ shim() {
 # funchook's static build hides every symbol, so it is built shared, once, from the same submodule.
 if [ ! -f "$native/libfunchook.so" ]; then
   [ -d third_party/funchook/distorm/src ] || git submodule update --init --recursive third_party/funchook
-  cmake -S third_party/funchook -B "$native/funchook-build" -DFUNCHOOK_BUILD_SHARED=ON -DFUNCHOOK_BUILD_STATIC=OFF \
-    -DFUNCHOOK_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null \
-    && cmake --build "$native/funchook-build" -j2 >/dev/null && cp -L "$native/funchook-build/libfunchook.so" "$native/" \
-    || { echo ">> could not build funchook shared" >&2; exit 2; }
+  if ! { cmake -S third_party/funchook -B "$native/funchook-build" -DFUNCHOOK_BUILD_SHARED=ON -DFUNCHOOK_BUILD_STATIC=OFF \
+      -DFUNCHOOK_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null \
+      && cmake --build "$native/funchook-build" -j2 >/dev/null && cp -L "$native/funchook-build/libfunchook.so" "$native/"; }; then
+    echo ">> could not build funchook shared" >&2; exit 2
+  fi
 fi
 shim cxatlas libcxatlas.a
 shim cxthunk libcxthunk.a
@@ -64,10 +68,14 @@ shim cxaudio libcxaudio.a
 # beside the rest, whose symbols only it calls.
 if [ ! -f "$native/libcxfsr.so" ] || [ "$repo/build/libcxfsr.a" -nt "$native/libcxfsr.so" ]; then
   [ -f build/libcxfsr.a ] || { echo ">> no build/libcxfsr.a: run ./build.sh once in this checkout" >&2; exit 2; }
+  # shellcheck source=tools/ffx/cxxflags.sh disable=SC1091 # the flags file is linted on its own
   . tools/ffx/cxxflags.sh
-  c++ "${FFX_CXXFLAGS[@]}" -c native/ffx/cxfsr.cpp -o "$native/cxfsr.o" \
-    && c++ -shared -o "$native/libcxfsr.so" "$native/cxfsr.o" $(ls build/ffx/obj/*.o | grep -v '/cxfsr\.o$') \
-    || { echo ">> could not link libcxfsr.so" >&2; exit 2; }
+  objs=()
+  for o in build/ffx/obj/*.o; do [ "${o##*/}" = cxfsr.o ] || objs+=("$o"); done
+  if ! { c++ "${FFX_CXXFLAGS[@]}" -c native/ffx/cxfsr.cpp -o "$native/cxfsr.o" \
+         && c++ -shared -o "$native/libcxfsr.so" "$native/cxfsr.o" "${objs[@]}"; }; then
+    echo ">> could not link libcxfsr.so" >&2; exit 2
+  fi
 fi
 
 if [ "$build" = 1 ]; then
@@ -76,7 +84,7 @@ if [ "$build" = 1 ]; then
          -p:CxJitOut="$out"
          # PublishAot writes the image's feature switches into the runtimeconfig, which keeps the JIT run on the
          # image's code paths; one of them refuses the native host this build is loaded by, and it alone goes back on.
-         -p:_EnableConsumingManagedCodeFromNativeHosting=true)
+         -p:_EnableConsumingManagedCodeFromNativeHosting=true "-p:RunAnalyzers=$analyzers")
   [ -z "$overlay" ] || props+=(-p:CxOverlay="$overlay")
   # One process and no build server: the compile stays inside the caller's memory scope and ends with the run.
   if ! dotnet build managed/cx_managed.csproj -c Release --disable-build-servers -m:1 -nologo -v:q -clp:ErrorsOnly \
@@ -94,8 +102,16 @@ bash tools/stub-host.sh "$host" native/selfcheck_host.c || exit 2
 home=$out/home
 rm -rf "$home"; mkdir -p "$home"
 log="$home/.local/share/Neverwinter Nights/logs/cx.log"
+# The Vulkan loader the machine's own vulkaninfo runs with, found on its runpath: the dev shell's glibc resolves no
+# soname, and a NixOS loader sits at no fixed path. With it the GPU goldens run; a machine with none SKIPs them.
+vkdir=""
+if vi=$(command -v vulkaninfo) && command -v readelf > /dev/null; then
+  for d in $(readelf -d "$(readlink -f "$vi")" 2> /dev/null | sed -n 's/.*[Rr]unpath: \[\(.*\)\]/\1/p' | tr ':' ' '); do
+    if [ -e "$d/libvulkan.so.1" ]; then vkdir=$d; break; fi
+  done
+fi
 echo ">> booting the self-checks in the JIT host..."
-HOME="$home" XDG_DATA_HOME="$home/.local/share" DOTNET_ROOT="$dotnet_root" LD_LIBRARY_PATH="$native:$bin" \
+HOME="$home" XDG_DATA_HOME="$home/.local/share" DOTNET_ROOT="$dotnet_root" LD_LIBRARY_PATH="$native:$bin${vkdir:+:$vkdir}" \
   "$host" "$fxr" "$bin/cx_managed.runtimeconfig.json" "$bin/cx_managed.dll" > "$out/host.log" 2>&1
 rc=$?
 [ -f "$log" ] || { echo ">> FAIL: the host wrote no cx.log (exit $rc):"; tail -20 "$out/host.log"; exit 1; }

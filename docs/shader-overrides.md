@@ -807,7 +807,7 @@ uniform block.
 order — and, from the C# side, a block whose std140 offsets no longer match the ones
 `AlloyRenderer`'s `Pb*` constants stage. The block is a byte layout filled once per pass, so a
 member added, removed or moved in an override reads every term after it out of its
-neighbour's bytes: a silent frame, not a link error. `ShaderContract.PassCheck` computes the
+neighbour's bytes: a silent frame, not a link error. `RendererContract.PassCheck` computes the
 layout from the GLSL itself, so reformatting and comment changes are free and a reorder is not.
 
 The block grows at the end, never in the middle. CX-188's budget work added the last three
@@ -860,7 +860,8 @@ forward loop's own taps instead. One that fails to link stands `light.deferred` 
 ## Where this is enforced
 
 The guard predicates live in `managed/Alloy/Core/ShaderContract.cs`
-(`RecordSafe`, `CutoutSafe`, `SkinSafe`, `LinearSafe`, `ResolveSafe`, `DisplaySafe`, `DepthSafe`) and
+(`RecordSafe`, `CutoutSafe`, `SkinSafe`, `LinearSafe`, `ResolveSafe`, `DisplaySafe`), `managed/Alloy/Core/RendererContract.cs`
+(`DepthSafe`, `SlotSafe`, `BlocksSafe`) and
 `managed/Alloy/Pass/CasterPass.cs` (`CastVsSafe`, `CastFsSafe`). Each is asserted
 in both directions by the SelfCheck suites — the embedded stages pass, and deliberately
 broken text is refused — and `run-demo.sh` fails the build if any suite fails. The one

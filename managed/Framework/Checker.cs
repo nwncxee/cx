@@ -30,6 +30,15 @@ public sealed class Checker
         _log.Info($"{_prefix} FAIL: {what}");
     }
 
+    /// <summary>Waits for cx.log to catch up before a check reads it, and fails naming the flush when it never does,
+    /// so a slow writer is not read as a missing line.</summary>
+    public bool ExpectFlushed()
+    {
+        bool ok = ExtenderLog.Flush();
+        Expect(ok, $"the log flush gave up with {ExtenderLog.Unwritten} line(s) not yet written");
+        return ok;
+    }
+
     /// <summary>Suites that stood down instead of running, over the whole session: a skip that is not counted
     /// reads exactly like coverage that exists.</summary>
     public static int Skipped;

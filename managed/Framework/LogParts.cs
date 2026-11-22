@@ -7,6 +7,9 @@ namespace CX.Framework;
 /// holds the lock.</summary>
 internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
 {
+    /// <summary>The still copy of cx.log a bug report attaches, beside it.</summary>
+    internal const string ReportName = "cx-report.log";
+
     /// <summary>The most one part holds: players send logs over Discord.</summary>
     internal const long MaxPartBytes = 10_000_000;
     /// <summary>cx.log plus the numbered parts; the oldest is deleted first.</summary>
@@ -81,12 +84,12 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     /// <summary>A saved copy's full path, or why there is none.</summary>
     internal readonly record struct Saved(string? Path, string? Why);
 
-    /// <summary>Copy cx.log as it stands to <see cref="LogReport.FileName"/> beside it, written under a temporary name and
+    /// <summary>Copy cx.log as it stands to <see cref="ReportName"/> beside it, written under a temporary name and
     /// renamed over the last copy, so a browser never picks up half a file.</summary>
     internal Saved SaveReport()
     {
         if (_file == null) return new(null, "cx.log holds no lines this launch could write");
-        string to = Path.GetFullPath(Path.Combine(dir, LogReport.FileName)), part = to + ".part";
+        string to = Path.GetFullPath(Path.Combine(dir, ReportName)), part = to + ".part";
         try
         {
             _file.Flush();

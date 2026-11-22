@@ -12,6 +12,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Off-device: the particle pass's storage binds, its texture sampler and its velocity arm. Oracles: the
     /// storage blocks the translated stages declare (the embedded GLSL), hand-made buffer and sampler ids, the motion
     /// define in our own stage text, and shaderc compiling the velocity stages.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkParticlesSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkParticlesSelfCheck");

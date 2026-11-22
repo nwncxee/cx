@@ -36,6 +36,7 @@ internal static unsafe partial class GuiPassVk
     /// <see cref="FixtureBlock"/> against what the compiled module reflects (two artifacts), the attribute locations
     /// the mesh arena's layout feeds, written out by hand, and the two terms <c>cx_gui_v/f.glsl</c> declare as
     /// loose -- read from the embedded GLSL, not from the pass that sets them.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GuiPassVk.SelfCheck");

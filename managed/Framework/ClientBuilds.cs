@@ -158,6 +158,7 @@ public static class ClientBuilds
     /// builds sharing a key -- and on the running build, every value actually landed in its row. A typo or a
     /// gap in a build file is refused here rather than read as 0 somewhere in a frame.
     /// </summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

@@ -9,6 +9,7 @@ public static partial class MeshArena
     /// <summary>A freed place while a submit that may still draw it is in flight, and the bytes one load
     /// sends. Oracles: hand-written vertex counts, the places they add up to, and the byte ranges those
     /// places and a static vertex's 48 bytes give.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MeshArena.SelfCheck");

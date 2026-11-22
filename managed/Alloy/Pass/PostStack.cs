@@ -283,7 +283,7 @@ internal static unsafe partial class PostStack
                 string src = ShaderStages.Source(st.Resref);
                 check.Expect(src.Length > 0 && st.Resref.Length <= ShaderResource.ResRefBytes, $"{st.Name}: resref composes");
                 check.Expect(src.Contains("vec4 CxStage(vec4 c)"), $"{st.Name}: declares CxStage");
-                check.Expect(ShaderContract.DisplaySafe(src) && ShaderContract.SlotSafe(src, "uSrc"),
+                check.Expect(ShaderContract.DisplaySafe(src) && RendererContract.SlotSafe(src, "uSrc"),
                   $"{st.Name}: display space end to end, and reads uSrc");
                 if (st.Param != null) check.Expect(src.Contains($"uniform float {st.Param};"), $"{st.Name}: declares its param {st.Param}");
                 check.Expect(src.IndexOf("CxStage(texture(uSrc, vUV))", StringComparison.Ordinal)

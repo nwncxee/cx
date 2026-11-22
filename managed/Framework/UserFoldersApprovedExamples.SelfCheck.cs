@@ -36,6 +36,7 @@ internal static class UserFoldersApprovedExamples
         return new StreamReader(f).ReadToEnd();
     }
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "UserFoldersApprovedExamples.SelfCheck");
@@ -152,7 +153,7 @@ internal static class UserFoldersApprovedExamples
             // Then cx.log, with that launch's lines, is in the logs folder beside nwn.ini
             string marker = $"UserFoldersApprovedExamples: E7 marker {Guid.NewGuid():N}";
             log.Always(marker);
-            ExtenderLog.Flush();
+            check.ExpectFlushed();
             check.Expect(Read(Path.Combine(defaultLogs, "cx.log"))?.Contains(marker) == true,
                 $"E7 before the game names its folders, this launch's lines are in {Path.Combine(defaultLogs, "cx.log")}");
 

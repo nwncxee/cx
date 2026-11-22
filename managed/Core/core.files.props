@@ -1,0 +1,34 @@
+<!-- The engine-free core's sources, named once: cx_core compiles them, and cx_managed and the mutant overlay leave them out.
+     Paths are relative to managed/, which is how the analyzers grant files. -->
+<Project>
+  <ItemGroup>
+    <CxCoreSource Include="Alloy/Core/ShaderContract.cs" />
+    <CxCoreSource Include="Framework/Affinity.cs" />
+    <CxCoreSource Include="Framework/BlockingWait.cs" />
+    <CxCoreSource Include="Framework/BootWriteHold.cs" />
+    <CxCoreSource Include="Framework/Checker.cs" />
+    <CxCoreSource Include="Framework/Clock.cs" />
+    <CxCoreSource Include="Framework/CommandRegistry.cs" />
+    <CxCoreSource Include="Framework/ConfigFile.cs" />
+    <CxCoreSource Include="Framework/EngineLink.cs" />
+    <CxCoreSource Include="Framework/ExtenderLog.cs" />
+    <CxCoreSource Include="Framework/HexColour.cs" />
+    <CxCoreSource Include="Framework/HostEnv.cs" />
+    <CxCoreSource Include="Framework/Knob.cs" />
+    <CxCoreSource Include="Framework/KnobBag.cs" />
+    <CxCoreSource Include="Framework/KnobFile.cs" />
+    <CxCoreSource Include="Framework/KnobGroup.SelfCheck.cs" />
+    <CxCoreSource Include="Framework/KnobGroup.cs" />
+    <CxCoreSource Include="Framework/LogParts.cs" />
+    <CxCoreSource Include="Framework/SelfCheckSuite.cs" />
+    <CxCoreSource Include="Framework/Settings.cs" />
+    <CxCoreSource Include="Framework/TextList.cs" />
+    <CxCoreSource Include="Framework/UserFolders.cs" />
+    <CxCoreSource Include="Rhi/Bounds.cs" />
+    <CxCoreSource Include="Rhi/CommandList.cs" />
+    <CxCoreSource Include="Rhi/Descriptors.cs" />
+    <CxCoreSource Include="Rhi/Device.cs" />
+    <CxCoreSource Include="Rhi/Handles.cs" />
+    <CxCoreSource Include="Rhi/Pipeline.cs" />
+  </ItemGroup>
+</Project>

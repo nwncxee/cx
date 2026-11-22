@@ -19,7 +19,7 @@ public static class KnobFile
     /// <summary>The header. No <c>=</c> in it: <see cref="ConfigFile.ForEachPair"/> would read one as a key.</summary>
     public const string Header = "# cx.cfg -- written by CX; comments are not preserved; edit with the client closed";
 
-    private static readonly Timer _timer = new(_ => Write(), null, Timeout.Infinite, Timeout.Infinite);
+    private static readonly ClockSlot _clk = new(Write);
     private static readonly BootWriteHold _hold = new();
     private static int _writes;
     private static int _fires;
@@ -41,8 +41,15 @@ public static class KnobFile
     /// <summary>Restart the debounce. Cold: called once per set on the setter's thread. Held during boot.</summary>
     public static void Arm()
     {
-        if (_hold.Arm()) _timer.Change(DebounceMs, Timeout.Infinite);
+        if (_hold.Arm()) _clk.Alarm.Set(DebounceMs);
     }
+
+    /// <summary>What cx.log calls the clock the debounce runs on.</summary>
+    public static string ClockName => _clk.Name;
+
+    /// <summary>Runs the debounce on <paramref name="clock"/> and returns the clock it ran on: a self-check steps its
+    /// own and puts the old one back.</summary>
+    internal static Clock UseClock(Clock clock) => _clk.Use(clock);
 
     /// <summary>A first run has no text to keep: the one arm that outlives the boot hold.</summary>
     public static void ArmFirstRun() => _hold.ArmFirstRun();
@@ -100,7 +107,7 @@ public static class KnobFile
         Interlocked.Increment(ref _fires);
         string path = Settings.Path;
         if (path.Length == 0) { KnobGroup.Log?.Info("settings: no file path latched -- write skipped"); return; }
-        if (Native.Sym(SymbolMap.AppManager) == IntPtr.Zero)
+        if (!EngineLink.InClient())
         { KnobGroup.Log?.Info($"settings: off-device -- {path} is the real user's, write skipped"); return; }
         try
         {
@@ -117,6 +124,7 @@ public static class KnobFile
 
     /// <summary>Off-device: the composed text carries the header, no declared-at-default key, and every
     /// unknown loaded key verbatim. Never writes: the demo's file is the real user's.</summary>
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

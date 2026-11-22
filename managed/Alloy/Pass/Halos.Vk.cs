@@ -22,7 +22,7 @@ internal static unsafe partial class Halos
     {
         ShaderTexts.Pair(ShdHaloVs, ShaderStages.Source(ShdHaloVs), ShdHaloFs, ShaderStages.Source(ShdHaloFs), log, "Halos",
                         out string vs, out string fs);
-        return ShaderContract.FlareSafe(vs, fs) ? (vs, fs)
+        return RendererContract.FlareSafe(vs, fs) ? (vs, fs)
             : (ShaderSource.Get(ShdHaloVs + ".glsl"), ShaderSource.Get(ShdHaloFs + ".glsl"));
     }
 

@@ -812,7 +812,7 @@ internal static unsafe partial class TexRegistry
         string name; TexKind kind;
         lock (_lock)
         {
-            _retryAt[i] = retry ? Environment.TickCount64 + RetryMs : 0;
+            _retryAt[i] = retry ? _clk.Clock.NowMs + RetryMs : 0;
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;

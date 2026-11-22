@@ -229,7 +229,7 @@ internal sealed unsafe partial class VkBackend
         ReadOnlySpan<ColorAttachment> colors = r.Span<ColorAttachment>(h.Colors);
         if (_inPass) return Fault("a render pass began inside another");
         if (_onAsync) return Fault("a render pass on the async compute queue, which cannot draw");
-        if (colors.Length + (h.HasDepth ? 1 : 0) == 0 || colors.Length > RenderPassDesc.MaxColors) return Fault($"render pass with {colors.Length} colour attachments");
+        if (PassShapeBad(colors.Length, h.HasDepth)) return Fault($"render pass with {colors.Length} colour attachments");
         colors.CopyTo(_pend);
         _pendCount = colors.Length;
         _pendHasDepth = h.HasDepth;
@@ -798,4 +798,7 @@ internal sealed unsafe partial class VkBackend
         Vma.vmaDestroyBuffer(_vma, hb, ha);
         return ok || Fault("ReadBack: the copy was refused");
     }
+
+    /// <summary>A pass with no attachment at all, or more colours than <see cref="RenderPassDesc.MaxColors"/>, is refused.</summary>
+    internal static bool PassShapeBad(int colors, bool depth) => colors + (depth ? 1 : 0) == 0 || colors > RenderPassDesc.MaxColors;
 }

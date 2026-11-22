@@ -88,8 +88,7 @@ internal static unsafe partial class IconFrames
         string n = Marshal.PtrToStringAnsi((IntPtr)name) ?? "";
         f = Load(name, n, plt, out string? why);
         if (!f.Known && !ResLocate.Ready) return f;
-        if (s.ByName.Count >= MaxCached) s.ByName.Clear();
-        s.ByName[key] = f;
+        Remember(s, key, f);
         if (f.Known) s.Log?.Info($"IconFrames: {n} is {f.Tw}x{f.Th}, its art fills {f.Cw}x{f.Ch}");
         else s.Log?.Info($"IconFrames: {n} -- {why ?? "no visible texel"}; it keeps its cell crop");
         return f;
@@ -103,7 +102,7 @@ internal static unsafe partial class IconFrames
         {
             byte[]? raw = TexRegistry.ReadResourceBytes(name, PltResType, out why);
             if (raw == null) { why ??= "no PLT"; return default; }
-            if (!PltImage.Parse(raw, out int w, out int h, out _, out bool rle, out why) || w > MaxSide || h > MaxSide) return default;
+            if (!PltImage.Parse(raw, out int w, out int h, out _, out bool rle, out why) || TooBig(w, h)) return default;
             byte[] pairs = new byte[w * h * PltImage.BytesPerPixel];
             if (rle) { if (!PltImage.Unrle(raw.AsSpan(PltImage.HeaderBytes), pairs, out why)) return default; }
             else raw.AsSpan(PltImage.HeaderBytes, pairs.Length).CopyTo(pairs);
@@ -259,4 +258,14 @@ internal static unsafe partial class IconFrames
     }
 
     private static bool Near(float a, float b) => MathF.Abs(a - b) < 0.001f;
+
+    /// <summary>Keeps a frame by name; a full cache starts again empty rather than grow without bound.</summary>
+    private static void Remember(IconFramesState s, ulong key, Frame f)
+    {
+        if (s.ByName.Count >= MaxCached) s.ByName.Clear();
+        s.ByName[key] = f;
+    }
+
+    /// <summary>A palette image wider or taller than <see cref="MaxSide"/> is not read.</summary>
+    private static bool TooBig(int w, int h) => w > MaxSide || h > MaxSide;
 }

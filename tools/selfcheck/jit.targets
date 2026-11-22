@@ -1,10 +1,23 @@
 <!-- The mutant runner's overlay (tools/selfcheck/mutants.py): each .cs under $(CxOverlay)/managed/, laid out like managed/ (the analyzers grant files by that path),
-     replaces the file of the same path, and a file with no counterpart is added. Only the runner's own build
-     passes -p:CxOverlay, so no staged build carries a mutant. -->
+     replaces the file of the same path in whichever project compiles it, and a file with no counterpart is added to cx_core
+     when it sits under Core/ and to cx_managed otherwise.
+     Only the runner's own build passes -p:CxOverlay, so no staged build carries a mutant. -->
 <Project>
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'cx_managed' and '$(CxOverlay)' != ''">
     <CxOverlayFile Include="$(CxOverlay)/managed/**/*.cs" />
-    <Compile Remove="@(CxOverlayFile->'%(RecursiveDir)%(Filename)%(Extension)')" />
-    <Compile Include="@(CxOverlayFile)" />
+    <CxOverlayRel Include="@(CxOverlayFile->'%(RecursiveDir)%(Filename)%(Extension)')" />
+    <CxOverlayRel Remove="@(CxCoreSource)" />
+    <CxOverlayRel Remove="Core/**" />
+    <Compile Remove="@(CxOverlayRel)" />
+    <Compile Include="@(CxOverlayRel->'$(CxOverlay)/managed/%(Identity)')" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'cx_core' and '$(CxOverlay)' != ''">
+    <CxOverlayFile Include="$(CxOverlay)/managed/**/*.cs" />
+    <CxOverlayRel Include="@(CxOverlayFile->'%(RecursiveDir)%(Filename)%(Extension)')" />
+    <CxOverlayElsewhere Include="@(CxOverlayRel)" Exclude="@(CxCoreSource)" />
+    <CxCoreHit Include="@(CxOverlayRel)" Exclude="@(CxOverlayElsewhere)" />
+    <Compile Remove="@(CxCoreHit->'$(CxManaged)%(Identity)')" />
+    <Compile Include="@(CxCoreHit->'$(CxOverlay)/managed/%(Identity)')" />
+    <Compile Include="$(CxOverlay)/managed/Core/**/*.cs" />
   </ItemGroup>
 </Project>

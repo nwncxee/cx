@@ -7,6 +7,7 @@ namespace CX.Alloy.Db;
 /// written here by hand, against the line's <c>F3</c> colour and <c>F1</c> range.</summary>
 internal static class FogNoteEdges
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

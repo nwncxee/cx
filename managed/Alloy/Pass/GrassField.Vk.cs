@@ -212,7 +212,7 @@ internal static unsafe partial class GrassField
         }
         string fs = EmbeddedFs, vs = ShaderStages.Source(ShdGrassVs);
         ShaderTexts.Pair(ShdGrassVs, vs, ShdGrassFs, fs, log, what, out string gv, out string gf);
-        if (!(ShaderContract.LinearSafe(gf) && ShaderContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
+        if (!(ShaderContract.LinearSafe(gf) && RendererContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
         return (gv, gf);
     }
 
@@ -264,6 +264,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Off-device: the Vulkan vertex text keeps no vertex input and reads every attribute GL's VAO feeds.
     /// Oracle: the embedded GLSL text, whose declarations are matched and whose reads are kept.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GrassField.VkSelfCheck");

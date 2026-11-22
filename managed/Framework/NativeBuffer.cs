@@ -115,6 +115,7 @@ internal static unsafe class NativeBufferCheck
 {
     /// <summary>A buffer answers for its own length, keeps an allocation already big enough, grows to one that is
     /// not, and reads empty once freed. Oracle: the literal counts asked for and the values written.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "NativeBuffer.SelfCheck");

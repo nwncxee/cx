@@ -1,0 +1,36 @@
+# The 2026-11-21 review's mutants (its comment on CX-623), read by examples_lib.sh's review_list. Fields, split by
+# tabs: name, the file's name (its path is resolved where it lives now), old text, new text, the word the killing FAIL
+# line must name (survivors only), and "survivor" for the ones the review proved untested and not equivalent or
+# engine-bound. A mutant whose code moved into a helper keeps its boundary and changes only its old text here.
+a2_maxcolors	VkBackend.Execute.cs	colors > RenderPassDesc.MaxColors	colors >= RenderPassDesc.MaxColors	MaxColors	survivor
+a3_postlevels	PostChainVk.cs	levels < MaxLevels && Math.Min(Level(w, levels), Level(h, levels)) >= 8	levels <= MaxLevels && Math.Min(Level(w, levels), Level(h, levels)) >= 8	MaxLevels	survivor
+a4_uboFull	PostChainVk.cs	at + bytes > UboBytes	at + bytes >= UboBytes	UboBytes	survivor
+a5_attachlayer	VkBackend.Images.cs	layer >= layers	layer > layers	array layer	survivor
+b4_slotsafe_kind	RendererContract.cs	d.Kind == VkBindKind.Sampled && d.Name == s	d.Name == s	bind kind	survivor
+b5_extent_max	RendererContract.cs	end = Math.Max(end, at + size)	end = Math.Min(end, at + size)	furthest	survivor
+b6_cl_grow	CommandList.cs	Math.Max(_buf.Length * 2, _len + padded)	Math.Max(_buf.Length, _len + padded)	doubles	survivor
+b11_initorder	ServiceHost.cs	.OrderBy(s => s.InitOrder)	.OrderByDescending(s => s.InitOrder)	init order	survivor
+b13_nevercull	AlloyRenderer.Table.cs	radius >= NeverCull	radius > NeverCull	NeverCull	survivor
+b15_dirty	AlloyRenderer.VkColour.cs	used + n > cap	used + n >= cap	full	survivor
+b19_postlevel_floor	PostChainVk.cs	Math.Max(side >> (i + 1), 1)	Math.Max(side >> (i + 1), 0)	one texel	survivor
+sel_anchor	EditBuffer.cs	_anchor >= 0 && _anchor != _cursor	_anchor >= 0	collapsed	survivor
+icon_known	IconFrames.cs	Cw > 0 && Ch > 0 && Tw > 0 && Th > 0	Cw > 0 && Ch > 0 && Tw > 0	height	survivor
+icon_cache	IconFrames.cs	s.ByName.Count >= MaxCached	s.ByName.Count > MaxCached	MaxCached	survivor
+icon_plt_side	IconFrames.cs	w > MaxSide || h > MaxSide	w > MaxSide	tall	survivor
+tell_pending	TellTarget.cs	_pending.Count > MaxPending	_pending.Count >= MaxPending	MaxPending	survivor
+strip_warn	InputStripLayout.cs	textLength >= CounterWarn	textLength > CounterWarn	CounterWarn	survivor
+store_size	ChatStore.cs	if (_size < Capacity) _size++;	_size++;	Capacity	survivor
+store_wrap	ChatStore.cs	if (idx < 0) idx += Capacity;		oldest	survivor
+snip_sp	Snippets.cs	sp <= 0	sp < 0	leading space	equivalent
+rig_holders	TextRig.cs	who.Count > 0	who.Count > 1	one holder	survivor
+knob_sub	KnobPanel.cs	if (Sub >= _subs.Length) Sub = _subs.Length - 1;		last tab	survivor
+hash-check	HexColour.cs	s[0] != '#'	s[0] == '#'		
+opaque	HexColour.cs	v << 8 | 0xFF	v << 8		
+digit-guard	HexColour.cs	if (d < 0) return false;			
+wrap_ge	TextWrapper.cs	curW + aw > maxWidth && i > lineStart	curW + aw >= maxWidth && i > lineStart		
+wrap_space	TextWrapper.cs	lineStart = lastSpace + 1;	lineStart = lastSpace;		
+pair_flag	EditBuffer.cs	pairs && s.Length == 1 && TypePair(s[0])	s.Length == 1 && TypePair(s[0])		
+strip_digits	InputStripLayout.cs	m >= 10	m > 10		
+fz_dt	FrameZones.cs	if (dt > 0) _frame[_row * N + (int)z] += dt;	_frame[_row * N + (int)z] += dt;		
+log_tail	ExtenderLog.cs	Math.Max(0, f.Length - 8192)	Math.Max(0, f.Length - 4096)		
+hist_missing	HistoryFile.cs	path.Length == 0 || !File.Exists(path)	!File.Exists(path)		

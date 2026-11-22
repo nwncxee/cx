@@ -7,13 +7,13 @@ namespace CX.Framework;
 /// The CX <c>*.cfg</c> read helpers: the pre-main deferral rule (<see cref="Ready"/>), the <c>sowx</c>-stem read
 /// fallback (<see cref="ReadPath"/>), the ungated read (<see cref="ReadTextNow"/>) and the flat <c>key=value</c>
 /// walk (<see cref="ForEachPair"/>). Our loader runs BEFORE the engine's entry point, when
-/// <see cref="Native.UserDirectory"/> is still null, so no resolved path is cached: every read resolves per use.
+/// <see cref="EngineLink.UserDirectory"/> is still null, so no resolved path is cached: every read resolves per use.
 /// </summary>
 public static class ConfigFile
 {
     /// <summary>True when the engine user dir is resolvable, i.e. when a deferred config read may latch. The
     /// one expression of the pre-main rule (HotkeyStore's sectioned cfg).</summary>
-    public static bool Ready => Native.UserDirectory() != null;
+    public static bool Ready => EngineLink.UserDirectory() != null;
 
     /// <summary>Read a cfg's text WITHOUT the deferral gate, "" when absent or unreadable; <paramref name="path"/>
     /// is the file consulted (<see cref="ReadPath"/>). Only for a decision that must be made pre-main (the boot
@@ -34,9 +34,9 @@ public static class ConfigFile
     /// not a copy step.</summary>
     public static string ReadPath(string fileName, ExtenderLog? log)
     {
-        string p = Native.ConfigPath(fileName);
+        string p = EngineLink.ConfigPath(fileName);
         if (File.Exists(p) || !fileName.StartsWith("cx", StringComparison.Ordinal)) return p;
-        string legacy = Native.ConfigPath(LegacyStem + fileName.Substring(2));
+        string legacy = EngineLink.ConfigPath(LegacyStem + fileName.Substring(2));
         if (!File.Exists(legacy)) return p;
         log?.Always($"config: {fileName} absent, reading pre-rename {legacy} (#530; the next save writes {fileName})");
         return legacy;
@@ -59,6 +59,7 @@ public static class ConfigFile
     }
 
     /// <summary>Off-device proof of the line walker's degrade behaviour.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

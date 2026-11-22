@@ -18,6 +18,7 @@ internal static partial class GpuGolden
     /// <summary>The goldens on a device made and disposed here: a shell whose Vulkan loader has a driver behind
     /// it runs them with no game. In a session Alloy owns the one device and a player's first frame does not
     /// wait on them, so this skips.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.SelfCheck");

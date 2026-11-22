@@ -27,6 +27,7 @@ internal sealed partial class DepthSnapshot
 
     /// <summary>Oracles: hand-written copy counts for a scripted run of writes, snapshots and frame edges, each
     /// counted by walking the commands the list recorded.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DepthSnapshot.SelfCheck");

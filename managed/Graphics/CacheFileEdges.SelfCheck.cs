@@ -10,6 +10,7 @@ namespace CX.Graphics;
 /// before it speaks. Oracle: the literals and hand-written header bytes here, and the clock.</summary>
 internal static class CacheFileEdges
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "CacheFileEdges.SelfCheck");

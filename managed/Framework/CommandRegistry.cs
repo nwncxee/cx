@@ -114,6 +114,7 @@ public sealed class CommandRegistry
 
     /// <summary>Registration, lookup, case folding, argument passthrough, duplicate refusal and enumeration,
     /// off-device. Runs against a private instance so nothing it registers reaches the live surface.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

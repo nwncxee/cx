@@ -153,6 +153,7 @@ internal static unsafe partial class GuiContent
     /// <summary>Headless. Oracles: the engine's prologue text as <c>GLRender</c>'s format string has it (transcribed
     /// by hand), the texture product worked by hand for a known 2x2, and a load screen's <c>.mtr</c> as shipped.
     /// The stock verdict a key's build asks is checked where it lives, over its own fixture.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GuiContent.SelfCheck");

@@ -18,6 +18,11 @@ public sealed class ExtenderLog
     private static readonly AutoResetEvent _wake = new(false);
     private static readonly object _fileLock = new();
     private static Thread? _writer;
+    private static long _queued;
+    private static long _written;
+
+    /// <summary>How long <see cref="Flush"/> waits for the writer before it gives up.</summary>
+    private const int FlushBudgetMs = 2000;
 
     /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, so a check
     /// gives its own instance one and no other line is diverted.</summary>
@@ -31,6 +36,7 @@ public sealed class ExtenderLog
     {
         if (Tap != null) { Tap(message); return; }
         _queue.Enqueue($"{DateTime.Now:O} [cx] {message}");
+        Interlocked.Increment(ref _queued);
         if (_writer == null)
         {
             _writer = new Thread(Drain) { IsBackground = true, Name = "cx-log" };
@@ -63,12 +69,15 @@ public sealed class ExtenderLog
     {
         lock (_fileLock)
         {
+            long n = 0;
             while (_queue.TryDequeue(out var l))
             {
                 Console.Error.WriteLine(l);
                 _parts.Write(l);
+                n++;
             }
             _parts.Flush();
+            Interlocked.Add(ref _written, n);
         }
     }
 
@@ -89,15 +98,27 @@ public sealed class ExtenderLog
         lock (_fileLock) return _parts.SaveReport();
     }
 
-    /// <summary>Block until everything queued so far is on disk. Off-device only (the self-checks).</summary>
-    public static void Flush()
+    /// <summary>Wait until every line queued before the call is on disk, or false once the writer has taken longer
+    /// than the budget. Off-device only (the self-checks): a caller that reads the file asks <see cref="Checker.ExpectFlushed"/>.</summary>
+    public static bool Flush(int budgetMs = FlushBudgetMs)
     {
+        long want = Interlocked.Read(ref _queued);
         _wake.Set();
-        for (int i = 0; i < 200 && !_queue.IsEmpty; i++) BlockingWait.Sleep(1, "self-checks only, never a frame hook");
+        long end = Environment.TickCount64 + budgetMs;
+        while (Interlocked.Read(ref _written) < want && Environment.TickCount64 < end)
+            BlockingWait.Sleep(1, "self-checks only, never a frame hook");
+        return Interlocked.Read(ref _written) >= want;
     }
+
+    /// <summary>Lines queued and not yet on disk.</summary>
+    internal static long Unwritten => Interlocked.Read(ref _queued) - Interlocked.Read(ref _written);
+
+    /// <summary>Everything queued so far onto disk on the calling thread: the host's last word before it returns.</summary>
+    public static void FlushNow() => WriteQueued();
 
     /// <summary>Off-device: a tapped log hears its lines and the file does not; an <see cref="AlwaysNow"/> line is
     /// in the file before it returns. Oracle: the file's own bytes and the literals written here.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var heard = new List<string>();
@@ -105,12 +126,21 @@ public sealed class ExtenderLog
         string quiet = $"ExtenderLog.SelfCheck: tapped, never in the file {Environment.TickCount64}";
         ear.Info("plain");
         ear.Info(quiet);
-        Flush();
+        bool flushed = Flush();
+        bool honest;
+        lock (_fileLock)
+        {
+            log.Info("ExtenderLog.SelfCheck: a line the held writer cannot write yet");
+            honest = !Flush(20);
+        }
+        flushed &= Flush();
         bool tapped = heard.Count == 2 && heard[0] == "plain" && heard[1] == quiet && !TailHas(quiet);
         string mark = $"ExtenderLog.SelfCheck: on disk before return {Environment.TickCount64}";
         log.AlwaysNow(mark);
         bool now = TailHas(mark);
-        log.Info(now && tapped ? "ExtenderLog.SelfCheck: passed"
+        log.Info(now && tapped && flushed && honest ? "ExtenderLog.SelfCheck: passed"
+                 : !honest ? "ExtenderLog.SelfCheck: FAILED -- the log flush said done while the held writer had a line to write"
+                 : !flushed ? $"ExtenderLog.SelfCheck: FAILED -- the log flush gave up with {Unwritten} line(s) not yet written"
                  : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log heard [{string.Join("|", heard)}]"
                  : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
     }

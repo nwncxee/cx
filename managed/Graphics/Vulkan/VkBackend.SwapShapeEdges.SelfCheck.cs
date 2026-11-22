@@ -8,6 +8,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The wiring beside the approved swap examples: a live chain's state read into the shape the fit
     /// test takes. Three adjacent flags and a size pair mean a swap compiles and answers every example, so each
     /// field is asserted in its own place. Oracle: two states written out by hand, with distinct sizes.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SwapShapeEdgesSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkBackend.SwapShapeEdgesSelfCheck");

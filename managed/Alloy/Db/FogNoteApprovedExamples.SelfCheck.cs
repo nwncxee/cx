@@ -7,6 +7,7 @@ namespace CX.Alloy.Db;
 /// hand from <c>CNWCArea::Update</c>, which rewrites the colour every frame while a fade runs.</summary>
 internal static class FogNoteApprovedExamples
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "FogNoteApprovedExamples.SelfCheck");

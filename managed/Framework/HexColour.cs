@@ -40,6 +40,7 @@ internal static class HexColour
     };
 
     /// <summary>Oracle: hand-written colours and refusals, none computed from the parser.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

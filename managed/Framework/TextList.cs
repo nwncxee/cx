@@ -84,6 +84,7 @@ public sealed class TextList : IReadOnlyList<string>, IEquatable<TextList>
     }
 
     /// <summary>Off-device proof of the value semantics and the one-line form.</summary>
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

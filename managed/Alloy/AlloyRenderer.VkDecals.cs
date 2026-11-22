@@ -190,6 +190,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The Vulkan pass's targets and blends are the pair <see cref="DecalLayer"/> sets on GL, and its
     /// second attachment is the output the writer stage declares. Oracles: the factors, formats and clear
     /// transcribed by hand from <see cref="DecalLayer"/>'s GL calls, and the embedded GLSL text.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkDecalSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkDecalSelfCheck");

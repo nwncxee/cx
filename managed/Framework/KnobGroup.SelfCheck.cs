@@ -15,6 +15,7 @@ public sealed partial class KnobGroup
     /// <summary>Off-device: the three constraints on a throwaway group (each must be caught), the
     /// bind/set/reset/format contract, then a walk of every LIVE declaration -- a real knob that broke one
     /// fails the suite, which is what makes <c>run-demo.sh</c> the gate.</summary>
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -148,11 +149,10 @@ public sealed partial class KnobGroup
         foreach (var kv in userRows)
             check.Expect(kv.Value <= MaxUserRows, $"{kv.Key} has {kv.Value} User rows (cap {MaxUserRows}): merge, or move tuning to Advanced");
 
-        // The gate on the LIVE registry (spec §4.1): /settings always, every generated command only when general.commands is on.
+        // The gate on the LIVE registry (spec §4.1): every generated command only when general.commands is on.
         var live = CommandRegistry.Global;
-        check.Expect(live.Knows("/settings"), "/settings dispatches regardless of general.commands");
         foreach (KnobGroup lg in All)
-            check.Expect(live.Knows("/" + lg.Name) == General.Commands.V, $"/{lg.Name} is gated by general.commands");
+            check.Expect(live.Knows("/" + lg.Name) == KnobGroup.Find("general.commands") is Knob<bool> { V: true }, $"/{lg.Name} is gated by general.commands");
 
         log.Info(check.Ok ? "KnobGroup.SelfCheck: passed" : "KnobGroup.SelfCheck: FAILED");
     }

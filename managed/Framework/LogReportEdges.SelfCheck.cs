@@ -4,6 +4,7 @@ namespace CX.Framework;
 /// writer's buffer, and a log folder named by a relative path. Oracle: the literals written here and the files' own bytes.</summary>
 internal static class LogReportEdges
 {
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LogReportEdges.SelfCheck");

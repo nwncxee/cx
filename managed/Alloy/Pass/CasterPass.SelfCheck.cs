@@ -68,7 +68,7 @@ public sealed unsafe partial class CasterPass
                   // #119's standing constraint: the rigid arm is the prepass's clip expression verbatim,
                   // under the invariant. A caster whose depth disagrees with the colour pass's by a bit is
                   // acne no reviewer would trace to a re-spelled multiply.
-                  && ShaderContract.DepthSafe(CastVs) && ShaderContract.DepthSafe(CastMaskVs)
+                  && RendererContract.DepthSafe(CastVs) && RendererContract.DepthSafe(CastMaskVs)
                   && ShdCastVs.Length <= ShaderResource.ResRefBytes
                   && ShdCastFs.Length <= ShaderResource.ResRefBytes
                   // #161: the embedded caster stages satisfy the override guards they are checked against --
@@ -153,7 +153,7 @@ public sealed unsafe partial class CasterPass
                   // content pair that makes its own, which casts through its own caster twin instead
                   && CoverageLayer.HasCoverageSource((int)ShaderFeature.None)
                   && CoverageLayer.HasCoverageSource((int)ShaderFeature.Skin)
-                  && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
+                  && RendererContract.DepthSafe(CastLayerVs) && RendererContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()
                   // #303: the gather dispatch culls the CPU reference's tests over the SHARED CxCullSphere

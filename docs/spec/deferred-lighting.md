@@ -82,7 +82,7 @@ opaque surface. Step 5 brackets that function: a stage head that sets `CX_LIGHT_
 `cx_lightfrag` gets a slim body with the same signature and the same per-light arithmetic, and every other
 program -- the forward opaque lit stage, its deferred twin, the compute pass, the bake -- gets the full one,
 unchanged. The nine heads that set it are the forward consumers of the walk, vertex and fragment both: grass
-cards, grass blades, water, particles, weather drops and splashes. `ShaderContract` asserts all nine set it
+cards, grass blades, water, particles, weather drops and splashes. `RendererContract` asserts all nine set it
 and that the lit head does not.
 
 What the slim body leaves out, and why it is not a behaviour change:
@@ -374,7 +374,7 @@ Vulkan links its own pipelines.
 | 2 deferred compute | `Pass/DeferredLights.cs`, `cx_deferred_cs.glsl`, `cx_lightfrag.glsl` (list-source generalisation), `ShaderStages.All`, bench step, period line |
 | 3 shadows in compute | `Pass/DeferredShadows.cs`, `cx_defshadow_cs.glsl`, `cx_shrec.glsl` (the record's format), `cx_lightfrag.glsl` (the `CX_SHADOW_SOURCE` hook), `cx_localshadow.glsl` (`CxLocalShadowFast`), `cx_deferred_cs.glsl` (the reader) |
 | 4 hot-light debt | `Pass/MoverDebt.cs`, `cx_moverdebt.glsl` + `cx_moverapply.glsl`, `cx_lightfrag.glsl` (`CX_NO_HOT` in the full body), `cx_deferred_cs.glsl` (the define) |
-| 5 forward slim loop | `cx_lightfrag.glsl` (the `CX_LIGHT_LITE` bracket), the nine consumer `*head` stages, `ShaderContract.cs` |
+| 5 forward slim loop | `cx_lightfrag.glsl` (the `CX_LIGHT_LITE` bracket), the nine consumer `*head` stages, `RendererContract.cs` |
 
 `cx_gbuf.glsl` and this page are the seam: a change to either goes through the integration branch, never a
 stream.

@@ -23,10 +23,10 @@ internal static unsafe partial class TexRegistry
         var check = new Checker(log, "TexRegistry.UploadApprovedExamples.SelfCheck");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         { check.Skip("in a session: the suite closes the log gate and waits out the retry, which a player's boot does not pay for"); return true; }
-        if (VkTextures.Device(log) != null)
-        { check.Skip("the stub host has a Vulkan device for textures, so no upload here fails for want of one"); return true; }
         ExtenderLog? saved = _log;
         _log ??= log;
+        Clock was = UseRetryClock(Clock.Stepped());
+        bool armed = OwnedTextures.ArmForCheck(VkTextures.Device(log) == null && OwnedTextures.Armed);
         try
         {
             Cx569E3(check);
@@ -34,8 +34,10 @@ internal static unsafe partial class TexRegistry
             Cx569E4(check);
             Cx569E5(check);
             Cx569E7(check);
+            RetryFallsDueOnTime(check);
         }
-        finally { _log = saved; }
+        finally { _log = saved; UseRetryClock(was); OwnedTextures.ArmForCheck(armed); }
+        check.Expect(OwnedTextures.Armed == armed, "the suite left the owned-texture path armed as it did not find it");
         log.Info(check.Ok ? "TexRegistry.UploadApprovedExamples.SelfCheck: passed" : "TexRegistry.UploadApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -58,16 +60,15 @@ internal static unsafe partial class TexRegistry
     private static void Cx569E3(Checker check)
     {
         ForgetNoDeviceLines();
+        check.ExpectFlushed();
         check.Expect(!NoDeviceLineInLog(), "E3: cx.log held a no-device line before the upload, so this check cannot tell");
         Upload(UploadJob(0, 0, "cx_e3"), out _);
-        ExtenderLog.Flush();
-        check.Expect(NoDeviceLineInLog(), "E3: cx.log holds no line naming the device condition an upload failed on");
+        if (check.ExpectFlushed()) check.Expect(NoDeviceLineInLog(), "E3: cx.log holds no line naming the device condition an upload failed on");
     }
 
     /// <summary>Does the end of cx.log hold a no-device line naming one of the conditions?</summary>
     private static bool NoDeviceLineInLog()
     {
-        ExtenderLog.Flush();
         foreach (string c in DeviceConditions) if (ExtenderLog.TailHas(NoDeviceLine + c)) return true;
         return false;
     }
@@ -93,7 +94,7 @@ internal static unsafe partial class TexRegistry
     {
         TexId id = FailUpload("cx_e5");
         check.Expect(StateOf(id) == TexState.Failed, "E5: the upload with no device did not fail");
-        BlockingWait.Sleep(RetryWaitMs, "self-check only: outlive the once-a-second retry");
+        _clk.Clock.Step(RetryWaitMs);
         TexId again = Alloc("cx_e5", TexKind.Plain, 0, out bool offer);
         check.Expect(again.Index == id.Index && offer, "E5: asking again for a texture whose upload failed does not load it again");
         if (offer) Land(again, 0xE5E5, 4096);
@@ -111,12 +112,26 @@ internal static unsafe partial class TexRegistry
         int offers = 0;
         for (int k = 0; k < 1000; k++) { Alloc("cx_e7", TexKind.Plain, 0, out bool o); if (o) { offers++; _pend[id.Index] = PendFlight; } }
         check.Expect(offers == 0, $"E7: a failed upload was offered again {offers} times inside its first second");
-        BlockingWait.Sleep(RetryWaitMs, "self-check only: outlive the once-a-second retry");
+        _clk.Clock.Step(RetryWaitMs);
         for (int k = 0; k < 1000; k++) { Alloc("cx_e7", TexKind.Plain, 0, out bool o); if (o) { offers++; _pend[id.Index] = PendFlight; } }
         check.Expect(offers == 1, $"E7: a second on, a thousand asks offered the failed upload {offers} times, not once");
         FinishFailed(id);
         check.Expect(Reports(heard, "cx_e7") == 1, $"E7: an upload failing twice was reported {Reports(heard, "cx_e7")} times, not once");
         for (int k = 0; k < 2001; k++) Release(id);
+    }
+
+    /// <summary>A failed upload is offered again at exactly <see cref="RetryMs"/>, not a millisecond before. Oracle: the
+    /// hand-written step sizes, one short of the retry and then the last millisecond.</summary>
+    private static void RetryFallsDueOnTime(Checker check)
+    {
+        TexId id = FailUpload("cx_retry_due");
+        _clk.Clock.Step(999);
+        Alloc("cx_retry_due", TexKind.Plain, 0, out bool early);
+        _clk.Clock.Step(1);
+        Alloc("cx_retry_due", TexKind.Plain, 0, out bool due);
+        check.Expect(!early && due, $"a failed upload was offered {(early ? "at 999 ms" : "not even at 1000 ms")}, not at its 1000 ms retry");
+        if (due) FinishFailed(id);
+        for (int k = 0; k < 3; k++) Release(id);
     }
 
     /// <summary>Longer than the approved once-a-second retry.</summary>

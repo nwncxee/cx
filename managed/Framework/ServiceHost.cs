@@ -15,6 +15,7 @@ public static class ServiceHost
     [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Assembly is rooted; parameterless ctors preserved.")]
     public static void Run()
     {
+        EngineLink.Wire(Native.UserDirectory, Native.AliasPath, static () => Native.Sym(SymbolMap.AppManager) != IntPtr.Zero);
         var log = new ExtenderLog();
         // Which build produced the lines below. build.sh already stamps this from `git describe`, and a log
         // that does not say it is a log you cannot act on: half a debugging round trip is spent establishing
@@ -36,7 +37,7 @@ public static class ServiceHost
             log.Always("host: " + rot);
             log.Always("host: 0 service(s) discovered, 0 hook(s) installed");
             SymbolMap.RotNotice("NWNCX:EE: " + rot);   // Windows-only: a version.dll proxy has no log the player reads
-            ExtenderLog.Flush();   // Always only enqueues, and nothing else in this process will drain it
+            ExtenderLog.FlushNow();   // Always only enqueues, and nothing else in this process will drain it
             return;
         }
 
@@ -59,94 +60,33 @@ public static class ServiceHost
         // nothing is filtered here any more. Alloy was the last Linux-only namespace and it came off
         // with the stand-down lift; its Windows refusal, if any, is EngineLayout.Require inside AlloyGate.
         log.Info($"host: {all.Count} service(s) discovered");
+        log.Info($"host: init order: {string.Join(", ", all.Select(s => s.GetType().Name))}");
+        CheckInitOrder(all, log);
         // Shared engine accessors, before any service can reach for one. AurTex is the only real init-time
         // dependency in this host so far -- four services call it and none of them owns it.
         AurTex.Attach(log);
-        AurTex.SelfCheck(log);
         Native.Attach(log);
-        Native.SelfCheck(log);   // the std::string readback behind the outbound codepage transcode
-        NativeApprovedExamples.SelfCheck(log);
-        NativeCapEdges.SelfCheck(log);
-        NativeBufferCheck.SelfCheck(log);   // a native pool's span comes from its allocation, not from a caller's count
-        CX.Engine.MessageBytesCheck.SelfCheck(log);   // ...and a message's from its own length row
-        CX.Engine.ResRefCheck.SelfCheck(log);   // a resref handed to the engine spans the 17 bytes it copies
-        CX.Ui.WindowNotes.SelfCheck(log);   // focus, minimise and restore get their line in cx.log
         CommandRegistry.Global.Log = log;
-        CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
-        ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
-        MemorySettle.SelfCheck(log);   // when a load's garbage and malloc's free pages go back, off-device
-        ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
-        LogPartsApprovedExamples.SelfCheck(log);   // launch rotation, rolling and the part cap
-        LogPartsEdges.SelfCheck(log);   // an over-long line, and a move that fails
-        LogPartsMoveEdges.SelfCheck(log);   // a log move whose new folder cannot be made goes on in the old file
-        CX.Alloy.Db.FogNoteApprovedExamples.SelfCheck(log);   // the fog line writes when the fog moves, not when a float does
-        CX.Alloy.Db.FogNoteEdges.SelfCheck(log);   // each thing the line says, at the line's precision
-        CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
-        CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
-        CX.Graphics.Rhi.VkBackend.StallSelfCheck(log);   // a stalled queue's log line names what its oldest submit waits on
-        CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
-        CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
-        CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
-        CX.Graphics.Rhi.VkBackend.CacheWriteSelfCheck(log);   // the pipeline-cache blob a worker writes lands whole, and a refused path is loud
-        CX.Graphics.ShaderCache.SelfCheck(log);   // ...and which blob the folder retires beside the one this driver reads
-        UserFoldersApprovedExamples.SelfCheck(log);   // CX's caches, logs and dumps follow the game's own folders
-        UserFoldersRegression.SelfCheck(log);   // ...while settings and the shader dump stay beside nwn.ini
-        StaleLogsApprovedExamples.SelfCheck(log);   // the logs an older CX left beside nwn.ini and in the home folder go
-        CX.Graphics.CacheFilesApprovedExamples.SelfCheck(log);   // a damaged cache file never changes what is drawn
-        CX.Graphics.CacheFileRegression.SelfCheck(log);   // ...a clean one says nothing, an older release's is rebuilt once
-        CX.Graphics.CacheFileEdges.SelfCheck(log);   // ...a zeroed one is named, and the report waits for the damage to stop
-        CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
-        CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
-        CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
-        CX.Alloy.AlloyRenderer.VramSelfCheck(log);   // the frame line's memory part: the largest allocations, an overrun, and the budget's own figure
-        CX.Alloy.AlloyRenderer.VkWaveNoiseSelfCheck(log);   // which solid_noise mirror the wave field takes, and when it has none
-        CX.Alloy.AlloyRenderer.VkWaveNoiseEdgesSelfCheck(log);   // ...and that a name the resman holds is not a mirror
-        CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
-        CX.Alloy.Db.MeshArena.SelfCheck(log);   // ...but not while a submit that may draw it is in flight, and a load sends its own bytes only
-        CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
-        CX.Graphics.Rhi.VkGlsl.BindlessCapSelfCheck(log);   // one module serves every bindless seat count
-        CX.Alloy.WorldDepth.SelfCheck(log);   // the reversed-Z folds and the content depth rewrite on fixtures
-        CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
-        CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
-        CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
-        CX.Alloy.AlloyRenderer.VkParticlesSelfCheck(log);   // the particle pass binds the light rig and each texture's sampler, and its velocity arm reprojects
-        CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
-        CX.Alloy.AlloyRenderer.VkDecalSelfCheck(log);   // the Vulkan decal layer's targets, blends and clear against GL's
-        CX.Alloy.AlloyRenderer.VkWaterSelfCheck(log);   // the Vulkan water class's snapshot pair and its filtered reads
-        CX.Alloy.GrassField.VkSelfCheck(log);   // the Vulkan grass stages read the scatter's records by instance, not a vertex stream
-        CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
-        CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
         CX.Graphics.Rhi.LooseBlock.Attach(log);
-        CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
-        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax
-        Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
+        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.BeforeServices), log);
         KnobSurface.Register();
-        EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires
         EngineLayout.Register();
         SymbolMap.Register();
-        ClientBuilds.SelfCheck(log);   // every build file names real rows and symbols, and covers every RVA
-        FrameRegistry.SelfCheck(log);   // walk order, post-seal refusal, and the zero-alloc AC
-        CX.Ui.AtlasSheet.SelfCheck(log);   // pack-and-grow, ceiling refusal, face lookup -- no GL, no stbtt
-        CX.Ui.TextStyle.SelfCheck(log);   // per-element text rows + the batch's halos-under-bodies run
-        CX.Ui.LoadScreen.SelfCheck(log);   // the two load sources as one monotonic bar
-        CX.Alloy.GuiContent.SelfCheck(log);   // the engine's content-stage prologue, m_texture, the pair key
-        CX.Alloy.GuiPassVk.SelfCheck(log);   // the GUI and content programs translate for Vulkan, their blocks at the laid-out offsets
-        foreach (IExtenderService service in all)
+        List<IExtenderService> admitted = all.Where(s => SelfCheckUnits.Admits(s.GetType().Name)).ToList();
+        log.Info($"host: initializing {admitted.Count} service(s)");
+        foreach (IExtenderService service in admitted)
         {
-            try { service.Initialize(log, hooks); }
-            catch (Exception e) { log.Info($"host: {service.GetType().Name} init threw: {e}"); }
+            SelfCheckUnits.Run(service.GetType().Name, () =>
+            {
+                try { service.Initialize(log, hooks); }
+                catch (Exception e) { log.Info($"host: {service.GetType().Name} init threw: {e}"); }
+            });
         }
         CX.Ui.TextRig.WarmStyles();   // after every Initialize: the styles are declared in the services' knob groups
 
         // ADR 0025: after every Initialize, so the walk covers every group declared this session -- a User
         // row without help, a layout knob that is not a dropdown, a Restart knob whose Boot moved, all fail here.
-        KnobGroup.SelfCheck(log);
-        TextList.SelfCheck(log);
-        KnobFile.SelfCheck(log);
-        KnobFileBootApprovedExamples.SelfCheck(log);   // boot's own sets are held: cx.cfg is not rewritten at boot
-        LogsAlwaysApprovedExamples.SelfCheck(log);   // no setting turns cx.log off
-        LogReportApprovedExamples.SelfCheck(log);   // About's Save my log writes a still cx-report.log
-        LogReportEdges.SelfCheck(log);
+        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.AfterServices), log);
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the
@@ -160,6 +100,23 @@ public static class ServiceHost
         // Boot is over here, so a set from now on is a player's: every group has declared and every self-check
         // has put back what it moved.
         KnobFile.BootEnded(log);
-        ExtenderLog.Flush();   // boot lines on disk before the host returns: the demo exits right after
+        log.Info($"KnobFile: the debounce runs on {KnobFile.ClockName}");
+        log.Info($"TexRegistry: the upload retry runs on {CX.Alloy.Db.TexRegistry.RetryClockName}");
+        ExtenderLog.FlushNow();   // boot lines on disk before the host returns: the demo exits right after
+    }
+
+    /// <summary>Each service initializes after the one before it by InitOrder, then by name, and the seam goes first.
+    /// Oracle: the rule checked pair by pair, apart from the sorts that made the list.</summary>
+    private static void CheckInitOrder(List<IExtenderService> all, ExtenderLog log)
+    {
+        var check = new Checker(log);
+        for (int i = 1; i < all.Count; i++)
+        {
+            IExtenderService a = all[i - 1], b = all[i];
+            int byName = Comparer<string>.Default.Compare(a.GetType().Name, b.GetType().Name);
+            check.Expect(a.InitOrder < b.InitOrder || (a.InitOrder == b.InitOrder && byName < 0),
+                $"init order: {b.GetType().Name} ({b.InitOrder}) comes after {a.GetType().Name} ({a.InitOrder})");
+        }
+        check.Expect(all.Count > 0 && all[0] is CX.Alloy.Seam.SeamService, "init order: the seam does not initialize first");
     }
 }

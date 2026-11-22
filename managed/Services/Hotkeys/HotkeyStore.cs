@@ -27,7 +27,7 @@ public static class HotkeyStore
     // The token presented by the current server this session, or null if none/unrecognised-and-unconsented.
     private static string? _activeToken;
 
-    public static string Path => Native.ConfigPath("cx-hotkeys.cfg");
+    public static string Path => EngineLink.ConfigPath("cx-hotkeys.cfg");
 
     private static bool _loaded;
 

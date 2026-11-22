@@ -10,6 +10,7 @@ internal static class StaleLogsApprovedExamples
 
     private static readonly string[] Parts = ["cx.1.log", "cx.2.log", "cx.3.log", "cx.4.log"];
 
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "StaleLogsApprovedExamples.SelfCheck");

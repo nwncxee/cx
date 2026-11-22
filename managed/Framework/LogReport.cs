@@ -4,7 +4,7 @@ namespace CX.Framework;
 /// beside it. A browser refuses to upload a file that changes after it was picked, and cx.log changes every few seconds.</summary>
 internal static class LogReport
 {
-    internal const string FileName = "cx-report.log";
+    internal const string FileName = LogParts.ReportName;
 
     /// <summary>What a press saves from, copies with and reports to; a self-check swaps in its own for the press.</summary>
     internal sealed class LogReportState

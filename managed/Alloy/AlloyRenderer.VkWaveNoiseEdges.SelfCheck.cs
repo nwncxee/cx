@@ -11,6 +11,7 @@ public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>Both names present and each mirror's standing varied: the engine's wins only while its own
     /// mirror is up, and two names with no mirror between them are no field at all.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void VkWaveNoiseEdgesSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkWaveNoiseEdgesSelfCheck");

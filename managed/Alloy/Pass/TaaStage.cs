@@ -45,8 +45,8 @@ internal static class TaaStage
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        check.Expect(StageFs.Contains("vec4 CxStage(vec4 c)") && ShaderContract.DisplaySafe(StageFs) && ShaderContract.SlotSafe(StageFs, "uHist", "uWx")
-          && !ShaderContract.SlotSafe(StageFs.Replace("uniform sampler2D uWx;", ""), "uHist", "uWx"),
+        check.Expect(StageFs.Contains("vec4 CxStage(vec4 c)") && ShaderContract.DisplaySafe(StageFs) && RendererContract.SlotSafe(StageFs, "uHist", "uWx")
+          && !RendererContract.SlotSafe(StageFs.Replace("uniform sampler2D uWx;", ""), "uHist", "uWx"),
           "the stage is display space and reads the history and the precipitation overlay");
         check.Expect(StageFs.Contains("if (uWxOn != 0)") && StageFs.Contains("CxWxOver(pow(h, vec3($SRGB$)), textureLod(uWx, vUV, 0.0),")
           && StageFs.Contains("h = pow(max(lin, vec3(0.0)), vec3(1.0 / $SRGB$));"),
@@ -74,7 +74,7 @@ internal static class TaaStage
         check.Expect(TaaFs.Contains("vec2 sp = vUV * vec2(sz) + uJitterPx;") && TaaFs.Contains("c = textureLod(uCur, sp / vec2(sz), 0.0);"),
           "upsampling samples the frame at clean position + jitter");
         check.Expect(TaaFs.Contains("if (uUpsample != 0) a = mix(a * 0.25, a, conf);"), "a between-texel sample leans on the history");
-        check.Expect(ShaderContract.SlotSafe(TaaFs, "uCur", "uHist", "uVel", "uDepth", "uReact"), "the resolve declares the samplers Prepare binds");
+        check.Expect(RendererContract.SlotSafe(TaaFs, "uCur", "uHist", "uVel", "uDepth", "uReact"), "the resolve declares the samplers Prepare binds");
         check.Expect(TaaFs.Contains("a = CxTaaReactive(a, textureLod(uReact, vUV, 0.0).r);"),
           "the reactive mask is read where the current frame's share is computed");
         check.Expect(TaaFs.Contains("uBlend >= 1.0 ? 1.0 : min(0.5, uBlend + length(velPx) * 0.05)"), "a moving pixel converges faster than the resting share");

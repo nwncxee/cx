@@ -8,6 +8,7 @@ internal static partial class VkGlsl
 {
     /// <summary>Approved-spec: a program's modules, compiled under one GPU's bindless seat count, serve a GPU that seats
     /// another without shaderc running again. Oracle: the toolchain's own count of fresh compiles, held to zero.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void BindlessCapSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkGlsl.BindlessCapSelfCheck");

@@ -173,6 +173,7 @@ internal static unsafe class LoadScreen
     internal static float Advance(float shown, float target) => target > shown ? target : shown;
 
     /// <summary>Headless: the combined mapping and the monotonic latch.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LoadScreen.SelfCheck");

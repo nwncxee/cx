@@ -52,7 +52,7 @@ internal static partial class SmaaStage
               $"{r} carries the port + library");
         foreach (string r in new[] { ShdEdgeFs, ShdWeightFs })
             check.Expect(ShaderResource.Tokens(ShaderStages.Source(r)).Contains($"#define CX_AA_LEVEL {Level}\n"), $"{r} takes the preset from $AA$");
-        check.Expect(ShaderContract.SlotSafe(ShaderStages.Source(ShdWeightFs), "uEdges", "uArea", "uSearch"), "the weight pass binds its three tables");
+        check.Expect(RendererContract.SlotSafe(ShaderStages.Source(ShdWeightFs), "uEdges", "uArea", "uSearch"), "the weight pass binds its three tables");
         using (Stream? a = typeof(SmaaStage).Assembly.GetManifestResourceStream("SmaaArea"))
         using (Stream? s = typeof(SmaaStage).Assembly.GetManifestResourceStream("SmaaSearch"))
             check.Expect(a?.Length == AreaW * AreaH * 2 && s?.Length == SearchW * SearchH, "the area and search tables are embedded at 160x560 RG8 and 64x16 R8");

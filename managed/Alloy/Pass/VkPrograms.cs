@@ -225,6 +225,7 @@ internal static class VkPrograms
     /// <summary>Every program here, translated and compiled for Vulkan 1.3, its loose block reflected. Oracles:
     /// shaderc's verdict on each stage; the push block's offsets against the hand-written 0, 4 .. 24 its seven
     /// four-byte members take; the compiled block against the translator's member list, two artifacts.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkPrograms.SelfCheck");

@@ -10,6 +10,7 @@ public static class LogsAlwaysApprovedExamples
     /// <summary>A key no real setting claims, fed beside the old one to show the fed file was read at all.</summary>
     private const string Probe = "cx-selfcheck-logs.keep";
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -52,7 +53,7 @@ public static class LogsAlwaysApprovedExamples
             $"L3 /general logs 0 answers that General has no logs setting, not: {reply}");
         string mark = $"LogsAlwaysApprovedExamples: L3 still writing {Guid.NewGuid():N}";
         log.Info(mark);
-        ExtenderLog.Flush();
+        check.ExpectFlushed();
         check.Expect(ExtenderLog.TailHas(mark), "L3 cx.log goes on getting lines after /general logs 0");
     }
 

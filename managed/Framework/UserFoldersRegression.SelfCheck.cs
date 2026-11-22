@@ -7,6 +7,7 @@ namespace CX.Framework;
 /// nwn.ini whatever the aliases say. Oracle: the folder names written here.</summary>
 internal static class UserFoldersRegression
 {
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "UserFoldersRegression.SelfCheck");
@@ -22,7 +23,7 @@ internal static class UserFoldersRegression
             // Given CACHE and LOGS both set elsewhere in nwn.ini
             // When the player changes a setting in /settings and binds a hotkey
             // Then cx.cfg and cx-hotkeys.cfg are saved beside nwn.ini, as before
-            check.Expect(Native.ConfigPath(Settings.FileName) == Path.Combine(beside, "cx.cfg"), $"E11 cx.cfg is saved beside nwn.ini, not {Native.ConfigPath(Settings.FileName)}");
+            check.Expect(EngineLink.ConfigPath(Settings.FileName) == Path.Combine(beside, "cx.cfg"), $"E11 cx.cfg is saved beside nwn.ini, not {EngineLink.ConfigPath(Settings.FileName)}");
             check.Expect(HotkeyStore.Path == Path.Combine(beside, "cx-hotkeys.cfg"), $"E11 cx-hotkeys.cfg is saved beside nwn.ini, not {HotkeyStore.Path}");
 
             // Given alloy.dumpshaders=1 in cx.cfg, and LOGS set elsewhere

@@ -12,7 +12,7 @@ namespace CX.Alloy;
 internal static class ShaderStages
 {
     /// <summary>The dump folder, inside the client's own user directory (next to nwn.ini).</summary>
-    internal static string DumpDir => Native.ConfigPath("cx_shader_dump");
+    internal static string DumpDir => EngineLink.ConfigPath("cx_shader_dump");
 
     internal const string Banner = """
         // Dumped from NWNCX:EE's embedded default by /alloy shaderdump -- the stage THIS build

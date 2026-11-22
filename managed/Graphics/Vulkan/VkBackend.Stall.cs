@@ -76,6 +76,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Approved-spec: the verdict names the first unmet wait. Oracles: hand-written notes and counters.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void StallSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

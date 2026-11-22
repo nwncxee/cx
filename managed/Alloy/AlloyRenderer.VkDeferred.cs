@@ -501,13 +501,13 @@ public sealed unsafe partial class AlloyRenderer
         string embedded = ShaderStages.Source(resref);
         fromContent = content != null;
         string src = ShaderSource.Content(content ?? embedded, log);
-        if (fromContent && !ShaderContract.BlocksSafe(embedded, src))
+        if (fromContent && !RendererContract.BlocksSafe(embedded, src))
         {
             log.Always($"AlloyRenderer: {label}'s override reads a uniform block's terms outside the block -- building the embedded stage");
             src = ShaderSource.Content(embedded, log);
             fromContent = false;
         }
-        if (!ShaderContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
+        if (!RendererContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
         {
             if (!fromContent)
             {

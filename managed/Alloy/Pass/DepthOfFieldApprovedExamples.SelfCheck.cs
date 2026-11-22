@@ -68,7 +68,7 @@ internal static partial class DepthOfField
         try
         {
             check.Expect(!Wanted, "A device that refuses: the frame draws with no blur");
-            ExtenderLog.Flush();
+            check.ExpectFlushed();
             string path = Path.Combine(ExtenderLog.Dir, "cx.log");
             if (!File.Exists(path)) { check.Skip("the cx.log half: no cx.log in this launch's logs folder to read"); return; }
             int said = 0;

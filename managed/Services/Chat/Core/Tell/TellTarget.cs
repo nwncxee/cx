@@ -142,6 +142,11 @@ public static class TellTarget
         check.Expect(OfLine("", 7u, relog) == (null, null), "a line with no name and a dead id names nobody");
         check.Expect(OfLine("Alice", 42u, null) == ("Alice", null), "no roster still names the speaker");
 
+        while (_pending.TryDequeue(out _)) { }
+        for (int i = 0; i < 8; i++) Sent("Pal", $"echo-{(char)('a' + i)}");
+        check.Expect(TakeEcho("Me: [Tell] echo-a") == "Pal", "MaxPending: eight sends keep the first one's echo");
+        while (_pending.TryDequeue(out _)) { }
+
         log.Info(check.Ok ? "TellTarget.SelfCheck: passed" : "TellTarget.SelfCheck: FAILED");
     }
 
