@@ -122,6 +122,23 @@ internal sealed unsafe partial class VkBackend
         return sizes.ToArray();
     }
 
+    /// <summary>The largest device-local heap as the allocator sees it: its size (its share of <c>alloy.vramcap</c>), the
+    /// blocks VMA took from it and the bytes allocated inside them. Images and arena buffers land there.</summary>
+    internal void LargestHeap(out long size, out long blocks, out long held)
+    {
+        VkPhysicalDeviceMemoryProperties* props;
+        Vma.vmaGetMemoryProperties(_vma, &props);
+        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
+        size = 0; blocks = 0; held = 0;
+        for (int i = 0; i < props->memoryHeapCount; i++)
+        {
+            if ((props->memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0 || (long)props->memoryHeaps[i].size <= size) continue;
+            size = (long)props->memoryHeaps[i].size;
+            blocks = (long)t.memoryHeap[i].statistics.blockBytes;
+            held = (long)t.memoryHeap[i].statistics.allocationBytes;
+        }
+    }
+
     /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers
     /// keep resident, which no VRAM figure counts.</summary>
     internal long HostHeldBytes()

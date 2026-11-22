@@ -28,6 +28,8 @@ internal static unsafe partial class LightmapBake
         public ImageId PageA, PageB, PageC, ScrA, ScrB, ScrC, ScrZ, BlkA, BlkB;
         public SamplerId Clamp;
         public int Layers, PoolMib;
+        /// <summary>The page arrays' move-back count the pool last saw: a move starts their contents over.</summary>
+        public int PoolMoves;
         /// <summary>The pages were re-packed from zero: plane C's layers clear at the next frame.</summary>
         public bool ClearDue;
         public BufferId Chart;
@@ -209,6 +211,13 @@ internal static unsafe partial class LightmapBake
     {
         BakeVkState s = _vkb;
         VkBackend vk = s.Dev!;
+        int moves = vk.MovesOf(s.PageA) + vk.MovesOf(s.PageB) + vk.MovesOf(s.PageC);
+        if (s.Layers > 0 && moves != s.PoolMoves)
+        {
+            s.PoolMoves = moves; s.ClearDue = true;
+            Revoke();
+            _log?.Info("LightmapBake: the page pool moved back to device memory -- its pages reland from the disk cache");
+        }
         if (s.Layers > 0 && s.PoolMib == Lightmap.Vram.V) { VkClearPages(); return true; }
         if (s.Layers > 0) { VkFreePages(); Revoke(); }
         int n = PoolPagesNow();
@@ -223,7 +232,7 @@ internal static unsafe partial class LightmapBake
             _log?.Always($"LightmapBake: a {n}-page pool ({n * PageMiB} MiB) was refused by the Vulkan device ({AlloyRenderer.VramFreeMib} MiB free)");
             return _down.Fail(_log, "the page pool could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
         }
-        s.Layers = n; s.PoolMib = Lightmap.Vram.V; s.ClearDue = true;
+        s.Layers = n; s.PoolMib = Lightmap.Vram.V; s.ClearDue = true; s.PoolMoves = 0;
         VkClearPages();
         _log?.Info($"LightmapBake: page pool {n} x {PageMiB} MiB = {n * PageMiB} MiB resident on Vulkan (lightmap.vram {Lightmap.Vram.V})");
         return true;

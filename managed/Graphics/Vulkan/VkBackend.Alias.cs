@@ -27,6 +27,8 @@ internal sealed unsafe partial class VkBackend
         public VkImg? Owner;
         /// <summary>A member was destroyed and the allocation may now be larger than the rest need.</summary>
         public bool Shrink;
+        /// <summary>Its allocation is in system RAM and device memory has room again: the frame boundary moves it back.</summary>
+        public bool MoveBack;
         /// <summary>Allocations the group grew off while a member this frame used was still bound into them.</summary>
         public readonly List<VmaAllocation> Behind = new();
     }
@@ -105,18 +107,27 @@ internal sealed unsafe partial class VkBackend
     /// into it and every other member remade on it -- but, while <paramref name="fresh"/> grows the group mid-frame, one a
     /// submit of this frame used, which keeps its image, layout and bytes until <see cref="ShrinkGroups"/>. A member the
     /// device refuses an image or a binding for leaves the group (<see cref="Orphan"/>). Cold: a resize or a pass's first target.</summary>
-    private bool Rehome(AliasGroup g, ulong size, uint bits, VkImg? fresh)
+    private bool Rehome(AliasGroup g, ulong size, uint bits, VkImg? fresh, bool deviceOnly = false)
     {
         var req = new VkMemoryRequirements { size = size, alignment = 1, memoryTypeBits = bits };
         foreach (VkImg m in g.Members)
         {
-            VkMemoryRequirements r;
-            _vkd.vkGetImageMemoryRequirements(m.Image, &r);
-            req.alignment = Math.Max(req.alignment, r.alignment);
+            VkMemoryRequirements mr;
+            _vkd.vkGetImageMemoryRequirements(m.Image, &mr);
+            req.alignment = Math.Max(req.alignment, mr.alignment);
         }
         // memory of its own: a lane slot carved out of a shared block leaves its old slot as slack the driver keeps
-        var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory, priority = HighPriority };
-        if (Vma.vmaAllocateMemory(_vma, &req, &aci, out VmaAllocation a, out _) != VkResult.Success) return false;
+        var aci = new VmaAllocationCreateInfo { requiredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory, priority = HighPriority };
+        VkResult r;
+        VmaAllocation a;
+        while (NoRoom(r = Vma.vmaAllocateMemory(_vma, &req, &aci, out a, out _)) && Residents?.Evict((long)size) == true) { }
+        if (r != VkResult.Success && (deviceOnly || !NoRoom(r))) return false;
+        if (r != VkResult.Success)
+        {
+            aci.requiredFlags = 0;
+            if (Vma.vmaAllocateMemory(_vma, &req, &aci, out a, out _) != VkResult.Success) return false;
+            _groupsSpilled |= OffDevice(a);
+        }
         Vma.vmaSetAllocationName(_vma, a, "alias " + g.Name);
         if (g.Alloc.IsNotNull) g.Behind.Add(g.Alloc);
         g.Alloc = a; g.Size = size; g.Align = req.alignment; g.TypeBits = bits; g.Shrink = false;
@@ -214,7 +225,9 @@ internal sealed unsafe partial class VkBackend
         _shrinkDue = false;
         foreach (AliasGroup g in _alias.Values)
         {
-            if (!g.Shrink && g.Behind.Count == 0) continue;
+            bool back = g.MoveBack;
+            g.MoveBack = false;
+            if (!g.Shrink && g.Behind.Count == 0 && !back) continue;
             g.Shrink = false;
             ulong need = 0;
             foreach (VkImg m in g.Members)
@@ -223,7 +236,7 @@ internal sealed unsafe partial class VkBackend
                 _vkd.vkGetImageMemoryRequirements(m.Image, &r);
                 need = Math.Max(need, r.size);
             }
-            if ((need < g.Size || g.Behind.Count > 0) && !Rehome(g, need, g.TypeBits, null))
+            if ((need < g.Size || g.Behind.Count > 0 || back) && !Rehome(g, need, g.TypeBits, null, deviceOnly: back) && !back)
                 Fault($"alias group {g.Name}: moving onto {need} bytes was refused");
         }
     }

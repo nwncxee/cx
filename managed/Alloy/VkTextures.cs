@@ -16,7 +16,27 @@ namespace CX.Alloy;
 /// </summary>
 internal static class VkTextures
 {
-    private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler, SamplerId SamplerId, long Bytes);
+    /// <summary>One owned name's mirror: its image and index while it is on the device, and while it waits for room
+    /// (evicted, or refused for want of room) the texels that bring it back.</summary>
+    private sealed class Entry
+    {
+        public ImageId Image;
+        public BindlessHandle Handle;
+        public SamplerDesc Sampler;
+        public SamplerId SamplerId;
+        public long Bytes;
+        public Format F;
+        public int W, H, Mips;
+        public bool Grey, GenMips;
+        public string Label = "";
+        /// <summary>The device frame a draw last asked for it; never drawn reads as the oldest.</summary>
+        public long Drawn = long.MinValue;
+        /// <summary>Each level's texels while it waits for room; null on the device.</summary>
+        public byte[]?[]? Texels;
+        public long RetryAt;
+        /// <summary>A draw asked for it while it waited: the frame's end brings it back.</summary>
+        public bool Wanted;
+    }
 
     /// <summary>The next Vulkan-only name; outlives a device, so a name is never handed out twice in a session.</summary>
     private sealed class NameState { public int Next = (int)FirstName - 1; }
@@ -27,9 +47,16 @@ internal static class VkTextures
     internal const uint FirstName = 0x40000000;   // not-an-offset: a texture-name range
 
     /// <summary>One device's mirror, replaced whole with the device (context loss drops both).</summary>
-    private sealed class VkTexState
+    private sealed class VkTexState : VkBackend.IResidents
     {
         public VkBackend? Dev;
+        /// <summary>Names waiting for room, evicted or refused, in the order they began waiting.</summary>
+        public readonly List<Entry> Parked = new();
+        /// <summary>Labels already named in cx.log as refused for room: a repeat refusal adds no line.</summary>
+        public readonly HashSet<string> Named = new();
+        public long Evictions;
+        public bool Evict(long bytes) => EvictIdle(this, bytes);
+        public void FrameEnd() => Restore(this);
         public readonly Dictionary<uint, Entry> ByName = new();
         public readonly Dictionary<SamplerDesc, SamplerId> Samplers = new();
         /// <summary>Names sharing each image: a sampler change is a new GL name over the same texels.</summary>
@@ -44,16 +71,19 @@ internal static class VkTextures
     /// <summary>Distinct refusals logged before they are only counted.</summary>
     private const int RefusalLines = 8;
 
+    /// <summary>Frames between two tries to bring back a texture that is waiting for room: the frame line's period.</summary>
+    private const int RetryPeriod = 300;
+
+    /// <summary>Readback offsets between evicted levels: a whole BC block and Vulkan's four-byte copy rule both divide it.</summary>
+    private const int LevelAlign = 16;
+
     /// <summary>The device the mirror writes to, or null: not on Vulkan, Alloy not owning textures, or no device.
     /// Made here when it does not exist yet, which an area load reaches before the first Vulkan frame.</summary>
     internal static VkBackend? Device(ExtenderLog? log)
     {
         if (!Renderer.OnVulkan || log == null || !OwnedTextures.Armed || AlloyGate.Failed) return null;
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return null;
-        if (_s.Dev != vk)
-        {
-            _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
-        }
+        if (_s.Dev != vk) Attach(vk);
         return vk;
     }
 
@@ -67,24 +97,158 @@ internal static class VkTextures
          : "the device came back since it was asked for";
 
     /// <summary>A golden's device for the mirror, which it drops again with null: the session's gate never opens there.</summary>
-    internal static void DeviceForCheck(VkBackend? vk) => _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
+    internal static void DeviceForCheck(VkBackend? vk) => Attach(vk);
+
+    /// <summary>A fresh mirror for <paramref name="vk"/>, which lends it room and gives it a turn at each frame's end.</summary>
+    private static void Attach(VkBackend? vk)
+    {
+        if (_s.Dev?.Residents == _s) _s.Dev.Residents = null;
+        _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
+        if (vk != null) vk.Residents = _s;
+    }
 
     /// <summary>A new Vulkan image for owned name <paramref name="gl"/>, replacing whatever the name held; null id
     /// (counted, logged) when the device refuses it. The caller uploads its levels next.</summary>
     internal static ImageId Create(VkBackend vk, uint gl, Format f, int w, int h, int mips, bool grey, in SamplerDesc s, string label)
     {
         Forget(gl);
-        ImageUse use = ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc | (grey ? ImageUse.Grey : ImageUse.None);
-        ImageId img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, mips, 1, 1, use, label));
+        VkTexState t = _s;
+        var e = new Entry { Sampler = s, F = f, W = w, H = h, Mips = mips, Grey = grey, Label = label };
+        for (int l = 0; l < mips; l++) e.Bytes += LevelBytes(f, Math.Max(1, w >> l), Math.Max(1, h >> l));
+        if (!t.Samplers.TryGetValue(s, out e.SamplerId)) t.Samplers[s] = e.SamplerId = vk.CreateSampler(s);
+        ImageId img = vk.CreateImage(DescOf(e));
+        if (img.IsNull && vk.LastFault.Contains(VkBackend.NoRoomTag, StringComparison.Ordinal))
+        {
+            t.Refused++;
+            e.Texels = new byte[mips][];
+            e.RetryAt = vk.Frame + RetryPeriod;
+            t.ByName[gl] = e;
+            t.Parked.Add(e);
+            t.Gen++;
+            if (t.Named.Add(label))
+                vk.Log.Always($"VkTextures: {label} needs {e.Bytes / (1024.0 * 1024.0):0.#} MiB of device memory and none is free "
+                                    + "-- it draws as the stand-in until there is room");
+            return default;
+        }
         if (img.IsNull) { Refuse($"{label}: the device refused a {f} {w}x{h} image"); return default; }
-        if (!_s.Samplers.TryGetValue(s, out SamplerId sid)) _s.Samplers[s] = sid = vk.CreateSampler(s);
-        long bytes = 0;
-        for (int l = 0; l < mips; l++) bytes += LevelBytes(f, Math.Max(1, w >> l), Math.Max(1, h >> l));
-        _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid, bytes);
-        _s.Gen++;
-        _s.Refs[img.Value] = 1;
-        _s.Mirrored++;
+        Seat(t, vk, e, img);
+        t.ByName[gl] = e;
+        t.Mirrored++;
         return img;
+    }
+
+    private static ImageDesc DescOf(Entry e)
+        => new(ImageKind.Tex2D, e.F, e.W, e.H, 1, e.Mips, 1, 1,
+               ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc | (e.Grey ? ImageUse.Grey : ImageUse.None), e.Label);
+
+    /// <summary><paramref name="e"/> on the device as <paramref name="img"/>, with an index of its own.</summary>
+    private static void Seat(VkTexState t, VkBackend vk, Entry e, ImageId img)
+    {
+        e.Image = img;
+        e.Handle = vk.Bindless(img, e.SamplerId);
+        t.Refs[img.Value] = 1;
+        t.Gen++;
+    }
+
+    /// <summary>Level <paramref name="level"/> of <paramref name="gl"/>'s texels: onto its image, or kept for when it
+    /// has room. False (logged) when the device refuses the upload or the name has no mirror.</summary>
+    internal static bool Upload(VkBackend vk, uint gl, int level, ReadOnlySpan<byte> bytes)
+    {
+        if (!_s.ByName.TryGetValue(gl, out Entry? e) || (uint)level >= (uint)e.Mips) return false;
+        if (!e.Image.IsNull) return vk.Upload(e.Image, level, 0, bytes);
+        e.Texels![level] = bytes.ToArray();
+        return true;
+    }
+
+    /// <summary>Fill <paramref name="gl"/>'s levels below the first from it, now or once it has room.</summary>
+    internal static void GenerateMips(VkBackend vk, uint gl)
+    {
+        if (!_s.ByName.TryGetValue(gl, out Entry? e) || e.Mips < 2) return;
+        if (!e.Image.IsNull) vk.GenerateMips(e.Image);
+        else e.GenMips = true;
+    }
+
+    /// <summary>Free about <paramref name="bytes"/> of idle mirrors, least recently drawn first: each one's levels are
+    /// read back to system RAM, and it waits there until a draw asks for it. False when nothing was idle.</summary>
+    private static bool EvictIdle(VkTexState t, long bytes)
+    {
+        VkBackend? vk = t.Dev;
+        if (vk == null) return false;
+        long idleBefore = vk.Frame - 1, freed = 0, at = 0;
+        var batch = new List<(Entry E, long At)>();
+        while (freed < bytes)
+        {
+            Entry? pick = null;
+            foreach (Entry e in t.ByName.Values)
+                if (!e.Image.IsNull && e.Drawn < idleBefore && t.Refs.GetValueOrDefault(e.Image.Value) == 1   // ponytail: a cloned image never evicts; count its names to lift it
+                    && !batch.Exists(b => b.E == e) && (pick == null || e.Drawn < pick.Drawn))
+                    pick = e;
+            if (pick == null) break;
+            batch.Add((pick, at));
+            for (int l = 0; l < pick.Mips; l++) at += Aligned(LevelBytes(pick.F, Math.Max(1, pick.W >> l), Math.Max(1, pick.H >> l)));
+            freed += pick.Bytes;
+        }
+        if (batch.Count == 0) return false;
+        BufferId rb = vk.CreateBuffer(new BufferDesc(at, BufferUse.CopyDst, MemoryKind.Readback, "evicted textures"));
+        if (rb.IsNull) return false;
+        var cl = new CommandList("evict textures", 1 << 12, vk.Log);
+        foreach ((Entry e, long off) in batch)
+            for (int l = 0, o = 0; l < e.Mips; l++)
+            {
+                int w = Math.Max(1, e.W >> l), h = Math.Max(1, e.H >> l);
+                cl.CopyImageToBuffer(new CopyToBufferCmd(e.Image, new ImageRegion(l, 0, 0, 0), w, h, rb, off + o));
+                o += (int)Aligned(LevelBytes(e.F, w, h));
+            }
+        bool read = vk.Submit(cl) && vk.WaitSubmitted();
+        foreach ((Entry e, long off) in batch)
+        {
+            var texels = new byte[e.Mips][];
+            for (int l = 0, o = 0; l < e.Mips; l++)
+            {
+                int w = Math.Max(1, e.W >> l), h = Math.Max(1, e.H >> l);
+                texels[l] = new byte[LevelBytes(e.F, w, h)];
+                if (read) vk.ReadMapped(rb, off + o, texels[l]);
+                o += (int)Aligned(texels[l]!.Length);
+            }
+            t.Refs.Remove(e.Image.Value);
+            vk.DestroyNow(e.Image, e.Handle);
+            e.Image = default;
+            e.Handle = default;
+            e.Texels = texels;
+            e.GenMips = false;
+            e.RetryAt = vk.Frame;
+            t.Parked.Add(e);
+            t.Evictions++;
+        }
+        vk.Destroy(rb);
+        t.Gen++;
+        return true;
+    }
+
+    private static long Aligned(long n) => (n + LevelAlign - 1) / LevelAlign * LevelAlign;
+
+    /// <summary>The frame's end: each waiting name a draw asked for, whose retry is due, goes back on the device with
+    /// its texels; one refused again waits a period. Returns at once when nothing waits.</summary>
+    private static void Restore(VkTexState t)
+    {
+        if (t.Parked.Count == 0 || t.Dev is not VkBackend vk) return;
+        long frame = vk.Frame;
+        for (int i = t.Parked.Count - 1; i >= 0; i--)
+        {
+            if (i >= t.Parked.Count) continue;
+            Entry e = t.Parked[i];
+            if (!e.Wanted || frame < e.RetryAt) continue;
+            ImageId img = vk.CreateImage(DescOf(e));
+            if (img.IsNull) { e.RetryAt = frame + RetryPeriod; continue; }
+            t.Parked.Remove(e);
+            Seat(t, vk, e, img);
+            byte[]?[] texels = e.Texels!;
+            for (int l = 0; l < texels.Length; l++) if (texels[l] is byte[] b) vk.Upload(img, l, 0, b);
+            if (e.GenMips) vk.GenerateMips(img);
+            e.Texels = null;
+            e.Wanted = false;
+            e.Drawn = frame;
+        }
     }
 
     /// <summary><paramref name="gl"/> is a copy of <paramref name="src"/>'s texels under sampler <paramref name="s"/>:
@@ -92,10 +256,12 @@ internal static class VkTextures
     internal static void Clone(uint src, uint gl, in SamplerDesc s)
     {
         VkTexState t = _s;
-        if (t.Dev == null || !t.ByName.TryGetValue(src, out Entry e)) return;
+        // ponytail: a source waiting for room clones nothing; a clone that waits beside it lifts this
+        if (t.Dev == null || !t.ByName.TryGetValue(src, out Entry? e) || e.Image.IsNull) return;
         Forget(gl);
         if (!t.Samplers.TryGetValue(s, out SamplerId sid)) t.Samplers[s] = sid = t.Dev.CreateSampler(s);
-        t.ByName[gl] = new Entry(e.Image, t.Dev.Bindless(e.Image, sid), s, sid, e.Bytes);
+        t.ByName[gl] = new Entry { Image = e.Image, Handle = t.Dev.Bindless(e.Image, sid), Sampler = s, SamplerId = sid, Bytes = e.Bytes,
+                                   F = e.F, W = e.W, H = e.H, Mips = e.Mips, Grey = e.Grey, Label = e.Label };
         t.Gen++;
         t.Refs[e.Image.Value] = t.Refs.GetValueOrDefault(e.Image.Value) + 1;
     }
@@ -137,28 +303,37 @@ internal static class VkTextures
     /// <summary>Does <paramref name="gl"/> hold an image?</summary>
     internal static bool Has(uint gl) => _s.ByName.ContainsKey(gl);
 
-    /// <summary>Owned name <paramref name="gl"/>'s image is on the device now, not evicted to make room. Every
-    /// mirrored name is, until eviction exists.</summary>
-    internal static bool Resident(uint gl) => Has(gl);
+    /// <summary>Owned name <paramref name="gl"/>'s image is on the device now, not waiting for room.</summary>
+    internal static bool Resident(uint gl) => _s.ByName.TryGetValue(gl, out Entry? e) && !e.Image.IsNull;
 
     /// <summary>The bytes <paramref name="gl"/>'s image holds over every level; 0 when it has none.</summary>
-    internal static long Bytes(uint gl) => _s.ByName.TryGetValue(gl, out Entry e) ? e.Bytes : 0;
+    internal static long Bytes(uint gl) => _s.ByName.TryGetValue(gl, out Entry? e) ? e.Bytes : 0;
 
     private static long LevelBytes(Format f, int w, int h) => f.IsCompressed()
         ? (long)((w + 3) / 4) * ((h + 3) / 4) * f.BlockBytes()
         : (long)w * h * (f switch { Format.R8 => 1, Format.Rg8 => 2, _ => 4 });
 
     /// <summary>The sampler <paramref name="gl"/>'s mirror was made with, for a replacement that keeps it.</summary>
-    internal static SamplerDesc? SamplerOf(uint gl) => _s.ByName.TryGetValue(gl, out Entry e) ? e.Sampler : null;
+    internal static SamplerDesc? SamplerOf(uint gl) => _s.ByName.TryGetValue(gl, out Entry? e) ? e.Sampler : null;
 
-    /// <summary>The bindless index of <paramref name="gl"/>'s mirror; 0 when it has none.</summary>
-    internal static uint Index(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? (uint)e.Handle.Value : 0;
+    /// <summary><paramref name="gl"/>'s mirror, marked drawn this frame and, while it waits for room, wanted back.</summary>
+    private static Entry? Drawn(int gl)
+    {
+        VkTexState t = _s;
+        if (!t.ByName.TryGetValue((uint)gl, out Entry? e)) return null;
+        e.Drawn = t.Dev!.Frame;
+        if (e.Image.IsNull) e.Wanted = true;
+        return e;
+    }
 
-    /// <summary>The mirror's image, for a bound (not bindless) read; null id when it has none.</summary>
-    internal static ImageId Image(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? e.Image : default;
+    /// <summary>The bindless index of <paramref name="gl"/>'s mirror; 0 when it has none or it waits for room.</summary>
+    internal static uint Index(int gl) => Drawn(gl) is Entry e ? (uint)e.Handle.Value : 0;
+
+    /// <summary>The mirror's image, for a bound (not bindless) read; null id when it has none or it waits for room.</summary>
+    internal static ImageId Image(int gl) => Drawn(gl) is Entry e ? e.Image : default;
 
     /// <summary>The sampler a bound read of <paramref name="gl"/>'s mirror goes through; null id when it has none.</summary>
-    internal static SamplerId SamplerId(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? e.SamplerId : default;
+    internal static SamplerId SamplerId(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry? e) && !e.Image.IsNull ? e.SamplerId : default;
 
     /// <summary>The bit that marks a record-table handle as Vulkan's: the owned name in the low half, no GL handle behind it.</summary>
     private const ulong VkHandle = 1UL << 63;
@@ -176,8 +351,9 @@ internal static class VkTextures
     internal static void Forget(uint gl)
     {
         VkTexState s = _s;
-        if (s.Dev == null || !s.ByName.Remove(gl, out Entry e)) return;
+        if (s.Dev == null || !s.ByName.Remove(gl, out Entry? e)) return;
         s.Gen++;
+        if (e.Image.IsNull) { s.Parked.Remove(e); return; }
         s.Dev.Unbind(e.Handle);
         int refs = s.Refs.GetValueOrDefault(e.Image.Value) - 1;
         if (refs > 0) { s.Refs[e.Image.Value] = refs; return; }
@@ -218,8 +394,11 @@ internal static class VkTextures
         _ => Format.Unknown,
     };
 
+    /// <summary>The textures refused for room that wait to be placed again.</summary>
+    internal static int Waiting => _s.Parked.Count;
+
     /// <summary>One line for the period report.</summary>
-    internal static string Line() => _s.Dev == null ? "" : $"VkTextures: {_s.ByName.Count} mirrored ({_s.Mirrored} made, {_s.Refused} refused)";
+    internal static string Line() => _s.Dev == null ? "" : $"VkTextures: {_s.ByName.Count} mirrored ({_s.Mirrored} made, {_s.Refused} refused, {_s.Evictions} evicted, {_s.Parked.Count} waiting for room)";
 
     /// <summary>Oracle: the GL tokens glcorearb.h assigns, hand-written, against the seam formats they are.</summary>
     [SelfCheckSuite(SuitePhase.BeforeServices)]

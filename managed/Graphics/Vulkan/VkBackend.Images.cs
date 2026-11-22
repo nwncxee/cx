@@ -193,11 +193,16 @@ internal sealed unsafe partial class VkBackend
         if ((d.Use & ImageUse.Transient) != 0) aci.preferredFlags = VkMemoryPropertyFlags.LazilyAllocated;
         VkImage image;
         VmaAllocation a;
-        if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
-            return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
+        Overflow o = OverflowOf(d.Use);
+        VkResult r = PlaceImage(&ici, &aci, ImageBytes(d), o, &image, &a, out bool spilled);
+        if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<ImageId>($"image {d.Label}: {NoRoomTag}: {d.Kind} {d.Fmt} {d.W}x{d.H}");
+        if (r != VkResult.Success)
+            return Refused<ImageId>($"image {d.Label}: {(NoRoom(r) ? NoRoomTag + ": " : "")}VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
         Name(VkObjectType.Image, image.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
-        return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
+        uint id = _images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d });
+        if (spilled) _spilled.Add(id);
+        return new ImageId(id);
     }
 
     /// <summary>The description image <paramref name="i"/> was made with; false for a stale or null id.</summary>

@@ -31,9 +31,10 @@ internal static partial class GpuGolden
     /// <summary>The frames between two move-back tries, by hand: the frame line's period.</summary>
     private const int Period = 300;
 
-    /// <summary>Vertices a mesh grow places: past 2^18, so the static mirror doubles to 2^19 vertices of 48 bytes,
-    /// 24 MiB by hand.</summary>
+    /// <summary>Vertices a mesh grow places, in <see cref="GrowParts"/> meshes under the arena's per-mesh limit: past
+    /// 2^18, so the static mirror doubles to 2^19 vertices of 48 bytes, 24 MiB by hand.</summary>
     private const int GrowVerts = 300_000;
+    private const int GrowParts = 5;
     private const int GrowMiB = 24;
     private const int StaticFloats = 12;
 
@@ -81,10 +82,23 @@ internal static partial class GpuGolden
         vk.MoveBackCheck();
     }
 
-    /// <summary>A buffer that takes the capped heap's room but <paramref name="leave"/> bytes; null when none is left.</summary>
-    private static BufferId Filler(VkBackend vk, int capMib, long leave, string label)
+    /// <summary>A buffer that takes the room left in the capped heap images and buffers land in, but
+    /// <paramref name="leave"/> bytes; null when none is left.</summary>
+    private static BufferId Filler(VkBackend vk, long leave, string label)
     {
-        long room = capMib * MiB - vk.DeviceBlockBytes() - leave;
+        vk.LargestHeap(out long size, out long blocks, out _);
+        long room = size - blocks - leave;
+        return room <= 0 ? default : vk.CreateBuffer(new BufferDesc(room, BufferUse.Vertex, MemoryKind.Device, label));
+    }
+
+    /// <summary>A buffer that takes the room the cap gives the device-local heaps besides the largest, which buffers
+    /// may land in and images may not; null when they have under a MiB.</summary>
+    private static BufferId OtherHeapsFiller(VkBackend vk, string label)
+    {
+        long all = 0;
+        foreach (long h in vk.DeviceLocalHeapSizes()) all += h;
+        vk.LargestHeap(out long size, out long blocks, out _);
+        long room = all - size - (vk.DeviceBlockBytes() - blocks) - MiB;
         return room <= 0 ? default : vk.CreateBuffer(new BufferDesc(room, BufferUse.Vertex, MemoryKind.Device, label));
     }
 
@@ -115,6 +129,19 @@ internal static partial class GpuGolden
         return n;
     }
 
+    /// <summary>The meshes that grow the static mirror past <see cref="GrowVerts"/>, keyed from <paramref name="key"/>.</summary>
+    private static int[] GrowMeshes(ulong key)
+    {
+        var m = new int[GrowParts];
+        for (int i = 0; i < GrowParts; i++) m[i] = ResidencyMesh(key + (ulong)i, GrowVerts / GrowParts);
+        return m;
+    }
+
+    private static void Release(int[] meshes)
+    {
+        foreach (int m in meshes) MeshArena.Release(m);
+    }
+
     /// <summary>A static mesh of <paramref name="nv"/> equal vertices under content key <paramref name="key"/>.</summary>
     private static int ResidencyMesh(ulong key, int nv)
         => MeshArena.AcquireRaw(key, MeshArena.Fmt.Static, nv, new float[nv * StaticFloats], ResidencyTri, 3,
@@ -142,11 +169,16 @@ internal static partial class GpuGolden
             foreach (uint gl in names) VkTextures.Forget(gl);
             names.Clear();
             Settle(dev, log, rb);
-            BufferId fill = Filler(dev, CapMib, 8 * MiB, "golden residency texture filler");
+            uint busy = VkTextures.NewName();
+            names.Add(busy);
+            OwnedTexture(dev, busy, IdleSide, "golden residency busy");
+            VkTextures.Index((int)busy);
+            BufferId fill = Filler(dev, 8 * MiB, "golden residency texture filler");
             check.Expect(!fill.IsNull, "E2: the filler that leaves 8MiB of room was refused");
             uint refused = 0;
             Example(check, log, "E2", c => refused = RefusedOnce(dev, c, heard));
             Example(check, log, "E10", c => EachNamedOnce(dev, c, heard));
+            Example(check, log, "BusySpared", c => c.Expect(VkTextures.Resident(busy), "BusySpared: a texture drawn this frame was evicted to make room for a refused one"));
             dev.Destroy(fill);
             Settle(dev, log, rb);
             Example(check, log, "E11", c => OwnImageBack(dev, c, log, refused));
@@ -208,18 +240,18 @@ internal static partial class GpuGolden
     // When a texture or mesh allocation does not fit the budget
     // Then it is not placed in system RAM: idle textures are evicted and the allocation is tried again
     /// <summary>E1: idle 16 MiB textures fill the 3072 MiB cap, then one more texture and a 24 MiB mesh grow each
-    /// land in device memory by evicting idle ones. Oracle: the cap and sizes by hand, and each allocation's heap.</summary>
+    /// land in device memory by evicting idle ones. Oracle: the capped heap's size as VMA reports it, the sizes by
+    /// hand, and each allocation's heap.</summary>
     private static void IdleEvicted(VkBackend dev, Checker check, ExtenderLog log, List<uint> names)
     {
         bool arena = MeshArena.ResetForCheck();
         check.Expect(arena, "E1: the arena holds live meshes, so the grow half cannot run");
         int small = arena ? ResidencyMesh(6391, 1000) : 0;
         if (arena) MeshArena.VkPumpForCheck(dev);
-        long cap = CapMib * MiB;
         for (int i = 0; i < CapMib / 16 + 2; i++)
         {
-            dev.DeviceLocalBytes(out _, out _, out _, out long held);
-            if (held + IdleBytes > cap) break;
+            dev.LargestHeap(out long size, out long blocks, out _);
+            if (blocks + IdleBytes > size) break;
             uint gl = VkTextures.NewName();
             names.Add(gl);
             if (OwnedTexture(dev, gl, IdleSide, $"golden residency idle {i}").IsNull) break;
@@ -233,14 +265,17 @@ internal static partial class GpuGolden
         int afterTexture = Evicted(names);
         check.Expect(afterTexture >= 1, "E1: the texture past the cap fitted without an idle texture being evicted");
         if (!arena) return;
-        int big = ResidencyMesh(6392, GrowVerts);
+        BufferId others = OtherHeapsFiller(dev, "golden residency other heaps");
+        int beforeGrow = Evicted(names);
+        int[] big = GrowMeshes(6400);
         MeshArena.VkPumpForCheck(dev);
         BufferId vbo = MeshArena.VkVbo(MeshArena.Fmt.Static);
         check.Expect(!vbo.IsNull, $"E1: the {GrowMiB}MiB mesh grow past the cap was refused, not given room by an eviction");
         check.Expect(vbo.IsNull || !dev.InSystemRam(vbo), $"E1: the {GrowMiB}MiB mesh grow was placed in system RAM");
-        check.Expect(Evicted(names) > afterTexture, "E1: the mesh grow past the cap fitted without an idle texture being evicted");
+        check.Expect(Evicted(names) > beforeGrow, "E1: the mesh grow past the cap fitted without an idle texture being evicted");
+        if (!others.IsNull) dev.Destroy(others);
         MeshArena.Release(small);
-        MeshArena.Release(big);
+        Release(big);
         MeshArena.FrameEdgeForCheck();
     }
 
@@ -292,8 +327,10 @@ internal static partial class GpuGolden
     private static void OwnImageBack(VkBackend dev, Checker check, ExtenderLog log, uint gl)
     {
         check.Expect(VkTextures.Index((int)gl) == 0, "E11: precondition: the texture never drew its fallback");
+        int waiting = VkTextures.Waiting;
         for (int f = 0; f <= Period; f++) ResidencyFrame(dev, log);
         check.Expect(VkTextures.Index((int)gl) != 0, "E11: with room back, the texture still draws the fallback, not its own image");
+        check.Expect(VkTextures.Waiting == waiting - 1, $"E11: the restored texture still counts as waiting for room ({VkTextures.Waiting} waiting, was {waiting})");
         VkTextures.Forget(gl);
     }
 
@@ -321,6 +358,7 @@ internal static partial class GpuGolden
             Example(check, log, "E7", c => MoveBackRefused(dev, c, log, rb));
             Example(check, log, "E8", c => NeitherHeap(dev, c, log, rb, heard));
             Example(check, log, "E9", c => GrowRefused(dev, c, log, rb, heard));
+            Example(check, log, "GrowWaits", c => GrowWaits(dev, c, log, rb, heard));
         }
         finally
         {
@@ -357,7 +395,33 @@ internal static partial class GpuGolden
     }
 
     /// <summary>What E5 spilled, for E6 to watch move back.</summary>
-    private sealed record Spilled(BufferId Fill, ImageId Target, ImageId Alias, ImageId Shadow, uint Idle);
+    private sealed record Spilled(BufferId Fill, List<BufferId> Holes, ImageId Target, ImageId Alias, ImageId Shadow, uint Idle);
+
+    /// <summary>The spill examples' render targets: 1024 square, 4 MiB of RGBA8 by hand, more than a hole VMA leaves.</summary>
+    private const int SpillSide = 1024;
+
+    /// <summary>The spill examples' idle texture: 64 square, too small for its eviction to seat a target.</summary>
+    private const int SpillIdleSide = 64;
+
+    /// <summary>A cap on the hole fillers, which take a MiB each: past it the cap has room no MiB buffer can seat.</summary>
+    private const int MaxHoles = 600;
+
+    /// <summary>MiB buffers in the device-local heaps until one is refused, with no texture evicted to seat them: the
+    /// room the largest filler leaves between VMA's blocks.</summary>
+    private static List<BufferId> HoleFillers(VkBackend vk, string label)
+    {
+        var holes = new List<BufferId>();
+        VkBackend.IResidents? residents = vk.Residents;
+        vk.Residents = null;
+        for (int i = 0; i < MaxHoles; i++)
+        {
+            BufferId b = vk.CreateBuffer(new BufferDesc(MiB, BufferUse.Vertex, MemoryKind.Device, label));
+            if (b.IsNull) break;
+            holes.Add(b);
+        }
+        vk.Residents = residents;
+        return holes;
+    }
 
     /// <summary>The shadow array the spill examples ask the caster bake for: 1024 square, 4 layers, 16 MiB by hand.</summary>
     private const int ShadowSide = 1024, ShadowLayers = 4;
@@ -370,11 +434,12 @@ internal static partial class GpuGolden
     private static Spilled SpillAndDraw(VkBackend dev, Checker check, ExtenderLog log, BufferId rb)
     {
         uint idle = VkTextures.NewName();
-        OwnedTexture(dev, idle, IdleSide, "golden spill idle");
-        BufferId fill = Filler(dev, SpillCapMiB, 0, "golden spill filler");
+        OwnedTexture(dev, idle, SpillIdleSide, "golden spill idle");
+        BufferId fill = Filler(dev, 0, "golden spill filler");
         check.Expect(!fill.IsNull, "E5: the filler that takes the cap's room was refused");
-        ImageId target = Target(dev, 4, "golden spill target", null);
-        ImageId alias = Target(dev, 4, "golden spill alias", "golden spill lane");
+        List<BufferId> holes = HoleFillers(dev, "golden spill hole");
+        ImageId target = Target(dev, SpillSide, "golden spill target", null);
+        ImageId alias = Target(dev, SpillSide, "golden spill alias", "golden spill lane");
         ImageId shadow = CasterPass.VkSunArrayForCheck(dev, ShadowSide, ShadowLayers);
         check.Expect(!VkTextures.Resident(idle), "E5: the idle texture was not evicted before the long-lived images spilled");
         check.Expect(!target.IsNull && dev.InSystemRam(target), "E5: the render target past the cap is not in system RAM");
@@ -385,7 +450,7 @@ internal static partial class GpuGolden
         check.Expect(t != null && Solid(t, 255, 0, 0, 255), "E5: the spilled render target does not draw red");
         byte[]? a = alias.IsNull ? null : ClearRead(dev, log, alias, new Vector4(0, 0, 1, 1), rb);
         check.Expect(a != null && Solid(a, 0, 0, 255, 255), "E5: the spilled alias member does not draw blue");
-        return new Spilled(fill, target, alias, shadow, idle);
+        return new Spilled(fill, holes, target, alias, shadow, idle);
     }
 
     // Given an image in system RAM, and use falls under 80% of the budget
@@ -399,6 +464,7 @@ internal static partial class GpuGolden
                       && !s.Shadow.IsNull && dev.InSystemRam(s.Shadow);
         check.Expect(wasOut, "E6: precondition: E5 left no image in system RAM to move back");
         dev.Destroy(s.Fill);
+        foreach (BufferId b in s.Holes) dev.Destroy(b);
         int empty = 0;
         ImageId shadow = s.Shadow;
         for (int f = 0; f <= Period; f++)
@@ -411,6 +477,8 @@ internal static partial class GpuGolden
         check.Expect(!s.Alias.IsNull && !dev.InSystemRam(s.Alias), "E6: the alias group is still in system RAM a period after room returned");
         check.Expect(!shadow.IsNull && !dev.InSystemRam(shadow), "E6: the shadow array is still in system RAM a period after room returned");
         check.Expect(empty == 0, $"E6: {empty} frames had no shadow array while it moved back");
+        check.Expect(dev.MovesOf(s.Target) == 1 && dev.MovesOf(shadow) == 1,
+            $"E6: the owners saw {dev.MovesOf(s.Target)} moves of the target and {dev.MovesOf(shadow)} of the shadow array, not one each");
         byte[]? a = s.Alias.IsNull ? null : ClearRead(dev, log, s.Alias, new Vector4(0, 1, 0, 1), rb);
         check.Expect(a != null && Solid(a, 0, 255, 0, 255), "E6: the alias member moved back does not draw green");
         dev.Destroy(s.Target);
@@ -434,12 +502,12 @@ internal static partial class GpuGolden
     /// Oracle: the sizes by hand, the heap it sits on, and at most one try in each of two periods.</summary>
     private static void MoveBackRefused(VkBackend dev, Checker check, ExtenderLog log, BufferId rb)
     {
-        BufferId fill = Filler(dev, SpillCapMiB, 0, "golden move filler");
+        BufferId fill = Filler(dev, 0, "golden move filler");
         ImageId shadow = CasterPass.VkSunArrayForCheck(dev, MoveSide, MoveLayers);
         check.Expect(!shadow.IsNull && dev.InSystemRam(shadow), "E7: precondition: the 128MiB shadow array did not spill to system RAM");
         dev.Destroy(fill);
         Settle(dev, log, rb);
-        BufferId held = Filler(dev, SpillCapMiB, (SpillCapMiB - HeldAfterMiB) * MiB, "golden move held");
+        BufferId held = Filler(dev, (SpillCapMiB - HeldAfterMiB) * MiB, "golden move held");
         int tries = dev.MoveBackTries;
         bool same = true;
         for (int f = 0; f < 2 * Period; f++)
@@ -451,6 +519,7 @@ internal static partial class GpuGolden
         check.Expect(tried >= 1 && tried <= 2, $"E7: {tried} move-back tries over two periods, not one a period");
         check.Expect(same && !shadow.IsNull && dev.InSystemRam(shadow), "E7: the shadow array is no longer the old copy in system RAM after a refused move back");
         check.Expect(!CasterPass.BakeStoodDown, "E7: the caster bake stood down over a refused move back");
+        check.Expect(dev.MovesOf(shadow) == 0, $"E7: a refused move back replaced the old copy {dev.MovesOf(shadow)} times");
         dev.Destroy(held);
         CasterPass.VkResetForCheck();
         Settle(dev, log, rb);
@@ -510,8 +579,8 @@ internal static partial class GpuGolden
         MeshArena.VkPumpForCheck(dev);
         BufferId before = MeshArena.VkVbo(MeshArena.Fmt.Static);
         check.Expect(!before.IsNull, "E9: precondition: the first mesh did not upload");
-        BufferId fill = Filler(dev, SpillCapMiB, 8 * MiB, "golden grow filler");
-        int big = ResidencyMesh(6394, GrowVerts);
+        BufferId fill = Filler(dev, 8 * MiB, "golden grow filler");
+        int[] big = GrowMeshes(6410);
         MeshArena.VkPumpForCheck(dev);
         ResidencyFrame(dev, log);
         MeshArena.VkPumpForCheck(dev);
@@ -521,7 +590,40 @@ internal static partial class GpuGolden
         check.Expect(named == 1, $"E9: cx.log names the {GrowMiB} MiB grow {named} times, not once");
         dev.Destroy(fill);
         MeshArena.Release(small);
-        MeshArena.Release(big);
+        Release(big);
+        MeshArena.FrameEdgeForCheck();
+        MeshArena.VkForgetForCheck();
+        Settle(dev, log, rb);
+    }
+
+    // Given a mesh arena grow the device refused
+    // When it is refused again a period later, and room returns inside the next period
+    // Then cx.log still names it once, and the arena keeps its buffer until that period ends, then grows
+    /// <summary>GrowWaits: E9's refusal held for a period, then the filler goes. Oracle: one log line by hand, the
+    /// first mesh's vertex buffer kept half a period, past the freed filler and replaced a period after.</summary>
+    private static void GrowWaits(VkBackend dev, Checker check, ExtenderLog log, BufferId rb, List<string> heard)
+    {
+        bool reset = MeshArena.ResetForCheck();
+        check.Expect(reset, "GrowWaits: the arena holds live meshes");
+        if (!reset) return;
+        MeshArena.VkForgetForCheck();
+        int before0 = Count(heard, "MeshArena", "grow", $"{GrowMiB} MiB");
+        int small = ResidencyMesh(6393, 1000);
+        MeshArena.VkPumpForCheck(dev);
+        BufferId before = MeshArena.VkVbo(MeshArena.Fmt.Static);
+        BufferId fill = Filler(dev, 8 * MiB, "golden grow-wait filler");
+        int[] big = GrowMeshes(6410);
+        for (int f = 0; f <= Period + 1; f++) { MeshArena.VkPumpForCheck(dev); ResidencyFrame(dev, log); }
+        int named = Count(heard, "MeshArena", "grow", $"{GrowMiB} MiB") - before0;
+        check.Expect(named == 1, $"GrowWaits: two refused periods named the grow {named} times, not once");
+        dev.Destroy(fill);
+        for (int f = 0; f < Period / 2; f++) { MeshArena.VkPumpForCheck(dev); ResidencyFrame(dev, log); }
+        check.Expect(MeshArena.VkVbo(MeshArena.Fmt.Static) == before, "GrowWaits: the arena tried the grow again inside the period");
+        for (int f = 0; f <= Period; f++) { MeshArena.VkPumpForCheck(dev); ResidencyFrame(dev, log); }
+        BufferId after = MeshArena.VkVbo(MeshArena.Fmt.Static);
+        check.Expect(!after.IsNull && after != before, "GrowWaits: the arena did not grow a period after room returned");
+        MeshArena.Release(small);
+        Release(big);
         MeshArena.FrameEdgeForCheck();
         MeshArena.VkForgetForCheck();
         Settle(dev, log, rb);

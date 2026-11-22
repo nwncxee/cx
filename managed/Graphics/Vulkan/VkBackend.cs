@@ -30,6 +30,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageLayout Layout;
         /// <summary>Row 0 is the window's top: a screen image, which a draw reaches through a flipped viewport.</summary>
         public bool TopDown;
+        /// <summary>Times it moved back to device memory from system RAM, each time with its contents started over.</summary>
+        public int Moves;
         /// <summary>The swapchain's own image: its memory is the window's, and only its view is ours to free.</summary>
         public bool Window;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
@@ -656,8 +658,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice, priority = PriorityOf(d.Memory) };
         VkBuffer b;
         VmaAllocation a;
-        if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
-            return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
+        Overflow o = d.Memory == MemoryKind.Device ? OverflowOf(d.Use) : Overflow.SystemRam;
+        VkResult r = d.Memory == MemoryKind.Device ? PlaceBuffer(&bci, &aci, d.Bytes, o, &b, &a)
+                   : Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null);
+        if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<BufferId>($"buffer {d.Label}: {NoRoomTag}: {d.Bytes} bytes");
+        if (r != VkResult.Success)
+            return Refused<BufferId>($"buffer {d.Label}: {(NoRoom(r) ? NoRoomTag + ": " : "")}VMA refused {d.Bytes} bytes ({r})");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
         var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));

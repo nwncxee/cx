@@ -33,6 +33,8 @@ internal static unsafe partial class PostStack
         public VkBackend? Dev;
         public readonly StageVk[] Stages = NewStages();
         public ImageId A, B, Vel, Hist0, Hist1, FsrOut, FsrExposure;
+        /// <summary>The history images' move-back count the resolve last saw: a move starts their contents over.</summary>
+        public int HistMoves;
         public int W, H, VelW, VelH, HistW, HistH, Cur, FsrW, FsrH;
         /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
         public float FsrExposureSet = float.NaN;
@@ -295,6 +297,8 @@ internal static unsafe partial class PostStack
             s.HistValid = false;
             if (s.Hist0.IsNull || s.Hist1.IsNull) { s.Hist0 = default; return false; }
         }
+        int moves = vk.MovesOf(s.Hist0) + vk.MovesOf(s.Hist1);
+        if (moves != s.HistMoves) { s.HistMoves = moves; s.HistValid = false; }
         return VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log);
     }
 
