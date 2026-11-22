@@ -146,13 +146,13 @@ internal sealed unsafe partial class VkBackend
         return n;
     }
 
-    /// <summary>The uses <see cref="Needs"/> maps to a format feature, and the two it answers with none because
-    /// neither names a way a texel is read or written: one is a queue the image is reached from, the other is where
-    /// its memory comes from.</summary>
+    /// <summary>The uses <see cref="Needs"/> maps to a format feature, and those it answers with none because none
+    /// names a way a texel is read or written: one is a queue the image is reached from, the others are where its
+    /// memory comes from.</summary>
     private const ImageUse FeatureBound = ImageUse.Sampled | ImageUse.Grey | ImageUse.ColorTarget | ImageUse.DepthTarget
                                         | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst;
     /// <inheritdoc cref="FeatureBound"/>
-    private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient;
+    private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient | ImageUse.NoSpill;
 
     /// <summary>The uses in <paramref name="use"/> that <see cref="Needs"/> maps to no format feature and
     /// <see cref="FeatureFree"/> does not excuse, named; null when every one of them is answered.</summary>

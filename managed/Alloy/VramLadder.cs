@@ -35,6 +35,8 @@ internal static class VramLadder
         public bool Lowered, Half, TexturesSaid;
         /// <summary>The pages the pool step left room for; -1 while the pool is not given.</summary>
         public int Pages = -1;
+        /// <summary>Periods whose use was not past 90%.</summary>
+        public int Eased;
     }
 
     private static LadderState _s = new();
@@ -54,6 +56,7 @@ internal static class VramLadder
     internal static VramRung Period(long useMib, long budgetMib)
     {
         LadderState s = _s;
+        if (!PastGive(useMib, budgetMib)) s.Eased++;
         if (UnderTake(useMib, budgetMib)) { s.Half = false; return VramRung.None; }
         if (!PastGive(useMib, budgetMib)) return VramRung.None;
         long freed = TexRegistry.EvictIdle();
@@ -120,8 +123,14 @@ internal static class VramLadder
     /// <summary>The size a shadow array its setting names at <paramref name="named"/> draws at now.</summary>
     internal static int Draws(int named) => _s.Lowered ? named / 2 : named;
 
+    /// <summary>Periods since the ladder was armed whose use was not past 90%: a waiter that sees it move tries again.</summary>
+    internal static int Eased => _s.Eased;
+
     /// <summary>The bake's next scratch is the half one.</summary>
     internal static bool HalfScratch => _s.Half;
+
+    /// <summary>The most pages the pool step leaves the lightmap pool; -1 while the pool is not given.</summary>
+    internal static int PoolCap => _s.Pages;
 
     /// <summary>Pages the lightmap pool takes now for a <c>lightmap.vram</c> of <paramref name="vramMib"/>.</summary>
     internal static int PoolPages(int vramMib)

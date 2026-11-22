@@ -154,8 +154,10 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Where an allocation goes once device memory has no room for it after idle textures are evicted.</summary>
     private enum Overflow { Refuse, SystemRam }
 
-    /// <summary>A texture is refused there and draws its stand-in; what draws every frame lands in system RAM.</summary>
-    private static Overflow OverflowOf(ImageUse use) => PriorityOf(use) == HighPriority ? Overflow.SystemRam : Overflow.Refuse;
+    /// <summary>A texture is refused there and draws its stand-in, as is an image that waits for room; what draws
+    /// every frame lands in system RAM.</summary>
+    private static Overflow OverflowOf(ImageUse use)
+        => (use & ImageUse.NoSpill) == 0 && PriorityOf(use) == HighPriority ? Overflow.SystemRam : Overflow.Refuse;
 
     /// <summary>A mesh buffer is refused there and its meshes keep their old buffer; any other buffer lands in system RAM.</summary>
     private static Overflow OverflowOf(BufferUse use) => (use & (BufferUse.Vertex | BufferUse.Index)) != 0 ? Overflow.Refuse : Overflow.SystemRam;

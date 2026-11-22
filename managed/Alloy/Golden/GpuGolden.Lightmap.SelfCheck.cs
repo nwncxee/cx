@@ -41,12 +41,14 @@ internal static partial class GpuGolden
                    + encoder[Math.Min(Version.Length, encoder.Length)..]
                        .Replace("uniform ivec4 uRegion;", $"const ivec4 uRegion = ivec4({LmFirst}, {LmFirst}, {LmBand}, {LmBand});",
                                 StringComparison.Ordinal)
-                       .Replace("uniform int uPageLayer;", $"const int uPageLayer = {LmLayer};", StringComparison.Ordinal);
+                       .Replace("uniform int uPageLayer;", $"const int uPageLayer = {LmLayer};", StringComparison.Ordinal)
+                       .Replace("uniform int uBandX;", "const int uBandX = 0;", StringComparison.Ordinal);
         check.Expect(encoder.StartsWith(Version, StringComparison.Ordinal)
                   && src.Contains("const ivec4 uRegion", StringComparison.Ordinal)
-                  && src.Contains("const int uPageLayer", StringComparison.Ordinal),
+                  && src.Contains("const int uPageLayer", StringComparison.Ordinal)
+                  && src.Contains("const int uBandX", StringComparison.Ordinal),
             "cx_bakeenc_c opens with the version line this golden moves its layer define past, and still declares "
-          + "uRegion and uPageLayer as the loose uniforms it folds out");
+          + "uRegion, uPageLayer and uBandX as the loose uniforms it folds out");
         PipelineId enc = vk.CreateCompute(src, "golden lightmap encoder");
         PipelineId dec = vk.CreateCompute(FrameTap.ReadbackCs(LmDecodeWords), "golden lightmap decoder");
         check.Expect(!enc.IsNull && !dec.IsNull, "the lightmap golden's encoder and decoder stages build for the device");
