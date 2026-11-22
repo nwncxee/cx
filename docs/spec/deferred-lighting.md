@@ -71,8 +71,8 @@ the texture keeps under alpha 0, white on many decal sheets. A blending wash tha
 **split** (`AlloyRenderer.WashSplit`): its fully covered texels (coverage times part alpha at least 0.99,
 `uSolid`) draw solid with the cutouts through the deferred twin (the wash split, the `washes` GPU
 term); the rest blends, drawn under `GL_LESS` so every interior fragment meets its own depth and is dropped
-unshaded. A forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static objects' sheets are washes, and
-never a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
+unshaded. A forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static placeables' sheets are washes: a tile's own sheet is the ground a wash lies on, so it
+draws in its recipe's class with no offset, as vanilla draws it. Nor is a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
 session with the reason each is not a decal.
 
 ### The forward consumers' slim walk (`CX_LIGHT_LITE`)

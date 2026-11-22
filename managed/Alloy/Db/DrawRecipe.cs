@@ -874,8 +874,8 @@ internal enum RecipeFlag : ushort
     Lit = 1 << 0,
     /// <summary>The part draws its back faces too, with face culling off (<see cref="DrawRecipe.DrawsBackFaces"/>).</summary>
     TwoSided = 1 << 2,
-    /// <summary>The mesh is a sheet (<see cref="DrawRecipe.IsSheet"/>): drawn see-through, it is a wash laid over
-    /// another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>
+    /// <summary>The mesh is a sheet (<see cref="DrawRecipe.IsSheet"/>): drawn see-through on a placeable, it is a wash laid
+    /// over another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>
     Wash = 1 << 3,
     /// <summary>A dangly mesh: a permanent shadow mover, posed by the solver.</summary>
     Dangly = 1 << 4,

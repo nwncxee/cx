@@ -73,7 +73,7 @@ public sealed unsafe partial class AlloyRenderer
     internal const byte WashWhole = 1, WashSplit = 2;
 
     /// <summary>Name a slot's wash in the log once its diffuse is measured -- before that its class is the
-    /// conservative cutout guess, which is every tile's ground.</summary>
+    /// conservative cutout guess.</summary>
     private static void DbNoteWash(int recipe, RecipeFlag rf, ObjFlag of, bool lit, byte cls, byte decal, byte wash, bool env)
     {
         if (decal == 0 && wash != 0 && DrawRecipe.Measured(recipe))

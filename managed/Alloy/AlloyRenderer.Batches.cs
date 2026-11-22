@@ -214,7 +214,7 @@ public sealed unsafe partial class AlloyRenderer
                      "a blended material on an unfaded object, creature or static, composites every layer");
         check.Expect(OitGrouped(objAlpha: 1f, decal: true, wash: WashWhole), "a ground decal keeps its object");
         check.Expect(OitGrouped(objAlpha: 1f, decal: false, wash: WashSplit), "a split wash's rest keeps its object");
-        check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: WashWhole), "a whole wash on a fading tile does not");
+        check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: WashWhole), "a whole wash at full alpha does not");
         check.Expect(GhostCurve(0.5f, 2f) == 0.75f && GhostCurve(0.25f, 1f) == 0.25f,
                      "a ghost draws as n layers of itself: half at two layers is three quarters, one layer is unchanged");
         check.Expect(GhostCurve(0f, 1.5f) == 0f && GhostCurve(1f, 1.5f) == 1f,

@@ -70,13 +70,13 @@ internal static class AlloyClasses
     internal static float Discard(int cls) => cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Additive
         || cls == (int)AlloyClass.Water ? -1f : 0.2f;
 
-    /// <summary>Is a part a wash: a see-through sheet (<see cref="RecipeFlag.Wash"/>) on a static object? Never opaque, which
-    /// keeps its prepass depth exactly, nor additive, which writes no depth to fight over; nor a coverage or env-mapped
-    /// material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>
+    /// <summary>Is a part a wash: a see-through sheet (<see cref="RecipeFlag.Wash"/>) on a static placeable? Never a tile's,
+    /// which is the ground a wash lies on; never opaque, which keeps its prepass depth, nor additive, which writes none; nor
+    /// a coverage or env-mapped material (whose alpha is not a sheet's edge) or a posed mesh. GUI objects are not static.</summary>
     internal static bool Washes(int recipeCls, RecipeFlag rf, ObjFlag of, bool env)
         => (rf & RecipeFlag.Wash) != 0 && recipeCls is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
            && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage)) == 0
-           && !env && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
+           && !env && (of & (ObjFlag.Static | ObjFlag.Sky | ObjFlag.Tile)) == ObjFlag.Static;
 
     /// <summary>A scene-database slot's class from its recipe's. A ground decal, or a wash whose model's
     /// <c>transparencyhint</c> would blend it, draws blended; so does a graded cutout wash. Anything else, a
@@ -182,6 +182,16 @@ internal static class AlloyClasses
           && !Washes((int)AlloyClass.Opaque, RecipeFlag.Wash, tile, env: false),
           "an opaque sheet is never a wash, on a placeable or a tile");
         check.Expect(!Washes((int)AlloyClass.Cutout, RecipeFlag.None, placeable, env: false), "a part that is not a sheet is no wash");
+        check.Expect(!Washes((int)AlloyClass.Cutout, RecipeFlag.Wash | RecipeFlag.Coverage, placeable, env: false)
+          && !Washes((int)AlloyClass.Cutout, RecipeFlag.Wash | RecipeFlag.Dangly, placeable, env: false)
+          && !Washes((int)AlloyClass.Cutout, RecipeFlag.Wash | RecipeFlag.Skinned, placeable, env: false)
+          && !Washes((int)AlloyClass.Cutout, RecipeFlag.Wash | RecipeFlag.AnimMesh, placeable, env: false),
+          "nor is a coverage material's sheet or a posed one");
+        check.Expect(!Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, placeable, env: true), "nor an env-mapped one");
+        check.Expect(!Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, ObjFlag.Static | ObjFlag.Sky, env: false)
+          && !Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, ObjFlag.Gui, env: false)
+          && !Washes((int)AlloyClass.Additive, RecipeFlag.Wash, placeable, env: false),
+          "nor a sky sheet, a GUI object's, or an additive one");
 
         log.Info(check.Ok ? "AlloyClasses.SelfCheck: passed" : "AlloyClasses.SelfCheck: FAILED");
     }
