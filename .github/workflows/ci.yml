@@ -73,16 +73,8 @@ jobs:
           name: westgate
           skipPush: true
 
-      # FidelityFX's SDK, its shaders and libcxfsr.a, keyed on everything they are built from. Each build step's stamp
-      # holds a hash of its inputs (tools/ffx/stamp.sh), so a restored copy is reused whatever its file times.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            build/deps
-            build/ffx
-            build/libcxfsr.a
-            build/libcxfsr.a.key
-          key: ffx-${{ runner.os }}-${{ hashFiles('tools/deps.json', 'tools/deps.py', 'native/ffx/**', 'tools/ffx/**', 'flake.lock') }}
+      # FSR's cache: restored from this pull request's own runs, else from main's (ffx-cache.yml saves it there).
+      - uses: ./.github/actions/ffx-cache
 
       # The gates and approved examples run beside this job, in no-decompiled and examples.
       # run-demo.sh runs what build.sh just staged instead of building it a second time.

@@ -26,6 +26,7 @@ row tools/ci-changes.sh true true
 # When tools/ci-changes.sh maps its changed paths
 # Then it starts the Linux build and not the Windows build
 row build.sh true false
+row .github/actions/ffx-cache/action.yml true false
 row run-demo.sh true false
 row tools/live/run-live.sh true false
 row tools/selfcheck/run.sh true false
@@ -38,6 +39,7 @@ row docs/spec/unified-settings.md true false
 # Then it starts neither build
 row docs/adr/0031-coding-standards.md false false
 row README.md false false
+row .github/workflows/ffx-cache.yml false false
 row media/shot.webp false false
 row newfolder/thing.txt false false
 # A rename reaches the build through either name; two paths, one answer.
