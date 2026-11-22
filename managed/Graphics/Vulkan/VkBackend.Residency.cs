@@ -40,6 +40,19 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>The priority of what draws every frame: render targets, shadow arrays, alias groups, the mesh arena.</summary>
+    private const float HighPriority = 1f;
+
+    /// <summary>The priority of a sampled-only image, a texture: the driver pages these out first.</summary>
+    private const float LowPriority = 0.25f;
+
+    /// <summary>The memory priority of an image made for <paramref name="use"/>; ignored without the extension.</summary>
+    private static float PriorityOf(ImageUse use)
+        => (use & (ImageUse.ColorTarget | ImageUse.DepthTarget | ImageUse.Storage)) != 0 ? HighPriority : LowPriority;
+
+    /// <summary>The memory priority of a buffer in <paramref name="m"/>: every device buffer draws every frame.</summary>
+    private static float PriorityOf(MemoryKind m) => m == MemoryKind.Device ? HighPriority : LowPriority;
+
     /// <summary>The move-back check every frame runs once: an image in system RAM goes back to device memory once
     /// use falls under 80% of the budget, at most one try a period. Does nothing yet.</summary>
     internal void MoveBackCheck() { }

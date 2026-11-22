@@ -54,6 +54,17 @@ internal static partial class GpuGolden
         SpillExamples(check, log);
     }
 
+    /// <summary>Example <paramref name="e"/> under a checker of its own, so one example's result reads apart from the
+    /// rest; its failure fails <paramref name="parent"/> too.</summary>
+    private static void Example(Checker parent, ExtenderLog log, string e, Action<Checker> body)
+    {
+        string name = $"GpuGolden.Residency{e}.SelfCheck";
+        var c = new Checker(log, name);
+        body(c);
+        log.Info(c.Ok ? $"{name}: passed" : $"{name}: FAILED");
+        parent.Ok &= c.Ok;
+    }
+
     /// <summary>A capped device whose log lands in <paramref name="heard"/>; null (failed) when it is refused.</summary>
     private static VkBackend? Capped(Checker check, List<string> heard, int capMib, string why)
     {
@@ -127,17 +138,18 @@ internal static partial class GpuGolden
         BufferId rb = dev.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden residency read"));
         try
         {
-            IdleEvicted(dev, check, log, names);
+            Example(check, log, "E1", c => IdleEvicted(dev, c, log, names));
             foreach (uint gl in names) VkTextures.Forget(gl);
             names.Clear();
             Settle(dev, log, rb);
             BufferId fill = Filler(dev, CapMib, 8 * MiB, "golden residency texture filler");
             check.Expect(!fill.IsNull, "E2: the filler that leaves 8MiB of room was refused");
-            uint refused = RefusedOnce(dev, check, heard);
-            EachNamedOnce(dev, check, heard);
+            uint refused = 0;
+            Example(check, log, "E2", c => refused = RefusedOnce(dev, c, heard));
+            Example(check, log, "E10", c => EachNamedOnce(dev, c, heard));
             dev.Destroy(fill);
             Settle(dev, log, rb);
-            OwnImageBack(dev, check, log, refused);
+            Example(check, log, "E11", c => OwnImageBack(dev, c, log, refused));
         }
         finally
         {
@@ -166,6 +178,7 @@ internal static partial class GpuGolden
         }
         int on = Count(heard, VkBackend.PriorityOnTag);
         check.Expect(on == 1, $"E3: {on} creation lines say priorities are on for render targets, shadows and the mesh arena high and textures low, not 1");
+        log.Info(check.Ok ? "GpuGolden.PriorityOn.SelfCheck: passed" : "GpuGolden.PriorityOn.SelfCheck: FAILED");
     }
 
     // Given a driver without it
@@ -301,12 +314,13 @@ internal static partial class GpuGolden
         try
         {
             Settle(dev, log, rb);
-            MoveBackAllocatesNothing(dev, check, log);
-            Spilled s = SpillAndDraw(dev, check, log, rb);
-            BackInDevice(dev, check, log, rb, s);
-            MoveBackRefused(dev, check, log, rb);
-            NeitherHeap(dev, check, log, rb, heard);
-            GrowRefused(dev, check, log, rb, heard);
+            Example(check, log, "E13", c => MoveBackAllocatesNothing(dev, c, log));
+            Spilled? s = null;
+            Example(check, log, "E5", c => s = SpillAndDraw(dev, c, log, rb));
+            Example(check, log, "E6", c => BackInDevice(dev, c, log, rb, s!));
+            Example(check, log, "E7", c => MoveBackRefused(dev, c, log, rb));
+            Example(check, log, "E8", c => NeitherHeap(dev, c, log, rb, heard));
+            Example(check, log, "E9", c => GrowRefused(dev, c, log, rb, heard));
         }
         finally
         {

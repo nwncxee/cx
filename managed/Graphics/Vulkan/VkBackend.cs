@@ -443,12 +443,15 @@ internal sealed unsafe partial class VkBackend : IDevice
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
         bool meshExt = meshShaders && HasExt(_vki, phys, MeshExt);
+        bool prioExt = HasExt(_vki, phys, PriorityExt);
         var meshAsk = new VkPhysicalDeviceMeshShaderFeaturesEXT();
+        var prioAsk = new VkPhysicalDeviceMemoryPriorityFeaturesEXT();
         var eds3 = new VkPhysicalDeviceExtendedDynamicState3FeaturesEXT();
         var gpl = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT();
         void* chain = meshExt ? &meshAsk : null;
         if (eds3Ext) { eds3.pNext = chain; chain = &eds3; }
         if (gplExt) { gpl.pNext = chain; chain = &gpl; }
+        if (prioExt) { prioAsk.pNext = chain; chain = &prioAsk; }
         var asked = new VkPhysicalDeviceFeatures2 { pNext = chain };
         _vki.vkGetPhysicalDeviceFeatures2(phys, &asked);
         var gplProps = new VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT();
@@ -465,6 +468,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (_canDynBlend) f11.pNext = &eds3On;
         var gplOn = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = f11.pNext, graphicsPipelineLibrary = true };
         if (_canLibraries) f11.pNext = &gplOn;
+        _memPriority = prioExt && prioAsk.memoryPriority;
+        var prioOn = new VkPhysicalDeviceMemoryPriorityFeaturesEXT { pNext = f11.pNext, memoryPriority = true };
+        if (_memPriority) f11.pNext = &prioOn;
         _mesh = meshExt && meshAsk.taskShader && meshAsk.meshShader;
         _meshWhy = !meshShaders ? "opened without VK_EXT_mesh_shader" : !meshExt ? "the device lacks VK_EXT_mesh_shader"
                  : _mesh ? null : "VK_EXT_mesh_shader offers no task and mesh stages";
@@ -474,15 +480,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
-        fixed (byte* mx = MeshExt)
+        fixed (byte* mx = MeshExt) fixed (byte* mp = PriorityExt)
         {
-            byte** exts = stackalloc byte*[8] { sw, null, null, null, null, null, null, null };
+            byte** exts = stackalloc byte*[9] { sw, null, null, null, null, null, null, null, null };
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
             if (_canDynBlend) exts[n++] = e3;
             if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
             if (_mesh) exts[n++] = mx;
+            if (_memPriority) exts[n++] = mp;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
@@ -497,6 +504,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
         _vma = CreateAllocator(inst, capMib);
+        log.Always(_memPriority ? $"VkBackend: {PriorityOnTag} -- the driver keeps what draws every frame in VRAM before the textures"
+                                : $"VkBackend: {PriorityAbsentTag} -- the driver lacks VK_EXT_memory_priority, so it picks what leaves VRAM itself");
         _stagePool = MakeStagePool();
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
@@ -558,6 +567,12 @@ internal sealed unsafe partial class VkBackend : IDevice
     private static ReadOnlySpan<byte> GplExt => "VK_EXT_graphics_pipeline_library\0"u8;
     private static ReadOnlySpan<byte> PipelineLibraryExt => "VK_KHR_pipeline_library\0"u8;
 
+    private static ReadOnlySpan<byte> PriorityExt => "VK_EXT_memory_priority\0"u8;
+
+    /// <summary>The device takes VK_EXT_memory_priority: every allocation carries <see cref="PriorityOf(ImageUse)"/>
+    /// or <see cref="PriorityOf(MemoryKind)"/>, so the driver pages textures out before what draws every frame.</summary>
+    private bool _memPriority;
+
     /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalBytes"/> reads the driver's own figures.</summary>
     private bool _memBudget;
     /// <inheritdoc cref="_memBudget"/>
@@ -576,7 +591,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         var ci = new VmaAllocatorCreateInfo
         {
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
-            flags = _memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None,
+            flags = (_memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None)
+                  | (_memPriority ? VmaAllocatorCreateFlags.EXTMemoryPriority : VmaAllocatorCreateFlags.None),
         };
         ulong* limits = stackalloc ulong[(int)VK_MAX_MEMORY_HEAPS];
         if (HeapLimits(capMib, limits)) ci.pHeapSizeLimit = limits;
@@ -637,7 +653,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         // any queue may reach any device buffer, and a buffer has no compression for concurrent sharing to cost
         Share(ref bci.sharingMode, ref bci.queueFamilyIndexCount, ref bci.pQueueFamilyIndices, fams, transfer: true);
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice, priority = PriorityOf(d.Memory) };
         VkBuffer b;
         VmaAllocation a;
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)

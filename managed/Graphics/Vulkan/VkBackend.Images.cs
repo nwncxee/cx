@@ -188,7 +188,7 @@ internal sealed unsafe partial class VkBackend
         VkImageCreateInfo ici = ImageInfo(d, null);
         uint* fams = stackalloc uint[3];
         if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice, priority = PriorityOf(d.Use) };
         // a device with no lazily allocated type gives this image ordinary device memory, which is what it had before
         if ((d.Use & ImageUse.Transient) != 0) aci.preferredFlags = VkMemoryPropertyFlags.LazilyAllocated;
         VkImage image;

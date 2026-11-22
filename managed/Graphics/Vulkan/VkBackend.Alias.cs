@@ -115,7 +115,7 @@ internal sealed unsafe partial class VkBackend
             req.alignment = Math.Max(req.alignment, r.alignment);
         }
         // memory of its own: a lane slot carved out of a shared block leaves its old slot as slack the driver keeps
-        var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory };
+        var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory, priority = HighPriority };
         if (Vma.vmaAllocateMemory(_vma, &req, &aci, out VmaAllocation a, out _) != VkResult.Success) return false;
         Vma.vmaSetAllocationName(_vma, a, "alias " + g.Name);
         if (g.Alloc.IsNotNull) g.Behind.Add(g.Alloc);
