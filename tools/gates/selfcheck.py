@@ -36,22 +36,33 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 NUMBER = re.compile(r"0[xXbB][0-9a-fA-F_]+[uUlL]*|\.?[0-9][0-9_]*(?:\.[0-9_]+)?(?:[eE][+-]?[0-9]+)?[fFdDmMuUlL]*")
 
 
+_STOPS = re.compile(r"[/\"']")
+_SLASH = re.compile(r"/")
+_NOT_NL = re.compile(r"[^\n]")
+
+
 def mask(src: str, strings: bool = True) -> str:
     """Blank out comments and (unless asked not to) string and char literals, keeping every offset."""
     out = list(src)
     i, n = 0, len(src)
+    stops = _STOPS if strings else _SLASH
     while i < n:
+        m = stops.search(src, i)
+        if m is None:
+            break
+        i = m.start()
         c = src[i]
         if c == "/" and i + 1 < n and src[i + 1] == "/":
-            while i < n and src[i] != "\n":
-                out[i] = " "
-                i += 1
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            out[i:j] = " " * (j - i)
+            i = j
             continue
         if c == "/" and i + 1 < n and src[i + 1] == "*":
-            while i < n and not (src[i] == "*" and i + 1 < n and src[i + 1] == "/"):
-                if src[i] != "\n":
-                    out[i] = " "
-                i += 1
+            j = src.find("*/", i)
+            j = n if j < 0 else j
+            out[i:j] = _NOT_NL.sub(" ", src[i:j])
+            i = j
             for k in range(i, min(i + 2, n)):
                 out[k] = " "
             i += 2

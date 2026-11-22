@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: .github/workflows/* tools/gates/* flake.nix flake.lock
 # Every workflow under .github/workflows/ passes actionlint (valid YAML and expressions, known runner labels,
 # run: scripts with no shellcheck warning) and zizmor's offline security audits (no cache feeding a release,
 # no persisted checkout token, no template injection).

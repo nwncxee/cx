@@ -15,7 +15,7 @@ Also refused: `Alias = ...` with a literal, in a `with` expression or an object 
 Exception: managed/Alloy/Golden/, where a golden invents its own lane names to test the sharing itself.
 
 Prints "<count> <file>" per offending file, for tools/gates/ratchet.sh; `-v` lists each site instead."""
-import os, re, sys
+import bisect, os, re, sys
 
 EXEMPT = ('managed/Alloy/Golden/',)
 PARAM = re.compile(r'\bstring\s*\??\s+[Aa]lias\b')
@@ -106,12 +106,21 @@ def expr_after(code, at):
     return code[at:i]
 
 
+_TYPES = {}
+
+
 def enclosing(code, at):
-    """The type whose declaration most recently precedes `at` -- a file's own partial, near enough."""
-    name = None
-    for m in TYPE.finditer(code, 0, at):
-        name = m.group(1)
-    return name
+    """The type whose declaration most recently precedes `at` -- a file's own partial, near enough. Each file's
+    declarations are found once and searched by offset."""
+    found = _TYPES.get(id(code))
+    if found is None or found[0] is not code:
+        starts, names = [], []
+        for m in TYPE.finditer(code):
+            starts.append(m.end())
+            names.append(m.group(1))
+        found = _TYPES[id(code)] = (code, starts, names)
+    i = bisect.bisect_right(found[1], at)
+    return found[2][i - 1] if i else None
 
 
 def open_paren_left(code, at):

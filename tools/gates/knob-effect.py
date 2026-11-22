@@ -24,28 +24,38 @@ READ = re.compile(r'(?:(\w+)\s*\.\s*)?\b(\w+)\.(V|Boot)\b')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 
 
+STRING_TAIL = re.compile(r'(?:\\.|[^"\\])*', re.S)
+_STOPS = {}
+
+
 def balanced_end(text, start, open_c='(', close_c=')'):
-    """The index of the bracket closing the one at `start`, string literals and comments skipped."""
+    """The index of the bracket closing the one at `start`, string literals and comments skipped. Jumps from one
+    quote, comment or bracket to the next rather than stepping every character."""
+    stops = _STOPS.get((open_c, close_c))
+    if stops is None:
+        stops = _STOPS[(open_c, close_c)] = re.compile(r'"|//|/\*|' + re.escape(open_c) + '|' + re.escape(close_c))
     depth, i, n = 0, start, len(text)
     while i < n:
-        c = text[i]
-        if c == '"':
-            i += 1
-            while i < n and text[i] != '"':
-                i += 2 if text[i] == '\\' else 1
-        elif text.startswith('//', i):
-            i = text.find('\n', i)
-            if i < 0:
+        m = stops.search(text, i)
+        if m is None:
+            return n
+        j, t = m.start(), m.group()
+        if t == '"':
+            i = STRING_TAIL.match(text, j + 1).end() + 1
+            continue
+        if t == '//':
+            k = text.find('\n', j)
+            if k < 0:
                 return n
-        elif text.startswith('/*', i):
-            i = text.find('*/', i) + 1
-        elif c == open_c:
-            depth += 1
-        elif c == close_c:
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
+            i = k + 1
+            continue
+        if t == '/*':
+            i = text.find('*/', j) + 2
+            continue
+        depth += 1 if t == open_c else -1
+        if depth == 0:
+            return j
+        i = j + 1
     return n
 
 
