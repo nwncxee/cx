@@ -16,8 +16,8 @@ and that copy is compiled once with tools/selfcheck/run.sh --overlay. The switch
 reads which mutant is on from a file in the same folder, so a staged build carries no switch and reads no setting.
 The unmutated run goes first and must pass, and writes down which unit (a registered suite, or one service's
 Initialize) was running each time a mutant's site ran. Then each mutant is booted in turn on just those units; a
-site that never ran, or ran outside every unit, boots every unit, and so does one whose units fail unmutated on their
-own. A mutant that survives its filtered boot is booted again with every unit, and that boot's verdict is the one
+site that never ran boots every unit, and so does one whose units fail unmutated on their
+own. A site that ran outside every unit runs in every boot. A mutant that survives its filtered boot is booted again with every unit, and that boot's verdict is the one
 reported. A mutant whose switch does not
 compile (a declaration, say) is compiled on its own instead, and the report says so.
 
@@ -348,11 +348,11 @@ def read_reach(work):
     return units, reach
 
 
-def filtered(ran_in, units):
-    """The units a mutant's boot needs, or None for every unit: a site that never ran, or ran outside any unit."""
-    if not ran_in or OUTSIDE in ran_in or not ran_in <= set(units):
-        return None
-    return ran_in
+def filtered(ran_in):
+    """The units a mutant's boot needs, or None for every unit when its site ran in none. Code outside every unit runs
+    in every boot, so a unit beside it is all the boot needs."""
+    units = (ran_in or set()) - {OUTSIDE}
+    return units or None
 
 
 def failed_lines(output, work):
@@ -464,7 +464,7 @@ def main(argv):
 
         survived = 0
         for m in switched:
-            only = None if whole else filtered(reach.get(m.k), units)
+            only = None if whole else filtered(reach.get(m.k))
             if only is not None:
                 key = frozenset(only)
                 if key not in clean:

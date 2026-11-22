@@ -21,10 +21,9 @@ public static partial class SelfCheckUnits
         return run;
     }
 
-    /// <summary>Runs <paramref name="body"/> as <paramref name="unit"/> when this boot admits it.</summary>
+    /// <summary>Runs <paramref name="body"/> as <paramref name="unit"/>; the caller has asked <see cref="Admits"/>.</summary>
     public static void Run(string unit, Action body)
     {
-        if (!Admits(unit)) return;
         Current = unit;
         try { body(); }
         finally { Current = null; }
@@ -49,6 +48,6 @@ public static partial class SelfCheckUnits
     public static void RunAll(List<Suite> suites, ExtenderLog log)
     {
         foreach (Suite s in suites)
-            Run(s.Name, () => s.Method.Invoke(null, [log]));
+            if (Admits(s.Name)) Run(s.Name, () => s.Method.Invoke(null, [log]));
     }
 }

@@ -85,5 +85,9 @@ diff <(suites "$BASE_LOG") <(suites "$tmp/e4/cx.log") > "$tmp/e4.diff" || fail "
 verdict() { sh tools/selfcheck/verdict.sh "$1" | head -1; }
 [ "$(verdict "$BASE_LOG")" = "$(verdict "$tmp/e4/cx.log")" ] || fail "E4: the verdict is '$(verdict "$tmp/e4/cx.log")', not $before's '$(verdict "$BASE_LOG")'"
 
+# Found work: a site that ran only outside every unit names no unit to filter to, so its boot runs every unit.
+host_only=$(python3 -c "import sys; sys.path.insert(0, 'tools/selfcheck'); import mutants; print(mutants.filtered({mutants.OUTSIDE}), sorted(mutants.filtered({mutants.OUTSIDE, 'A'})))")
+[ "$host_only" = "None ['A']" ] || fail "found: a site that ran only in the host does not boot every unit ($host_only)"
+
 [ $rc = 0 ] && echo ">> suite registry approved examples: E1 to E4 pass" || echo "!! suite registry approved examples: FAILED (above)" >&2
 exit $rc
