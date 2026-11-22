@@ -43,7 +43,8 @@ scene destroy    CAurScene dtor slot -> Seam/SceneSlots.Die -> Db/DbScene.Destro
                      -> SceneDb.Scenes.Free
 model release    ModelCache.Release -> DelRef -> Trim -> ModelCache.Evict
                      -> ModelCache.Evicting: MeshArena.Forget, TileBuild.Forget  (+= at Attach)
-                        ...and MeshBvh.Evict and DrawRecipe.Forget, which never subscribe (see the gaps)
+                        ...and MeshBvh.Evict (+= at HitFeed.HookEviction), which drops the mesh's filed tree,
+                        its queued job and a build the tree worker has in hand; DrawRecipe.Forget never subscribes
                      -> MeshArena.Release queues; the free lands in MeshArena.Pump
 texture release  the same eviction, one hop further: DrawRecipe.Forget -> TexRegistry.Release
                      -> the slot goes idle on the LRU -> TexRegistry.Tick's EvictPastBudget -> Retire
@@ -312,7 +313,7 @@ GUI content programs: `GuiPassVk`'s `Content` table keeps one `GuiVkProg` per pa
 |---|---|---|---|
 | The visible-set index (`DbGrid`: 64×64 wrapping cells of one NWN tile, a static list per cell, one mover list, one unbounded list) | `DbGrid.File` from `DbFeed.FileObject`, on `Dirty.Created`/`Xform` and retried until the sphere is real (a static filed with a zero sphere would be unbounded for the session) | `DbGrid.Remove(o)` from `ObjectDied`; `DbGrid.Reset` from `DbFeed.ContextLost`. A cell's box only ever grows, which costs a candidate and never a miss | via `DbFeed.ContextLost` |
 | The hit index (`HitGrid`) and the per-object hit columns | `HitFeed.NoteObject` seeds the columns; `HitFeed.Fold` files the grid once per frame, from `DbAnim` after the world matrices are written and before `TakeDirty` | `HitGrid.Remove(o)` inside `HitFeed.Fold`, off the `Dirty.Destroyed` mark the table already carries — "nothing on destroy", deliberately | none — CPU only |
-| Per-`MeshDef` triangle BVHs (`MeshBvh`) | built on first cast for a mesh | `MeshBvh.Evict`, subscribed to `ModelCache.Evicting` from `HitFeed.HookEviction` — lazily on first real use rather than at `Initialize`, because `ModelCache.SelfCheck` assigns `Evicting = null` partway through its own run and would drop an earlier subscription | none |
+| Per-`MeshDef` triangle BVHs (`MeshBvh`) | queued when `HitFeed.NotePart` notes a mesh, built on the tree worker and filed by the game thread in `HitFeed.Fold`; a pick on a mesh still queued builds it on the spot | `MeshBvh.Evict`, subscribed to `ModelCache.Evicting` from `HitFeed.HookEviction` — lazily on first real use rather than at `Initialize`, because `ModelCache.SelfCheck` assigns `Evicting = null` partway through its own run and would drop an earlier subscription | none |
 | The tile table and its cell map (`TileBuild._byCell`, `_statics`, `SceneDb.Tile*`) | `TileBuild.SpawnTile` / `PlaceStatic`, after `SetTileset` | `TileBuild.Drop(t)` from `DeleteTile`, from `Revoke` (the registry world walk) and from `Forget(ModelDef)` (a model eviction pulls every placement standing on it). `Drop` frees the tile's statics, its lights, its object and the record | none |
 | Tile merge plans (`TileBuild._plans`, keyed on the `ModelDef`) | `TileBuild.Plan(ModelDef)` | `TileBuild.Forget(ModelDef)` only — kept across an area change on purpose, because the next area re-uses every tile model it shares with this one | none |
 | The light table (`SceneDb.Lights`, `TileLightIds` stride 8) | `TileBuild.SetTileLights` / gob lights through the same path | `TileBuild.FreeLights` from `Drop`/`FreeObject`. `TileLightIds` is explicitly **not** a contiguous run: `DbTable`'s free list is LIFO, so after the first area change two lights allocated together land out of order | none |

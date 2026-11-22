@@ -67,7 +67,7 @@ public static class HitFeed
         SceneDb.Objects.Mark(i, Dirty.Xform | Dirty.Tree);
     }
 
-    /// <summary>Seed one part's own-space box and prewarm its mesh tree. Called by
+    /// <summary>Seed one part's own-space box and queue its mesh tree for the tree worker. Called by
     /// <see cref="NoteObject"/> and by the fold on a tree change; a part's geometry is immutable, so once is
     /// enough per tenancy.</summary>
     public static void NotePart(int p)
@@ -78,7 +78,6 @@ public static class HitFeed
         if (m == null || (uint)SceneDb.PartNode[p] >= (uint)m.Nodes.Length) return;
         MeshDef? mesh = m.Nodes[SceneDb.PartNode[p]].Mesh;
         if (mesh != null) mesh = HitBounds.Geometry(p, mesh);
-        // Off the cast path: MeshBvh.For inside a pick is a multi-millisecond first-click hitch.
         if (mesh != null && mesh.Faces.Length > 0) MeshBvh.Prewarm(mesh);
     }
 
@@ -123,6 +122,7 @@ public static class HitFeed
     public static void Fold()
     {
         Folds++;
+        MeshBvh.FileFinished();
         _foldedAt = SceneDb.Objects.DirtyMark;
         if (!Armed && SceneDb.Objects.Live > 0 && !_unarmedLogged)
         {
@@ -176,7 +176,10 @@ public static class HitFeed
         => (Armed ? $"{SceneDb.Objects.Live} live object(s), produced {Noted} time(s)" : "NO PRODUCER -- every cast answers nothing")
          + $", {Folds} fold(s) ({SyncFolds} on the cast path) refreshing {Refreshed}, {FoldSkipped} unchanged entries skipped"
          + (Recycled > 0 ? $", {Recycled} visit(s) to a recycled slot re-filed it" : "") + "; " + HitGrid.Stats()
-         + $"; {MeshBvh.Built} mesh tree(s) / {MeshBvh.BuiltFaces} faces, {MeshBvh.Evicted} evicted"
+         + $"; {MeshBvh.Built} mesh tree(s) / {MeshBvh.BuiltFaces} faces ({MeshBvh.BuiltOnWorker} on the worker, "
+         + $"{MeshBvh.BuiltOnGame} built by a pick), {MeshBvh.Evicted} evicted"
+         + (MeshBvh.QueueFull > 0 ? $", {MeshBvh.QueueFull} note(s) past the full tree queue" : "")
+         + (MeshBvh.Faults > 0 ? $", {MeshBvh.Faults} tree build(s) FAULTED" : "")
          + (MeshBvh.Refused > 0 ? $", {MeshBvh.Refused} REFUSED (too many faces)" : "")
          + (MeshBvh.Degraded > 0 ? $", {MeshBvh.Degraded} node(s) degraded to leaves" : "")
          + (MeshBvh.StackFull > 0 ? $", {MeshBvh.StackFull} traversal(s) hit the stack cap" : "")
