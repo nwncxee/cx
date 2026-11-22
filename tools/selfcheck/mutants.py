@@ -22,10 +22,11 @@ reported. A mutant whose switch does not
 compile (a declaration, say) is compiled on its own instead, and the report says so.
 
 Prints one line per mutant: `killed <name> <the first FAIL line>`, with every other FAIL line under it as
-`also <line>`, or `SURVIVED <name>`. Exit 0 when every mutant was
-killed, 1 when one survived, 2 when the list is refused or the unmutated tree fails. Run it inside nix develop, and
-under cap.sh on a shared machine. A mutant whose boot runs past four times the unmutated one is killed by the
-timeout. Linux-only, like the rest of the developer tooling.
+`also <line>`, `SURVIVED <name>`, or `UNTESTED <name>` when a mutant survives and no unit ran its site, with the
+suites that SKIPPED on this host. Exit 0 when every mutant was
+killed, 1 when one survived or went untested, 2 when the list is refused or the unmutated tree fails. Run it inside nix develop, and
+under cap.sh on a shared machine. A mutant whose boot runs past 1.5 times the unmutated one plus 3 seconds is
+killed by the timeout. Linux-only, like the rest of the developer tooling.
 """
 import os
 import re
@@ -34,6 +35,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -48,6 +50,8 @@ UNITS = 'cx-mutant-units'
 REACH = 'cx-mutant-reach'
 OUTSIDE = '(host)'
 COMPILE_TIMEOUT = 1200
+BOOTING = '>> booting the self-checks'
+POLL = 0.1  # the stop fires this early, so a poll's lag never carries a boot past its deadline
 
 
 class Mutant:
@@ -301,8 +305,8 @@ namespace CX.Framework
 
 def run(work, out, build, k, timeout, only=None):
     """Boots the self-checks with mutant k on (0: none), compiling first when asked, running only the units ``only``
-    names (None: every unit). Returns (exit, output); a run over ``timeout`` seconds is stopped, the whole process
-    group with it, and returns 124."""
+    names (None: every unit). Returns (exit, output, the boot's seconds). The compile has COMPILE_TIMEOUT and the boot,
+    timed from run.sh's booting line, has ``timeout``; past either the whole process group is stopped, exit 124."""
     with open(os.path.join(work, ACTIVE), 'w') as f:
         f.write(str(k))
     only_file = os.path.join(work, ONLY)
@@ -315,20 +319,41 @@ def run(work, out, build, k, timeout, only=None):
     cmd = [RUN, '--out', out, '--overlay', work] + ([] if build else ['--no-build'])
     p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          start_new_session=True)
+    lines, booted = [], []
+
+    def pump():
+        for line in p.stdout:
+            lines.append(line)
+            if not booted and line.startswith(BOOTING):
+                booted.append(time.monotonic())
+
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+    began, rc, stopped = time.monotonic(), None, None
     try:
-        output, _ = p.communicate(timeout=timeout)
-        rc = p.returncode
-    except subprocess.TimeoutExpired:
-        os.killpg(p.pid, signal.SIGKILL)
-        output, _ = p.communicate()
-        rc, output = 124, output + f'\n>> TIMEOUT: the run passed {timeout:.0f}s and was stopped\n'
+        while p.poll() is None:
+            now = time.monotonic()
+            if now - (booted[0] if booted else began) > (timeout if booted else COMPILE_TIMEOUT) - POLL:
+                stopped = now
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+                rc = 124
+                break
+            time.sleep(POLL / 2)
+        reader.join()
     except BaseException:  # a Ctrl-C or a TERM: the compile and the host go down with the runner, not after it
         os.killpg(p.pid, signal.SIGKILL)
         p.wait()
         raise
+    took = (stopped or time.monotonic()) - booted[0] if booted else 0.0
+    output = ''.join(lines)
+    if rc is None:
+        rc = p.returncode
+    else:
+        output += f'\n>> TIMEOUT: the run passed its {timeout if booted else COMPILE_TIMEOUT:.0f}s and was stopped\n'
     sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
     sys.stdout.flush()
-    return rc, output
+    return rc, output, took
 
 
 def read_reach(work):
@@ -361,6 +386,15 @@ def failed_lines(output, work):
     for m in re.finditer(re.escape(work) + r'/(managed/[^(]+)\((\d+),\d+\): error', output):
         hits.add((m.group(1), int(m.group(2))))
     return hits
+
+
+def untested(m, skips):
+    """Reports a mutant no unit's run reached: the suites that skipped on this host and belong to its file's class, or
+    every one that skipped, are why. Always counts against the run, since no check judged it."""
+    cls = os.path.basename(m.path).split('.')[0]
+    why = [s for s in skips if s.startswith(cls + '.')] or skips
+    print(f'UNTESTED {m.name:<20} no running check reaches it' + ''.join(f'; {s}' for s in why), flush=True)
+    return True
 
 
 def verdict(m, rc, output):
@@ -417,9 +451,7 @@ def main(argv):
         switched = [m for m in mutants if not m.alone]
         while True:
             overlay(work, switched, True)
-            began = time.monotonic()
-            rc, output = run(work, out, True, 0, COMPILE_TIMEOUT)
-            compiled = time.monotonic() - began
+            rc, output, _ = run(work, out, True, 0, COMPILE_TIMEOUT)
             if rc != 1 or '>> FAIL: the managed build failed' not in output:
                 break
             broken = failed_lines(output, work)
@@ -442,13 +474,15 @@ def main(argv):
             print(output, file=sys.stderr)
             return 2
         print(f'>> 1 compile for {len(switched)} switched mutant(s); the unmutated run passes', flush=True)
-        boot = time.monotonic()
-        rc, output = run(work, out, False, 0, COMPILE_TIMEOUT)
+        rc, output, took = run(work, out, False, 0, COMPILE_TIMEOUT)
         if rc != 0:
             print('!! the unmutated tree fails its self-checks on a second boot:', file=sys.stderr)
             print(output, file=sys.stderr)
             return 2
-        timeout = max(180.0, 4 * (time.monotonic() - boot))
+        timeout = 1.5 * took + 3
+        print(f'>> the unmutated boot took {took:.1f}s; a mutant is stopped at {timeout:.1f}s', flush=True)
+        skips = [re.sub(r'^.*?\[cx\] ', '', l) for l in open(os.path.join(out, 'cx.log'), encoding='utf-8').read().splitlines()
+                 if re.search(r'SelfCheck\w* SKIPPED:', l)]
         units, reach = read_reach(work)
         clean = {}
 
@@ -457,9 +491,8 @@ def main(argv):
             names = ', '.join(sorted(only)) if only is not None else 'every suite'
             print(f'>> {m.name}: booting {len(units) if only is None else len(only)} of {len(units)} suites: {names}',
                   flush=True)
-            began = time.monotonic()
-            rc, output = run(work, out, False, m.k, timeout, only)
-            print(f'>> {m.name}: booted in {time.monotonic() - began:.1f}s', flush=True)
+            rc, output, took = run(work, out, False, m.k, timeout, only)
+            print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
             return rc, output
 
         survived = 0
@@ -477,11 +510,15 @@ def main(argv):
                 print(f'>> {m.name}: survived the filtered boot, booting it with every suite', flush=True)
                 rc, output = judge(m, None)
             keep(m.name, out)
-            survived += not verdict(m, rc, output)
+            if rc == 0 and not filtered(reach.get(m.k)):
+                survived += untested(m, skips)
+            else:
+                survived += not verdict(m, rc, output)
         for m in [m for m in mutants if m.alone]:
             overlay(work, [m], False)
             alone = os.path.join(work, 'alone-' + str(m.k))
-            rc, output = run(work, alone, True, 0, 2 * compiled + timeout)
+            rc, output, took = run(work, alone, True, 0, timeout)
+            print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
             keep(m.name, alone)
             survived += not verdict(m, rc, output)
         return 1 if survived else 0

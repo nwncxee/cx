@@ -24,6 +24,8 @@ e1=$?
 grep -qE '^SURVIVED +blit_off' "$tmp/e1.out" && fail "E1: a mutant only a skipped suite reaches is reported SURVIVED"
 grep -qE '^UNTESTED +blit_off +.*GpuGolden\.SelfCheck SKIPPED: .+' "$tmp/e1.out" || fail "E1: blit_off is not UNTESTED with GpuGolden's SKIPPED reason -- $(tail -3 "$tmp/e1.out")"
 [ "$e1" != 0 ] || fail "E1: a run with an untested mutant exited 0"
+# Found work: the reason is the skipped suite of the mutant's own class, not every suite that skipped.
+grep -E '^UNTESTED +blit_off' "$tmp/e1.out" | grep -q VulkanToolchain && fail "found: blit_off's reason names VulkanToolchain, a suite of another class"
 
 # E2
 # Given a mutant that makes a loop endless
@@ -38,6 +40,8 @@ took=$(sed -nE 's/^>> endless: stopped after ([0-9.]+)s$/\1/p' "$tmp/e2.out")
 [ -n "$boot" ] && [ -n "$cap" ] && [ -n "$took" ] || fail "E2: the runner does not say the boot time, the stop time and when it stopped endless"
 awk -v b="${boot:-0}" -v c="${cap:-999}" -v t="${took:-999}" 'BEGIN { exit !(c <= 1.5 * b + 3 && t <= 1.5 * b + 3) }' \
   || fail "E2: endless ran ${took}s against a stop at ${cap}s, past 1.5 x ${boot}s + 3"
+# Found work: the stop counts from the boot, so the compile before it spends none of it.
+awk -v c="${cap:-0}" -v t="${took:-0}" 'BEGIN { exit !(t >= c - 1) }' || fail "found: endless was stopped after ${took}s, before its boot reached the stop at ${cap}s"
 
 [ $rc = 0 ] && echo ">> blind mutant approved examples: E1 and E2 pass" || echo "!! blind mutant approved examples: FAILED (above)" >&2
 exit $rc
