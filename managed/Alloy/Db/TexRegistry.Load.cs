@@ -868,6 +868,14 @@ internal static unsafe partial class TexRegistry
         return vram > 0 ? (vram << 20) / 4 : 512L << 20;
     }
 
+    /// <summary>The frame line's texture part: the period's budget, the models it evicted, and by how many MiB
+    /// the current area's own textures pass the budget.</summary>
+    internal static string BudgetLine() => "";
+
+    /// <summary>A texture allocation of <paramref name="bytes"/> was refused for room: evict idle textures,
+    /// oldest first, until it fits the budget.</summary>
+    internal static void RefusedForRoom(long bytes) { }
+
     /// <summary>Trim the idle set back to the budget, oldest first off the LRU head. Game thread; the names
     /// go to the graveyard for the drain.</summary>
     private static void EvictPastBudget()

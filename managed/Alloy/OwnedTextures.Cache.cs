@@ -26,7 +26,7 @@ internal static unsafe partial class OwnedTextures
     private static long _budgetBytes = -1;
     private static int _budgetCfgMb = -1;
     private const int BudgetFallbackMib = 1024;
-    private static long Budget()
+    internal static long Budget()
     {
         if (_budgetBytes >= 0) return _budgetBytes;
         if (_budgetCfgMb >= 0) return _budgetBytes = (long)_budgetCfgMb * OneMiB;

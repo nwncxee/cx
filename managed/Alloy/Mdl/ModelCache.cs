@@ -840,6 +840,8 @@ public static partial class ModelCache
     /// <c>cx.cfg</c>.</summary>
     private static long BudgetBytes => BudgetOverride ?? ((long)ModelKnobs.Budget.V << 20);
     internal static long? BudgetOverride;
+    /// <summary>The source every parse reads through, so a self-check that installs its own can put it back.</summary>
+    internal static IModelSource? Source => _source;
 
     /// <summary>Reset every counter. The self-checks run against a clean slate; nothing else calls it.</summary>
     internal static void ResetCounters()
