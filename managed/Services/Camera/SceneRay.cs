@@ -137,15 +137,23 @@ public static unsafe class SceneRay
     /// one. Allocation-free: the one ignore slot is reused.</summary>
     public static bool Cast(DbId scene, Vector3 from, Vector3 to, DbId ignore, out Vector3 hit, out DbId obj, bool statics = false)
     {
-        hit = default; obj = default;
+        bool got = Cast(scene, from, to, ignore, out HitResult r, statics, faceNormal: false);
+        hit = got ? r.Point : default;
+        obj = got ? r.Obj : default;
+        return got;
+    }
+
+    /// <summary>The same cast, answering the whole <see cref="HitResult"/>; <paramref name="faceNormal"/> asks for a
+    /// triangle hit's face normal (<see cref="HitQuery.FaceNormal"/>).</summary>
+    public static bool Cast(DbId scene, Vector3 from, Vector3 to, DbId ignore, out HitResult r, bool statics, bool faceNormal)
+    {
+        r = default;
         if (scene.IsNull) return false;
         HitQuery q = HitQuery.Ray(scene, from, to, statics);
+        q.FaceNormal = faceNormal;
         _dbIgnore[0] = ignore;
         if (!ignore.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
-        if (!HitTest.Cast(q, out HitResult r)) return false;
-        hit = r.Point;
-        obj = r.Obj;
-        return true;
+        return HitTest.Cast(q, out r);
     }
 
     public static bool IsPlaceable(IntPtr gob) => gob != IntPtr.Zero && new Gob(gob).ExternalType == GobKindPlaceable;

@@ -104,6 +104,11 @@ internal static unsafe partial class OccludeApprovedExamples
         public float Drawn(int part)
             => OccludeFan.Fold(1f, SceneDb.PartFade[part], Occ(part), SceneDb.PartDissolve[part] < 1f);
 
+        /// <summary>The opacity part <paramref name="part"/>'s draw record leaves inside the cylinder: the record's
+        /// alpha, its tile fade, less the occluder cut the record carries.</summary>
+        public float Recorded(int part)
+            => SceneDb.PartFade[part] * (1f - OccludeFan.Cut(part, Occ(part)));
+
         /// <summary>Free the fixture's records, then the facade shells only the rig allocates.</summary>
         public void Tear()
         {

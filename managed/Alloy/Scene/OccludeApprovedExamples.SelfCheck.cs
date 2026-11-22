@@ -55,6 +55,10 @@ internal static unsafe partial class OccludeApprovedExamples
             Each(check, CreatureAndDoorStay);
             Each(check, OffFadesNothing);
             Each(check, FadeAllocatesNothing);
+            Each(check, RecordCarriesTheFade);
+            Each(check, RecordKeepsTheRoofMin);
+            Each(check, RecordLeavesTheKeyhole);
+            Each(check, CylinderHasAFloor);
             HelpNamesThem();
             AlloyOffGreysFade(check);
         }
@@ -193,6 +197,60 @@ internal static unsafe partial class OccludeApprovedExamples
                      $"E7 the canopy in the way is one the occluder fade found: its fade is {occ}, expected 0.5");
         check.Expect(MathF.Abs(a - 0.3f) <= Near,
                      $"E7 a roof-faded canopy draws at the fainter of the two, never their product: drew {a}, expected 0.3");
+    }
+
+    // Found work. Given a trunk the occluder fade has faded
+    // When its draw record is written
+    // Then what the record carries draws it at walls.floor inside the cylinder, not at full opacity
+    private static void RecordCarriesTheFade(Checker check, Rig rig)
+    {
+        int tile = ForestTile(rig, out _);
+        rig.Frames(Half, Focus, Cam);
+        float a = rig.Recorded(tile);
+        check.Expect(MathF.Abs(a - FloorSet) <= Near,
+                     $"T1 a faded trunk's draw record draws it at walls.floor: it carries {a}, expected 0.4");
+    }
+
+    // Found work. Given a roof-faded canopy at 0.3 the occluder fade also found, with walls.floor 0.5
+    // When its draw record is written
+    // Then the record draws it at 0.3, the fainter of the two
+    private static void RecordKeepsTheRoofMin(Checker check, Rig rig)
+    {
+        rig.Player(Feet);
+        int canopy = rig.Obj("canopy", HitTest.ClassTile, true, ObjFlag.Tile | ObjFlag.Static,
+                             Box(new Vector3(50f, 45f, 2f), new Vector3(1f, 0.3f, 1f)));
+        SceneDb.PartFade[canopy] = 0.6f;
+        Walls.Floor.V = 0.4f;
+        rig.Frames(Half, Focus, Cam);
+        float a = rig.Recorded(canopy);
+        check.Expect(MathF.Abs(a - 0.4f) <= Near,
+                     $"T2 a roof-faded canopy's record draws it at the fainter of 0.6 and walls.floor 0.4: it carries {a}, expected 0.4");
+    }
+
+    // Found work. Given a trunk the occluder fade found, which the keyhole is also dissolving
+    // When its draw record is written
+    // Then the record carries no cut: the keyhole already opens the view
+    private static void RecordLeavesTheKeyhole(Checker check, Rig rig)
+    {
+        int tile = ForestTile(rig, out _);
+        SceneDb.PartDissolve[tile] = 0.5f;
+        rig.Frames(Half, Focus, Cam);
+        float occ = rig.Occ(tile), a = rig.Recorded(tile);
+        check.Expect(occ > 0.5f && a == 1f,
+                     $"T3 a dissolving trunk the fade found (fade {occ}, expected over 0.5) records no cut: it carries {a}, expected 1");
+    }
+
+    // Found work. Given walls.radius at 0 (one fan ray) or at 0.5
+    // When a faded part's record takes its cylinder
+    // Then the cylinder is 0.25 m and 0.5 m across the ray: never too narrow to show the character
+    private static void CylinderHasAFloor(Checker check, Rig rig)
+    {
+        Walls.Radius.V = 0f;
+        float none = OccludeFan.Cylinder;
+        Walls.Radius.V = 0.5f;
+        float half = OccludeFan.Cylinder;
+        check.Expect(none == 0.25f && half == 0.5f,
+                     $"T4 the cut's cylinder is 0.25 m at walls.radius 0 and 0.5 m at 0.5: got {none} and {half}");
     }
 
     // Given the keyhole is on and a trunk below its cut height stands between the camera and the character

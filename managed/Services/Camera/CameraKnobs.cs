@@ -223,7 +223,8 @@ internal static class Walls
     {
         G = KnobGroup.Declare("walls", "Controls", "Camera", order: 510, title: "Walls");
         Fade = G.Toggle("fade", "Fade objects that hide you", true,
-                        help: "Placeables between the camera and your character turn see-through.");
+                        help: "Trees, walls and props between the camera and your character turn see-through.");
+        Fade.Requires = KnobNeed.Alloy;
         Floor = G.Slider("floor", "Faded opacity", 0f, 1f, 0.05f, 0.5f,
                          help: "How solid a faded object stays. 0 hides it entirely.");
         Radius = G.Slider("radius", "Fade ray width", 0f, 5f, 0.1f, 0.5f, "m", Tier.ChatOnly,

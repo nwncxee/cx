@@ -48,9 +48,10 @@ public abstract class Knob
     public bool Layout { get; }
     /// <summary>Side effect after a set (on the setter's thread); a Button's press.</summary>
     public Action? Changed;
-    /// <summary>A row that exists but cannot be edited yet: the panel
-    /// greys it and ignores its presses; chat and the file still read it.</summary>
-    public bool Disabled;
+    /// <summary>A row that exists but cannot be edited now -- set by its owner, or its <see cref="Requires"/> unmet:
+    /// the panel greys it and ignores its presses; chat and the file still read it.</summary>
+    public bool Disabled { get => _disabled || Unavailable != null; set => _disabled = value; }
+    private bool _disabled;
     /// <summary>What the row needs to apply; when <see cref="KnobNeeds"/> says it is missing, the row is unavailable
     /// and says <see cref="Unavailable"/>.</summary>
     public KnobNeed Requires;
