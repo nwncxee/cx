@@ -38,8 +38,13 @@ for line in diff.splitlines():
         continue
     text = open(path, encoding='utf-8').read()
     starts = [0] + [i + 1 for i, c in enumerate(text) if c == '\n']
-    end = starts[first + count - 1] + len(text[starts[first + count - 1]:].split('\n', 1)[0])
-    print(f'**/{path.split("managed/", 1)[1]}{{{starts[first - 1]}..{end}}}')
+    # Stryker keeps a mutant whose span touches the filter's, so each end sits on a line's first or last non-blank.
+    a = starts[first - 1]
+    last = starts[first + count - 2]
+    b = last + len(text[last:].split('\n', 1)[0].rstrip())
+    a += len(text[a:b]) - len(text[a:b].lstrip())
+    if a < b:
+        print(f'**/{path.split("managed/", 1)[1]}{{{a}..{b - 1}}}')
 PY
 ) || exit 2
 if [ ${#spans[@]} = 0 ]; then echo ">> no core line changed since $since: nothing to mutate"; exit 0; fi
