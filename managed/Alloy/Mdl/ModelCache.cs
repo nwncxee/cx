@@ -578,6 +578,15 @@ public static partial class ModelCache
         }
     }
 
+    /// <summary>Evict the least recently used idle model, for the texture budget; false when no model is idle.
+    /// Game thread, like <see cref="Trim"/>: its textures are released through <see cref="Evicting"/>.</summary>
+    internal static bool EvictLeastRecent()
+    {
+        if (_lru.Last == null) return false;
+        Evict(_lru.Last.Value, IndexOf(_lru.Last.Value));
+        return true;
+    }
+
     /// <summary>The victim's index in the sorted table. A binary search on its own name, which is unique in the
     /// table by construction, so this is O(log n) and not the linear scan the first cut used. A name that does
     /// NOT find its own slot would mean the sort key moved under the table, which is a broken mechanism and not

@@ -21,18 +21,28 @@ public sealed unsafe partial class AlloyRenderer
         SampleVram(vk, _log);
     }
 
-    /// <summary>Runs <paramref name="read"/> with the probe settled from <paramref name="vk"/> as a first frame on it
-    /// settles it, then puts the session's probe back: a check reads the live figures of a device of its own.</summary>
+    /// <summary>Runs <paramref name="read"/> with the probe and the texture budget settled from <paramref name="vk"/> as
+    /// a first frame on it settles them, then puts the session's back: a check reads the live figures of a device of its own.</summary>
     internal static T WithVramOf<T>(VkBackend vk, Func<T> read)
     {
         VramState was = _vram;
+        TexBudgetInputs period = TexBudget.Inputs;
         _vram = new VramState();
         try
         {
             SampleVram(vk, null);
             return read();
         }
-        finally { _vram = was; }
+        finally { _vram = was; TexBudget.BeginPeriod(period); }
+    }
+
+    /// <summary>Start a texture budget period from <paramref name="vk"/>'s figures now: its heaps' budget, and what
+    /// Alloy holds there beyond the two texture caches.</summary>
+    private static void BeginTexPeriod(VkBackend vk)
+    {
+        vk.DeviceLocalBytes(out _, out long budget, out long size, out long held);
+        long other = Math.Max(0, held - TexRegistry.HeldBytes - OwnedTextures.CacheBytes);
+        TexBudget.BeginPeriod(TexBudget.InputsFrom(Renderer.TexCache.Boot, vk.MemoryBudget, budget, size, other));
     }
 
     private static void SampleVram(VkBackend vk, ExtenderLog? log)
@@ -44,6 +54,7 @@ public sealed unsafe partial class AlloyRenderer
         _vram.Probed = true;
         _vram.Ext = vk.MemoryBudget ? "VK_EXT_memory_budget" : "the Vulkan allocator's estimate (no VK_EXT_memory_budget)";
         _vram.TotalKib = (int)Math.Min(total, int.MaxValue);
+        BeginTexPeriod(vk);
         log?.Info($"AlloyRenderer: [vram] {_vram.Ext}, {_vram.TotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
@@ -68,15 +79,17 @@ public sealed unsafe partial class AlloyRenderer
         LightmapBake.ReleaseIdleReads();
     }
 
-    /// <summary>The frame line's memory part as the device reads now; empty before the first frame, which is what
-    /// makes the device and reads its figures.</summary>
     /// <summary>Rows of the frame line's by-owner VRAM list.</summary>
     private const int VramOwnerRows = 14;
 
+    /// <summary>The frame line's memory part as the device reads now, closed by the texture budget period it ends;
+    /// empty before the first frame, which makes the device. The next period begins from the device's figures now.</summary>
     internal static string FrameVram()
     {
         if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
-        return FrameVram(vk, _log!);
+        string line = FrameVram(vk, _log!) + "; " + TexRegistry.BudgetLine();
+        BeginTexPeriod(vk);
+        return line;
     }
 
     /// <summary>The frame line's memory part as <paramref name="vk"/> reads now; an allocation first seen in system

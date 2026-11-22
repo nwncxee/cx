@@ -120,6 +120,7 @@ internal static class VkTextures
         if (img.IsNull && vk.LastFault.Contains(VkBackend.NoRoomTag, StringComparison.Ordinal))
         {
             t.Refused++;
+            TexRegistry.RefusedForRoom(e.Bytes);
             e.Texels = new byte[mips][];
             e.RetryAt = vk.Frame + RetryPeriod;
             t.ByName[gl] = e;

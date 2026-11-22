@@ -67,11 +67,14 @@ internal static partial class GpuGolden
             // Given alloy.vramcap 3072 on an 8 GB card
             // When the texture budgets are worked out
             // Then they read 3072 MiB as the card's size
-            (long sizeMib, long freeMib, long texBudget, int pages) = AlloyRenderer.WithVramOf(capped,
-                () => (AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib, TexRegistry.BudgetBytes() >> 20, LightmapBake.PoolPagesNow()));
-            long texWant = TexRegistry.BudgetFor(Renderer.TexCache.Boot, CapMib, freeMib) >> 20;
-            check.Expect(sizeMib == CapMib && texBudget == texWant,
-                         $"vramcap E5: the texture budget reads a {sizeMib}MiB card and comes to {texBudget}MiB, not a 3072MiB card's {texWant}MiB");
+            (long sizeMib, long freeMib, long texBudget, long heapMib, int pages) = AlloyRenderer.WithVramOf(capped,
+                () => (AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib, TexRegistry.BudgetBytes() >> 20,
+                       TexBudget.Inputs.HeapBudgetBytes >> 20, LightmapBake.PoolPagesNow()));
+            capped.DeviceLocalBytes(out _, out long cappedBudget, out _, out _);
+            check.Expect(sizeMib == CapMib && heapMib > 0 && heapMib <= CapMib && heapMib == cappedBudget >> 20,
+                         $"vramcap E5: the texture budget reads a {sizeMib}MiB card with a {heapMib}MiB heap budget, not a 3072MiB card's {cappedBudget >> 20}MiB");
+            check.Expect(Renderer.TexCache.Boot > 0 || texBudget < heapMib * 9 / 10 + 1,
+                         $"vramcap E5: the texture budget comes to {texBudget}MiB, past nine tenths of the capped {heapMib}MiB heap budget");
 
             // Given alloy.vramcap 3072
             // When the lightmap pool is sized

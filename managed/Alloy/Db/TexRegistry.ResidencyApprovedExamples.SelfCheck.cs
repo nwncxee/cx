@@ -53,6 +53,7 @@ internal static unsafe partial class TexRegistry
 
             check.Expect(BudgetFalls(), "E8: the budget did not follow the driver's falling figure into the next period, or eviction did not follow it");
             check.Expect(RefusalEvicts(), "E6: a texture refused for room did not evict the two oldest idle textures and only those");
+            check.Expect(RefusalFitsExactly(), "found: a refusal that fits the budget exactly evicted an idle texture");
         }
         catch (Exception e) { check.Expect(false, $"threw -- {e}"); }
         finally { TexBudget.BeginPeriod(had); }
@@ -126,6 +127,29 @@ internal static unsafe partial class TexRegistry
         {
             Release(held);
             Forget("cx_rsd_room_held");
+            foreach (string n in names) Forget(n);
+        }
+    }
+    /// <summary>Found test. Oracle: a refusal for exactly the budget's room left over what the registry holds
+    /// (100 MiB in use, three 50 MiB idle, plus whatever other self-checks hold) fits, so no idle texture goes.</summary>
+    private static bool RefusalFitsExactly()
+    {
+        string[] names = ["cx_rsd_edge_a", "cx_rsd_edge_b", "cx_rsd_edge_c"];
+        var ids = new TexId[names.Length];
+        TexId held = default;
+        try
+        {
+            TexBudget.BeginPeriod(new TexBudgetInputs(300, 5169 * ResidencyMiB, 0));
+            held = Held("cx_rsd_edge_held", 100, 0xE6000020u);
+            for (int k = 0; k < names.Length; k++) { ids[k] = Held(names[k], 50, 0xE6000021u + (uint)k); Release(ids[k]); }
+            RefusedForRoom(BudgetBytes() - HeldBytes);
+            return StateOf(ids[0]) == TexState.Idle && StateOf(ids[1]) == TexState.Idle
+                && StateOf(ids[2]) == TexState.Idle && StateOf(held) == TexState.Resident;
+        }
+        finally
+        {
+            Release(held);
+            Forget("cx_rsd_edge_held");
             foreach (string n in names) Forget(n);
         }
     }

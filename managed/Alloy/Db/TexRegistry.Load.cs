@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using CX.Framework;
 using CX.Graphics;
+using CX.Alloy.Mdl;
 using static CX.Alloy.TexLoadRead;
 
 namespace CX.Alloy.Db;
@@ -854,19 +855,12 @@ internal static unsafe partial class TexRegistry
 
     // ---- budget ----
 
-    /// <summary>ADR 0023's budget, read the same way: <c>texcache_mb</c> -1 is a quarter of probed VRAM, 0
-    /// evicts an idle slot as soon as it is idle.</summary>
-    internal static long BudgetBytes() => BudgetFor(Renderer.TexCache.Boot, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+    /// <summary>ADR 0023's budget: the period's shared texture budget, which <see cref="TexBudget.BeginPeriod"/>
+    /// works out from <c>alloy.texcache</c> and the device's live figures.</summary>
+    internal static long BudgetBytes() => TexBudget.Bytes;
 
-    /// <summary>Pure: the budget, bytes, for <c>texcache_mb</c> <paramref name="mb"/> on a card of <paramref name="totalMib"/>
-    /// with <paramref name="freeMib"/> free (either 0 = unknown).</summary>
-    internal static long BudgetFor(int mb, long totalMib, long freeMib)
-    {
-        if (mb > 0) return (long)mb << 20;
-        if (mb == 0) return 0;
-        long vram = totalMib > 0 ? totalMib : freeMib;
-        return vram > 0 ? (vram << 20) / 4 : 512L << 20;
-    }
+    /// <summary>The bytes the world textures hold on the device, resident and idle.</summary>
+    internal static long HeldBytes { get { lock (_lock) return _residentBytes + _idleBytes; } }
 
     /// <summary>The key the texture part gives the period's budget under, as <c>tex budget N MiB</c>.</summary>
     internal const string BudgetKey = "tex budget";
@@ -878,21 +872,42 @@ internal static unsafe partial class TexRegistry
     internal const string EvictedKey = "models evicted";
 
     /// <summary>The frame line's texture part: the period's budget, the models it evicted, and by how many MiB
-    /// the current area's own textures pass the budget.</summary>
-    internal static string BudgetLine() => "";
+    /// the current area's own textures pass the budget, given only when they do.</summary>
+    internal static string BudgetLine()
+    {
+        long over = TexBudget.OverBytes >> 20;
+        return $"{BudgetKey} {TexBudget.Bytes >> 20} MiB, {EvictedKey} {TexBudget.ModelsEvicted}"
+             + (over > 0 ? $", {OverKey} {over} MiB" : "");
+    }
 
     /// <summary>A texture allocation of <paramref name="bytes"/> was refused for room: evict idle textures,
-    /// oldest first, until it fits the budget.</summary>
-    internal static void RefusedForRoom(long bytes) { }
+    /// oldest first, until it fits the budget. Game thread, where every upload is seated.</summary>
+    internal static void RefusedForRoom(long bytes)
+    {
+        long room = BudgetBytes() - bytes;
+        lock (_lock)
+            while (_idleHead >= 0 && _residentBytes + _idleBytes > room)
+                Retire(_idleHead);
+    }
 
-    /// <summary>Trim the idle set back to the budget, oldest first off the LRU head. Game thread; the names
-    /// go to the graveyard for the drain.</summary>
+    /// <summary>Trim back to the budget: idle textures oldest first off the LRU head, then, while still over,
+    /// the least recently used idle model with the textures only it held. Game thread; the names go to the
+    /// graveyard for the drain. What is left over the budget is what the area itself draws.</summary>
     private static void EvictPastBudget()
     {
         long budget = BudgetBytes();
-        lock (_lock)
-            while (_idleHead >= 0 && _residentBytes + _idleBytes > budget)
-                Retire(_idleHead);
+        while (true)
+        {
+            lock (_lock)
+            {
+                while (_idleHead >= 0 && _residentBytes + _idleBytes > budget)
+                    Retire(_idleHead);
+                if (_residentBytes + _idleBytes <= budget) { TexBudget.NoteOver(0); return; }
+            }
+            if (!ModelCache.EvictLeastRecent()) break;
+            TexBudget.CountEvicted();
+        }
+        lock (_lock) TexBudget.NoteOver(_residentBytes + _idleBytes - budget);
     }
 
     /// <summary>Terminal per session (<c>docs/owned-resource-lifetimes.md</c>): every name and handle this

@@ -19,23 +19,14 @@ internal static unsafe partial class OwnedTextures
 {
     // ---- ADR 0023: the texture CACHE -- the delete funnel is the world edge for the INDEX, not the resource ----
 
-    /// <summary>VRAM the cache may hold, in bytes. 0 = the pre-ADR-0023 behaviour (a retired index entry
-    /// discards its resource). <c>alloy.texcache</c> in cx.cfg; auto (the default) = a quarter of the probe's
-    /// reported VRAM, 1024 MiB when the device answers no memory query. Resolved lazily: the probe runs on
-    /// the first presented frame, after this table is attached.</summary>
+    /// <summary>VRAM the cache may hold, in bytes: the period's texture budget, shared with the world
+    /// textures (<see cref="Db.TexBudget"/>). <see cref="_budgetBytes"/> at 0 or above overrides it, for the
+    /// self-check only.</summary>
+    internal static long Budget() => _budgetBytes >= 0 ? _budgetBytes : Db.TexBudget.Bytes;
+    /// <summary>The bytes the cache holds, in use and idle.</summary>
+    internal static long CacheBytes => _bytes;
     private static long _budgetBytes = -1;
     private static int _budgetCfgMb = -1;
-    private const int BudgetFallbackMib = 1024;
-    internal static long Budget()
-    {
-        if (_budgetBytes >= 0) return _budgetBytes;
-        if (_budgetCfgMb >= 0) return _budgetBytes = (long)_budgetCfgMb * OneMiB;
-        if (!AlloyRenderer.VramProbed) return -1;   // not probed yet: "unknown", not the fallback
-        // a quarter of the card: NVX reports the total, Mesa's ATI_meminfo only the free pool (most of the
-        // card at probe time), and a driver with neither gets the fallback
-        long total = AlloyRenderer.VramTotalMib, free = AlloyRenderer.VramFreeMib;
-        return _budgetBytes = (total > 0 ? total / 4 : free > 0 ? free / 4 : BudgetFallbackMib) * OneMiB;
-    }
     private static long _idleBytes, _cacheHits, _cacheMisses, _cacheEvicted, _cacheKept;
     private static bool _evictDue;
     private static int _texDelete = -1;

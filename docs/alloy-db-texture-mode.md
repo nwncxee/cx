@@ -135,7 +135,10 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
    texture has no alpha to read, so a PLT part casts its full silhouette. The engine-mode path marked PLT
    composites opaque by hand for the same reason.
 7. **A texture lives for the session, not the area.** ADR 0023's decision without the engine's delete funnel:
-   a slot with no references goes Idle and is evicted oldest-first off an LRU, only past `texcache_mb`.
+   a slot with no references goes Idle and is evicted oldest-first off an LRU, only past the period's texture
+   budget (`alloy.texcache`, or by default nine tenths of the device-local heap's budget less Alloy's other
+   allocations, worked out again at each frame line). Still past it, the least recently used idle model goes
+   with the textures only it held.
 8. **A second mip level is never blended past LOD 4** (`CX_PLT_LOD_CUT`): four taps instead of eight where the
    levels are a few texels wide and their colours are within a rounding of each other. No dither, no temporal
    term, so it holds with TAA off.
