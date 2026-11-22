@@ -12,9 +12,9 @@ cd "$(dirname "$0")/../.." || exit 2
 for=""; list=0; secs=300
 while [ $# -gt 0 ]; do
   case "$1" in
-    --for) for=$2; shift 2 ;;
+    --for) [ $# -ge 2 ] || { echo "!! gates: --for needs a path" >&2; exit 2; }; for=$2; shift 2 ;;
     --list) list=1; shift ;;
-    --timeout) secs=$2; shift 2 ;;
+    --timeout) [ $# -ge 2 ] || { echo "!! gates: --timeout needs seconds" >&2; exit 2; }; secs=$2; shift 2 ;;
     *) echo "!! gates: unknown argument $1" >&2; exit 2 ;;
   esac
 done

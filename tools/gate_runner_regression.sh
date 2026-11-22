@@ -25,6 +25,11 @@ mine=$(cd "$t" && bash tools/gates/run.sh --list --for docs/a.md | tr '\n' ' ')
 mine=$(cd "$t" && bash tools/gates/run.sh --list --for tools/x_approved_examples.sh | tr '\n' ' ')
 [ "$mine" = "tools/gates/approved-lines.sh tools/gates/ok.sh " ] || fail "--for tools/x_approved_examples.sh chose '$mine'"
 
+for a in --for --timeout; do
+  (cd "$t" && timeout 10 bash tools/gates/run.sh "$a") > /dev/null 2>&1
+  case $? in 124) fail "run.sh $a with no value never ended" ;; 0) fail "run.sh $a with no value passed" ;; esac
+done
+
 printf '#!/usr/bin/env bash\nsleep 60\n' > "$t/tools/gates/hung.sh"
 start=$SECONDS
 (cd "$t" && timeout 30 bash tools/gates/run.sh --timeout 1) > "$t/out" 2>&1 && fail "a hung gate left the run green"

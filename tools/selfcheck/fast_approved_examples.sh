@@ -124,6 +124,7 @@ else
   echo ">> CX-633 E6 and E7: SKIPPED: no Vulkan device here"
 fi
 
-[ $rc = 0 ] && [ "$vk_ran" = 0 ] && echo ">> fast self-check approved examples: E1 to E4 pass, CX-633 E6 and E7 SKIPPED"
-[ $rc = 0 ] && [ "$vk_ran" = 1 ] && echo ">> fast self-check approved examples: E1 to E4, CX-633 E6 and E7 pass (${took}s)" || echo "!! fast self-check approved examples: FAILED (above)" >&2
+if [ $rc != 0 ]; then echo "!! fast self-check approved examples: FAILED (above)" >&2
+elif [ "$vk_ran" = 0 ]; then echo ">> fast self-check approved examples: E1 to E4 pass, CX-633 E6 and E7 SKIPPED"
+else echo ">> fast self-check approved examples: E1 to E4, CX-633 E6 and E7 pass (${took}s)"; fi
 exit $rc

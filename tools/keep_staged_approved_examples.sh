@@ -112,6 +112,8 @@ case "$(bash "$d/tools/where.sh" "$d")" in *"build     UNCOMMITTED"*) ;; *) echo
 d=$(fixture r-committed); sed -i 's|Answer = 42;|Answer = 43;|' "$d/managed/Thing.cs"; { git -C "$d" rev-parse HEAD; echo dirty; echo "code $(python3 "$d/tools/codehash.py" "$d")"; } > "$d/cx-linux-x64/BUILT_FROM"
 (cd "$d" && git -c user.email=t@t -c user.name=t commit -qam B) || exit 1
 case "$(bash "$d/tools/where.sh" "$d")" in *"build     CURRENT"*) ;; *) echo "!! a build of edits since committed unchanged is not CURRENT"; rc=1 ;; esac
+d=$(fixture r-comment-edit); sed -i 's|// the answer|// the answer, still|' "$d/managed/Thing.cs"
+case "$(bash "$d/tools/where.sh" "$d")" in *"build     CURRENT"*) ;; *) echo "!! a clean build with an uncommitted comment edit is not CURRENT"; rc=1 ;; esac
 d=$(fixture r-coreout); printf 'obj/\n/managed/Core/bin/\n' >> "$d/.gitignore"; (cd "$d" && git -c user.email=t@t -c user.name=t commit -qam ign) || exit 1
 { git -C "$d" rev-parse HEAD; echo "code $(python3 "$d/tools/codehash.py" "$d")"; } > "$d/cx-linux-x64/BUILT_FROM"
 mkdir -p "$d/managed/Core/obj" "$d/managed/Core/bin"; printf 'namespace CX;\n' > "$d/managed/Core/obj/Core.AssemblyInfo.cs"; : > "$d/managed/Core/bin/cx_core.dll"

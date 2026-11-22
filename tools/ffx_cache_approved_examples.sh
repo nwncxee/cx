@@ -27,6 +27,7 @@ cat > /dev/null; echo patched >> "$PATCH_LOG"
 SH
 cat > "$t/bin/c++" << 'SH'
 #!/usr/bin/env bash
+[ "${1:-}" = --version ] && { echo "c++ ${CXX_VERSION:-1}"; exit 0; }
 while [ $# -gt 0 ]; do [ "$1" = -o ] && { : > "$2"; exit 0; }; shift; done
 SH
 chmod +x "$t/bin/patch" "$t/bin/c++"
@@ -63,6 +64,19 @@ touch -d '-1 hour' "$t/native/ffx/sdk-1.1.4.patch"
 build || fail "E3: the build failed: $(tail -3 "$tmp/out")"
 patched || fail "E3: a changed patch did not patch the SDK again"
 built || fail "E3: a changed patch did not rebuild FSR"
+
+# Regression, not an approved example: every other input of the key rebuilds too.
+for f in tools/ffx/cxxflags.sh native/ffx/compat.h tools/ffx/sources.txt; do
+  if [ "$f" = tools/ffx/sources.txt ]; then echo planted.cpp >> "$t/$f"; else echo '# changed' >> "$t/$f"; fi
+  build || fail "the build failed after $f changed: $(tail -3 "$tmp/out")"
+  built || fail "a changed $f did not rebuild FSR"
+done
+CXX_VERSION=2 build || fail "the build failed under a new compiler: $(tail -3 "$tmp/out")"
+built || fail "a new compiler version did not rebuild FSR"
+: > "$tmp/patch.log"
+echo 0000 > "$t/build/deps/.ffx-sdk.sha256"
+build || fail "the build failed after the SDK pin changed: $(tail -3 "$tmp/out")"
+patched || fail "a changed SDK pin did not patch the SDK again"
 
 [ $rc = 0 ] && echo "ffx cache approved examples: E3 and E4 pass"
 exit $rc
