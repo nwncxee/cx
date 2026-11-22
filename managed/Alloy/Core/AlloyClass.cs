@@ -1,3 +1,4 @@
+using CX.Alloy.Db;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -68,6 +69,14 @@ internal static class AlloyClasses
     /// is coverage the shader computes, so a 0.2 test on it would punch holes in shallows.</summary>
     internal static float Discard(int cls) => cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Additive
         || cls == (int)AlloyClass.Water ? -1f : 0.2f;
+
+    /// <summary>Is a part a wash: a see-through sheet (<see cref="RecipeFlag.Wash"/>) on a static object? Never opaque, which
+    /// keeps its prepass depth exactly, nor additive, which writes no depth to fight over; nor a coverage or env-mapped
+    /// material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>
+    internal static bool Washes(int recipeCls, RecipeFlag rf, ObjFlag of, bool env)
+        => (rf & RecipeFlag.Wash) != 0 && recipeCls is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
+           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage)) == 0
+           && !env && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
 
     /// <summary>A scene-database slot's class from its recipe's. A ground decal, or a wash whose model's
     /// <c>transparencyhint</c> would blend it, draws blended; so does a graded cutout wash. Anything else, a
@@ -157,6 +166,22 @@ internal static class AlloyClasses
         check.Expect(Slot(AlloyClass.Cutout, wash: true) == AlloyClass.Cutout, "an unhinted binary wash stays a cutout");
         check.Expect(Slot(AlloyClass.Cutout, graded: true) == AlloyClass.Cutout, "a plain graded cutout stays a cutout");
         check.Expect(Slot(AlloyClass.Opaque) == AlloyClass.Opaque, "an opaque part stays opaque");
+
+        // A flat sheet's route, wash rule into slot class, expected answers written out by hand: a placeable laid on the
+        // ground is a wash, and a tile's own ground is the surface a wash lies on, so it draws in its recipe's class.
+        const ObjFlag placeable = ObjFlag.Static, tile = ObjFlag.Static | ObjFlag.Tile;
+        bool groundWash = Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, tile, env: false);
+        check.Expect(!groundWash && Slot(AlloyClass.Cutout, graded: true, wash: groundWash) == AlloyClass.Cutout,
+          "a tile's graded cutout ground is not a wash: it keeps its depth and draws with the cutouts");
+        check.Expect(!Washes((int)AlloyClass.Blended, RecipeFlag.Wash, tile, env: false), "nor is a tile's blended sheet");
+        bool sheetWash = Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, placeable, env: false);
+        check.Expect(sheetWash && Slot(AlloyClass.Cutout, graded: true, wash: sheetWash) == AlloyClass.Blended,
+          "the same graded sheet on a static placeable is a wash and blends onto the ground");
+        check.Expect(Washes((int)AlloyClass.Blended, RecipeFlag.Wash, placeable, env: false), "and so is a placeable's blended sheet");
+        check.Expect(!Washes((int)AlloyClass.Opaque, RecipeFlag.Wash, placeable, env: false)
+          && !Washes((int)AlloyClass.Opaque, RecipeFlag.Wash, tile, env: false),
+          "an opaque sheet is never a wash, on a placeable or a tile");
+        check.Expect(!Washes((int)AlloyClass.Cutout, RecipeFlag.None, placeable, env: false), "a part that is not a sheet is no wash");
 
         log.Info(check.Ok ? "AlloyClasses.SelfCheck: passed" : "AlloyClasses.SelfCheck: FAILED");
     }

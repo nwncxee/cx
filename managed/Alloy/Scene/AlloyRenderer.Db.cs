@@ -51,14 +51,10 @@ public sealed unsafe partial class AlloyRenderer
            && (DrawRecipe.Slots(recipe) & IllumBit) == 0 && !env
            && !ContentPrograms.MayMove(DrawRecipe.Feat(recipe));
 
-    /// <summary>Does this part draw as a wash: a see-through sheet laid over a surface (<see cref="RecipeFlag.Wash"/>) on a
-    /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
-    /// class keeps its prepass depth exactly -- nor additive, which writes no depth to fight over; nor a coverage or
-    /// env-mapped material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>
+    /// <summary>Does this part draw as a wash (<see cref="AlloyClasses.Washes"/>), under a polygon offset so it cannot
+    /// z-fight the surface it lies on?</summary>
     internal static bool DbWash(int recipe, RecipeFlag rf, ObjFlag of, bool env)
-        => (rf & RecipeFlag.Wash) != 0 && DrawRecipe.Cls(recipe) is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
-           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage)) == 0
-           && !env && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
+        => AlloyClasses.Washes(DrawRecipe.Cls(recipe), rf, of, env);
 
     /// <summary>The class a slot draws in (<see cref="AlloyClasses.SlotClass"/>): blended for a ground decal, a wash
     /// with <see cref="RecipeFlag.HintBlended"/>, or a graded cutout wash (vanilla's blend plus 0.2 test,
