@@ -21,10 +21,6 @@ internal static partial class DbInputs
     // ---- lights ----
     private static readonly int[] _lightPart = new int[MaxLights];
     private static readonly LightDef?[] _lightDef = new LightDef?[MaxLights];
-    /// <summary>The tile-light record (<see cref="SceneDb.LitColour"/> row) a TILE light reads its colour, range
-    /// and multiplier from, or -1. A tileset's main lights are coloured by the area palette at runtime
-    /// (<see cref="TileBuild.SetTileLights"/>); their model rest keys are not what the game shows.</summary>
-    private static readonly int[] _lightLit = new int[MaxLights];
     private static int _lightN;
     /// <summary>What a light node that states no light fields of its own falls back to: the defaults
     /// <c>MdlNodeLight</c>'s constructor leaves when the file sets none. Shared, never written.</summary>
@@ -68,8 +64,8 @@ internal static partial class DbInputs
         NodeDef? nd = NodeOf(p);
         if (nd == null) return false;
         Matrix4x4 w = SceneDb.PartWorld[p];
-        int l = _lightLit[k];
-        bool tile = l >= 0 && SceneDb.Lights.LiveAt(l);
+        int l = LitOf(p);
+        bool tile = l >= 0;
         light = new DbLight
         {
             Part = p,
@@ -231,7 +227,7 @@ internal static partial class DbInputs
             for (int k = 0; k < _lightN; k++) if (_lightPart[k] == p) return;
             if (_lightN >= MaxLights) { Spilled++; return; }
             if (nd.Light == null) _lightNoDef++;
-            _lightPart[_lightN] = p; _lightDef[_lightN] = nd.Light ?? DefaultLight; _lightLit[_lightN] = -1; _lightN++;
+            _lightPart[_lightN] = p; _lightDef[_lightN] = nd.Light ?? DefaultLight; _lightN++;
         }
         else if (nd.Kind == NodeKind.Emitter)
         {
@@ -250,7 +246,7 @@ internal static partial class DbInputs
         for (int k = 0; k < _lightN; k++)
             if (_lightPart[k] == p)
             {
-                _lightPart[k] = _lightPart[--_lightN]; _lightDef[k] = _lightDef[_lightN]; _lightLit[k] = _lightLit[_lightN];
+                _lightPart[k] = _lightPart[--_lightN]; _lightDef[k] = _lightDef[_lightN];
                 _lightDef[_lightN] = null; break;
             }
         for (int k = 0; k < _emitN; k++)
@@ -272,24 +268,25 @@ internal static partial class DbInputs
     /// any light node, and <c>fx_placeable01</c>'s <c>auroralight01</c> is exactly such a node.</summary>
     internal static bool IsLight(int p) => NodeOf(p)?.Kind == NodeKind.Light;
 
-    /// <summary>The <see cref="SceneDb.Lights"/> row part <paramref name="p"/> reads as a TILE light, or -1.
-    /// The feed walks that table directly for tile lights, so a setter has to write there too.</summary>
+    /// <summary>The <see cref="SceneDb.Lights"/> row part <paramref name="p"/> reads as a TILE light, or -1: a
+    /// tileset's main lights take the area palette's colour, not their rest keys. The feed walks that table
+    /// directly for tile lights, so a setter has to write there too.</summary>
     internal static int LitOf(int p)
     {
-        for (int k = 0; k < _lightN; k++) if (_lightPart[k] == p) return _lightLit[k];
-        return -1;
+        int l = SceneDb.PartLit[p];
+        return l >= 0 && SceneDb.Lights.LiveAt(l) && SceneDb.LitPart[l] == p && SceneDb.LitObj[l] == SceneDb.PartObj[p] ? l : -1;
     }
 
-    /// <summary>A TILE light. A tileset's lights do not hang off an object's part tree -- the tiles stream
-    /// owns the tile records and registers them here, because the renderer must see ONE light list however a
-    /// light arrived. Idempotent, and the count is on the period line.</summary>
+    /// <summary>A TILE light: link record <paramref name="lit"/> (-1 unlinks) and part both ways, and file the
+    /// part, because the renderer must see ONE light list however a light arrived. Idempotent; the link is
+    /// linked before the part is live, so a part the record fold files later reads its record too.</summary>
     internal static void RegisterTileLight(int part, int lit)
     {
         _lightRev++;
+        SceneDb.PartLit[part] = lit;
+        if (lit >= 0) SceneDb.LitPart[lit] = part;
         if (!SceneDb.Parts.LiveAt(part)) return;
         PartCreated(part);
-        for (int k = 0; k < _lightN; k++)
-            if (_lightPart[k] == part) { _lightLit[k] = lit; break; }
         TileLights++;
     }
 

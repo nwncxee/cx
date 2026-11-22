@@ -42,7 +42,7 @@ internal static class DbLightSet
         // DbInputs.Light) and the Lit record (a TILE light's, which the feed's light walk enumerates
         // directly). A recolour that wrote only one of them would take effect for one kind and not the other.
         int lit = DbInputs.LitOf(p);
-        if (lit >= 0 && SceneDb.Lights.LiveAt(lit))
+        if (lit >= 0)
         {
             SceneDb.LitColour[lit] = colour;
             SceneDb.Lights.Mark(lit, Dirty.Material);
