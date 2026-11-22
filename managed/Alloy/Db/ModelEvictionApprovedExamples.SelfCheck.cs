@@ -50,6 +50,7 @@ internal static partial class DbSelfCheck
         {
             EvictE3(check);
             EvictE4(check);
+            OverClears(check);
             EvictE5(check);
             EvictE9(check);
             EvictE10(check);
@@ -168,6 +169,29 @@ internal static partial class DbSelfCheck
                          $"E4: 300MiB the area draws against a 200MiB budget, the frame line does not say exceeded by 100MiB: \"{line}\"");
         }
         finally { EndEviction("cx_rsd4_a", "cx_rsd4_b", "cx_rsd4_c"); }
+    }
+
+    // Found: Given the area's own textures passed the budget, and the frame line said by how many MiB
+    // When the player leaves that area within the period, and its model is evicted
+    // Then the frame line no longer says the budget is exceeded
+    private static void OverClears(Checker check)
+    {
+        var src = new ResidencySource();
+        Textured(src, "cx_rsdo_area", "cx_rsdo_a", "cx_rsdo_b", "cx_rsdo_c");
+        ModelCache.SetSource(src);
+        try
+        {
+            (ModelDef area, _) = Hold("cx_rsdo_area", 100);
+            TexBudget.BeginPeriod(new TexBudgetInputs(200, 5169 * EvictMiB, 0));
+            TexRegistry.Tick();
+            long? before = AlloyRenderer.ClauseMiB(TexRegistry.BudgetLine(), TexRegistry.OverKey);
+            ModelCache.Release(area);
+            TexRegistry.Tick();
+            string line = TexRegistry.BudgetLine();
+            check.Expect(before == 100 && AlloyRenderer.ClauseMiB(line, TexRegistry.OverKey) == null,
+                         $"found: the area left within the period, and the frame line still says the budget is exceeded (was {before} MiB): \"{line}\"");
+        }
+        finally { EndEviction("cx_rsdo_a", "cx_rsdo_b", "cx_rsdo_c"); }
     }
 
     // E5 Given texture memory is well under its budget

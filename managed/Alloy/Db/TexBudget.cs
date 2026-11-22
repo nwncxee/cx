@@ -62,7 +62,6 @@ internal static class TexBudget
         _state.Inputs = inputs;
         _state.Bytes = BytesFor(inputs);
         _state.ModelsEvicted = 0;
-        _state.OverBytes = 0;
     }
 
     /// <summary>Count one model evicted for the current period's budget.</summary>
