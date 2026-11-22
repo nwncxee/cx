@@ -228,7 +228,8 @@ internal static unsafe partial class DdsReader
               && b.AlphaMean == 0.5f && b.Levels == 4 && b.Present == 1 && b.ChainBytes == 32 + 16 * 3;
         var chain = new byte[b.ChainBytes];
         CopyChain(ms, b, chain);
-        ok &= chain[0] == 1 && chain[31] == 32 && chain[32] == 1 && chain[47] == 16 && chain[79] == 16;
+        ok &= chain[0] == 1 && chain[31] == 32;
+        ok &= PartialMipsDownsample();
 
         // vocabulary: ATI1/ATI2 map to 1/2 channels and their block sizes; DXT3 is Alloy's alone (BC2, 16-byte
         // blocks); premultiplied DXT2 is refused, and the engine is not handed it either
@@ -263,5 +264,36 @@ internal static unsafe partial class DdsReader
 
         log.Info(ok ? "DdsReader.SelfCheck: passed" : "DdsReader.SelfCheck: FAILED");
         return ok;
+    }
+
+    /// <summary>A one-level 8x8 DXT1 whose top-left block is grey and the other three black, the shape of a portrait
+    /// whose pad band leads the file: each generated level is that image box-filtered, not its first block repeated.
+    /// Oracle: the texel colours worked out by hand from the four solid blocks, with room for the encoder's inset.</summary>
+    private static bool PartialMipsDownsample()
+    {
+        const ushort Grey = 0x8410, Black = 0;   // not-an-offset: RGB565 colours, (132,130,132) and (0,0,0)
+        byte[] f = new byte[MsHeader + 32];
+        BinaryPrimitives.WriteUInt32LittleEndian(f, MagicDds);
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(MsHeight), 8);
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(MsWidth), 8);
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(MsFourCC), FourDxt1);
+        for (int k = 0; k < 4; k++)
+        {
+            ushort c = k == 0 ? Grey : Black;
+            BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(MsHeader + k * 8), c);
+            BinaryPrimitives.WriteUInt16LittleEndian(f.AsSpan(MsHeader + k * 8 + 2), c);
+        }
+        if (!Parse(f, out Info i, out _) || i.Present != 1 || i.Levels != 4 || i.ChainBytes != 56) return false;
+        var chain = new byte[i.ChainBytes];
+        CopyChain(f, i, chain);
+        Span<byte> l1 = stackalloc byte[4 * 4 * 3], l3 = stackalloc byte[3];
+        BcnDecode.Unpack(chain.AsSpan(32, 8), 4, 4, Fmt.Bc1, l1);
+        BcnDecode.Unpack(chain.AsSpan(48, 8), 1, 1, Fmt.Bc1, l3);
+        bool grey00 = Math.Abs(l1[0] - 132) < 24 && Math.Abs(l1[1] - 130) < 24 && Math.Abs(l1[2] - 132) < 24;
+        int at33 = (3 * 4 + 3) * 3;
+        bool black33 = l1[at33] < 24 && l1[at33 + 1] < 24 && l1[at33 + 2] < 24;
+        // level 3 is the whole image's mean: (grey + 3 black) / 4 = (33, 32, 33)
+        bool mean = Math.Abs(l3[0] - 33) < 12 && Math.Abs(l3[1] - 32) < 12 && Math.Abs(l3[2] - 33) < 12;
+        return grey00 && black33 && mean;
     }
 }
