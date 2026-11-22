@@ -7,6 +7,9 @@ namespace CX.Alloy;
 /// Oracles: hand-written budgets and use, and the page counts and cube sizes they work out to by hand.</summary>
 internal static class VramLadderFound
 {
+    /// <summary>Exactly 90% and exactly 80% of <see cref="Ladder.Budget"/>, MiB, worked by hand from its 8000.</summary>
+    private const long AtGive = 7200, AtTake = 6400;
+
     /// <summary>Every found test on a freshly armed ladder at a 512/256 cube pair; the ladder is disarmed after.</summary>
     [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
@@ -53,6 +56,25 @@ internal static class VramLadderFound
             VramLadder.Reset(null, 512, 256);
             check.Expect(CasterPass.CubeFaceSize == 512 && CasterPass.CubeDynFaceSize == 256,
                          $"re-armed while lowered, the cubes draw at {CasterPass.CubeFaceSize}/{CasterPass.CubeDynFaceSize}, not 512/256");
+
+            // Given a freshly armed ladder
+            // When a period's use is exactly 90% of the budget
+            // Then nothing gives way: only use past 90% gives
+            VramLadder.Reset(null, 512, 256);
+            VramLadder.Period(AtGive, Ladder.Budget);
+            check.Expect(VramLadder.Given == VramRung.None, $"use at exactly 90% gave the {VramLadder.Given} rung");
+
+            // Given the scratch rung given and the scratch halved
+            // When a period and then an area change see use at exactly 80% of the budget
+            // Then the scratch stays half and the rung stays given: only use under 80% takes back
+            VramLadder.Reset(null, 512, 256);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.Period(Ladder.Past, Ladder.Budget);
+            VramLadder.Period(AtTake, Ladder.Budget);
+            bool half = VramLadder.HalfScratch;
+            VramLadder.AreaChanged(AtTake, Ladder.Budget, 0);
+            check.Expect(half && VramLadder.Given == VramRung.Scratch,
+                         $"use at exactly 80% made the scratch whole ({!half}) or took the rung back ({VramLadder.Given})");
 
             int eased = VramLadder.Eased;
             VramLadder.Period(Ladder.Band, Ladder.Budget);
