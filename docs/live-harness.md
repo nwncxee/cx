@@ -207,6 +207,27 @@ for the transition) and the walkable ground the coordinates are taken from; the 
 `--seconds` below 60 is raised to 60, because the ladder's last rung is at t+48 and a shorter soak
 would grade rungs the run never reached.
 
+**The revisit grade.** `tools/live/revisit.py` splits `cx.log` into area visits at TexStream's `[load]`
+lines. A run fails when the return to the first area draws more than 1.5 times the first visit's median
+GPU time per frame, or when it logged no `[vkgpu]` line. `--cfg 'alloy.vramcap=<MiB>'` shrinks the card,
+so the session overflows device memory on any GPU.
+
+Measured 2026-11-22 on an RTX 3070 (8438 MiB, two device-local heaps), stock ladder, at commit `cdf09578`:
+
+| `alloy.vramcap` | Peak use / budget, MiB | Area 2, ms | First visit, ms | Return, ms | Revisit |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 2759 / 6864 | 2.2 | 2.53 | 1.71 | PASS |
+| 2560 | 2355 / 2560 | 2.2 | 2.54 | 1.72 | PASS |
+| 2048 | 2052 / 2048 | 2.2 | 2.55 | 1.71 | PASS |
+| 1536 | 1610 / 1536 | 5.3 | 3.76 | 1.99 | PASS |
+| 1024 | 1176 / 1024 | 6.0 | 4.39 | 2.55 | PASS |
+| 512 | 645 / 512 | 6.0 | 4.38 | 2.54 | PASS |
+
+Overflow starts at 2048 MiB, but no cap makes the revisit fail. The first visit runs the walk, talk,
+combat and spell rungs, and the return is the idle `done` phase. Uncapped, the return costs 30% less,
+which hides the overflow. A cap still shows the damage against the uncapped run: at 1024 MiB the
+return settles at 1.5 times the uncapped return.
+
 ## Cards
 
 `--nui` opens the fixed NUI window with ids on its elements. `tools/live/ladder/cards.policy` is a file of `card.<key>=`
