@@ -21,6 +21,10 @@ internal static unsafe partial class LightmapBake
     /// into new rects does not remake it for each.</summary>
     private const int ScratchIdleFrames = 600;
 
+    /// <summary>Columns the half scratch holds: half the page and the gutters of the largest rect's cell, so every
+    /// rect fits one band. Columns, not rows: a device pads an image's height to its tiles, its row pitch far less.</summary>
+    internal const int HalfCols = PageSize / 2 + 4 * Block;
+
     private sealed class BakeVkState
     {
         public VkBackend? Dev;
@@ -28,6 +32,10 @@ internal static unsafe partial class LightmapBake
         public ImageId PageA, PageB, PageC, ScrA, ScrB, ScrC, ScrZ, BlkA, BlkB;
         public SamplerId Clamp;
         public int Layers, PoolMib;
+        /// <summary>The ladder's page cap the pool was sized under; -1 for none.</summary>
+        public int PoolCap = -1;
+        /// <summary>The page arrays' move-back count the pool last saw: a move starts their contents over.</summary>
+        public int PoolMoves;
         /// <summary>The pages were re-packed from zero: plane C's layers clear at the next frame.</summary>
         public bool ClearDue;
         public BufferId Chart;
@@ -41,6 +49,15 @@ internal static unsafe partial class LightmapBake
         /// <summary>The bake's scratch planes and blocks exist, and the frames since anything last needed them.</summary>
         public bool Scratched;
         public int ScratchIdle;
+        /// <summary>The device bytes the last scratch made took, as the allocator counted them.</summary>
+        public long ScratchTook;
+        /// <summary>The scratch's columns, the page column its column 0 holds for the page open now, and whether a
+        /// page waits for room for it.</summary>
+        public int Cols, BandX;
+        public bool Waits;
+        /// <summary>While a page waits: the ladder's eased periods and the device frame its last try saw.</summary>
+        public int WaitEased;
+        public long WaitFrame;
         /// <summary>The light steps the shadow bracket queued cubes for: page, first light, static set, and each
         /// step's light index into the set.</summary>
         public readonly int[] QLight = new int[VkCubes];
@@ -90,7 +107,7 @@ internal static unsafe partial class LightmapBake
         BakeVkState q = _vkb;
         q.QN = 0;
         if (!Enabled || _bakePage < 0 || q.Layers == 0 || !q.Built) return;
-        int size = Math.Max(CasterPass.CubeFaceSize, 64);
+        int size = BakeCubeSize;
         int steps = Math.Min(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame, VkCubes);
         for (int k = 0; k < steps && _bakeLight + k < _bakeLights.Count; k++)
         {
@@ -146,25 +163,76 @@ internal static unsafe partial class LightmapBake
         return true;
     }
 
-    /// <summary>A page is opening: the scratch planes and block images, made if the last ones were let go.</summary>
+    /// <summary>The face size the bake renders its static cubes at: the one <c>shadow.cubesize</c> names, lowered or not.</summary>
+    internal static int BakeCubeSize => Math.Max(VramLadder.CubeNamed, 64);
+
+    /// <summary>The ladder's scratch rung: the scratch goes now if no page is open and no readback is in flight.</summary>
+    internal static void FreeIdleScratch() => VkFreeScratch();
+
+    /// <summary>A page is waiting for room for its scratch, and the area draws with the lightmaps it has.</summary>
+    internal static bool ScratchWaits => _vkb.Waits;
+
+    /// <summary>A page is opening: the scratch planes and block images, at the columns the ladder gives, made if the last
+    /// ones were let go or were another size. No room for them: the page waits, nothing stands down, and it tries
+    /// again after a period not past 90%, or a move-back period on.</summary>
     private static bool VkScratch()
     {
         BakeVkState s = _vkb;
         s.ScratchIdle = 0;
+        int cols = VramLadder.HalfScratch ? HalfCols : PageSize;
+        if (s.Scratched && s.Cols != cols) VkFreeScratch();
         if (s.Scratched) return true;
         VkBackend vk = s.Dev!;
-        s.ScrA = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch A");
-        s.ScrB = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch B");
-        s.ScrC = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch C");
-        s.ScrZ = VkImage(vk, ImageKind.Tex2D, Format.D16, PageSize, 1, ImageUse.DepthTarget, "vk lightmap scratch depth");
-        s.BlkA = VkImage(vk, ImageKind.Tex2D, Format.Rgba32Ui, PageSize / Block, 1, ImageUse.Storage | ImageUse.CopySrc, "vk lightmap blocks A");
-        s.BlkB = VkImage(vk, ImageKind.Tex2D, Format.Rgba32Ui, PageSize / Block, 1, ImageUse.Storage | ImageUse.CopySrc, "vk lightmap blocks B");
-        s.Scratched = true;
-        if (!s.ScrA.IsNull && !s.ScrB.IsNull && !s.ScrC.IsNull && !s.ScrZ.IsNull && !s.BlkA.IsNull && !s.BlkB.IsNull) return true;
-        VkFreeScratch();
+        if (s.Waits && VramLadder.Eased == s.WaitEased && vk.Frame < s.WaitFrame + VkBackend.MoveBackPeriod) return false;
+        const ImageUse plane = ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.NoSpill;
+        const ImageUse blocks = ImageUse.Storage | ImageUse.CopySrc | ImageUse.NoSpill;
+        bool made = true;
+        long before = vk.Allocations.Bytes;
+        s.ScrA = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch A");
+        s.ScrB = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch B");
+        s.ScrC = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch C");
+        s.ScrZ = Made(Format.D16, cols, PageSize, ImageUse.DepthTarget | ImageUse.NoSpill, "vk lightmap scratch depth");
+        s.BlkA = Made(Format.Rgba32Ui, cols / Block, PageSize / Block, blocks, "vk lightmap blocks A");
+        s.BlkB = Made(Format.Rgba32Ui, cols / Block, PageSize / Block, blocks, "vk lightmap blocks B");
+        if (made)
+        {
+            s.ScratchTook = vk.Allocations.Bytes - before;
+            s.Scratched = true; s.Cols = cols;
+            if (s.Waits) _log?.Always($"LightmapBake: {ScratchRoomTag} -- the waiting bake goes on with its {cols}-column scratch");
+            s.Waits = false;
+            return true;
+        }
+        bool room = vk.LastRefusalWasRoom;
+        vk.Destroy(s.ScrA); vk.Destroy(s.ScrB); vk.Destroy(s.ScrC); vk.Destroy(s.ScrZ); vk.Destroy(s.BlkA); vk.Destroy(s.BlkB);
+        s.ScrA = s.ScrB = s.ScrC = s.ScrZ = s.BlkA = s.BlkB = default;
+        if (room)
+        {
+            if (!s.Waits) _log?.Always($"LightmapBake: {ScratchWaitTag} -- no room for the bake's {ScratchBytes(cols) >> 20} MiB scratch; "
+                                     + "the area draws with the lightmaps it has until the budget holds it");
+            s.Waits = true; s.WaitEased = VramLadder.Eased; s.WaitFrame = vk.Frame;
+            return false;
+        }
         s.Failed = true;
         return _down.Fail(_log, "the Vulkan scratch pages or blocks could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
+
+        // past the first refusal nothing more is asked for: the room flag is that refusal's
+        ImageId Made(Format f, int w, int h, ImageUse use, string label)
+        {
+            if (!made) return default;
+            ImageId i = VkImage(vk, f, w, h, use, label);
+            made = !i.IsNull;
+            return i;
+        }
     }
+
+    /// <summary>The marker of the line that says a page waits for room for the bake's scratch.</summary>
+    internal const string ScratchWaitTag = "[vram] bake waits";
+
+    /// <summary>The marker of the line that says a waiting page found room and goes on.</summary>
+    internal const string ScratchRoomTag = "[vram] bake goes on";
+
+    /// <summary>Bytes the scratch of <paramref name="cols"/> holds: three RGBA16F planes, a D16 depth and two RGBA32UI block images.</summary>
+    private static long ScratchBytes(int cols) => (long)cols * PageSize * (3 * 8 + 2) + 2L * (cols / Block) * (PageSize / Block) * 16;
 
     /// <summary>What only a bake uses goes back: the scratch, the bake's cubes and the readback buffer. A page in
     /// progress or a readback in flight keeps them.</summary>
@@ -177,7 +245,7 @@ internal static unsafe partial class LightmapBake
         if (!s.Scratched) return;
         s.Dev.Destroy(s.ScrA); s.Dev.Destroy(s.ScrB); s.Dev.Destroy(s.ScrC); s.Dev.Destroy(s.ScrZ); s.Dev.Destroy(s.BlkA); s.Dev.Destroy(s.BlkB);
         s.ScrA = s.ScrB = s.ScrC = s.ScrZ = s.BlkA = s.BlkB = default;
-        s.Scratched = false;
+        s.Scratched = false; s.Cols = 0;
         CasterPass.VkDropBakeCubes();
         _log?.Info("LightmapBake: the bake's scratch, cubes and readback buffer freed until the next bake");
     }
@@ -185,14 +253,31 @@ internal static unsafe partial class LightmapBake
     private static ImageId VkImage(VkBackend vk, ImageKind kind, Format f, int size, int layers, ImageUse use, string label)
         => vk.CreateImage(new ImageDesc(kind, f, size, size, 1, 1, layers, 1, use, label));
 
-    /// <summary><see cref="Pool"/> on Vulkan: the three page arrays, sized once per <c>lightmap.vram</c> value.</summary>
+    private static ImageId VkImage(VkBackend vk, Format f, int w, int h, ImageUse use, string label)
+        => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1, use, label));
+
+    /// <summary>Pages the pool takes for <c>lightmap.vram</c> on the device as last probed, under the ladder's cap.</summary>
+    internal static int PoolPagesNow() => VramLadder.PoolPages(Lightmap.Vram.V);
+
+    /// <summary>MiB the resident page pool holds.</summary>
+    internal static long PoolHeldMib => (long)_vkb.Layers * PageMiB;
+
+    /// <summary><see cref="Pool"/> on Vulkan: the three page arrays, sized once per <c>lightmap.vram</c> value and
+    /// page cap the VRAM ladder gives.</summary>
     private static bool VkPool()
     {
         BakeVkState s = _vkb;
         VkBackend vk = s.Dev!;
-        if (s.Layers > 0 && s.PoolMib == Lightmap.Vram.V) { VkClearPages(); return true; }
+        int moves = vk.MovesOf(s.PageA) + vk.MovesOf(s.PageB) + vk.MovesOf(s.PageC);
+        if (s.Layers > 0 && moves != s.PoolMoves)
+        {
+            s.PoolMoves = moves; s.ClearDue = true;
+            Revoke();
+            _log?.Info("LightmapBake: the page pool moved back to device memory -- its pages reland from the disk cache");
+        }
+        if (s.Layers > 0 && s.PoolMib == Lightmap.Vram.V && s.PoolCap == VramLadder.PoolCap) { VkClearPages(); return true; }
         if (s.Layers > 0) { VkFreePages(); Revoke(); }
-        int n = PoolPages(Lightmap.Vram.V, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+        int n = PoolPagesNow();
         s.PageA = VkImage(vk, ImageKind.Tex2DArray, Format.Bc6U, PageSize, n, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "vk lightmap irradiance");
         s.PageB = VkImage(vk, ImageKind.Tex2DArray, Format.Bc7, PageSize, n, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "vk lightmap direction");
         s.PageC = VkImage(vk, ImageKind.Tex2DArray, Format.Rgba8, PageSize, n,
@@ -204,7 +289,7 @@ internal static unsafe partial class LightmapBake
             _log?.Always($"LightmapBake: a {n}-page pool ({n * PageMiB} MiB) was refused by the Vulkan device ({AlloyRenderer.VramFreeMib} MiB free)");
             return _down.Fail(_log, "the page pool could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
         }
-        s.Layers = n; s.PoolMib = Lightmap.Vram.V; s.ClearDue = true;
+        s.Layers = n; s.PoolMib = Lightmap.Vram.V; s.PoolCap = VramLadder.PoolCap; s.ClearDue = true; s.PoolMoves = 0;
         VkClearPages();
         _log?.Info($"LightmapBake: page pool {n} x {PageMiB} MiB = {n * PageMiB} MiB resident on Vulkan (lightmap.vram {Lightmap.Vram.V})");
         return true;
@@ -259,7 +344,7 @@ internal static unsafe partial class LightmapBake
         List<AlloyRenderer.VkLmDraw> d = s.Draws;
         d.Clear();
         for (int k = 0; k < _bakeRects.Count; k++) VkDraw(_bakeRects[k], Channels, d);
-        return AlloyRenderer.VkLmBake(s.Cl!, s.ScrA, s.ScrB, s.ScrC, s.ScrZ, 0, default, default, 0, default, s.CubeSize,
+        return AlloyRenderer.VkLmBake(s.Cl!, s.ScrA, s.ScrB, s.ScrC, s.ScrZ, 0, default, default, 0, default, s.CubeSize, s.BandX,
                                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(d));
     }
 
@@ -276,7 +361,7 @@ internal static unsafe partial class LightmapBake
             if (Touches(l, r.C, r.R)) VkDraw(_bakeRects[k], _bakePicks[k].ChannelOf(l), d);
         }
         return AlloyRenderer.VkLmBake(s.Cl!, s.ScrA, s.ScrB, s.ScrC, s.ScrZ, _bakeLight + 1, pr, _setCol[l], cube,
-                                      CasterPass.VkBakeCubes, s.CubeSize, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(d));
+                                      CasterPass.VkBakeCubes, s.CubeSize, s.BandX, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(d));
     }
 
     /// <summary><see cref="DrawRect"/>'s draw on Vulkan, into <paramref name="d"/>.</summary>
@@ -286,23 +371,25 @@ internal static unsafe partial class LightmapBake
         if (r.Slot < 0 || !MeshChart.Range(r.Vao, r.Item, 0, out int baseVertex, out nint off, out int count, out _)) return;
         int range = MeshChart.RangeOf(r.Vao, r.Item);
         if (range < 0) return;
-        d.Add(new AlloyRenderer.VkLmDraw(r.Slot, r.X, r.Y, r.S, 1f / (MeshChart.AtlasTexelsPerUnit * r.S), chan,
+        d.Add(new AlloyRenderer.VkLmDraw(r.Slot, r.X, r.Y, r.W, r.H, r.S, 1f / (MeshChart.AtlasTexelsPerUnit * r.S), chan,
                                          (int)Db.MeshArena.PubFormat(range), baseVertex, (int)(off / sizeof(ushort)), count));
     }
 
-    /// <summary>One encode band of the finish on Vulkan; false when the uniform arena refused it.</summary>
+    /// <summary>One encode band of the finish on Vulkan, page block column <paramref name="bx"/> read from the scratch's
+    /// own columns; false when the uniform arena refused it.</summary>
     private static bool VkEncode(int page, int bx, int by, int bw, int bh)
     {
         BakeVkState s = _vkb;
-        return AlloyRenderer.VkLmEncode(s.Cl!, s.ScrA, s.ScrB, s.ScrC, s.BlkA, s.BlkB, s.PageC, page, bx, by, bw, bh);
+        return AlloyRenderer.VkLmEncode(s.Cl!, s.ScrA, s.ScrB, s.ScrC, s.BlkA, s.BlkB, s.PageC, page, bx - s.BandX / Block, by, bw, bh, s.BandX);
     }
 
-    /// <summary>A baked rect's cell from the block images into the pages, block for texel-block.</summary>
+    /// <summary>A baked rect's cell from the block images (whose column 0 is the band's) into the pages, block for texel-block.</summary>
     private static void VkCopyCell(int page, int cx, int cy, int cw, int ch)
     {
         BakeVkState s = _vkb;
-        s.Cl!.CopyImage(new CopyImageCmd(s.BlkA, new ImageRegion(0, cx / Block, cy / Block, 0), s.PageA, new ImageRegion(0, cx, cy, page), cw / Block, ch / Block, 1));
-        s.Cl.CopyImage(new CopyImageCmd(s.BlkB, new ImageRegion(0, cx / Block, cy / Block, 0), s.PageB, new ImageRegion(0, cx, cy, page), cw / Block, ch / Block, 1));
+        int sx = (cx - s.BandX) / Block;
+        s.Cl!.CopyImage(new CopyImageCmd(s.BlkA, new ImageRegion(0, sx, cy / Block, 0), s.PageA, new ImageRegion(0, cx, cy, page), cw / Block, ch / Block, 1));
+        s.Cl.CopyImage(new CopyImageCmd(s.BlkB, new ImageRegion(0, sx, cy / Block, 0), s.PageB, new ImageRegion(0, cx, cy, page), cw / Block, ch / Block, 1));
     }
 
     /// <summary>The page region's three planes into the readback buffer, A and B as raw blocks and C as texels: the

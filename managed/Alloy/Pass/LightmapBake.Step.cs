@@ -93,8 +93,8 @@ internal static unsafe partial class LightmapBake
     /// mid-range card. The background takes one band a frame, the hold as many as its steps allow.</summary>
     private const int EncodeRows = 128;
 
-    /// <summary>Open the lowest page holding queued rects: its rect list, the static lights reaching any of
-    /// them, the scratch cleared and every rect's coverage laid down.</summary>
+    /// <summary>Open the lowest page holding queued rects: the band of its rects the scratch's columns hold, from the
+    /// leftmost cell on, the static lights reaching any of them, the scratch cleared and their coverage laid down.</summary>
     private static bool BeginPage()
     {
         // a queued rect is a pending one: with none pending, the scan below is 20-30k rects for nothing, every frame
@@ -116,6 +116,8 @@ internal static unsafe partial class LightmapBake
             _bakeRects.Add(ri); _bakePicks.Add(PickOf(r.C, r.R));
         }
         if (_bakeRects.Count == 0) return false;
+        if (!VkScratch()) return false;
+        Band();
         float near = CasterPass.CubeNearPlane;
         for (int l = 0; l < _setN; l++)
         {
@@ -127,7 +129,6 @@ internal static unsafe partial class LightmapBake
                 if (Touches(l, r.C, r.R)) { _bakeLights.Add(l); break; }
             }
         }
-        if (!VkScratch()) return false;
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
@@ -149,6 +150,27 @@ internal static unsafe partial class LightmapBake
         _knownLogged = true;
         _held.Frames = 0; _held.Peak = 0;
         return true;
+    }
+
+    /// <summary>The page's rects cut to the band the scratch holds: its column 0 at the leftmost cell, and only the
+    /// rects whose cells end inside it. The rest stay queued for a later band of the same page.</summary>
+    private static void Band()
+    {
+        BakeVkState s = _vkb;
+        s.BandX = 0;
+        if (s.Cols >= PageSize) return;
+        int left = PageSize;
+        foreach (int ri in _bakeRects) { CellOf(_rects[ri], out int cx, out _, out _, out _); left = Math.Min(left, cx); }
+        s.BandX = left;
+        int kept = 0;
+        for (int k = 0; k < _bakeRects.Count; k++)
+        {
+            CellOf(_rects[_bakeRects[k]], out int cx, out _, out int cw, out _);
+            if (cx + cw > left + s.Cols) continue;
+            _bakeRects[kept] = _bakeRects[k]; _bakePicks[kept] = _bakePicks[k]; kept++;
+        }
+        _bakeRects.RemoveRange(kept, _bakeRects.Count - kept);
+        _bakePicks.RemoveRange(kept, _bakePicks.Count - kept);
     }
 
     /// <summary>Diag for a surface baked wrong: the page's rect nearest the camera, its sphere, and the

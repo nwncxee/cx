@@ -21,6 +21,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool Tried, Live, Valid;
         public ImageId Map;
         public int Size = -1, Z = -1, Fit = -1;
+        /// <summary>The map's move-backs as last seen.</summary>
+        public int MapMoves;
     }
 
     private static VkSkyViewState _vkSkyView = new();
@@ -30,6 +32,29 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The map describes an area that has gone; the next exterior frame bakes again.</summary>
     internal static void VkSkyRevoke() => _vkSkyView.Valid = false;
+
+    /// <summary>The map moved back to device memory and holds nothing: the overhead view renders again, and the bake
+    /// after it refills the map.</summary>
+    private static void VkSkyFollow(VkBackend vk)
+    {
+        VkSkyViewState s = _vkSkyView;
+        if (s.Dev == vk && vk.MovedBack(ref s.MapMoves, s.Map)) CasterPass.SkyMapLost();
+    }
+
+    /// <summary>A bake into <paramref name="map"/> is dropped, and the overhead view owed again, once
+    /// <paramref name="moved"/> has run between two frames' follows; the live map and view come back as they were.</summary>
+    internal static bool VkSkyDropsForCheck(VkBackend vk, ImageId map, Action moved)
+    {
+        var s = new VkSkyViewState { Dev = vk, Map = map };
+        VkSkyViewState keep = _vkSkyView;
+        _vkSkyView = s;
+        try
+        {
+            bool lost = CasterPass.SkyLostForCheck(() => { VkSkyFollow(vk); s.Valid = true; }, () => { moved(); VkSkyFollow(vk); });
+            return lost && !s.Valid;
+        }
+        finally { _vkSkyView = keep; }
+    }
 
     /// <summary>The bake into <paramref name="cl"/>, after the flush that rendered <paramref name="depth"/>. A refusal
     /// is said once and the term stays at 1 everywhere this session.</summary>

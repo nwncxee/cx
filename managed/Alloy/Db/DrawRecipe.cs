@@ -793,6 +793,18 @@ internal static partial class DrawRecipe
     /// <summary>Recipes retired with their model.</summary>
     internal static int Retired { get; private set; }
 
+    /// <summary>Bytes of the textures that only recipes of idle cached models hold: a texture a held model also draws,
+    /// and one no recipe holds, count nothing. A retired recipe has no model, and an orphan's model has left the cache.</summary>
+    internal static long IdleModelTextureBytes()
+    {
+        for (int r = 0; r < _n; r++)
+        {
+            if (_model[r] is not ModelDef m || !ModelCache.Idle(m)) continue;
+            for (int s = 0; s < TexSlots; s++) TexRegistry.Tally(Tex(r, s));
+        }
+        return TexRegistry.TakeSoleBytes();
+    }
+
     /// <summary>Subscribe to the model cache's eviction edge. Multicast (<c>+=</c>), because the cache's other
     /// listeners are not ours to replace.</summary>
     internal static void Attach()

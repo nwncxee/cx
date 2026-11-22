@@ -34,7 +34,7 @@ internal sealed unsafe partial class VkBackend
     private bool _asyncWhenDoneSaid, _inWhenDone;
 
     /// <summary>Block until every submit made so far, and the commands held for the present, have finished; false (logged) when the GPU did not within the
-    /// device's wait limit. Cold: a screenshot's own readback.</summary>
+    /// device's wait limit. Cold: a screenshot's own readback, and a refused allocation's eviction of idle textures.</summary>
     internal bool WaitSubmitted()
     {
         SubmitHeld();

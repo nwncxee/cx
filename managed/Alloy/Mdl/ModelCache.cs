@@ -578,6 +578,15 @@ public static partial class ModelCache
         }
     }
 
+    /// <summary>Evict the least recently used idle model, for the texture budget; false when no model is idle.
+    /// Game thread, like <see cref="Trim"/>: its textures are released through <see cref="Evicting"/>.</summary>
+    internal static bool EvictLeastRecent()
+    {
+        if (_lru.Last == null) return false;
+        Evict(_lru.Last.Value, IndexOf(_lru.Last.Value));
+        return true;
+    }
+
     /// <summary>The victim's index in the sorted table. A binary search on its own name, which is unique in the
     /// table by construction, so this is O(log n) and not the linear scan the first cut used. A name that does
     /// NOT find its own slot would mean the sort key moved under the table, which is a broken mechanism and not
@@ -758,6 +767,8 @@ public static partial class ModelCache
     /// nothing else reads it.</summary>
     internal static int Finished { get { lock (Gate) return _done.Count; } }
     internal static int RefsOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Refs : 0;
+    /// <summary>The cache keeps <paramref name="m"/> and nothing holds a reference to it: no area uses it.</summary>
+    internal static bool Idle(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) && s.Refs == 0;
     internal static int DepthOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Depth : -1;
     internal static long Hits => _hits;
     internal static long Misses => _misses;
@@ -840,6 +851,8 @@ public static partial class ModelCache
     /// <c>cx.cfg</c>.</summary>
     private static long BudgetBytes => BudgetOverride ?? ((long)ModelKnobs.Budget.V << 20);
     internal static long? BudgetOverride;
+    /// <summary>The source every parse reads through, so a self-check that installs its own can put it back.</summary>
+    internal static IModelSource? Source => _source;
 
     /// <summary>Reset every counter. The self-checks run against a clean slate; nothing else calls it.</summary>
     internal static void ResetCounters()

@@ -31,6 +31,8 @@ public sealed unsafe partial class AlloyRenderer
         public int Cur;
         /// <summary>Last frame's resolve ran, so its history and <see cref="PrevVp"/> are this frame's to reproject.</summary>
         public bool HadHist;
+        /// <summary>The history pair's move-backs as last seen.</summary>
+        public int HistMoves;
         public Matrix4x4 PrevVp;
         public int W, H;
         public CommandList? Side;
@@ -52,6 +54,7 @@ public sealed unsafe partial class AlloyRenderer
         int n = Highlight.GatherVk(groups);
         if (n == 0) return true;
         if (!VkHlEnsure(vk, s, viewport[2], viewport[3], log)) { Highlight.UnmaskVk(); return true; }
+        VkHlFollow(vk, s);
         VkProg plain = s.Mask!;
         CommandList side = s.Side!;
         side.Reset();
@@ -192,6 +195,24 @@ public sealed unsafe partial class AlloyRenderer
         s.W = w; s.H = h;
         s.HadHist = false;
         return !s.Target.IsNull && !s.Hist0.IsNull && !s.Hist1.IsNull;
+    }
+
+    /// <summary>A history image moved back to device memory and holds nothing: this frame's resolve stands alone.</summary>
+    private static void VkHlFollow(VkBackend vk, VkHlState s)
+    {
+        if (vk.MovedBack(ref s.HistMoves, s.Hist0, s.Hist1)) s.HadHist = false;
+    }
+
+    /// <summary>The highlight history over <paramref name="h0"/> and <paramref name="h1"/> is dropped once
+    /// <paramref name="moved"/> has run between two frames' follows.</summary>
+    internal static bool VkHlDropsForCheck(VkBackend vk, ImageId h0, ImageId h1, Action moved)
+    {
+        var s = new VkHlState { Dev = vk, Hist0 = h0, Hist1 = h1 };
+        VkHlFollow(vk, s);
+        s.HadHist = true;
+        moved();
+        VkHlFollow(vk, s);
+        return !s.HadHist;
     }
 
     /// <summary>The mask, resolve and composite programs, made once per device, by the loading hold's prewarm or the first

@@ -366,6 +366,12 @@ internal static unsafe partial class FogVolume
     /// <summary>A new area: last frame's medium is another place's air.</summary>
     internal static void Revoke() => _b.History = false;
 
+    /// <summary>Whether the next volume blends last frame's as its history.</summary>
+    internal static bool HasHistory => _b.History;
+
+    /// <summary>Sets the history flag as a built frame would leave it, for a self-check that puts it back after.</summary>
+    internal static void HistoryForCheck(bool history) => _b.History = history;
+
     /// <summary>A device edge: the history belongs to the volumes that went with it.</summary>
     internal static void Forget() => _b = new FogVolumeBuildState();
 

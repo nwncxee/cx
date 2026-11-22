@@ -30,6 +30,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageLayout Layout;
         /// <summary>Row 0 is the window's top: a screen image, which a draw reaches through a flipped viewport.</summary>
         public bool TopDown;
+        /// <summary>Times it moved back to device memory from system RAM, each time with its contents started over.</summary>
+        public int Moves;
         /// <summary>The swapchain's own image: its memory is the window's, and only its view is ours to free.</summary>
         public bool Window;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
@@ -173,6 +175,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private int _faults;
     /// <summary>The reason the last refusal gave, whether or not it still reached the log.</summary>
     private string _lastFault = "";
+    /// <summary>The last refusal was for want of heap room: what its reason carries <see cref="NoRoomTag"/> for.</summary>
+    private bool _lastNoRoom;
 
     public DeviceCaps Caps { get; }
 
@@ -368,8 +372,8 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. <paramref name="meshShaders"/>
     /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be; <paramref name="oneQueue"/> opens no
-    /// async or transfer queue, so every submit rides the graphics one.</summary>
-    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false)
+    /// async or transfer queue, so every submit rides the graphics one; <paramref name="capMib"/> caps the device-local heaps (0 = none).</summary>
+    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false, long capMib = 0)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
         if (Open(log, out VkInstance inst, out VkPhysicalDevice phys, out uint family, out VkPhysicalDeviceFeatures feats) is string late)
@@ -378,7 +382,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             log.Always($"VkBackend: REFUSED in Alloy's context -- {late}");
             return null;
         }
-        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue); }
+        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue, capMib); }
         catch (InvalidOperationException e)
         {
             log.Always($"VkBackend: REFUSED -- {e.Message}");
@@ -386,7 +390,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
     }
 
-    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue)
+    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue, long capMib)
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
@@ -443,12 +447,15 @@ internal sealed unsafe partial class VkBackend : IDevice
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
         bool meshExt = meshShaders && HasExt(_vki, phys, MeshExt);
+        bool prioExt = HasExt(_vki, phys, PriorityExt);
         var meshAsk = new VkPhysicalDeviceMeshShaderFeaturesEXT();
+        var prioAsk = new VkPhysicalDeviceMemoryPriorityFeaturesEXT();
         var eds3 = new VkPhysicalDeviceExtendedDynamicState3FeaturesEXT();
         var gpl = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT();
         void* chain = meshExt ? &meshAsk : null;
         if (eds3Ext) { eds3.pNext = chain; chain = &eds3; }
         if (gplExt) { gpl.pNext = chain; chain = &gpl; }
+        if (prioExt) { prioAsk.pNext = chain; chain = &prioAsk; }
         var asked = new VkPhysicalDeviceFeatures2 { pNext = chain };
         _vki.vkGetPhysicalDeviceFeatures2(phys, &asked);
         var gplProps = new VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT();
@@ -465,6 +472,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (_canDynBlend) f11.pNext = &eds3On;
         var gplOn = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = f11.pNext, graphicsPipelineLibrary = true };
         if (_canLibraries) f11.pNext = &gplOn;
+        _memPriority = prioExt && prioAsk.memoryPriority;
+        var prioOn = new VkPhysicalDeviceMemoryPriorityFeaturesEXT { pNext = f11.pNext, memoryPriority = true };
+        if (_memPriority) f11.pNext = &prioOn;
         _mesh = meshExt && meshAsk.taskShader && meshAsk.meshShader;
         _meshWhy = !meshShaders ? "opened without VK_EXT_mesh_shader" : !meshExt ? "the device lacks VK_EXT_mesh_shader"
                  : _mesh ? null : "VK_EXT_mesh_shader offers no task and mesh stages";
@@ -474,15 +484,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
-        fixed (byte* mx = MeshExt)
+        fixed (byte* mx = MeshExt) fixed (byte* mp = PriorityExt)
         {
-            byte** exts = stackalloc byte*[8] { sw, null, null, null, null, null, null, null };
+            byte** exts = stackalloc byte*[9] { sw, null, null, null, null, null, null, null, null };
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
             if (_canDynBlend) exts[n++] = e3;
             if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
             if (_mesh) exts[n++] = mx;
+            if (_memPriority) exts[n++] = mp;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
@@ -496,7 +507,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         _async = asyncFamily >= 0 ? OpenLane((uint)asyncFamily, "async") : null;
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
-        _vma = CreateAllocator(inst);
+        _vma = CreateAllocator(inst, capMib);
+        log.Always(_memPriority ? $"VkBackend: {PriorityOnTag} -- the driver keeps what draws every frame in VRAM before the textures"
+                                : $"VkBackend: {PriorityAbsentTag} -- the driver lacks VK_EXT_memory_priority, so it picks what leaves VRAM itself");
         _stagePool = MakeStagePool();
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
@@ -558,12 +571,18 @@ internal sealed unsafe partial class VkBackend : IDevice
     private static ReadOnlySpan<byte> GplExt => "VK_EXT_graphics_pipeline_library\0"u8;
     private static ReadOnlySpan<byte> PipelineLibraryExt => "VK_KHR_pipeline_library\0"u8;
 
+    private static ReadOnlySpan<byte> PriorityExt => "VK_EXT_memory_priority\0"u8;
+
+    /// <summary>The device takes VK_EXT_memory_priority: every allocation carries <see cref="PriorityOf(ImageUse)"/>
+    /// or <see cref="PriorityOf(MemoryKind)"/>, so the driver pages textures out before what draws every frame.</summary>
+    private bool _memPriority;
+
     /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalBytes"/> reads the driver's own figures.</summary>
     private bool _memBudget;
     /// <inheritdoc cref="_memBudget"/>
     public bool MemoryBudget => _memBudget;
 
-    private VmaAllocator CreateAllocator(VkInstance inst)
+    private VmaAllocator CreateAllocator(VkInstance inst, long capMib)
     {
         // VMA resolves the rest of Vulkan itself from the two loaders it is handed
         delegate* unmanaged<void> gipa = vkGetInstanceProcAddr(inst, "vkGetInstanceProcAddr"u8);
@@ -576,8 +595,11 @@ internal sealed unsafe partial class VkBackend : IDevice
         var ci = new VmaAllocatorCreateInfo
         {
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
-            flags = _memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None,
+            flags = (_memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None)
+                  | (_memPriority ? VmaAllocatorCreateFlags.EXTMemoryPriority : VmaAllocatorCreateFlags.None),
         };
+        ulong* limits = stackalloc ulong[(int)VK_MAX_MEMORY_HEAPS];
+        if (HeapLimits(capMib, limits)) ci.pHeapSizeLimit = limits;
         Check(Vma.vmaCreateAllocator(&ci, out VmaAllocator a), "vmaCreateAllocator");
         return a;
     }
@@ -635,11 +657,15 @@ internal sealed unsafe partial class VkBackend : IDevice
         // any queue may reach any device buffer, and a buffer has no compression for concurrent sharing to cost
         Share(ref bci.sharingMode, ref bci.queueFamilyIndexCount, ref bci.pQueueFamilyIndices, fams, transfer: true);
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice, priority = PriorityOf(d.Memory) };
         VkBuffer b;
         VmaAllocation a;
-        if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
-            return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
+        Overflow o = d.Memory == MemoryKind.Device ? OverflowOf(d.Use) : Overflow.SystemRam;
+        VkResult r = d.Memory == MemoryKind.Device ? PlaceBuffer(&bci, &aci, d.Bytes, o, &b, &a)
+                   : Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null);
+        if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<BufferId>($"buffer {d.Label}: {NoRoomTag}: {d.Bytes} bytes");
+        if (NoRoom(r)) return RefusedForRoom<BufferId>($"buffer {d.Label}: {NoRoomTag}: VMA refused {d.Bytes} bytes ({r})");
+        if (r != VkResult.Success) return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes ({r})");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
         var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));
@@ -875,9 +901,13 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private T Refused<T>(string why) where T : struct { Fault(why); return default; }
 
+    /// <summary>A refusal for want of room on every heap: logged, and <see cref="LastRefusalWasRoom"/> reads true.</summary>
+    private T RefusedForRoom<T>(string why) where T : struct { Fault(why); _lastNoRoom = true; return default; }
+
     private bool Fault(string why)
     {
         _lastFault = why;
+        _lastNoRoom = false;
         if (++_faults <= LoggedFaults)
             _log.Always($"VkBackend: REFUSED {why}" + (_faults == LoggedFaults ? " -- further refusals are only counted" : ""));
         return false;

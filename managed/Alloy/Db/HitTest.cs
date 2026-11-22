@@ -604,7 +604,7 @@ public static class HitTest
             float ts = Scale(SceneDb.PartWorld[p]);
             Vector3 ta = a * ts, tb = b * ts;
             if (!BoxHit(ta, tb, bmin, bmax)) return false;
-            int tf = MeshBvh.For(nd.Mesh).Cast(ta, ref tb, 1f, HitQuery.All, out Vector3 tn);
+            int tf = MeshBvh.CastMesh(nd.Mesh, ta, ref tb, 1f, HitQuery.All, out Vector3 tn);
             if (tf < 0) return false;
             // The trigger arm writes the point, the surface bit and the payload, and never touches the face
             // index -- it does not ClearOutput either, so the caller's -1 is what the game reads back.
@@ -668,7 +668,7 @@ public static class HitTest
             // The surface mask is NOT consulted here, and that is the engine's behaviour, not an oversight:
             // only HitCheckAABBnode @0x43da50 tests it, so a plain PartTriMesh's triangles are hit whatever
             // the mask says. A walkmesh part (PartAABB) is the one that filters.
-            f = MeshBvh.For(HitBounds.Geometry(p, nd.Mesh)).Cast(a, ref b, 1f, HitQuery.All, out Vector3 tn);
+            f = MeshBvh.CastMesh(HitBounds.Geometry(p, nd.Mesh), a, ref b, 1f, HitQuery.All, out Vector3 tn);
             if (f < 0) return false;
             // The triangle arm ClearOutputs and then writes only the two points: no normal (the 7-argument
             // polyhit has none to give), no surface bit, and the face index stays at ClearOutput's -1.

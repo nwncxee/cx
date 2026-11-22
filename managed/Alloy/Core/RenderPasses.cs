@@ -387,7 +387,7 @@ internal static class RenderPasses
         {
             Name = "mesharena",
             Attach = l => { CX.Alloy.Db.MeshArena.Attach(l); CX.Alloy.Db.PartTree.Attach(l); },
-            SelfCheck = l => { CX.Alloy.Db.DbSelfCheck.Run(l); CX.Alloy.Db.DbSelfCheck.MaterialResetApprovedExamplesSelfCheck(l); CX.Alloy.Db.DbSelfCheck.MaterialResetHoldsTodaySelfCheck(l); },
+            SelfCheck = l => { CX.Alloy.Db.DbSelfCheck.Run(l); CX.Alloy.Db.DbSelfCheck.MaterialResetApprovedExamplesSelfCheck(l); CX.Alloy.Db.DbSelfCheck.MaterialResetHoldsTodaySelfCheck(l); CX.Alloy.Db.DbSelfCheck.ModelEvictionApprovedExamplesSelfCheck(l); },
             ContextLost = CX.Alloy.Db.MeshArena.ContextLost,
             // the live comparison is per AREA, so the world edge re-arms it
             Revoke = () => { CX.Alloy.Db.PartTree.AreaEdge(); },
@@ -446,7 +446,7 @@ internal static class RenderPasses
         {
             Name = "modelcache",
             Attach = l => { ModelFeed.Attach(l); ModelVerify.Attach(l); MtrFeed.Attach(l); },
-            SelfCheck = l => CX.Alloy.Mdl.ModelCache.SelfCheck(l),
+            SelfCheck = l => { CX.Alloy.Mdl.ModelCache.SelfCheck(l); CX.Alloy.Mdl.ModelCache.IdleModelsSelfCheck(l); CX.Alloy.Mdl.ModelCache.IdleModelsFoundSelfCheck(l); },
             Revoke = CX.Alloy.Mdl.ModelCache.AreaEdge,
             Stats = f => Join(Join(CX.Alloy.Mdl.ModelCache.Stats(f), ModelFeed.Note()), MtrFeed.Stats()),
         }, log);

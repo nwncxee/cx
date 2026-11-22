@@ -395,6 +395,17 @@ public sealed unsafe partial class AlloyRenderer
                 HandlesZeroed++;
             }
     }
+    /// <summary>Every owned texture name a live record's handle block holds, marked drawn this frame: a record resolves its
+    /// indices only when it is staged, so the textures it draws are not idle however long ago that was. Cold: an eviction's.</summary>
+    internal static void HoldRecordTextures()
+    {
+        for (int j = 0; j < _ownCount; j++)
+        {
+            if (_oTri[j] == IntPtr.Zero) continue;
+            for (int s = 0; s < TexHandles.MaterialSlots; s++)
+                if (_dTexH[j][s] != 0) VkTextures.Held(_dTexH[j][s]);
+        }
+    }
     /// <summary>Handle table entries zeroed under a dying handle (the hazard count), and bakes that found
     /// handle changes the colour bracket had not uploaded yet (the window count). Both on the [casters] line.</summary>
     internal static long HandlesZeroed, BakeHandleUploads;

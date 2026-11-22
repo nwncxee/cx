@@ -40,7 +40,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>The encoder's work group side, in blocks (<c>cx_bakeenc_c</c>'s <c>local_size</c>).</summary>
     internal const int EncGroup = 8;
     /// <summary>One resident page over its three planes, in MiB.</summary>
-    private const int PageMiB = (int)((long)PageSize * PageSize * TexelBytes >> 20);
+    internal const int PageMiB = (int)((long)PageSize * PageSize * TexelBytes >> 20);
     private const int MaxRects = 1 << 16;
     private const int LogCap = 6;
 
@@ -250,7 +250,7 @@ internal static unsafe partial class LightmapBake
     private static ulong ShadowLook()
     {
         ulong h = FnvOffset;
-        h = Mix(h, CasterPass.CubeFaceSize);
+        h = Mix(h, VramLadder.CubeNamed);
         // the floor KNOB, not AlloyLights.ShadowFloor: that is the knob scaled by the area ambient, which
         // drifts -- keyed at 1e-3 it moved every session's keys off the last one's files (0 of 7426 hit, run 7)
         h = Mix(h, Q(AlloyLights.ShadowSoft, 0.01f)); h = Mix(h, Q(Shadows.Floor.V, 1e-3f));
@@ -469,7 +469,7 @@ internal static unsafe partial class LightmapBake
         int n = 0; for (int i = 0; i < _setN; i++) if (Touches(i, c, r)) n++;
         Vector2 at = AlloyLights.Atten;
         _log?.Info($"LightmapBake: key sample (lowest key of the area) -- content {_keyContent:x16} at ({c.X:F2},{c.Y:F2},{c.Z:F2}) r {r:F2} m41 ({_keyM.M41:F2},{_keyM.M42:F2},{_keyM.M43:F2}) density {Lightmap.Density.V}"
-                   + $" touching {n} of {_setN} static lights = {TouchingLights(c, r):x16}, look {ShadowLook():x16} (cube {CasterPass.CubeFaceSize}, soft {AlloyLights.ShadowSoft:F3}, floor {AlloyLights.ShadowFloor:F4}, near {AlloyLights.ShadowNearWorld:F3}, atten {at.X:F4}/{at.Y:F4}, reach {AlloyLights.ReachUniform:F3})"
+                   + $" touching {n} of {_setN} static lights = {TouchingLights(c, r):x16}, look {ShadowLook():x16} (cube {VramLadder.CubeNamed}, soft {AlloyLights.ShadowSoft:F3}, floor {AlloyLights.ShadowFloor:F4}, near {AlloyLights.ShadowNearWorld:F3}, atten {at.X:F4}/{at.Y:F4}, reach {AlloyLights.ReachUniform:F3})"
                    + $" -> key {_keyKey:x16}");
     }
 

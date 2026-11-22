@@ -43,6 +43,36 @@ internal static unsafe partial class Weather
     /// <summary>A new device: its maps hold nothing, and the wetness map latches again.</summary>
     internal static void VkReset() { _vks = new WeatherVkState(); _mapClear = true; }
 
+    /// <summary>The moment pair moved back to device memory and holds nothing: the compare falls back until it filters again.</summary>
+    internal static void CoverLostVk() { _vks.EsmValid = false; _vks.FilteredBake = -1; }
+
+    /// <summary>The wetness map moved back and holds nothing: it clears, and the next cover bake scatters into it again.</summary>
+    internal static void MapLostVk() { _mapClear = true; _vks.FilteredBake = -1; }
+
+    /// <summary>The shelter cache moved back and holds nothing: it bakes again.</summary>
+    internal static void ShelterLostVk() => _vks.ShelValid = false;
+
+    /// <summary>The noise tile moved back and holds nothing: it is owed again.</summary>
+    internal static void NoiseLostVk() => _vks.NoiseDone = false;
+
+    /// <summary>Which maps are owed once <paramref name="follow"/> runs over maps held whole, after <paramref name="baseline"/>
+    /// latched them; what the Vulkan maps hold comes back as it was.</summary>
+    internal static (bool Cover, bool Map, bool Shelter, bool Noise) LostForCheck(Action baseline, Action follow)
+    {
+        WeatherVkState keep = _vks;
+        bool clear = _mapClear;
+        try
+        {
+            _vks = new WeatherVkState();
+            baseline();
+            _vks = new WeatherVkState { EsmValid = true, ShelValid = true, NoiseDone = true, FilteredBake = 0 };
+            _mapClear = false;
+            follow();
+            return (!_vks.EsmValid && _vks.FilteredBake < 0, _mapClear && _vks.FilteredBake < 0, !_vks.ShelValid, !_vks.NoiseDone);
+        }
+        finally { _vks = keep; _mapClear = clear; }
+    }
+
     /// <summary>The surface terms are wanted this frame on Vulkan: GL's draw gate, ahead of its map and shelter ticks.</summary>
     internal static bool SurfacesVk => !_off && Enabled.V && !FrameInputs.Interior;
 

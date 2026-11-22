@@ -32,7 +32,7 @@ internal static unsafe partial class GuiPassVk
         if (px == null) return Missing(e, tex, $"holds no 2D image Vulkan can take ({w}x{h})", log);
         SamplerDesc sd = VkTextures.Sampler(min, mag, ws, wt, aniso: 1f) with { Mip = MipMode.None };
         ImageId img = VkTextures.Create(vk, name, Format.Rgba8, w, h, 1, false, sd, $"engine tex {name}");
-        if (img.IsNull || !vk.Upload(img, 0, 0, px)) return Missing(e, tex, "was refused its Vulkan image (logged above)", log);
+        if ((img.IsNull && !VkTextures.Has(name)) || !VkTextures.Upload(vk, name, 0, px)) return Missing(e, tex, "was refused its Vulkan image (logged above)", log);
         if (e.Copied++ == 0)
             log?.Always("GuiPassVk: engine textures the GUI samples (nuklear's font atlas, NUI's images) are copied "
                       + "into Vulkan images, once per name and upload, out of the uploads the engine made with no GL "

@@ -33,6 +33,8 @@ internal static unsafe partial class PostStack
         public VkBackend? Dev;
         public readonly StageVk[] Stages = NewStages();
         public ImageId A, B, Vel, Hist0, Hist1, FsrOut, FsrExposure;
+        /// <summary>The history images' move-back count the resolve last saw: a move starts their contents over.</summary>
+        public int HistMoves;
         public int W, H, VelW, VelH, HistW, HistH, Cur, FsrW, FsrH;
         /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
         public float FsrExposureSet = float.NaN;
@@ -51,6 +53,8 @@ internal static unsafe partial class PostStack
         public bool CoverTried, CoverValid, CoverSaid;
         public ImageId Cover0, Cover1;
         public int CoverW, CoverH, CoverCur;
+        /// <summary>The coverage pair's move-backs as last seen.</summary>
+        public int CoverMoves;
         public int CRender = -1, CJitter = -1, CBlend = -1;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
@@ -295,6 +299,8 @@ internal static unsafe partial class PostStack
             s.HistValid = false;
             if (s.Hist0.IsNull || s.Hist1.IsNull) { s.Hist0 = default; return false; }
         }
+        int moves = vk.MovesOf(s.Hist0) + vk.MovesOf(s.Hist1);
+        if (moves != s.HistMoves) { s.HistMoves = moves; s.HistValid = false; }
         return VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log);
     }
 
@@ -401,6 +407,7 @@ internal static unsafe partial class PostStack
             }, log);
         }
         if (s.Cover == null || !CoverPair(vk, s, dw, dh)) return SkyRefused(s, depth, "its program or its images were refused", log);
+        CoverFollow(vk, s);
         ImageId read = s.CoverCur == 0 ? s.Cover0 : s.Cover1, write = s.CoverCur == 0 ? s.Cover1 : s.Cover0;
         cl.BeginLabel("fsr sky coverage"u8);
         PostChainVk.Open(s.Cover);
@@ -467,6 +474,24 @@ internal static unsafe partial class PostStack
         vk.Destroy(s.Cover0); vk.Destroy(s.Cover1);
         s.Cover0 = s.Cover1 = default;
         return false;
+    }
+
+    /// <summary>A coverage image moved back to device memory and holds nothing: this frame's coverage stands alone.</summary>
+    private static void CoverFollow(VkBackend vk, StackVkState s)
+    {
+        if (vk.MovedBack(ref s.CoverMoves, s.Cover0, s.Cover1)) s.CoverValid = false;
+    }
+
+    /// <summary>The sky coverage history over <paramref name="c0"/> and <paramref name="c1"/> is dropped once
+    /// <paramref name="moved"/> has run between two frames' follows.</summary>
+    internal static bool CoverDropsForCheck(VkBackend vk, ImageId c0, ImageId c1, Action moved)
+    {
+        var s = new StackVkState { Dev = vk, Cover0 = c0, Cover1 = c1 };
+        CoverFollow(vk, s);
+        s.CoverValid = true;
+        moved();
+        CoverFollow(vk, s);
+        return !s.CoverValid;
     }
 
     /// <summary>The sky coverage stood down this frame: said once, and the resolve tells sky by <paramref name="depth"/>.</summary>

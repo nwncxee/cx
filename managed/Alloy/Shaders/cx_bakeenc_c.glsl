@@ -19,6 +19,7 @@ layout(binding = 2, rgba8) writeonly uniform image2D uPageC;
 #define CX_PAGE_C(p) (p)
 #endif
 uniform ivec4 uRegion;   // first block, block count
+uniform int uBandX;   // the page column the scratch's column 0 holds: plane C lands that far right in the layer
 const vec3 CX_LUM = vec3(0.2126, 0.7152, 0.0722);
 const uint CX_W4[16] = uint[16](0u, 4u, 9u, 13u, 17u, 21u, 26u, 30u, 34u, 38u, 43u, 47u, 51u, 55u, 60u, 64u);
 const uint CX_W3[8] = uint[8](0u, 9u, 18u, 27u, 37u, 46u, 55u, 64u);
@@ -307,7 +308,7 @@ void main()
         uvec2 rg = uvec2(packHalf2x16(min(a.rg, vec2(65504.0))), packHalf2x16(vec2(min(a.b, 65504.0), 0.0)));
         gP[i] = vec3(float(rg.x & 0xFFFFu), float(rg.x >> 16), float(rg.y & 0xFFFFu));
         db[i] = d * 255.0;
-        imageStore(uPageC, CX_PAGE_C(p), c);
+        imageStore(uPageC, CX_PAGE_C(p + ivec2(uBandX, 0)), c);
     }
     if (mask == 0u) { imageStore(uBlkA, bp, uvec4(0u)); imageStore(uBlkB, bp, uvec4(0u)); return; }
     imageStore(uBlkA, bp, Bc6h(mask));

@@ -21,6 +21,31 @@ public static unsafe partial class MeshArena
         public BufferId Ebo;
         public int ICapacity;
         public bool IFilled;
+        /// <summary>A grow was refused: the frame it is tried again, the old buffer drawing until then, and whether the
+        /// refusal has been said.</summary>
+        public long GrowAt;
+        public bool GrowSaid;
+    }
+
+    /// <summary>The marker of the line that names a refused grow with its MiB, once.</summary>
+    internal const string GrowRefusedTag = "[vram] arena grow refused";
+
+    /// <summary>A buffer of <paramref name="bytes"/> to replace <paramref name="old"/>, or null with <paramref name="old"/>
+    /// kept drawing: a refused grow says its MiB once and waits a period, so the meshes past the old end read zeros.</summary>
+    private static BufferId Grow(VkBackend vk, VkArenaState v, BufferId old, long bytes, BufferUse use, string label)
+    {
+        if (!old.IsNull && vk.Frame < v.GrowAt) return default;
+        BufferId made = vk.CreateBuffer(new BufferDesc(bytes, use, MemoryKind.Device, label));
+        if (made.IsNull)
+        {
+            v.GrowAt = vk.Frame + VkBackend.MoveBackPeriod;
+            if (!v.GrowSaid) _log?.Always($"MeshArena: {GrowRefusedTag}: the device REFUSED the grow of {label} to {bytes >> 20} MiB -- the meshes it holds "
+                                        + "keep drawing, and the ones past its end wait for room");
+            v.GrowSaid = true;
+            return default;
+        }
+        vk.Destroy(old);
+        return made;
     }
 
     private static VkArenaState _vk = new();
@@ -71,6 +96,18 @@ public static unsafe partial class MeshArena
     {
         // never makes the device: a pump at boot runs before anything can name the GPU the device is picked by
         if (!Renderer.OnVulkan || AlloyDevice.VulkanMade is not VkBackend vk) return;
+        PumpVk(vk);
+    }
+
+    /// <summary>A golden's pump onto its own device <paramref name="vk"/>, under the lock as the frame's is.</summary>
+    internal static void VkPumpForCheck(VkBackend vk) { lock (_gate) PumpVk(vk); }
+
+    /// <summary>A golden is done with its device: the arena holds no buffer of it.</summary>
+    internal static void VkForgetForCheck() { lock (_gate) VkForget(); }
+
+    /// <summary><see cref="PumpVk()"/> onto <paramref name="vk"/>.</summary>
+    private static void PumpVk(VkBackend vk)
+    {
         if (_vk.Dev != vk)
         {
             _vk = new VkArenaState { Dev = vk };
@@ -85,12 +122,15 @@ public static unsafe partial class MeshArena
             if (s.High == 0) continue;
             if (v.Vbo[f].IsNull || v.Capacity[f] < s.High)
             {
-                vk.Destroy(v.Vbo[f]);
-                v.Capacity[f] = s.Mirror.Length / stride;
-                v.Vbo[f] = vk.CreateBuffer(new BufferDesc((long)s.Mirror.Length * 4, BufferUse.Vertex, MemoryKind.Device, $"arena {(Fmt)f} vertices"));
-                v.Filled[f] = false;
-                if (v.Vbo[f].IsNull) { v.Capacity[f] = 0; continue; }
-                s.Dirty.All(s.High);   // a new buffer holds nothing of the old one
+                BufferId made = Grow(vk, v, v.Vbo[f], (long)s.Mirror.Length * 4, BufferUse.Vertex, $"arena {(Fmt)f} vertices");
+                if (made.IsNull && v.Vbo[f].IsNull) continue;
+                if (!made.IsNull)
+                {
+                    v.Vbo[f] = made;
+                    v.Capacity[f] = s.Mirror.Length / stride;
+                    v.Filled[f] = false;
+                    s.Dirty.All(s.High);   // a new buffer holds nothing of the old one
+                }
             }
             int unsent = 0;
             for (int k = 0; k < s.Dirty.Count; k++)
@@ -108,12 +148,15 @@ public static unsafe partial class MeshArena
         if (_idx.High == 0) return;
         if (v.Ebo.IsNull || v.ICapacity < _idx.High)
         {
-            vk.Destroy(v.Ebo);
-            v.ICapacity = _idx.Mirror.Length;
-            v.Ebo = vk.CreateBuffer(new BufferDesc((long)_idx.Mirror.Length * 2, BufferUse.Index, MemoryKind.Device, "arena indices"));
-            v.IFilled = false;
-            if (v.Ebo.IsNull) { v.ICapacity = 0; return; }
-            _idx.Dirty.All(_idx.High);
+            BufferId made = Grow(vk, v, v.Ebo, (long)_idx.Mirror.Length * 2, BufferUse.Index, "arena indices");
+            if (made.IsNull && v.Ebo.IsNull) return;
+            if (!made.IsNull)
+            {
+                v.Ebo = made;
+                v.ICapacity = _idx.Mirror.Length;
+                v.IFilled = false;
+                _idx.Dirty.All(_idx.High);
+            }
         }
         int unsentIdx = 0;
         for (int k = 0; k < _idx.Dirty.Count; k++)

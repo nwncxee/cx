@@ -146,13 +146,13 @@ internal sealed unsafe partial class VkBackend
         return n;
     }
 
-    /// <summary>The uses <see cref="Needs"/> maps to a format feature, and the two it answers with none because
-    /// neither names a way a texel is read or written: one is a queue the image is reached from, the other is where
-    /// its memory comes from.</summary>
+    /// <summary>The uses <see cref="Needs"/> maps to a format feature, and those it answers with none because none
+    /// names a way a texel is read or written: one is a queue the image is reached from, the others are where its
+    /// memory comes from.</summary>
     private const ImageUse FeatureBound = ImageUse.Sampled | ImageUse.Grey | ImageUse.ColorTarget | ImageUse.DepthTarget
                                         | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst;
     /// <inheritdoc cref="FeatureBound"/>
-    private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient;
+    private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient | ImageUse.NoSpill;
 
     /// <summary>The uses in <paramref name="use"/> that <see cref="Needs"/> maps to no format feature and
     /// <see cref="FeatureFree"/> does not excuse, named; null when every one of them is answered.</summary>
@@ -188,16 +188,21 @@ internal sealed unsafe partial class VkBackend
         VkImageCreateInfo ici = ImageInfo(d, null);
         uint* fams = stackalloc uint[3];
         if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice, priority = PriorityOf(d.Use) };
         // a device with no lazily allocated type gives this image ordinary device memory, which is what it had before
         if ((d.Use & ImageUse.Transient) != 0) aci.preferredFlags = VkMemoryPropertyFlags.LazilyAllocated;
         VkImage image;
         VmaAllocation a;
-        if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
-            return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
+        Overflow o = OverflowOf(d.Use);
+        VkResult r = PlaceImage(&ici, &aci, ImageBytes(d), o, &image, &a, out bool spilled);
+        if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<ImageId>($"image {d.Label}: {NoRoomTag}: {d.Kind} {d.Fmt} {d.W}x{d.H}");
+        if (NoRoom(r)) return RefusedForRoom<ImageId>($"image {d.Label}: {NoRoomTag}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
+        if (r != VkResult.Success) return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
         Name(VkObjectType.Image, image.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
-        return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
+        uint id = _images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d });
+        if (spilled) _spilled.Add(id);
+        return new ImageId(id);
     }
 
     /// <summary>The description image <paramref name="i"/> was made with; false for a stale or null id.</summary>

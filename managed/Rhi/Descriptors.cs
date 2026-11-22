@@ -61,6 +61,8 @@ public enum ImageUse : ushort
     Grey = 64,
     /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's.</summary>
     Async = 128,
+    /// <summary>Refused, not placed in system RAM, when device memory has no room: its owner waits for room instead.</summary>
+    NoSpill = 256,
     /// <summary>An attachment whose contents never leave the one render pass that writes them, so a device with
     /// lazily allocated memory need back it with none. It names no other use and joins no alias group.</summary>
     Transient = 512,

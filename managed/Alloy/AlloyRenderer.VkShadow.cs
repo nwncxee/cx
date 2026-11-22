@@ -55,6 +55,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (CasterPass.VkBracket is { } bake) cl.Append(bake);
         if (!CasterPass.VkFlush(cl)) return false;
+        VkSkyFollow(vk);
         if (CasterPass.VkSkyTake(out ImageId sky, out SkyFit fit)) VkSkyBake(vk, cl, sky, in fit, log);
         return true;
     }

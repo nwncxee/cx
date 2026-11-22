@@ -57,6 +57,7 @@ internal static class Shadows
                               tier: Tier.Advanced, effect: Effect.Restart,
                               help: "Per-face size of each light's shadow cube.")
                     .Ladder(Quality.Shadows, 128, 256, 512, 1024);
+        CubeSize.Note = () => VramLadder.ShadowsLowered ? VramLadder.LoweredNote : null;
         CubeDist = G.Slider("cubedist", "Point-light shadow distance", 0f, 200f, 5f, 30f, "m", Tier.Advanced,
                             help: "A light farther than this from you casts no shadow, and no fragment farther than this from the camera "
                                 + "reads one; shadows fade out over the last quarter. 0 = every light in the budget, at any distance.")

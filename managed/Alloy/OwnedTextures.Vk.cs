@@ -21,10 +21,10 @@ internal static unsafe partial class OwnedTextures
         int levels = mip ? EngineLevels(cw, ch) : 1;
         byte[] px = VkTextures.Pack(img, w, cx, cy, cw, ch, bpp, nibbles: bpp == 2, out Format f);
         ImageId id = VkTextures.Create(vk, dst, f, cw, ch, levels, grey, VkSampler(s), $"owned {dst}");
-        if (id.IsNull) return;
-        if (f == Format.Rgba8 && MirrorRasterChain(vk, dst, id, px, cw, ch, levels)) return;
-        if (!vk.Upload(id, 0, 0, px)) { VkTextures.Forget(dst); return; }
-        if (levels > 1) vk.GenerateMips(id);
+        if (id.IsNull && !VkTextures.Has(dst)) return;
+        if (f == Format.Rgba8 && !id.IsNull && MirrorRasterChain(vk, dst, id, px, cw, ch, levels)) return;
+        if (!VkTextures.Upload(vk, dst, 0, px)) { VkTextures.Forget(dst); return; }
+        if (levels > 1) VkTextures.GenerateMips(vk, dst);
     }
 
     /// <summary>A compressed chain the engine names, level by level from the texture's own runs.</summary>
@@ -34,8 +34,8 @@ internal static unsafe partial class OwnedTextures
         Format f = VkTextures.Compressed(glFmt);
         if (f == Format.Unknown) { VkTextures.Refuse($"owned {dst}: GL format 0x{glFmt:x}"); return; }
         ImageId id = VkTextures.Create(vk, dst, f, w, h, levels, red, VkSampler(s), $"owned {dst}");
-        if (id.IsNull) return;
-        if (f == Format.Bc3 && levels > 1 && StoredCuts(t, w, h))
+        if (id.IsNull && !VkTextures.Has(dst)) return;
+        if (f == Format.Bc3 && levels > 1 && !id.IsNull && StoredCuts(t, w, h))
         {
             var chain = new NativeBuffer<byte>();
             try
@@ -47,7 +47,7 @@ internal static unsafe partial class OwnedTextures
         for (int l = 0; l < levels; l++)
         {
             byte* level = t.CompressedLevel(l, out _, out _, out int size);
-            if (!vk.Upload(id, l, 0, new ReadOnlySpan<byte>(level, size))) { VkTextures.Forget(dst); return; }
+            if (!VkTextures.Upload(vk, dst, l, new ReadOnlySpan<byte>(level, size))) { VkTextures.Forget(dst); return; }
         }
     }
 
@@ -58,13 +58,13 @@ internal static unsafe partial class OwnedTextures
         Format f = VkTextures.Compressed(DdsReader.GlFormat(i.Format));
         if (f == Format.Unknown) { VkTextures.Refuse($"owned {dst}: DDS {i.Format}"); return; }
         ImageId id = VkTextures.Create(vk, dst, f, i.W, i.H, levels, red, VkSampler(s), $"owned {dst}");
-        if (id.IsNull) return;
+        if (id.IsNull && !VkTextures.Has(dst)) return;
         var all = new ReadOnlySpan<byte>(chain, (int)i.ChainBytes);
         int off = 0;
         for (int l = 0, w = i.W, h = i.H; l < levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
         {
             int sz = DdsReader.LevelSize(w, h, i.Channels);
-            if (!vk.Upload(id, l, 0, all.Slice(off, sz))) { VkTextures.Forget(dst); return; }
+            if (!VkTextures.Upload(vk, dst, l, all.Slice(off, sz))) { VkTextures.Forget(dst); return; }
             off += sz;
         }
     }
@@ -74,10 +74,10 @@ internal static unsafe partial class OwnedTextures
     {
         if (VkTextures.Device(_log) is not VkBackend vk) return;
         ImageId id = VkTextures.Create(vk, dst, Format.Rgba8, w, h, 1, false, s, $"owned {dst}");
-        if (id.IsNull) return;
+        if (id.IsNull && !VkTextures.Has(dst)) return;
         byte[] px = new byte[w * h * 4];
         if (rgba != 0) for (int k = 0; k < px.Length; k += 4) { px[k] = (byte)rgba; px[k + 1] = (byte)(rgba >> 8); px[k + 2] = (byte)(rgba >> 16); px[k + 3] = (byte)(rgba >> 24); }
-        if (!vk.Upload(id, 0, 0, px)) VkTextures.Forget(dst);
+        if (!VkTextures.Upload(vk, dst, 0, px)) VkTextures.Forget(dst);
     }
 
     /// <summary>The nearest-filtered sampler the stand-ins carry.</summary>
@@ -89,8 +89,8 @@ internal static unsafe partial class OwnedTextures
     {
         if (VkTextures.Device(_log) is not VkBackend vk || VkTextures.SamplerOf(src) is not SamplerDesc s) return;
         ImageId id = VkTextures.Create(vk, dst, bc3 ? Format.Bc3 : Format.Bc1, lw[0], lh[0], levels, false, s, $"owned {dst}");
-        if (id.IsNull) return;
+        if (id.IsNull && !VkTextures.Has(dst)) return;
         for (int l = 0; l < levels; l++)
-            if (!vk.Upload(id, l, 0, blocks.AsSpan((int)off[l], BcnEncode.LevelSize(lw[l], lh[l], bc3)))) { VkTextures.Forget(dst); return; }
+            if (!VkTextures.Upload(vk, dst, l, blocks.AsSpan((int)off[l], BcnEncode.LevelSize(lw[l], lh[l], bc3)))) { VkTextures.Forget(dst); return; }
     }
 }

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using CX.Framework;
 using CX.Graphics;
+using CX.Alloy.Mdl;
 using static CX.Alloy.TexLoadRead;
 
 namespace CX.Alloy.Db;
@@ -854,25 +855,105 @@ internal static unsafe partial class TexRegistry
 
     // ---- budget ----
 
-    /// <summary>ADR 0023's budget, read the same way: <c>texcache_mb</c> -1 is a quarter of probed VRAM, 0
-    /// evicts an idle slot as soon as it is idle.</summary>
-    private static long BudgetBytes()
+    /// <summary>ADR 0023's budget: the period's shared texture budget, which <see cref="TexBudget.BeginPeriod"/>
+    /// works out from <c>alloy.texcache</c> and the device's live figures.</summary>
+    internal static long BudgetBytes() => TexBudget.Bytes;
+
+    /// <summary>The bytes the world textures hold on the device, resident and idle.</summary>
+    internal static long HeldBytes { get { lock (_lock) return _residentBytes + _idleBytes; } }
+
+    /// <summary>References counted by <see cref="Tally"/> since the last <see cref="TakeSoleBytes"/>, and the slots they name.</summary>
+    private sealed class TallyState
     {
-        int mb = Renderer.TexCache.Boot;
-        if (mb > 0) return (long)mb << 20;
-        if (mb == 0) return 0;
-        long vram = AlloyRenderer.VramTotalMib > 0 ? AlloyRenderer.VramTotalMib : AlloyRenderer.VramFreeMib;
-        return vram > 0 ? (vram << 20) / 4 : 512L << 20;
+        public readonly int[] Refs = new int[MaxSlots];
+        public readonly int[] Slots = new int[MaxSlots];
+        public int N;
+    }
+    private static TallyState _tally = new();
+
+    /// <summary>Count one reference to <paramref name="id"/> toward <see cref="TakeSoleBytes"/>; a stale or null id counts
+    /// nothing. Game thread.</summary>
+    internal static void Tally(TexId id)
+    {
+        if (!Valid(id)) return;
+        int i = id.Index;
+        if (_tally.Refs[i]++ == 0) _tally.Slots[_tally.N++] = i;
     }
 
-    /// <summary>Trim the idle set back to the budget, oldest first off the LRU head. Game thread; the names
-    /// go to the graveyard for the drain.</summary>
+    /// <summary>Bytes of the tallied textures that hold no reference past the tallied ones, each counted once; the tally
+    /// starts over. Game thread, and allocates nothing.</summary>
+    internal static long TakeSoleBytes()
+    {
+        long sum = 0;
+        lock (_lock)
+            for (int k = 0; k < _tally.N; k++)
+            {
+                int i = _tally.Slots[k];
+                if (_refs[i] == _tally.Refs[i]) sum += _bytes[i];
+                _tally.Refs[i] = 0;
+            }
+        _tally.N = 0;
+        return sum;
+    }
+
+    /// <summary>The key the texture part gives the period's budget under, as <c>tex budget N MiB</c>.</summary>
+    internal const string BudgetKey = "tex budget";
+
+    /// <summary>The key the texture part gives under, as <c>tex over N MiB</c>, by how much the area's own textures pass the budget.</summary>
+    internal const string OverKey = "tex over";
+
+    /// <summary>The key the texture part gives the period's evicted models under, as <c>models evicted N</c>.</summary>
+    internal const string EvictedKey = "models evicted";
+
+    /// <summary>The frame line's texture part: the period's budget, the models it evicted, and by how many MiB
+    /// the current area's own textures pass the budget, given only when they do.</summary>
+    internal static string BudgetLine()
+    {
+        long over = TexBudget.OverBytes >> 20;
+        return $"{BudgetKey} {TexBudget.Bytes >> 20} MiB, {EvictedKey} {TexBudget.ModelsEvicted}"
+             + (over > 0 ? $", {OverKey} {over} MiB" : "");
+    }
+
+    /// <summary>A texture allocation of <paramref name="bytes"/> was refused for room: evict idle textures,
+    /// oldest first, until it fits the budget. Game thread, where every upload is seated.</summary>
+    internal static void RefusedForRoom(long bytes)
+    {
+        long room = BudgetBytes() - bytes;
+        lock (_lock)
+            while (_idleHead >= 0 && _residentBytes + _idleBytes > room)
+                Retire(_idleHead);
+    }
+
+    /// <summary>Every idle texture let go now, oldest first, whatever the budget: the bytes that freed. Game thread;
+    /// the names go to the graveyard for the drain.</summary>
+    internal static long EvictIdle()
+    {
+        lock (_lock)
+        {
+            long before = _idleBytes;
+            while (_idleHead >= 0) Retire(_idleHead);
+            return before - _idleBytes;
+        }
+    }
+
+    /// <summary>Trim back to the budget: idle textures oldest first off the LRU head, then, while still over,
+    /// the least recently used idle model with the textures only it held. Game thread; the names go to the
+    /// graveyard for the drain. What is left over the budget is what the area itself draws.</summary>
     private static void EvictPastBudget()
     {
         long budget = BudgetBytes();
-        lock (_lock)
-            while (_idleHead >= 0 && _residentBytes + _idleBytes > budget)
-                Retire(_idleHead);
+        while (true)
+        {
+            lock (_lock)
+            {
+                while (_idleHead >= 0 && _residentBytes + _idleBytes > budget)
+                    Retire(_idleHead);
+                if (_residentBytes + _idleBytes <= budget) { TexBudget.NoteOver(0); return; }
+            }
+            if (!ModelCache.EvictLeastRecent()) break;
+            TexBudget.CountEvicted();
+        }
+        lock (_lock) TexBudget.NoteOver(_residentBytes + _idleBytes - budget);
     }
 
     /// <summary>Terminal per session (<c>docs/owned-resource-lifetimes.md</c>): every name and handle this

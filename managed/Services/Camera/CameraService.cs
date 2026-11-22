@@ -574,8 +574,10 @@ public sealed unsafe class CameraService : IExtenderService
     /// <summary>A locked axis: the clamp is on and its range (min, max) has collapsed.</summary>
     private static bool Locked(float clamp, Span<float> range) => clamp != 0f && range[0] >= range[1];
 
+    /// <summary>The client's <c>CClientExoApp</c>, or zero in a host with no client (the self-check host).</summary>
     internal static IntPtr App()
     {
+        if (_appMgr == IntPtr.Zero) return IntPtr.Zero;
         IntPtr mgr = *(IntPtr*)_appMgr;
         return mgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)mgr;
     }

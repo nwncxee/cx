@@ -30,6 +30,8 @@ internal static unsafe class SsaoPassVk
         public int HistAt;
         /// <summary>The history holds the frame before this one, seen through <see cref="PrevVpClean"/>.</summary>
         public bool HistValid;
+        /// <summary>The history pair's move-backs as last seen.</summary>
+        public int HistMoves;
         /// <summary>The unjittered view-projection the pass last recorded under, and that frame's number: the
         /// history is only a frame old while the number is this frame's minus one.</summary>
         public Matrix4x4 PrevVpClean;
@@ -74,6 +76,24 @@ internal static unsafe class SsaoPassVk
     /// next frame's estimate stands alone.</summary>
     internal static void Revoke() => _s.HistValid = false;
 
+    /// <summary>A history image moved back to device memory and holds nothing: this frame's estimate stands alone.</summary>
+    private static void Follow(VkBackend vk, SsaoVkState s)
+    {
+        if (vk.MovedBack(ref s.HistMoves, s.Hist0, s.Hist1)) s.HistValid = false;
+    }
+
+    /// <summary>The occlusion history over <paramref name="h0"/> and <paramref name="h1"/> is dropped once
+    /// <paramref name="moved"/> has run between two frames' follows.</summary>
+    internal static bool DropsForCheck(VkBackend vk, ImageId h0, ImageId h1, Action moved)
+    {
+        var s = new SsaoVkState { Dev = vk, Hist0 = h0, Hist1 = h1 };
+        Follow(vk, s);
+        s.HistValid = true;
+        moved();
+        Follow(vk, s);
+        return !s.HistValid;
+    }
+
     /// <summary>Is this the first world view of its present? The history pair holds ONE camera's visibility, and
     /// the pass records once per world view, so only the first view of a present may accumulate into it and
     /// publish the camera the next present reprojects through. A later view takes a single-frame estimate.</summary>
@@ -93,6 +113,7 @@ internal static unsafe class SsaoPassVk
         if (s.Failed || !SsaoPass.Active || !depthFilled || depth.IsNull) return;
         bool half = SsaoPass.Wanted;
         if (!Ensure(vk, log) || !Targets(vk, viewport[2], viewport[3], half, log)) return;
+        Follow(vk, s);
 
         int seq = AlloyRenderer.FrameSeq;
         bool reproject = Matrix4x4.Invert(vp, out Matrix4x4 inv);

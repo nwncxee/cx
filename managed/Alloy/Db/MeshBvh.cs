@@ -1,15 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Db;
 
-/// <summary>One model-space BVH per distinct <see cref="MeshDef"/>, built once and shared by every placement
-/// of that mesh, so an area re-using a model pays for its tree once. Immutable once built, so the render
-/// thread may read it. A mesh that ships an <see cref="AabbDef"/> keeps the file's own tree, because the
-/// engine walks exactly that; everything else gets a median-split tree over face centroids.</summary>
-public sealed class MeshBvh
+/// <summary>One model-space BVH per distinct <see cref="MeshDef"/>, built once on the tree worker and shared by every
+/// placement of that mesh. Immutable once built, so any thread may read it. A mesh that ships an <see cref="AabbDef"/>
+/// keeps the file's own tree, because the engine walks exactly that; everything else gets a median-split tree.</summary>
+public sealed partial class MeshBvh
 {
     /// <summary>Faces in a leaf. Below this the tree costs more pointer-chasing than the triangles it
     /// skips; measured against the self-check's synthetic meshes, not tuned live.</summary>
@@ -18,9 +18,8 @@ public sealed class MeshBvh
     /// an MDL's own AABB tree is bounded by its own build, but neither is guaranteed, so an overflow is
     /// counted (<see cref="StackFull"/>) rather than silently dropping a subtree.</summary>
     private const int MaxDepth = 128;
-    /// <summary>A mesh past this face count is left untreed rather than spending a long build on the game
-    /// thread: the cast falls back to the engine's own linear face walk after the box reject. ponytail: the
-    /// honest fix is to build it on a worker thread off the model cache.</summary>
+    /// <summary>A mesh past this face count is left untreed, and its cast walks every face after the box reject, as
+    /// the engine's own linear walk does: past it a tree's arrays cost more memory than the walk costs time.</summary>
     public const int MaxFaces = 1 << 16;
 
     /// <summary>Node bounds, in the same model space as <see cref="MeshDef.Positions"/>.</summary>
@@ -30,6 +29,8 @@ public sealed class MeshBvh
     private int[] _left = Array.Empty<int>(), _start = Array.Empty<int>(), _count = Array.Empty<int>();
     private int[] _order = Array.Empty<int>();
     private int _nodes;
+    /// <summary>The managed thread id that built this tree.</summary>
+    private int _builtBy;
 
     /// <summary>The mesh this tree indexes.</summary>
     public MeshDef Mesh { get; private set; } = null!;
@@ -37,65 +38,35 @@ public sealed class MeshBvh
     /// <see cref="MaxFaces"/>, which the caller tests linearly instead.</summary>
     public bool Usable => _nodes > 0;
 
-    /// <summary>Keyed on the <see cref="MeshDef"/> instance, which the model cache already keys on content:
-    /// one tree per distinct mesh, shared by every placement.</summary>
-    private static readonly Dictionary<MeshDef, MeshBvh> _cache = new();
-    /// <summary>Meshes treed this session, and faces across them: the census line that says whether the
+    /// <summary>Filed trees, keyed on the <see cref="MeshDef"/> instance, which the model cache already keys on
+    /// content: one tree per distinct mesh, shared by every placement. Read and written under the worker's gate.</summary>
+    private static readonly Dictionary<MeshDef, MeshBvh> _cache = new(QueueCap);
+    /// <summary>Usable trees filed this session, and faces across them: the census line that says whether the
     /// index is being shared or rebuilt.</summary>
-    public static int Built { get; private set; }
+    public static int Built => BuiltOnGame + BuiltOnWorker;
     /// <inheritdoc cref="Built"/>
-    public static long BuiltFaces { get; private set; }
+    public static long BuiltFaces => Volatile.Read(ref _w.Faces);
     /// <summary>Meshes refused for <see cref="MaxFaces"/> -- a loud count, not a quiet hole.</summary>
-    public static int Refused { get; private set; }
+    public static int Refused => Volatile.Read(ref _w.Refused);
     /// <summary>Nodes that became leaves because the node array was full, and traversals that could not push
     /// a child because the stack was. Both are "correct but slower" or "a missed face" respectively, so both
     /// are counted and reported rather than inferred.</summary>
     public static long Degraded, StackFull;
 
-    /// <summary>The tree for <paramref name="mesh"/>, building it on first use (prefer
-    /// <see cref="Prewarm"/> off the cast path). Never null; test <see cref="Usable"/>.</summary>
-    public static MeshBvh For(MeshDef mesh)
-    {
-        lock (_cache)
-        {
-            if (_cache.TryGetValue(mesh, out MeshBvh? b)) return b;
-            b = new MeshBvh();
-            b.Build(mesh);
-            _cache[mesh] = b;
-            if (b.Usable) { Built++; BuiltFaces += mesh.Faces.Length; }
-            return b;
-        }
-    }
-
-    /// <summary>Drop the trees of <paramref name="model"/>'s meshes. Subscribed to the model cache's eviction
-    /// edge, which is the ONLY thing that can retire a content-keyed tree: without it the table grows for the
-    /// session and holds every mesh the player ever looked at.</summary>
-    public static void Evict(ModelDef model)
-    {
-        lock (_cache)
-            foreach (NodeDef nd in model.Nodes)
-                if (nd.Mesh != null && _cache.Remove(nd.Mesh)) Evicted++;
-    }
-
     /// <summary>Trees dropped by a model eviction.</summary>
-    public static int Evicted { get; private set; }
+    public static int Evicted => Volatile.Read(ref _w.Evicted);
 
     /// <summary>Faces plane-tested since boot -- the one unit the pick report counts, written on every arm
     /// (the BVH's leaves, the untreed linear walk and the MDL's own AABB tree alike).</summary>
     public static long FacesTested;
 
-    /// <summary>Build <paramref name="mesh"/>'s tree NOW if it has none. Called from the dirty fold, where a
-    /// multi-millisecond build is a frame's own cost; <see cref="For"/> would otherwise build it inside the
-    /// first cast that touches it, which is a hitch on the first click.
-    /// ponytail: the honest place is the model cache's arrival edge on a worker thread.</summary>
-    public static void Prewarm(MeshDef mesh) => For(mesh);
-
     private void Build(MeshDef mesh)
     {
         Mesh = mesh;
+        _builtBy = Environment.CurrentManagedThreadId;
         int n = mesh.Faces.Length;
         if (n == 0) return;
-        if (n > MaxFaces) { Refused++; return; }
+        if (n > MaxFaces) { Interlocked.Increment(ref _w.Refused); return; }
 
         _order = new int[n];
         var cx = new Vector3[n];
@@ -128,7 +99,7 @@ public sealed class MeshBvh
         }
         _bmin[node] = lo; _bmax[node] = hi; _start[node] = start; _count[node] = count;
         if (count <= LeafFaces || depth > 48) { _left[node] = -1; return; }
-        if (_nodes + 2 > _bmin.Length) { _left[node] = -1; Degraded++; return; }
+        if (_nodes + 2 > _bmin.Length) { _left[node] = -1; Interlocked.Increment(ref Degraded); return; }
 
         Vector3 d = hi - lo;
         int axis = d.X >= d.Y && d.X >= d.Z ? 0 : d.Y >= d.Z ? 1 : 2;
@@ -170,12 +141,7 @@ public sealed class MeshBvh
         normal = default;
         int best = -1;
         if (Mesh.Faces.Length == 0) return -1;
-        if (!Usable)
-        {
-            for (int i = 0; i < Mesh.Faces.Length; i++)
-                if (Face(i, from, ref to, scale, surfaceMask, out Vector3 nn)) { best = i; normal = nn; }
-            return best;
-        }
+        if (!Usable) return Walk(Mesh, from, ref to, scale, surfaceMask, out normal);
         Span<int> stack = stackalloc int[MaxDepth];
         int sp = 0;
         stack[sp++] = 0;
@@ -187,7 +153,7 @@ public sealed class MeshBvh
             if (_left[node] < 0)
             {
                 for (int k = _start[node]; k < _start[node] + _count[node]; k++)
-                    if (Face(_order[k], from, ref to, scale, surfaceMask, out Vector3 nn)) { best = _order[k]; normal = nn; }
+                    if (Face(Mesh, _order[k], from, ref to, scale, surfaceMask, out Vector3 nn)) { best = _order[k]; normal = nn; }
             }
             else if (sp + 2 <= stack.Length)
             {
@@ -201,13 +167,33 @@ public sealed class MeshBvh
         return best;
     }
 
+    /// <summary>The segment cast against <paramref name="mesh"/>: through its tree once one is filed or built here, by a
+    /// walk over every face while the worker holds it mid-build, so a pick never waits on the worker.</summary>
+    public static int CastMesh(MeshDef mesh, Vector3 from, ref Vector3 to, float scale, ulong surfaceMask, out Vector3 normal)
+    {
+        MeshBvh? tree = For(mesh);
+        if (tree != null) return tree.Cast(from, ref to, scale, surfaceMask, out normal);
+        return Walk(mesh, from, ref to, scale, surfaceMask, out normal);
+    }
+
+    /// <summary>Nearest face hit by a walk over every face of <paramref name="mesh"/>, shortening the segment as
+    /// <see cref="Cast"/> does; -1 for no hit.</summary>
+    private static int Walk(MeshDef mesh, Vector3 from, ref Vector3 to, float scale, ulong surfaceMask, out Vector3 normal)
+    {
+        normal = default;
+        int best = -1;
+        for (int i = 0; i < mesh.Faces.Length; i++)
+            if (Face(mesh, i, from, ref to, scale, surfaceMask, out Vector3 nn)) { best = i; normal = nn; }
+        return best;
+    }
+
     /// <summary>Faces of <paramref name="mesh"/> whose boxes touch the mesh-space box <paramref name="lo"/>..
     /// <paramref name="hi"/>, into <paramref name="faces"/>: through its tree if one is already built, else by a walk
     /// over every face. Never builds one, so it is safe inside a frame. <paramref name="full"/> says faces were lost.</summary>
     public static int Overlap(MeshDef mesh, Vector3 lo, Vector3 hi, Span<int> faces, out bool full)
     {
         MeshBvh? tree;
-        lock (_cache) _cache.TryGetValue(mesh, out tree);
+        lock (_w.Gate) _cache.TryGetValue(mesh, out tree);
         if (tree != null && tree.Usable) return tree.Overlap(lo, hi, faces, out full);
         int n = 0;
         full = false;
@@ -268,13 +254,13 @@ public sealed class MeshBvh
 
     private static float Dist2(in AabbNode n, Vector3 p) => Dist2(n.BMin, n.BMax, p);
 
-    private bool Face(int i, Vector3 from, ref Vector3 to, float scale, ulong surfaceMask, out Vector3 normal)
+    private static bool Face(MeshDef mesh, int i, Vector3 from, ref Vector3 to, float scale, ulong surfaceMask, out Vector3 normal)
     {
         normal = default;
-        ref FaceDef f = ref Mesh.Faces[i];
+        ref FaceDef f = ref mesh.Faces[i];
         if ((surfaceMask >> (f.Surface & 63) & 1) == 0) return false;
         FacesTested++;
-        Vector3 a = Mesh.Positions[f.V0] * scale, b = Mesh.Positions[f.V1] * scale, c = Mesh.Positions[f.V2] * scale;
+        Vector3 a = mesh.Positions[f.V0] * scale, b = mesh.Positions[f.V1] * scale, c = mesh.Positions[f.V2] * scale;
         // The face's STORED plane, which is what the 7-argument polyhit takes (face+0 and face+0xc); scaling
         // the vertices scales the plane distance with them and leaves the normal alone.
         if (!HitTest.PolyHit(a, b, c, f.PlaneNormal, f.PlaneDistance * scale, from, ref to)) return false;

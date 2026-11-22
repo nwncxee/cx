@@ -36,7 +36,7 @@ internal static partial class GpuGolden
     }
 
     /// <summary>Submit and wait out enough frames that every free queued behind them has happened.</summary>
-    private static void Settle(VkBackend vk, ExtenderLog log, BufferId rb)
+    internal static void Settle(VkBackend vk, ExtenderLog log, BufferId rb)
     {
         Span<byte> four = stackalloc byte[4];
         for (int i = 0; i < 6; i++)

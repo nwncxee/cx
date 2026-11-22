@@ -33,12 +33,12 @@ internal static unsafe partial class TexRegistry
             Format f = VkTextures.Compressed(j.GlFmt);
             if (f == Format.Unknown) { VkTextures.Refuse($"{label}: GL format 0x{j.GlFmt:x}"); return $"GL format 0x{j.GlFmt:x} has no Vulkan format"; }
             ImageId id = VkTextures.Create(vk, dst, f, j.W, j.H, j.Levels, j.Channels == 1, s, label);
-            if (id.IsNull) return Refused(j);
+            if (id.IsNull && !VkTextures.Has(dst)) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = DdsReader.LevelSize(w, h, j.Channels);
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
+                if (!VkTextures.Upload(vk, dst, l, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
             return null;
@@ -46,12 +46,12 @@ internal static unsafe partial class TexRegistry
         if (plt)
         {
             ImageId id = VkTextures.Create(vk, dst, Format.Rg8, j.W, j.H, j.Levels, false, s, label);
-            if (id.IsNull) return Refused(j);
+            if (id.IsNull && !VkTextures.Has(dst)) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * PltImage.BytesPerPixel;
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
+                if (!VkTextures.Upload(vk, dst, l, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
             return null;
@@ -59,12 +59,12 @@ internal static unsafe partial class TexRegistry
         if (j.Chained)
         {
             ImageId id = VkTextures.Create(vk, dst, Format.Rgba8, j.W, j.H, j.Levels, false, s, label);
-            if (id.IsNull) return Refused(j);
+            if (id.IsNull && !VkTextures.Has(dst)) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * 4;
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
+                if (!VkTextures.Upload(vk, dst, l, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
             return null;
@@ -72,9 +72,9 @@ internal static unsafe partial class TexRegistry
         byte[] px = VkTextures.Pack(j.Data, j.FullW > 0 ? j.FullW : j.W, 0, 0, j.W, j.H, j.Channels, nibbles: false, out Format pf);
         int levels = j.GenMips ? j.Levels : 1;
         ImageId raw = VkTextures.Create(vk, dst, pf, j.W, j.H, levels, j.Channels == 1, s, label);
-        if (raw.IsNull) return Refused(j);
-        if (!vk.Upload(raw, 0, 0, px)) { VkTextures.Forget(dst); return LevelRefused(j, 0); }
-        if (levels > 1) vk.GenerateMips(raw);
+        if (raw.IsNull && !VkTextures.Has(dst)) return Refused(j);
+        if (!VkTextures.Upload(vk, dst, 0, px)) { VkTextures.Forget(dst); return LevelRefused(j, 0); }
+        if (levels > 1) VkTextures.GenerateMips(vk, dst);
         return null;
     }
 

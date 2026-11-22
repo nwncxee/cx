@@ -27,15 +27,15 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The coverage and light-step pipelines per arena format, made at a format's first draw.</summary>
         public readonly PipelineId[] Cover = new PipelineId[MeshArena.Formats], Light = new PipelineId[MeshArena.Formats];
         public VkDefStage? Enc;
-        public int BLight = -1, BColor = -1, BMode = -1, BCube = -1, BCubes = -1, ERegion = -1, ELayer = -1;
+        public int BLight = -1, BColor = -1, BMode = -1, BCube = -1, BCubes = -1, ERegion = -1, ELayer = -1, EBand = -1;
         public CommandList? Side;
     }
 
     private static VkLmState _vkLm = new();
 
-    /// <summary>One rect of a bake pass: its record slot, its origin and scale on the page, the shadow disc's world
-    /// floor, the mover channel this light writes, and its chart range in the arena format <see cref="Fmt"/>.</summary>
-    internal readonly record struct VkLmDraw(int Slot, int X, int Y, float S, float SoftWorld, int Chan, int Fmt,
+    /// <summary>One rect of a bake pass: its record slot, its origin, size and scale on the page, the shadow disc's
+    /// world floor, the mover channel this light writes, and its chart range in the arena format <see cref="Fmt"/>.</summary>
+    internal readonly record struct VkLmDraw(int Slot, int X, int Y, int W, int H, float S, float SoftWorld, int Chan, int Fmt,
                                              int BaseVertex, int FirstIndex, int Count);
 
     /// <summary>Both programs and the bake's pipelines, once per device; a refusal is logged and stays.</summary>
@@ -63,6 +63,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 s.ERegion = LooseBlock.Loc("uRegion");
                 s.ELayer = LooseBlock.Loc("uPageLayer");
+                s.EBand = LooseBlock.Loc("uBandX");
             });
         s.Gs = gid;
         int st = (int)MeshArena.Fmt.Static;
@@ -121,9 +122,10 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>One bake pass over <paramref name="draws"/> into the scratch planes: coverage (<paramref name="step"/> 0,
     /// clearing the planes first) or light step <paramref name="step"/> of the page, its shadow in slot
-    /// <paramref name="cube"/> of <paramref name="cubes"/>. False only when the uniform arena is full.</summary>
+    /// <paramref name="cube"/> of <paramref name="cubes"/>, the planes' column 0 at page column <paramref name="bandX"/>.
+    /// False only when the uniform arena is full.</summary>
     internal static bool VkLmBake(CommandList cl, ImageId a, ImageId b, ImageId c, ImageId z, int step, Vector4 light,
-                                  Vector3 colour, int cube, ImageId cubes, int cubeSize, ReadOnlySpan<VkLmDraw> draws)
+                                  Vector3 colour, int cube, ImageId cubes, int cubeSize, int bandX, ReadOnlySpan<VkLmDraw> draws)
     {
         VkLmState s = _vkLm;
         VkColourState vc = _vkc;
@@ -156,7 +158,8 @@ public sealed unsafe partial class AlloyRenderer
         if (loose < 0 || pass < 0) return false;
         CommandList side = s.Side!;
         side.Reset();
-        side.SetViewport(0, 0, LightmapBake.PageSize, LightmapBake.PageSize);
+        // the whole page's viewport moved left by the band: the stages keep their page-space NDC, and the columns outside clip
+        side.SetViewport(-bandX, 0, LightmapBake.PageSize, LightmapBake.PageSize);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
         PipelineId[] pipes = cover ? s.Cover : s.Light;
         side.SetPipeline(pipes[(int)MeshArena.Fmt.Static]);
@@ -176,6 +179,8 @@ public sealed unsafe partial class AlloyRenderer
                 side.SetPipeline(pipes[fmt]);
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)fmt));
             }
+            // the rect's own texels only: a pushed or mitred edge in the gutter is read by the finish's dilation of the neighbouring cell
+            side.SetScissor(d.X - bandX, d.Y, d.W, d.H);
             push.DrawBase = d.Slot; push.Decal = d.X; push.Solid = d.Y; push.AlphaCut = d.S;
             push.AoDirect = d.SoftWorld; push.OitGob = d.Chan;
             side.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkBatchPush>(in push)));
@@ -192,9 +197,10 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>One band of the page's finish: blocks (<paramref name="bx"/>, <paramref name="by"/>) + <paramref name="bw"/> x
     /// <paramref name="bh"/> of the scratch planes encoded into the block images, plane C written into
-    /// <paramref name="layer"/> of <paramref name="pageC"/>. False only when the uniform arena is full.</summary>
+    /// <paramref name="layer"/> of <paramref name="pageC"/> <paramref name="bandX"/> columns further right. False only when
+    /// the uniform arena is full.</summary>
     internal static bool VkLmEncode(CommandList cl, ImageId a, ImageId b, ImageId c, ImageId blkA, ImageId blkB, ImageId pageC,
-                                    int layer, int bx, int by, int bw, int bh)
+                                    int layer, int bx, int by, int bw, int bh, int bandX)
     {
         VkLmState s = _vkLm;
         VkColourState vc = _vkc;
@@ -203,6 +209,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(st.Members, st.Block);
         LooseBlock.Set(s.ERegion, (ReadOnlySpan<int>)[bx, by, bw, bh]);
         LooseBlock.Set(s.ELayer, layer);
+        LooseBlock.Set(s.EBand, bandX);
         LooseBlock.EndCapture();
         int arena0 = vc.ArenaUsed;
         int loose = VkArena(st.Block);

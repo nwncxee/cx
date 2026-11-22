@@ -73,6 +73,12 @@ public sealed unsafe partial class CasterPass
         /// <summary>A bit per sun cascade this frame re-baked that takes the grass as a caster: the combined static
         /// layer, and the moving-caster mirror where the split keeps one.</summary>
         public int GrassStatic, GrassDyn;
+        /// <summary>No heap took an array: the frame from which it is asked for again (0 while nothing waits), and
+        /// whether that stand-down has been said.</summary>
+        public long DownUntil;
+        public bool DownSaid;
+        /// <summary>The arrays' move-back count the last bake saw: a move starts their contents over, so it rebakes.</summary>
+        public int Moves;
     }
 
     private static CasterVkState _vk = new();
@@ -80,8 +86,9 @@ public sealed unsafe partial class CasterPass
     /// <summary>Cut kinds a masked stage may be bound at, as <see cref="CasterCut"/> counts them.</summary>
     private const int CutKinds = 3;
 
-    /// <summary>Is the Vulkan bake armed? Nothing stands it down but a refusal, so the layered path is the only one.</summary>
-    private static bool VkArmed => !_vk.Failed && _vk.Plain != null;
+    /// <summary>Is the Vulkan bake armed? Nothing stands it down but a refusal, so the layered path is the only one; one
+    /// for want of heap room ends at the next move back.</summary>
+    private static bool VkArmed => !_vk.Failed && _vk.Plain != null && (_vk.DownUntil == 0 || _vk.Dev!.Frame >= _vk.DownUntil);
 
     /// <summary>The bracket's uploads for the colour frame to append, or null when it recorded none.</summary>
     internal static CommandList? VkBracket => _vk.Cmds is { Length: > 0 } c ? c : null;
@@ -118,6 +125,44 @@ public sealed unsafe partial class CasterPass
     /// Null until the first bake makes it. The deferred passes bind this where GL binds <c>CascadeTex</c>.</summary>
     internal static ImageId VkCascadeMap => _vk.Cascades;
 
+    /// <summary>A golden's ask for the sun array on its own device <paramref name="vk"/>, through the bake's own
+    /// remake; a new device starts the bake's state over.</summary>
+    internal static ImageId VkSunArrayForCheck(VkBackend vk, int size, int layers)
+    {
+        if (_vk.Dev != vk) _vk = new CasterVkState { Dev = vk };
+        CasterVkState s = _vk;
+        return VkArray(ref s.Cascades, ref s.SunSize, ref s.SunLayers, ImageKind.Tex2DArray, size, layers, "vk sun cascades", copySrc: true);
+    }
+
+    /// <summary>The marker of the line that says the bake stood down for now and is tried again at the next move back.</summary>
+    internal const string StandDownNowTag = "[vram] caster stand-down retry";
+
+    /// <summary>The marker of the line that says the bake stood down for the session.</summary>
+    internal const string StandDownSessionTag = "[vram] caster stand-down session";
+
+    /// <summary>The bake stood down over a refused program or target.</summary>
+    internal static bool BakeStoodDown => _vk.Failed || _vk.DownUntil != 0;
+
+    /// <summary>A golden is done with its device: the bake's arrays go back to it and the bake holds nothing of it.</summary>
+    internal static void VkResetForCheck()
+    {
+        if (_vk.Dev is VkBackend vk)
+            foreach (ImageId i in (ReadOnlySpan<ImageId>)[_vk.Cascades, _vk.SunDyn, _vk.Cubes, _vk.CubeDyn, _vk.Sky, _vk.Bake]) vk.Destroy(i);
+        _vk = new CasterVkState();
+    }
+
+    /// <summary>Times the bake's arrays moved back to device memory, summed.</summary>
+    private static int VkMoves(VkBackend vk, CasterVkState s)
+        => vk.MovesOf(s.Cascades) + vk.MovesOf(s.SunDyn) + vk.MovesOf(s.Cubes) + vk.MovesOf(s.CubeDyn) + vk.MovesOf(s.Sky);
+
+    /// <summary>Point the bake's log at <paramref name="log"/> for a golden; the log it had.</summary>
+    internal static ExtenderLog? VkLogForCheck(ExtenderLog? log)
+    {
+        ExtenderLog? was = _log;
+        _log = log;
+        return was;
+    }
+
     /// <summary>The sun's moving-caster mirror, where <c>/shadow split</c> keeps one.</summary>
     internal static ImageId VkSunDynMap => _vk.SunDyn;
 
@@ -141,6 +186,8 @@ public sealed unsafe partial class CasterPass
         s.Baked = s.Chunks = 0;
         s.GrassStatic = s.GrassDyn = 0;
         if (!CasterGatherVk.Ensure(vk, log)) { s.Failed = true; return false; }
+        int moves = VkMoves(vk, s);
+        if (moves != s.Moves) { s.Moves = moves; _invalidate = true; }
         // the bounds FIRST: sizing them here keeps every dispatch below naming a live id
         AlloyRenderer.VkRecordCasterBounds(vk, s.Cmds);
         long n = CasterGatherVk.BoundsStanding ? 0L : CasterGatherVk.NoteNoBounds();
@@ -561,20 +608,32 @@ public sealed unsafe partial class CasterPass
         if (layers <= 0 || size <= 0) return default;
         if (!id.IsNull && madeSize == size && madeLayers == layers) return id;
         var s = _vk;
-        s.Dev!.Destroy(id);
+        if (s.DownUntil != 0 && s.Dev!.Frame < s.DownUntil) return default;
         // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
         // ownership transfer, as the beside G-buffer pass samples them at the same time
-        id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
+        ImageId made = s.Dev!.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
                                              // CopyDst: the stale layers clear as a transfer, not as a pass per layer
                                              ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async | ImageUse.CopyDst
                                              | (copySrc ? ImageUse.CopySrc : ImageUse.None), label));
-        if (id.IsNull)
+        if (made.IsNull && s.Dev.LastRefusalWasRoom)
+        {
+            s.DownUntil = s.Dev.Frame + VkBackend.MoveBackPeriod;
+            if (!s.DownSaid)
+                _log?.Always($"CasterPass: {StandDownNowTag}: no heap took a {size}x{size} {kind} of {layers} layers for {label} "
+                           + "-- no Alloy shadow is baked until the next move back tries it again");
+            s.DownSaid = true;
+            return default;
+        }
+        if (made.IsNull)
         {
             s.Failed = true;
-            _log?.Always($"CasterPass: the Vulkan device REFUSED a {size}x{size} {kind} of {layers} layers for {label} "
+            _log?.Always($"CasterPass: {StandDownSessionTag}: the Vulkan device REFUSED a {size}x{size} {kind} of {layers} layers for {label} "
                        + "-- no Alloy shadow is baked this session");
             return default;
         }
+        s.Dev.Destroy(id);
+        id = made;
+        s.DownUntil = 0;
         madeSize = size; madeLayers = layers;
         return id;
     }
