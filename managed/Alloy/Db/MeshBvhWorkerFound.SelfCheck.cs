@@ -10,6 +10,10 @@ internal static partial class MeshBvhWorkerApprovedExamples
 {
     /// <summary>Quads along a side of a mesh past <see cref="MeshBvh.MaxFaces"/>, and its faces by hand (2 x 182 x 182).</summary>
     private const int OverSide = 182, OverFaces = 66248;
+    /// <summary>Meshes the worker's queue holds at once, restated by hand from the worker's own cap.</summary>
+    private const int QueueHolds = 4096;
+    /// <summary>Waits for a drain of <see cref="QueueHolds"/> small builds, each up to <see cref="WaitMs"/>.</summary>
+    private const int DrainTries = 20;
 
     internal static bool FoundSelfCheck(ExtenderLog log)
     {
@@ -22,6 +26,9 @@ internal static partial class MeshBvhWorkerApprovedExamples
         SharedRequeuedAfterBuild(check);
         OverCapFiledUntreed(check);
         FiledNotQueued(check);
+        QueueFullTurnsAway(check);
+        FaultFilesNothing(check);
+        WalkAnswersNormal(check);
 
         if (check.Ok) log.Info("MeshBvhWorkerFound.SelfCheck: passed");
         return check.Ok;
@@ -148,6 +155,85 @@ internal static partial class MeshBvhWorkerApprovedExamples
                          $"F5 the worker builds no second tree ({MeshBvh.BuiltOnWorker - worker0} built)");
         }
         finally { Tear(a); }
+    }
+
+    // Given the worker parked mid-build and the queue filled to exactly what it holds
+    // When one more mesh is noted
+    // Then the note is turned away and counted, and every mesh already queued still drains
+    /// <summary>A note at a full queue is counted and queues nothing, and the queue it found full still drains whole.</summary>
+    private static void QueueFullTurnsAway(Checker check)
+    {
+        Area a = NewArea();
+        var fill = new MeshDef[QueueHolds + 2];
+        for (int i = 0; i < fill.Length; i++) fill[i] = Grid(1, 1f);
+        Model(a, "queuecap", fill);
+        try
+        {
+            check.Expect(Settle(), "F6 the worker starts idle");
+            MeshBvh.HoldWorker();
+            MeshBvh.Prewarm(fill[0]);
+            check.Expect(Parked(fill[0]), "F6 the held worker parks on the first mesh");
+            for (int i = 1; i <= QueueHolds; i++) MeshBvh.Prewarm(fill[i]);
+            long full0 = MeshBvh.QueueFull;
+            MeshDef extra = fill[QueueHolds + 1];
+            MeshBvh.Prewarm(extra);
+            check.Expect(MeshBvh.QueueFull - full0 == 1 && !MeshBvh.Queued(extra) && MeshBvh.Queued(fill[1]),
+                         $"F6 a note at a queue of {QueueHolds} was counted {MeshBvh.QueueFull - full0} times, queued ({MeshBvh.Queued(extra)}), or pushed out the first queued mesh");
+            MeshBvh.ReleaseWorker();
+            bool drained = false;
+            for (int i = 0; i < DrainTries && !drained; i++) drained = Settle();
+            check.Expect(drained && MeshBvh.Filed(fill[1]) && MeshBvh.Filed(fill[QueueHolds]) && !MeshBvh.Filed(extra),
+                         $"F6 the full queue drained ({drained}) and filed its first and last mesh, and nothing of the turned-away one");
+        }
+        finally { MeshBvh.ReleaseWorker(); Settle(); Tear(a); }
+    }
+
+    // Given a mesh whose face names a vertex past its positions
+    // When the worker builds its tree and the build throws
+    // Then the fault is counted and no tree of that mesh is filed
+    /// <summary>A build the worker loses to an exception files no half-built tree.</summary>
+    private static void FaultFilesNothing(Checker check)
+    {
+        Area a = NewArea();
+        var bad = new MeshDef
+        {
+            Positions = new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitY },
+            Faces = new[] { new FaceDef { V0 = 0, V1 = 1, V2 = 7, Adj0 = -1, Adj1 = -1, Adj2 = -1, PlaneNormal = Vector3.UnitZ } },
+        };
+        Model(a, "fault", bad);
+        try
+        {
+            long faults0 = MeshBvh.Faults;
+            MeshBvh.Prewarm(bad);
+            check.Expect(Settle(), "F7 the worker drains");
+            check.Expect(MeshBvh.Faults - faults0 == 1 && !MeshBvh.Filed(bad),
+                         $"F7 the throwing build counted {MeshBvh.Faults - faults0} faults and filed a tree ({MeshBvh.Filed(bad)})");
+        }
+        finally { Tear(a); }
+    }
+
+    // Given the worker parked mid-build on a flat grid mesh
+    // When a cast goes straight down onto that mesh
+    // Then it walks every face and answers the hit face's normal, +z
+    /// <summary>A cast while the worker holds the mesh walks its faces and answers the hit face's normal.</summary>
+    private static void WalkAnswersNormal(Checker check)
+    {
+        Area a = NewArea();
+        MeshDef mesh = Grid(Side, 2f);
+        Model(a, "walk", mesh);
+        try
+        {
+            MeshBvh.HoldWorker();
+            MeshBvh.Prewarm(mesh);
+            check.Expect(Parked(mesh), "F8 the held worker parks on the mesh");
+            long tested0 = MeshBvh.FacesTested;
+            Vector3 to = new(0.21f, -0.43f, -1f);
+            int face = MeshBvh.CastMesh(mesh, new Vector3(0.21f, -0.43f, 1f), ref to, 1f, ulong.MaxValue, out Vector3 n);
+            long tested = MeshBvh.FacesTested - tested0;
+            check.Expect(face >= 0 && tested == SideFaces && n == Vector3.UnitZ,
+                         $"F8 the walk hit face {face} after testing {tested} of {SideFaces} faces, with normal {n}, not +z");
+        }
+        finally { MeshBvh.ReleaseWorker(); Settle(); Tear(a); }
     }
 
     /// <summary>Wait for the worker to have nothing queued or in hand, filing nothing.</summary>
