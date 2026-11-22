@@ -56,6 +56,7 @@ REACH = 'cx-mutant-reach'
 OUTSIDE = '(host)'
 COMPILE_TIMEOUT = 1200
 BOOTING = '>> booting the self-checks'
+OUTPUT_CAP = 64 << 20  # a boot that prints past this many bytes is stopped, so a flood never reaches the runner's memory
 POLL = 0.1  # the stop fires this early, so a poll's lag never carries a boot past its deadline
 BIN = os.path.join('bin', 'Release', 'net10.0', 'linux-x64')
 JOBS = max(1, min(3, (os.cpu_count() or 2) // 2))
@@ -366,7 +367,8 @@ def put(path, text):
 def run(work, out, build, k, timeout, only=None):
     """Boots the self-checks with mutant k on (0: none), compiling first when asked, running only the units ``only``
     names (None: every unit). Returns (exit, output, the boot's seconds). The compile has COMPILE_TIMEOUT and the boot,
-    timed from run.sh's booting line, has ``timeout``; past either the whole process group is stopped, exit 124."""
+    timed from run.sh's booting line, has ``timeout``; past either, or past OUTPUT_CAP bytes of output, the whole process group is
+    stopped, exit 124."""
     mine = os.path.join(out, BIN)
     os.makedirs(mine, exist_ok=True)
     put(os.path.join(mine, ACTIVE), str(k))
@@ -382,10 +384,13 @@ def run(work, out, build, k, timeout, only=None):
     p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          start_new_session=True)
     _live.add(p)
-    lines, booted = [], []
+    lines, booted, size = [], [], [0]
 
     def pump():
         for line in p.stdout:
+            size[0] += len(line)
+            if size[0] > OUTPUT_CAP:
+                continue
             lines.append(line)
             if not booted and line.startswith(BOOTING):
                 booted.append(time.monotonic())
@@ -396,7 +401,7 @@ def run(work, out, build, k, timeout, only=None):
     try:
         while p.poll() is None:
             now = time.monotonic()
-            if now - (booted[0] if booted else began) > (timeout if booted else COMPILE_TIMEOUT) - POLL:
+            if size[0] > OUTPUT_CAP or now - (booted[0] if booted else began) > (timeout if booted else COMPILE_TIMEOUT) - POLL:
                 stopped = now
                 os.killpg(p.pid, signal.SIGKILL)
                 p.wait()
@@ -414,6 +419,8 @@ def run(work, out, build, k, timeout, only=None):
     output = ''.join(lines)
     if rc is None:
         rc = p.returncode
+    elif size[0] > OUTPUT_CAP:
+        output += f'\n>> TIMEOUT: the run printed past {OUTPUT_CAP >> 20} MB and was stopped\n'
     else:
         output += f'\n>> TIMEOUT: the run passed its {timeout if booted else COMPILE_TIMEOUT:.0f}s and was stopped\n'
     sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
