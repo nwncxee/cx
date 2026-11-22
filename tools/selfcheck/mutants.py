@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Runs a list of hand mutants against the self-checks with one compile for the lot.
 
-Usage: tools/selfcheck/mutants.py [--whole] [--jobs N] [--logs DIR] <mutants.tsv>
+Usage: tools/selfcheck/mutants.py [--whole] [--jobs N] [--logs DIR] [--check NAME] <mutants.tsv>
 
-  --whole     boot every suite for every mutant
-  --jobs N    boot N mutants side by side, each in a build folder of its own (default: half the cores, at most 3)
-  --logs DIR  keep each mutant boot's cx.log as DIR/<name>.cx.log
+  --whole       boot every suite for every mutant
+  --jobs N      boot N mutants side by side, each in a build folder of its own (default: half the cores, at most 3)
+  --logs DIR    keep each mutant boot's cx.log as DIR/<name>.cx.log
+  --check NAME  judge only the self-check NAME: the unmutated run must log `NAME: passed`, and a mutant is killed
+                when a FAIL line of NAME appears in the run's cx.log or NAME never says it passed. Other checks may
+                fail throughout, as a branch's red tests do; every filtered boot also runs the unit that holds NAME.
 
 Each line of the list is a mutant, four fields split by tabs: a name, a file under managed/, the exact text to
 change (it must occur in the file exactly once) and what it becomes (empty: the text is removed, which only a whole
@@ -425,7 +428,36 @@ def run(work, out, build, k, timeout, only=None):
         output += f'\n>> TIMEOUT: the run passed its {timeout if booted else COMPILE_TIMEOUT:.0f}s and was stopped\n'
     sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
     sys.stdout.flush()
-    return rc, output, took
+    return judged(rc, output) + (took,)
+
+
+CHECK = None
+
+
+def judged(rc, output):
+    """The run's exit as --check sees it: 1 when the named check failed or never passed, 0 when it passed, the
+    exit itself for a failed compile or a timeout, and unchanged with no --check."""
+    if CHECK is None or rc == 124 or '>> FAIL: the managed build failed' in output:
+        return rc, output
+    lines = output.splitlines()
+    logs = [l[3:].strip() for l in lines if l.startswith('>> ') and l.endswith('cx.log')]
+    if logs and os.path.isfile(logs[-1]):
+        with open(logs[-1], encoding='utf-8', errors='replace') as f:
+            lines = f.read().splitlines()
+    if any(CHECK in l and ('FAIL' in l or 'init threw' in l) for l in lines):
+        return 1, '\n'.join(l for l in lines if CHECK in l)
+    if not any(f'{CHECK}: passed' in l for l in lines):
+        return 1, f'{CHECK} FAIL: it never logged that it passed'
+    return 0, output
+
+
+def with_check(only, units):
+    """``only`` plus the unit that holds the --check self-check, so a filtered boot still runs it; None (every unit)
+    when no unit is named for it, as a golden inside the GPU suite is not."""
+    if CHECK is None or only is None:
+        return only
+    mine = {u for u in units if u == CHECK or u.endswith('.' + CHECK)}
+    return only | mine if mine else None
 
 
 def read_reach(work):
@@ -492,7 +524,15 @@ def verdict(m, rc, output):
 
 def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # so the work folder's cleanup below runs on a TERM
+    global CHECK
     args, logs, jobs = argv[1:], None, JOBS
+    if '--check' in args:
+        i = args.index('--check')
+        if i + 1 >= len(args):
+            print(__doc__, file=sys.stderr)
+            return 2
+        CHECK = args[i + 1]
+        del args[i:i + 2]
     whole = '--whole' in args
     if whole:
         args.remove('--whole')
@@ -608,7 +648,7 @@ def main(argv):
                 return untested(m, skips)
             return not verdict(m, rc, output)
 
-        plan = [(m, None if whole else filtered(reach.get(m.k))) for m in switched]
+        plan = [(m, None if whole else with_check(filtered(reach.get(m.k)), units)) for m in switched]
         gate, locks = threading.Lock(), {}
         sys.stdout, pool = _Held(sys.stdout), ThreadPoolExecutor(jobs)
         try:
