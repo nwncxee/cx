@@ -90,7 +90,7 @@ internal static unsafe partial class LightmapBake
         BakeVkState q = _vkb;
         q.QN = 0;
         if (!Enabled || _bakePage < 0 || q.Layers == 0 || !q.Built) return;
-        int size = Math.Max(CasterPass.CubeFaceSize, 64);
+        int size = BakeCubeSize;
         int steps = Math.Min(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame, VkCubes);
         for (int k = 0; k < steps && _bakeLight + k < _bakeLights.Count; k++)
         {
@@ -144,6 +144,21 @@ internal static unsafe partial class LightmapBake
         _log?.Info($"LightmapBake: armed on Vulkan -- page pool up to lightmap.vram {Lightmap.Vram.V} MiB, {VkCubes} scratch cubes, "
                  + $"{Math.Min(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame, VkCubes)} light steps per frame");
         return true;
+    }
+
+    /// <summary>The face size the bake renders its static cubes at.</summary>
+    internal static int BakeCubeSize => Math.Max(CasterPass.CubeFaceSize, 64);
+
+    /// <summary>A page is waiting for room for its scratch, and the area draws with the lightmaps it has.</summary>
+    internal static bool ScratchWaits => false;
+
+    /// <summary>A fixture area baked on <paramref name="vk"/> through the bake's own path with the scratch whole or
+    /// halved, its disk cache in <paramref name="cacheDir"/>: the pages' bytes, null when it could not run, and the
+    /// rects the cache answered.</summary>
+    internal static byte[]? FixtureBake(VkBackend vk, ExtenderLog log, bool halfScratch, string cacheDir, out int cacheHits)
+    {
+        cacheHits = 0;
+        return null;
     }
 
     /// <summary>A page is opening: the scratch planes and block images, made if the last ones were let go.</summary>

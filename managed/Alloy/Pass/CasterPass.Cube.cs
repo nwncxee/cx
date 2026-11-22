@@ -38,6 +38,10 @@ public sealed unsafe partial class CasterPass
     internal static readonly IntPtr[] CubeLightId = new IntPtr[MaxCubes];
     /// <summary>Face size of the cube array as rendered -- the receiver's texel scale.</summary>
     internal static int CubeFaceSize => _cubeSize;
+
+    /// <summary>The face size the moving-caster cubes draw at.</summary>
+    internal static int CubeDynFaceSize => _cubeDynSize;
+
     /// <summary>Near plane the cubes were rendered with; welds the receiver's depth reference to the render.</summary>
     /// <summary>Every point cube's near plane: the self-shadow skip radius (<c>shadow.near</c> x <c>light.radius</c>),
     /// never under <see cref="CubeNear"/>. The geometry a light node sits in (a brazier's bowl) casts nothing,

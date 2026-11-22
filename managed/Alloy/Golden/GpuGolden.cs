@@ -69,6 +69,7 @@ internal static partial class GpuGolden
         VmaSelfCheck(vk, check, log);
         VmaMoreSelfCheck(vk, check, log);
         VramCapApprovedSelfCheck(vk, log);
+        LightmapBake.VramGoldens(vk, check, log);
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
         DestroyedBufferSelfCheck(vk, check, log);

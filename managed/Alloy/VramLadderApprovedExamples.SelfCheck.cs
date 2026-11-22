@@ -22,6 +22,7 @@ internal static class VramLadderApprovedExamples
     private const string ShadowLine = "shadow quality was lowered to fit VRAM";
 
     /// <summary>Every CPU example, each on a freshly armed ladder; the ladder is disarmed after.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
