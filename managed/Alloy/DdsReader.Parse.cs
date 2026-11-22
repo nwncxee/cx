@@ -187,26 +187,4 @@ internal static partial class DdsReader
 
     /// <summary>Largest side accepted: GL 4.6's minimum MAX_TEXTURE_SIZE is 16384, and nothing shipped is near it.</summary>
     private const int MaxSide = 16384;
-
-    /// <summary>Copy the chain into <paramref name="dst"/> (<see cref="Info.ChainBytes"/> long). A partial
-    /// chain's missing levels are filled with the last present level's first block, so the engine's unbounded
-    /// geometric walk reads memory we own and a far mip reads roughly the texture's colour.</summary>
-    internal static void CopyChain(ReadOnlySpan<byte> raw, in Info info, Span<byte> dst)
-    {
-        int bb = BlockBytes(info.Channels);
-        long off = 0, lastBlock = 0;
-        int lv = 0;
-        for (int w = info.W, h = info.H; lv < info.Levels; lv++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
-        {
-            int sz = LevelSize(w, h, info.Channels);
-            if (lv < info.Present)
-            {
-                raw.Slice(info.DataOffset + (int)off, sz).CopyTo(dst.Slice((int)off, sz));
-                lastBlock = off;
-            }
-            else
-                for (int b = 0; b < sz; b += bb) dst.Slice((int)lastBlock, bb).CopyTo(dst.Slice((int)off + b, bb));
-            off += sz;
-        }
-    }
 }
