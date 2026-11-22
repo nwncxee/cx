@@ -2,7 +2,7 @@
 # keep-staged.sh's and where.sh's approved examples (CX-590, E1 to E3): a staged build is kept, and called CURRENT,
 # only across a commit that changes comments or Markdown. Run against a fixture checkout of its own, so no build and
 # no real staged folder is involved. Oracle: the fixture's sources and the expectations written by hand below.
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 rc=0
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
