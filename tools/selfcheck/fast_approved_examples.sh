@@ -88,5 +88,41 @@ e2_rc=$?
 grep -q '^>> FAIL: a SelfCheck suite failed:' "$tmp/e2.out" || fail "E2: no '>> FAIL: a SelfCheck suite failed:' line"
 grep -q '\[cx\] HexColour.SelfCheck FAIL: #RRGGBB is opaque$' "$tmp/e2.out" || fail "E2: no 'HexColour.SelfCheck FAIL: #RRGGBB is opaque' line"
 
-[ $rc = 0 ] && echo ">> fast self-check approved examples: E1 to E4 pass (${took}s)" || echo "!! fast self-check approved examples: FAILED (above)" >&2
+# CX-633 E6
+# Given a machine with a Vulkan device
+# When tools/selfcheck/run.sh boots twice in a row
+# Then no gap between two cx.log lines in either boot is over 5 s, and the whole boot stays under 30 s
+# CX-633 E7
+# Given a fast-path boot that has run once
+# When it runs again
+# Then cx.log does not say "pipeline cache empty", and a player's cx.cfg still never reaches the suites
+# Seconds between cx.log's lines: the widest gap and the whole span, as "<gap> <span> <line after the gap>".
+span() { python3 -c 'import sys, datetime as d
+ts = []
+for l in open(sys.argv[1], errors="replace"):
+    try: ts.append((d.datetime.fromisoformat(l.split(" ")[0][:26]), l.strip()[:160]))
+    except ValueError: pass
+g = max(((b[0] - a[0]).total_seconds(), b[1]) for a, b in zip(ts, ts[1:]))
+print(f"{g[0]:.1f} {(ts[-1][0] - ts[0][0]).total_seconds():.1f} {g[1]}")' "$1"; }
+if command -v vulkaninfo > /dev/null && vulkaninfo --summary > /dev/null 2>&1; then
+  cfg="build/selfcheck/home/.local/share/Neverwinter Nights/cx.cfg"
+  trap 'rm -rf "$tmp"; rm -f "$cfg"' EXIT
+  vk_ran=1
+  for boot in 1 2; do
+    if [ "$boot" = 2 ]; then mkdir -p "$(dirname "$cfg")"; echo "# a player's cx.cfg, planted by CX-633 E7" > "$cfg"; fi
+    capped tools/selfcheck/run.sh --no-build > "$tmp/boot$boot.out" 2>&1 || fail "E6: boot $boot failed -- $(tail -3 "$tmp/boot$boot.out")"
+    [ "$boot" = 2 ] && grep -q 'pipeline cache empty' build/selfcheck/cx.log && fail "E7: the second boot started with an empty pipeline cache"
+    read -r gap whole after <<< "$(span build/selfcheck/cx.log)"
+    echo ">> boot $boot: widest gap ${gap}s, whole boot ${whole}s"
+    awk -v g="$gap" 'BEGIN { exit !(g > 5) }' && fail "E6: boot $boot has a ${gap}s gap before: $after"
+    awk -v w="$whole" 'BEGIN { exit !(w >= 30) }' && fail "E6: boot $boot took ${whole}s, not under 30 s"
+  done
+  grep -qF "CX-633 E7" "$cfg" 2> /dev/null && fail "E7: the planted cx.cfg was still in the suites' home"
+else
+  vk_ran=0
+  echo ">> CX-633 E6 and E7: SKIPPED: no Vulkan device here"
+fi
+
+[ $rc = 0 ] && [ "$vk_ran" = 0 ] && echo ">> fast self-check approved examples: E1 to E4 pass, CX-633 E6 and E7 SKIPPED"
+[ $rc = 0 ] && [ "$vk_ran" = 1 ] && echo ">> fast self-check approved examples: E1 to E4, CX-633 E6 and E7 pass (${took}s)" || echo "!! fast self-check approved examples: FAILED (above)" >&2
 exit $rc
