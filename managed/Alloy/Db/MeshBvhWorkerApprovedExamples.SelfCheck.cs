@@ -9,7 +9,7 @@ namespace CX.Alloy.Db;
 
 /// <summary>Object picking builds its mesh trees on a worker (approved examples E1 to E10). Oracle: flat grid meshes
 /// embedded here, whose face counts and hit points are hand-worked literals, and the build counters counted per thread.</summary>
-internal static class MeshBvhWorkerApprovedExamples
+internal static partial class MeshBvhWorkerApprovedExamples
 {
     /// <summary>Quads along one side of a grid mesh, and its faces worked by hand: two triangles a quad, 40 x 40 quads.</summary>
     private const int Side = 40, SideFaces = 3200;

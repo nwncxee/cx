@@ -24,6 +24,7 @@ public sealed class HitTestService : IExtenderService
         HitTestCheck.Run(log);
         OccludeApprovedExamples.SelfCheck(log);
         MeshBvhWorkerApprovedExamples.SelfCheck(log);
+        MeshBvhWorkerApprovedExamples.FoundSelfCheck(log);
         HitProbe.Install(log, hooks);
         TooltipProbe.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 35, Period, "HitTest.period", log);

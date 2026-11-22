@@ -69,8 +69,8 @@ public sealed partial class MeshBvh
         w.Wake.Set();
     }
 
-    /// <summary>The filed tree for <paramref name="mesh"/>, building and filing it here when it has none and the worker
-    /// is not on it; null while the worker holds it mid-build, so the caller walks the faces instead of waiting.</summary>
+    /// <summary>Game thread: the filed tree for <paramref name="mesh"/>, building and filing it here when it has none and
+    /// the worker is not on it; null while the worker holds it mid-build, so the caller walks the faces instead.</summary>
     public static MeshBvh? For(MeshDef mesh)
     {
         TreeWorkerState w = _w;
@@ -87,11 +87,7 @@ public sealed partial class MeshBvh
         }
         var b = new MeshBvh();
         b.Build(mesh);
-        lock (w.Gate)
-        {
-            if (_cache.TryGetValue(mesh, out MeshBvh? raced)) return raced;
-            File(w, b);
-        }
+        lock (w.Gate) File(w, b);
         return b;
     }
 
@@ -106,7 +102,10 @@ public sealed partial class MeshBvh
     private static void FileLocked(TreeWorkerState w)
     {
         foreach (MeshBvh b in w.Done)
-            if (w.Jobs.Remove(b.Mesh)) File(w, b);
+        {
+            w.Jobs.Remove(b.Mesh);
+            File(w, b);
+        }
         w.Done.Clear();
     }
 
