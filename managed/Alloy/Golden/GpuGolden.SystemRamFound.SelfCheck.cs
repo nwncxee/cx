@@ -9,6 +9,11 @@ namespace CX.Alloy;
 /// path the mutation pass showed no example reached. Oracle: the warning lines a tapped log hears.</summary>
 internal static partial class GpuGolden
 {
+    /// <summary>Side of the move-back test's one alias member: 2048 x 2048 RGBA8, 16MiB, which fits the 64MiB cap alone.</summary>
+    private const int BackSide = 2048;
+    /// <summary>MiB the filler leaves the capped heap, under the member's 16MiB, so the member lands in system RAM.</summary>
+    private const long BackLeaveMiB = 8;
+
     /// <summary>The found system-RAM goldens, judged by the suite's <paramref name="check"/>.</summary>
     private static void SystemRamFound(Checker check, ExtenderLog log)
     {
@@ -23,6 +28,7 @@ internal static partial class GpuGolden
             if (rb.IsNull) { check.Expect(false, "system RAM found: the capped device's readback was refused"); return; }
             Settle(capped, log, rb);
             SpilledAgainWarned(capped, check, ear, heard, rb);
+            GroupMovesBack(capped, check, ear, rb);
         }
         finally
         {
@@ -65,6 +71,33 @@ internal static partial class GpuGolden
         {
             if (!small.IsNull) vk.Destroy(small);
             if (!big.IsNull) vk.Destroy(big);
+            Settle(vk, ear, rb);
+        }
+    }
+
+    // Given an alias group that landed in system RAM while the capped heap was full, and nothing else there
+    // When the heap is emptied, a move-back check runs and the next frame is submitted
+    // Then the group is back in device memory
+    private static void GroupMovesBack(VkBackend vk, Checker check, ExtenderLog ear, BufferId rb)
+    {
+        BufferId fill = Filler(vk, BackLeaveMiB * MiB, "golden sysram back filler");
+        ImageId member = Target(vk, BackSide, "golden sysram back member", "golden sysram back");
+        try
+        {
+            check.Expect(!fill.IsNull && !member.IsNull && vk.InSystemRam(member),
+                         $"system RAM back: precondition: filler {!fill.IsNull}, member {!member.IsNull}, in system RAM {!member.IsNull && vk.InSystemRam(member)}");
+            if (fill.IsNull || member.IsNull) return;
+            vk.Destroy(fill);
+            fill = default;
+            Settle(vk, ear, rb);
+            vk.MoveBackCheck();
+            Settle(vk, ear, rb);
+            check.Expect(!vk.InSystemRam(member), "system RAM back: the alias group is still in system RAM after room returned and a move-back check ran");
+        }
+        finally
+        {
+            if (!fill.IsNull) vk.Destroy(fill);
+            if (!member.IsNull) vk.Destroy(member);
             Settle(vk, ear, rb);
         }
     }
