@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # An SSBO binding point past the driver's budget fails to compile and costs the whole program (Intel's Windows GL has
 # 16 points, which left the whole GUI undrawn). The budget and every slot live in managed/Alloy/Core/SsboSlots.cs, read
 # here by that file name. Refused: an std430 or scalar STORAGE block's binding literal at or past the budget (the
@@ -6,7 +7,7 @@
 # ubo-bindings.sh counts -- so the declaration kind is what each gate matches on), a slot constant at or past it, and
 # a numeric SSBO index handed straight to BindBufferBase/BindBufferRange, which no table or check would ever see -- or
 # to a seam BufferBinding (uniform or storage; managed/Rhi/'s own self-check exempt).
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 - <<'EOF' || exit 1
 import re, subprocess, sys
 slots = open("managed/Alloy/Core/SsboSlots.cs").read()

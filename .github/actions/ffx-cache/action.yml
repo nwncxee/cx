@@ -1,0 +1,22 @@
+# FidelityFX's SDK, its shaders and libcxfsr.a, keyed on everything they are built from. ci.yml and ffx-cache.yml
+# both use this step, so the two save and restore one cache: its key and its paths, which GitHub folds into the
+# cache's version, are written once. Each build step's stamp holds a hash of its inputs (tools/ffx/stamp.sh), so a
+# restored copy is reused whatever its file times.
+name: ffx-cache
+description: Restore FSR's build, and save it at the end of the job on a miss.
+outputs:
+  cache-hit:
+    description: true when the exact key was restored
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          build/deps
+          build/ffx
+          build/libcxfsr.a
+          build/libcxfsr.a.key
+        key: ffx-${{ runner.os }}-${{ hashFiles('tools/deps.json', 'tools/deps.py', 'native/ffx/**', 'tools/ffx/**', 'flake.lock') }}

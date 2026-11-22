@@ -23,6 +23,10 @@ AUTO_SETTER = re.compile(r'\{\s*' + ACCESS + r'get\s*;\s*' + ACCESS + r'(?:set|i
                          + r'|\{\s*' + ACCESS + r'(?:set|init)\s*;\s*' + ACCESS + r'get\s*;\s*\}')
 
 
+_BLANK_STOPS = re.compile(r'//|/\*|[@$]{1,2}"|["\']')
+_NOT_NL = re.compile(r'[^\n]')
+
+
 def blank(src):
     """The source with every comment and string literal replaced by spaces (newlines kept)."""
     out, i, n = [], 0, len(src)
@@ -89,6 +93,13 @@ def blank(src):
         return n
 
     while i < n:
+        m = _BLANK_STOPS.search(src, i)
+        if m is None:
+            out.append(src[i:])
+            break
+        if m.start() > i:
+            out.append(src[i:m.start()])
+            i = m.start()
         c = src[i]
         if c == '/' and i + 1 < n and src[i + 1] == '/':
             j = src.find('\n', i)
@@ -104,7 +115,7 @@ def blank(src):
             out.append(c)
             i += 1
             continue
-        out.append(re.sub(r'[^\n]', ' ', src[i:j]))
+        out.append(_NOT_NL.sub(' ', src[i:j]))
         i = j
     return ''.join(out)
 

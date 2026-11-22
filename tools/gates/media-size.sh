@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# reaches: media/* tools/gates/*
 # A file under media/ stays under 300 KB: git keeps every version of a binary forever.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 limit=307200
 rc=0
 while IFS= read -r f; do

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
+# reaches: .github/workflows/* .github/actions/* tools/gates/* flake.nix flake.lock
 # Every workflow under .github/workflows/ passes actionlint (valid YAML and expressions, known runner labels,
 # run: scripts with no shellcheck warning) and zizmor's offline security audits (no cache feeding a release,
-# no persisted checkout token, no template injection).
+# no persisted checkout token, no template injection); zizmor audits the composite actions under .github/actions/
+# too, which actionlint does not read.
 cd "$(dirname "$0")/../.." || exit 1
 if ! command -v actionlint >/dev/null || ! command -v shellcheck >/dev/null || ! command -v zizmor >/dev/null; then
   # Outside nix develop (the Claude Code hook), borrow flake.nix's pinned gates shell once.
@@ -12,5 +14,5 @@ if ! command -v actionlint >/dev/null || ! command -v shellcheck >/dev/null || !
 fi
 SHELLCHECK_OPTS=--severity=warning actionlint .github/workflows/*.yml ||
   { echo "!! workflows: actionlint refused a workflow (above)" >&2; exit 1; }
-zizmor --offline --quiet .github/workflows/ ||
+zizmor --offline --quiet .github/ ||
   { echo "!! workflows: zizmor refused a workflow (above)" >&2; exit 1; }

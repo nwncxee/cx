@@ -36,22 +36,34 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 NUMBER = re.compile(r"0[xXbB][0-9a-fA-F_]+[uUlL]*|\.?[0-9][0-9_]*(?:\.[0-9_]+)?(?:[eE][+-]?[0-9]+)?[fFdDmMuUlL]*")
 
 
+_STOPS = re.compile(r"[/\"']")
+_SLASH = re.compile(r"/")
+_NOT_NL = re.compile(r"[^\n]")
+_QUOTES = str.maketrans("\"'", "  ")
+
+
 def mask(src: str, strings: bool = True) -> str:
     """Blank out comments and (unless asked not to) string and char literals, keeping every offset."""
     out = list(src)
     i, n = 0, len(src)
+    stops = _STOPS if strings else _SLASH
     while i < n:
+        m = stops.search(src, i)
+        if m is None:
+            break
+        i = m.start()
         c = src[i]
         if c == "/" and i + 1 < n and src[i + 1] == "/":
-            while i < n and src[i] != "\n":
-                out[i] = " "
-                i += 1
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            out[i:j] = " " * (j - i)
+            i = j
             continue
         if c == "/" and i + 1 < n and src[i + 1] == "*":
-            while i < n and not (src[i] == "*" and i + 1 < n and src[i + 1] == "/"):
-                if src[i] != "\n":
-                    out[i] = " "
-                i += 1
+            j = src.find("*/", i)
+            j = n if j < 0 else j
+            out[i:j] = _NOT_NL.sub(" ", src[i:j])
+            i = j
             for k in range(i, min(i + 2, n)):
                 out[k] = " "
             i += 2
@@ -94,7 +106,7 @@ def mask(src: str, strings: bool = True) -> str:
     if not strings:
         return "".join(out)
     # the opening quote/apostrophe itself
-    return "".join(" " if ch in "\"'" else ch for ch in out)
+    return "".join(out).translate(_QUOTES)
 
 
 def regions(path: Path, masked: str):
@@ -391,9 +403,10 @@ def scan(path: Path, qualified=None):
 
 def main():
     """Default: report every hit and fail on any but the const-against-literal shape, whose standing
-    instances are a shrink-only census instead (`--census`, fed to ratchet.sh by selfcheck.sh)."""
+    instances are a shrink-only census instead (`--census`; `--census-to FILE` writes it beside the report)."""
     verbose = "-v" in sys.argv
     census = "--census" in sys.argv
+    census_to = sys.argv[sys.argv.index("--census-to") + 1] if "--census-to" in sys.argv else None
     hard, counts = 0, {}
     qualified = qualified_consts()
     for path in sorted(MANAGED.rglob("*.cs")):
@@ -413,6 +426,9 @@ def main():
         for name in sorted(counts):
             print(f"{counts[name]} {name}")
         return 0
+    if census_to:
+        with open(census_to, "w") as f:
+            f.writelines(f"{counts[name]} {name}\n" for name in sorted(counts))
     if hard:
         print(f"!! selfcheck: {hard} assertion(s) that cannot fail, or an uncounted skip (CX-200).", file=sys.stderr)
         print("!! A self-check's expected value comes from an INDEPENDENT oracle: a hand-written literal,", file=sys.stderr)

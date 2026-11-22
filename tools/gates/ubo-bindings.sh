@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# reaches: managed/* tools/gates/*
 # CX-316: every non-opaque uniform lives in a std140 or scalar block on an explicit binding point, and the points live in
 # managed/Alloy/Core/UboSlots.cs, read here by that file name. A point past the driver's budget fails to compile
 # and costs the whole program; two blocks on one point are no error at all -- the reader gets the other block.
@@ -6,7 +7,7 @@
 # alone does not say which budget a block answers to -- `scalar` is legal on a storage block, which ssbo-bindings.sh
 # counts -- so the declaration kind is what each gate matches on), a slot constant at or past it, and a numeric index
 # handed straight to BindBufferBase/BindBufferRange on UNIFORM_BUFFER, which no table or check would ever see.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 - <<'EOF' || exit 1
 import re, subprocess, sys
 slots = open("managed/Alloy/Core/UboSlots.cs").read()

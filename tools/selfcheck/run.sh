@@ -98,10 +98,12 @@ fi
 host=$out/nwmain-selfcheck
 bash tools/stub-host.sh "$host" native/selfcheck_host.c || exit 2
 
-# Its own HOME, as run-demo.sh gives the demo: a player's cx.cfg would move the defaults the suites assert.
+# Its own HOME, as run-demo.sh gives the demo: a player's cx.cfg would move the defaults the suites assert. The
+# home outlives the run so the Vulkan pipeline cache is warm next time; its cx.cfg and last log go every run.
 home=$out/home
-rm -rf "$home"; mkdir -p "$home"
-log="$home/.local/share/Neverwinter Nights/logs/cx.log"
+nwn="$home/.local/share/Neverwinter Nights"
+rm -rf "$nwn/cx.cfg" "$nwn/logs"; mkdir -p "$home"
+log="$nwn/logs/cx.log"
 # The Vulkan loader the machine's own vulkaninfo runs with, found on its runpath: the dev shell's glibc resolves no
 # soname, and a NixOS loader sits at no fixed path. With it the GPU goldens run; a machine with none SKIPs them.
 vkdir=""

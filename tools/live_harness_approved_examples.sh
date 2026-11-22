@@ -5,8 +5,12 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
+# Given text the harness types into the client
+# When the keymap turns it into key presses
+# Then shifted characters keep their shift
 python3 -I "$ROOT/tools/live/keymap_test.py" || fail=1
 
+# shellcheck source=tools/live/harness-lib.sh disable=SC1091 # linted on its own
 . "$ROOT/tools/live/harness-lib.sh"
 expect() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: wanted [$3], got [$2]"; fail=1; fi; }
 
@@ -17,6 +21,9 @@ echo a > "$t/tools/live/run-live.sh"; echo a > "$t/docs/x.md"
 git -C "$t" add -A && git -C "$t" commit -qm one
 old=$(git -C "$t" rev-parse HEAD)
 git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"
+# Given a staged build and the commits made since it was staged
+# When the harness checks the stage before it starts a client
+# Then a stage of HEAD or a docs-only change runs, and a stage older than the harness or runtime is refused by name
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a stage of HEAD runs" "$?" 0
 echo b > "$t/docs/x.md"; git -C "$t" commit -qam docs
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a docs-only change since the stage runs" "$?" 0

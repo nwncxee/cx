@@ -25,6 +25,7 @@ both=(
 # notices into LICENSES.txt, and the settings spec is here because the knob-spec-rows gate reads its rows.
 linux=(
   build.sh
+  .github/actions/ffx-cache/action.yml
   run-demo.sh
   flake.nix
   flake.lock

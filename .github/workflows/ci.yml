@@ -73,6 +73,9 @@ jobs:
           name: westgate
           skipPush: true
 
+      # FSR's cache: restored from this pull request's own runs, else from main's (ffx-cache.yml saves it there).
+      - uses: ./.github/actions/ffx-cache
+
       # The gates and approved examples run beside this job, in no-decompiled and examples.
       # run-demo.sh runs what build.sh just staged instead of building it a second time.
       - name: Build + load smoke

@@ -16,42 +16,66 @@ A field is matched to its declaration by the class that declares it (`HitCheck =
 `Renderer`), and a read to that declaration by its qualifier (`Renderer.HitCheck.Boot`), or, bare, by the class
 or the file it is read in. `Size`, `Viz`, `X` and the like are declared by several passes, so a bare read in a
 third class names no declaration; those reads are listed under `-v` and fail nothing."""
-import os, re, sys, collections
+import bisect, os, re, sys, collections
 
 ROOT = os.environ.get('CX_ROOT', '.')
-FACT = re.compile(r'\b(\w+)\s*=\s*\w+\.(?:Toggle|Slider|Dropdown|Swatch|Text|List)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
-READ = re.compile(r'(?:(\w+)\s*\.\s*)?\b(\w+)\.(V|Boot)\b')
+FACT = re.compile(r'\b(\w++)\s*=\s*\w++\.(?:Toggle|Slider|Dropdown|Swatch|Text|List)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
+READ = re.compile(r'(?:\b(\w++)\s*\.\s*)?\b(\w++)\.(V|Boot)\b')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 
 
+STRING_TAIL = re.compile(r'(?:\\.|[^"\\])*', re.S)
+_STOPS = {}
+
+
 def balanced_end(text, start, open_c='(', close_c=')'):
-    """The index of the bracket closing the one at `start`, string literals and comments skipped."""
+    """The index of the bracket closing the one at `start`, string literals and comments skipped. Jumps from one
+    quote, comment or bracket to the next rather than stepping every character."""
+    stops = _STOPS.get((open_c, close_c))
+    if stops is None:
+        stops = _STOPS[(open_c, close_c)] = re.compile(r'"|//|/\*|' + re.escape(open_c) + '|' + re.escape(close_c))
     depth, i, n = 0, start, len(text)
     while i < n:
-        c = text[i]
-        if c == '"':
-            i += 1
-            while i < n and text[i] != '"':
-                i += 2 if text[i] == '\\' else 1
-        elif text.startswith('//', i):
-            i = text.find('\n', i)
-            if i < 0:
+        m = stops.search(text, i)
+        if m is None:
+            return n
+        j, t = m.start(), m.group()
+        if t == '"':
+            i = STRING_TAIL.match(text, j + 1).end() + 1
+            continue
+        if t == '//':
+            k = text.find('\n', j)
+            if k < 0:
                 return n
-        elif text.startswith('/*', i):
-            i = text.find('*/', i) + 1
-        elif c == open_c:
-            depth += 1
-        elif c == close_c:
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
+            i = k + 1
+            continue
+        if t == '/*':
+            k = text.find('*/', j)
+            if k < 0:
+                return n
+            i = k + 2
+            continue
+        depth += 1 if t == open_c else -1
+        if depth == 0:
+            return j
+        i = j + 1
     return n
 
 
 def balanced(text, start):
     """The span inside the brackets opening at `start`."""
     return text[start + 1:balanced_end(text, start)]
+
+
+_NEWLINES = {}
+
+
+def line_of(path, text, pos):
+    """The 1-based line `pos` falls on, from the file's newline offsets, found once."""
+    nl = _NEWLINES.get(path)
+    if nl is None:
+        nl = _NEWLINES[path] = [m.start() for m in re.finditer('\n', text)]
+    return bisect.bisect_left(nl, pos) + 1
 
 
 texts = {}
@@ -92,7 +116,7 @@ for path, text in texts.items():
     for m in FACT.finditer(text):
         field, open_at, key = m.group(1), m.start(2), m.group(3)
         args = balanced(text, open_at)
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         cls = owner(path, m.start()) or ''
         decl[(cls, field)] = (key, 'Effect.Restart' in args, path, line)
         by_field[field].append((cls, path))
@@ -109,7 +133,7 @@ for path, text in texts.items():
         candidates = by_field.get(field)
         if not candidates:
             continue
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         if len(candidates) == 1:
             pick = candidates[0][0]
         else:
@@ -122,11 +146,14 @@ for path, text in texts.items():
             continue
         reads[(pick, field)].append((path, line, how))
 
+per = collections.Counter(u.split(':')[0] for u in unresolved)
 if '--census' in sys.argv:
-    per = collections.Counter(u.split(':')[0] for u in unresolved)
     for f, n in sorted(per.items()):
         print(n, f)
     sys.exit(0)
+if '--census-to' in sys.argv:
+    with open(sys.argv[sys.argv.index('--census-to') + 1], 'w') as out:
+        out.writelines(f'{n} {f}\n' for f, n in sorted(per.items()))
 
 verbose = '-v' in sys.argv
 for (cls, field), (key, restart, path, line) in sorted(decl.items()):

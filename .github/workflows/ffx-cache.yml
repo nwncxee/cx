@@ -1,0 +1,55 @@
+# Saves FSR's cache from main. A pull request's run may restore a cache its base branch saved, never one another
+# pull request saved, so without this every pull request's first run would build FSR from scratch.
+# It runs when an input of the cache key changes, and every third day restores it so the cache is not evicted.
+name: ffx-cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/deps.json
+      - tools/deps.py
+      - 'native/ffx/**'
+      - 'tools/ffx/**'
+      - flake.lock
+      - .github/actions/ffx-cache/action.yml
+      - .github/workflows/ffx-cache.yml
+  schedule:
+    - cron: '23 4 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ffx-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ffx-cache:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: ffx
+        uses: ./.github/actions/ffx-cache
+
+      # On a hit the restore is the whole job; on a miss the cache step saves what the last step builds and fetches
+      # when the job ends: the audio sources too, so the copy a pull request restores holds what build.sh reads there.
+      - if: steps.ffx.outputs.cache-hit != 'true'
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - if: steps.ffx.outputs.cache-hit != 'true'
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: westgate
+          skipPush: true
+
+      - name: Build FSR and fetch the audio sources
+        if: steps.ffx.outputs.cache-hit != 'true'
+        run: >-
+          nix develop .#ci --command bash -c 'bash tools/ffx/prepare.sh python3 glslang && bash tools/ffx/build-lib.sh
+          && python3 tools/deps.py openal-src build/deps && python3 tools/deps.py steamaudio build/deps/sa'
