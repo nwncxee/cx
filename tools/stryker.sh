@@ -6,9 +6,10 @@
 #   --since REV   mutate the core lines changed since REV (default: the merge-base with origin/main)
 #   --output DIR  where Stryker writes reports/mutation-report.json (default: build/stryker)
 #
-# Prints one line per file, "<file>: <n> killed, <n> survived, <n> timed out", then "SURVIVED <file>:<line> <mutator>
-# <the replacement>" for each survivor. Exit 0 when nothing survived, 1 when a mutant survived, 2 on bad arguments or
-# a Stryker run that wrote no report. Linux-only, like the rest of the developer tooling.
+# Prints one line per file, "<file>: <n> killed, <n> survived, <n> timed out, <n> untested", then "SURVIVED <file>:<line>
+# <mutator> <the replacement>" for each survivor and "UNTESTED ..." for each mutant no test covers (tools/stryker_summary.py).
+# Exit 0 when every mutant was killed, 1 when one survived or went untested, 2 on bad arguments or a Stryker run that
+# wrote no report. Linux-only, like the rest of the developer tooling.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 since="" out="$PWD/build/stryker"
@@ -52,19 +53,4 @@ rm -rf "$out"
   --concurrency "$(( ($(nproc) + 1) / 2 > 3 ? 3 : ($(nproc) + 1) / 2 ))" "${args[@]}") >&2
 report=$out/reports/mutation-report.json
 [ -f "$report" ] || { echo "!! Stryker wrote no $report" >&2; exit 2; }
-python3 -I - "$report" <<'PY'
-import json, sys
-r = json.load(open(sys.argv[1]))
-survived = []
-for f, v in sorted(r['files'].items()):
-    ms = [m for m in v['mutants'] if m['status'] not in ('Ignored', 'NoCoverage', 'CompileError')]
-    if not ms:
-        continue
-    name = f.split('/')[-1]
-    n = lambda s: sum(m['status'] == s for m in ms)
-    print(f'{name}: {n("Killed")} killed, {n("Survived")} survived, {n("Timeout")} timed out')
-    survived += [f"SURVIVED {name}:{m['location']['start']['line']} {m['mutatorName']} {m.get('replacement', '')}".rstrip()
-                 for m in ms if m['status'] == 'Survived']
-print('\n'.join(survived)) if survived else None
-sys.exit(1 if survived else 0)
-PY
+python3 -I tools/stryker_summary.py "$report"
