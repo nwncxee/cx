@@ -6,5 +6,5 @@
 # grep cannot. This gate does the one thing the compiler cannot -- refuse a name in that list that no file in
 # the tree answers to, so a deleted or renamed book-keeper leaves no standing permission behind it. The list is
 # read out of VulkanDevice.cs, never restated here.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 -I tools/gates/confined.py vma-confined tools/analyzers/VulkanDevice.cs CX0005 "a VMA virtual block"

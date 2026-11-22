@@ -5,5 +5,5 @@
 # argument from any other string, which a grep cannot. This gate does the one thing the compiler cannot -- refuse
 # a name in that list that no file in the tree answers to. The list is read out of SamplerRegex.cs, never
 # restated here. An argument names another tree to check.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 -I tools/gates/confined.py sampler-regex tools/analyzers/SamplerRegex.cs CX0008 "a sampler regex" "$@"

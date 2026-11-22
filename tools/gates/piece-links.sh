@@ -4,7 +4,7 @@
 # then runs forever on the game thread. One file owns the three columns: SceneDb.Pieces.cs links, unlinks and
 # walks them with a cap, a ring check and one owner per piece. A raw read or write anywhere else is a walk
 # nothing bounds, or an owner column that stops agreeing with the lists it answers for.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 hits=$(git -c color.grep=never grep --untracked -nIE 'ObjSeamAppend(Head|Next|Owner)' -- managed \
   ':!managed/Alloy/Db/SceneDb.Pieces.cs' ':!managed/Alloy/Db/SceneDb.Pieces.SelfCheck.cs' \
   | grep -vE ':[0-9]+: *///?' || true)

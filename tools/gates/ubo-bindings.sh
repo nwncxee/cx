@@ -7,7 +7,7 @@
 # alone does not say which budget a block answers to -- `scalar` is legal on a storage block, which ssbo-bindings.sh
 # counts -- so the declaration kind is what each gate matches on), a slot constant at or past it, and a numeric index
 # handed straight to BindBufferBase/BindBufferRange on UNIFORM_BUFFER, which no table or check would ever see.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 - <<'EOF' || exit 1
 import re, subprocess, sys
 slots = open("managed/Alloy/Core/UboSlots.cs").read()

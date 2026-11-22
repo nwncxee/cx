@@ -5,5 +5,5 @@
 # to guard is the GL that stays: CX's own text rig on the engine's renderer, the files CX0003 lists, which own
 # their objects for the session and free none. The census is empty, so the shrink-only ratchet refuses every
 # site. `python3 tools/gates/gpu-frees.py -v` lists any it finds.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 tools/gates/gpu-frees.py | bash tools/gates/ratchet.sh tools/gates/gpu-frees.baseline "$@"

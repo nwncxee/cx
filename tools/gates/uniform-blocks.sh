@@ -5,5 +5,5 @@
 # itself, so every site left is CX's own text rig drawn on the engine's renderer. Counts the
 # remaining loose sites per file under managed/; the ratchet lets a file's count fall only, and a sampler unit
 # is opaque and counts too. `python3 tools/gates/uniform-blocks.py -v` lists each site.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 tools/gates/uniform-blocks.py | bash tools/gates/ratchet.sh tools/gates/uniform-blocks.baseline "$@"

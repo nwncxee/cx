@@ -5,5 +5,5 @@
 # guard from a call, which a grep cannot. This gate does the one thing the compiler cannot -- refuse a name in
 # that list that no file in the tree answers to, so a deleted or renamed file leaves no standing permission
 # behind it. The list is read out of EngineGl.cs, never restated here.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 -I tools/gates/confined.py gl-confined tools/analyzers/EngineGl.cs CX0003 "GL"

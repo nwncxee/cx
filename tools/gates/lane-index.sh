@@ -7,5 +7,5 @@
 # makes the read a lane read, so lane 0 (`a[i * N]`) and the transposed `a[at + k * N]` count as well -- it is
 # one read spelled three ways. An allocation length is a size, not a lane, and is not counted.
 # `python3 tools/gates/lane-index.py -v` lists each site.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 python3 tools/gates/lane-index.py | bash tools/gates/ratchet.sh tools/gates/lane-index.baseline "$@"
