@@ -196,8 +196,8 @@ internal sealed unsafe partial class VkBackend
         Overflow o = OverflowOf(d.Use);
         VkResult r = PlaceImage(&ici, &aci, ImageBytes(d), o, &image, &a, out bool spilled);
         if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<ImageId>($"image {d.Label}: {NoRoomTag}: {d.Kind} {d.Fmt} {d.W}x{d.H}");
-        if (r != VkResult.Success)
-            return Refused<ImageId>($"image {d.Label}: {(NoRoom(r) ? NoRoomTag + ": " : "")}VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
+        if (NoRoom(r)) return RefusedForRoom<ImageId>($"image {d.Label}: {NoRoomTag}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
+        if (r != VkResult.Success) return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H} ({r})");
         Name(VkObjectType.Image, image.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
         uint id = _images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d });

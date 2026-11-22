@@ -34,6 +34,9 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The words the last refusal put in cx.log (or would have, past the logged few).</summary>
     internal string LastFault => _lastFault;
 
+    /// <summary>The last refusal was for want of heap room, so the same allocation may fit once room returns.</summary>
+    internal bool LastRefusalWasRoom => _lastNoRoom;
+
     /// <summary>Shader modules this device still holds. A module is only wanted while a pipeline is being built,
     /// so a build that leaves one behind leaves driver memory with no owner and nothing in the log.</summary>
     internal int LiveShaders => _shaders.Count;
@@ -52,7 +55,7 @@ internal sealed unsafe partial class VkBackend
         Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
         for (int i = 0; i < mp.memoryHeapCount; i++)
         {
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
+            if (!DeviceLocal(mp, i)) continue;
             usage += (long)b[i].usage;
             budget += (long)b[i].budget;
             size += (long)mp.memoryHeaps[i].size;
@@ -90,7 +93,7 @@ internal sealed unsafe partial class VkBackend
         long card = 0;
         int last = -1;
         for (int i = 0; i < mp.memoryHeapCount; i++)
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) { card += (long)mp.memoryHeaps[i].size; last = i; }
+            if (DeviceLocal(mp, i)) { card += (long)mp.memoryHeaps[i].size; last = i; }
         long cap = capMib << 20;
         if (last < 0 || cap >= card)
         {
@@ -101,7 +104,7 @@ internal sealed unsafe partial class VkBackend
         for (int i = 0; i < (int)VK_MAX_MEMORY_HEAPS; i++)
         {
             limits[i] = VK_WHOLE_SIZE;
-            if (i >= mp.memoryHeapCount || (mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
+            if (i >= mp.memoryHeapCount || !DeviceLocal(mp, i)) continue;
             long share = i == last ? cap - given : (long)((Int128)cap * (long)mp.memoryHeaps[i].size / card) >> 20 << 20;
             limits[i] = (ulong)share;
             given += share;
@@ -118,7 +121,7 @@ internal sealed unsafe partial class VkBackend
         Vma.vmaGetMemoryProperties(_vma, &props);
         var sizes = new System.Collections.Generic.List<long>();
         for (int i = 0; i < props->memoryHeapCount; i++)
-            if ((props->memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) sizes.Add((long)props->memoryHeaps[i].size);
+            if (DeviceLocal(*props, i)) sizes.Add((long)props->memoryHeaps[i].size);
         return sizes.ToArray();
     }
 
@@ -132,7 +135,7 @@ internal sealed unsafe partial class VkBackend
         size = 0; blocks = 0; held = 0;
         for (int i = 0; i < props->memoryHeapCount; i++)
         {
-            if ((props->memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0 || (long)props->memoryHeaps[i].size <= size) continue;
+            if (!DeviceLocal(*props, i) || (long)props->memoryHeaps[i].size <= size) continue;
             size = (long)props->memoryHeaps[i].size;
             blocks = (long)t.memoryHeap[i].statistics.blockBytes;
             held = (long)t.memoryHeap[i].statistics.allocationBytes;
@@ -141,29 +144,27 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers
     /// keep resident, which no VRAM figure counts.</summary>
-    internal long HostHeldBytes()
-    {
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
-        long held = 0;
-        for (int i = 0; i < mp.memoryHeapCount; i++)
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) held += (long)t.memoryHeap[i].statistics.blockBytes;
-        return held;
-    }
+    internal long HostHeldBytes() => BlockBytes(deviceLocal: false);
 
     /// <summary>Bytes of device-local blocks VMA keeps from the driver, used or not: past the allocations they hold,
     /// this is memory a freed resource left inside a block that is still partly in use.</summary>
-    internal long DeviceBlockBytes()
+    internal long DeviceBlockBytes() => BlockBytes(deviceLocal: true);
+
+    /// <summary>Bytes of the blocks VMA keeps from the driver on the heaps that are, or are not, device-local.</summary>
+    private long BlockBytes(bool deviceLocal)
     {
         VkPhysicalDeviceMemoryProperties mp;
         _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
         Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
         long blocks = 0;
         for (int i = 0; i < mp.memoryHeapCount; i++)
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) blocks += (long)t.memoryHeap[i].statistics.blockBytes;
+            if (DeviceLocal(mp, i) == deviceLocal) blocks += (long)t.memoryHeap[i].statistics.blockBytes;
         return blocks;
     }
+
+    /// <summary>Heap <paramref name="heap"/> of <paramref name="mp"/> is device-local.</summary>
+    private static bool DeviceLocal(in VkPhysicalDeviceMemoryProperties mp, int heap)
+        => (mp.memoryHeaps[heap].flags & VkMemoryHeapFlags.DeviceLocal) != 0;
 
     /// <summary>Every live allocation summed by its label, the digits taken out and every world texture one row,
     /// largest first, past <paramref name="n"/> folded into one row. Cold: a walk of every live image and buffer.</summary>

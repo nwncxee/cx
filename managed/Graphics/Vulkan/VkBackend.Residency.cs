@@ -23,7 +23,7 @@ internal sealed unsafe partial class VkBackend
         VkPhysicalDeviceMemoryProperties mp;
         _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
         uint heap = mp.memoryTypes[(int)info.memoryType].heapIndex;
-        return (mp.memoryHeaps[(int)heap].flags & VkMemoryHeapFlags.DeviceLocal) == 0;
+        return !DeviceLocal(mp, (int)heap);
     }
 
     /// <summary>Every device-local memory type is also host-visible: an integrated GPU, whose one heap is system RAM.</summary>
@@ -58,8 +58,9 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Frames between two move-back tries: a refused move waits this long before the next.</summary>
     internal const int MoveBackPeriod = 300;
 
-    /// <summary>The move-back check every frame runs once: an image in system RAM goes back to device memory once
-    /// use falls under 80% of the budget, at most one try a period. With nothing in system RAM it only counts.</summary>
+    /// <summary>The move-back check every frame runs once: an image in system RAM goes back to device memory once the
+    /// device-local blocks VMA holds fall under 80% of those heaps' size, at most one try a period. With nothing in
+    /// system RAM it only counts.</summary>
     internal void MoveBackCheck()
     {
         _moveBackChecks++;
@@ -160,9 +161,13 @@ internal sealed unsafe partial class VkBackend
     private static Overflow OverflowOf(BufferUse use) => (use & (BufferUse.Vertex | BufferUse.Index)) != 0 ? Overflow.Refuse : Overflow.SystemRam;
 
     /// <summary>A refusal for want of room that its owner names with its size: counted and kept as the last fault, no line here.</summary>
-    private T Unplaced<T>(string why) where T : struct { _lastFault = why; Fault(); return default; }
+    private T Unplaced<T>(string why) where T : struct { _lastFault = why; _lastNoRoom = true; Fault(); return default; }
 
     private static bool NoRoom(VkResult r) => r is VkResult.ErrorOutOfDeviceMemory or VkResult.ErrorOutOfHostMemory;
+
+    /// <summary><paramref name="r"/> found no room and idle textures worth about <paramref name="bytes"/> were evicted
+    /// for it: the allocation is worth another try.</summary>
+    private bool EvictedFor(VkResult r, long bytes) => NoRoom(r) && Residents?.Evict(bytes) == true;
 
     /// <summary>Bytes every mip and layer of <paramref name="d"/> holds tightly packed: what placing it asks of a heap.</summary>
     internal static long ImageBytes(in ImageDesc d)
@@ -181,7 +186,7 @@ internal sealed unsafe partial class VkBackend
         VkMemoryPropertyFlags had = aci->requiredFlags;
         aci->requiredFlags = had | VkMemoryPropertyFlags.DeviceLocal;
         VkResult r;
-        while (NoRoom(r = Vma.vmaCreateImage(_vma, ici, aci, image, a, null)) && Residents?.Evict(bytes) == true) { }
+        while (EvictedFor(r = Vma.vmaCreateImage(_vma, ici, aci, image, a, null), bytes)) { }
         aci->requiredFlags = had;
         if (r == VkResult.Success || o == Overflow.Refuse || !NoRoom(r)) return r;
         r = Vma.vmaCreateImage(_vma, ici, aci, image, a, null);
@@ -196,7 +201,7 @@ internal sealed unsafe partial class VkBackend
         VkMemoryPropertyFlags had = aci->requiredFlags;
         aci->requiredFlags = had | VkMemoryPropertyFlags.DeviceLocal;
         VkResult r;
-        while (NoRoom(r = Vma.vmaCreateBuffer(_vma, bci, aci, buffer, a, null)) && Residents?.Evict(bytes) == true) { }
+        while (EvictedFor(r = Vma.vmaCreateBuffer(_vma, bci, aci, buffer, a, null), bytes)) { }
         aci->requiredFlags = had;
         if (r == VkResult.Success || o == Overflow.Refuse || !NoRoom(r)) return r;
         return Vma.vmaCreateBuffer(_vma, bci, aci, buffer, a, null);

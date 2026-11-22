@@ -120,7 +120,7 @@ internal sealed unsafe partial class VkBackend
         var aci = new VmaAllocationCreateInfo { requiredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory, priority = HighPriority };
         VkResult r;
         VmaAllocation a;
-        while (NoRoom(r = Vma.vmaAllocateMemory(_vma, &req, &aci, out a, out _)) && Residents?.Evict((long)size) == true) { }
+        while (EvictedFor(r = Vma.vmaAllocateMemory(_vma, &req, &aci, out a, out _), (long)size)) { }
         if (r != VkResult.Success && (deviceOnly || !NoRoom(r))) return false;
         if (r != VkResult.Success)
         {

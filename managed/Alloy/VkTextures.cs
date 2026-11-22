@@ -68,11 +68,11 @@ internal static class VkTextures
 
     private static VkTexState _s = new();
 
+    /// <summary>The marker of the line that names a texture refused for room, with its size, the first time it is.</summary>
+    internal const string WaitsForRoomTag = "[vram] texture waits for room";
+
     /// <summary>Distinct refusals logged before they are only counted.</summary>
     private const int RefusalLines = 8;
-
-    /// <summary>Frames between two tries to bring back a texture that is waiting for room: the frame line's period.</summary>
-    private const int RetryPeriod = 300;
 
     /// <summary>Readback offsets between evicted levels: a whole BC block and Vulkan's four-byte copy rule both divide it.</summary>
     private const int LevelAlign = 16;
@@ -114,20 +114,20 @@ internal static class VkTextures
         Forget(gl);
         VkTexState t = _s;
         var e = new Entry { Sampler = s, F = f, W = w, H = h, Mips = mips, Grey = grey, Label = label };
-        for (int l = 0; l < mips; l++) e.Bytes += LevelBytes(f, Math.Max(1, w >> l), Math.Max(1, h >> l));
+        e.Bytes = VkBackend.ImageBytes(DescOf(e));
         if (!t.Samplers.TryGetValue(s, out e.SamplerId)) t.Samplers[s] = e.SamplerId = vk.CreateSampler(s);
         ImageId img = vk.CreateImage(DescOf(e));
-        if (img.IsNull && vk.LastFault.Contains(VkBackend.NoRoomTag, StringComparison.Ordinal))
+        if (img.IsNull && vk.LastRefusalWasRoom)
         {
             t.Refused++;
             TexRegistry.RefusedForRoom(e.Bytes);
             e.Texels = new byte[mips][];
-            e.RetryAt = vk.Frame + RetryPeriod;
+            e.RetryAt = vk.Frame + VkBackend.MoveBackPeriod;
             t.ByName[gl] = e;
             t.Parked.Add(e);
             t.Gen++;
             if (t.Named.Add(label))
-                vk.Log.Always($"VkTextures: {label} needs {e.Bytes / (1024.0 * 1024.0):0.#} MiB of device memory and none is free "
+                vk.Log.Always($"VkTextures: {WaitsForRoomTag}: {label} needs {e.Bytes / (1024.0 * 1024.0):0.#} MiB of device memory and none is free "
                                     + "-- it draws as the stand-in until there is room");
             return default;
         }
@@ -170,7 +170,8 @@ internal static class VkTextures
     }
 
     /// <summary>Free about <paramref name="bytes"/> of idle mirrors, least recently drawn first: each one's levels are
-    /// read back to system RAM, and it waits there until a draw asks for it. False when nothing was idle.</summary>
+    /// read back to system RAM, and it waits there until a draw asks for it. False, every image kept, when nothing was
+    /// idle or the readback did not land.</summary>
     private static bool EvictIdle(VkTexState t, long bytes)
     {
         VkBackend? vk = t.Dev;
@@ -186,7 +187,8 @@ internal static class VkTextures
                     pick = e;
             if (pick == null) break;
             batch.Add((pick, at));
-            for (int l = 0; l < pick.Mips; l++) at += Aligned(LevelBytes(pick.F, Math.Max(1, pick.W >> l), Math.Max(1, pick.H >> l)));
+            ImageDesc d = DescOf(pick);
+            for (int l = 0; l < pick.Mips; l++) at += Aligned(VkBackend.LevelBytes(d, l));
             freed += pick.Bytes;
         }
         if (batch.Count == 0) return false;
@@ -194,21 +196,28 @@ internal static class VkTextures
         if (rb.IsNull) return false;
         var cl = new CommandList("evict textures", 1 << 12, vk.Log);
         foreach ((Entry e, long off) in batch)
+        {
+            ImageDesc d = DescOf(e);
             for (int l = 0, o = 0; l < e.Mips; l++)
             {
                 int w = Math.Max(1, e.W >> l), h = Math.Max(1, e.H >> l);
                 cl.CopyImageToBuffer(new CopyToBufferCmd(e.Image, new ImageRegion(l, 0, 0, 0), w, h, rb, off + o));
-                o += (int)Aligned(LevelBytes(e.F, w, h));
+                o += (int)Aligned(VkBackend.LevelBytes(d, l));
             }
-        bool read = vk.Submit(cl) && vk.WaitSubmitted();
+        }
+        if (!vk.Submit(cl) || !vk.WaitSubmitted())
+        {
+            vk.Destroy(rb);
+            return false;
+        }
         foreach ((Entry e, long off) in batch)
         {
             var texels = new byte[e.Mips][];
+            ImageDesc d = DescOf(e);
             for (int l = 0, o = 0; l < e.Mips; l++)
             {
-                int w = Math.Max(1, e.W >> l), h = Math.Max(1, e.H >> l);
-                texels[l] = new byte[LevelBytes(e.F, w, h)];
-                if (read) vk.ReadMapped(rb, off + o, texels[l]);
+                texels[l] = new byte[VkBackend.LevelBytes(d, l)];
+                vk.ReadMapped(rb, off + o, texels[l]);
                 o += (int)Aligned(texels[l]!.Length);
             }
             t.Refs.Remove(e.Image.Value);
@@ -229,7 +238,7 @@ internal static class VkTextures
     private static long Aligned(long n) => (n + LevelAlign - 1) / LevelAlign * LevelAlign;
 
     /// <summary>The frame's end: each waiting name a draw asked for, whose retry is due, goes back on the device with
-    /// its texels; one refused again waits a period. Returns at once when nothing waits.</summary>
+    /// its texels; one whose image or upload is refused again waits a period. Returns at once when nothing waits.</summary>
     private static void Restore(VkTexState t)
     {
         if (t.Parked.Count == 0 || t.Dev is not VkBackend vk) return;
@@ -240,16 +249,27 @@ internal static class VkTextures
             Entry e = t.Parked[i];
             if (!e.Wanted || frame < e.RetryAt) continue;
             ImageId img = vk.CreateImage(DescOf(e));
-            if (img.IsNull) { e.RetryAt = frame + RetryPeriod; continue; }
+            if (img.IsNull || !UploadAll(vk, img, e.Texels!))
+            {
+                if (!img.IsNull) vk.Destroy(img);
+                e.RetryAt = frame + VkBackend.MoveBackPeriod;
+                continue;
+            }
             t.Parked.Remove(e);
             Seat(t, vk, e, img);
-            byte[]?[] texels = e.Texels!;
-            for (int l = 0; l < texels.Length; l++) if (texels[l] is byte[] b) vk.Upload(img, l, 0, b);
             if (e.GenMips) vk.GenerateMips(img);
             e.Texels = null;
             e.Wanted = false;
             e.Drawn = frame;
         }
+    }
+
+    /// <summary>Every kept level onto <paramref name="img"/>; false when the device refuses one.</summary>
+    private static bool UploadAll(VkBackend vk, ImageId img, byte[]?[] texels)
+    {
+        for (int l = 0; l < texels.Length; l++)
+            if (texels[l] is byte[] b && !vk.Upload(img, l, 0, b)) return false;
+        return true;
     }
 
     /// <summary><paramref name="gl"/> is a copy of <paramref name="src"/>'s texels under sampler <paramref name="s"/>:
@@ -309,10 +329,6 @@ internal static class VkTextures
 
     /// <summary>The bytes <paramref name="gl"/>'s image holds over every level; 0 when it has none.</summary>
     internal static long Bytes(uint gl) => _s.ByName.TryGetValue(gl, out Entry? e) ? e.Bytes : 0;
-
-    private static long LevelBytes(Format f, int w, int h) => f.IsCompressed()
-        ? (long)((w + 3) / 4) * ((h + 3) / 4) * f.BlockBytes()
-        : (long)w * h * (f switch { Format.R8 => 1, Format.Rg8 => 2, _ => 4 });
 
     /// <summary>The sampler <paramref name="gl"/>'s mirror was made with, for a replacement that keeps it.</summary>
     internal static SamplerDesc? SamplerOf(uint gl) => _s.ByName.TryGetValue(gl, out Entry? e) ? e.Sampler : null;

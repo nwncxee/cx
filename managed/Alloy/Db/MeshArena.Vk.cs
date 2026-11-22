@@ -27,6 +27,9 @@ public static unsafe partial class MeshArena
         public bool GrowSaid;
     }
 
+    /// <summary>The marker of the line that names a refused grow with its MiB, once.</summary>
+    internal const string GrowRefusedTag = "[vram] arena grow refused";
+
     /// <summary>A buffer of <paramref name="bytes"/> to replace <paramref name="old"/>, or null with <paramref name="old"/>
     /// kept drawing: a refused grow says its MiB once and waits a period, so the meshes past the old end read zeros.</summary>
     private static BufferId Grow(VkBackend vk, VkArenaState v, BufferId old, long bytes, BufferUse use, string label)
@@ -36,7 +39,7 @@ public static unsafe partial class MeshArena
         if (made.IsNull)
         {
             v.GrowAt = vk.Frame + VkBackend.MoveBackPeriod;
-            if (!v.GrowSaid) _log?.Always($"MeshArena: the device REFUSED the grow of {label} to {bytes >> 20} MiB -- the meshes it holds "
+            if (!v.GrowSaid) _log?.Always($"MeshArena: {GrowRefusedTag}: the device REFUSED the grow of {label} to {bytes >> 20} MiB -- the meshes it holds "
                                         + "keep drawing, and the ones past its end wait for room");
             v.GrowSaid = true;
             return default;

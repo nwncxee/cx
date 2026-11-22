@@ -615,7 +615,7 @@ public sealed unsafe partial class CasterPass
                                              // CopyDst: the stale layers clear as a transfer, not as a pass per layer
                                              ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async | ImageUse.CopyDst
                                              | (copySrc ? ImageUse.CopySrc : ImageUse.None), label));
-        if (made.IsNull && s.Dev.LastFault.Contains(VkBackend.NoRoomTag, StringComparison.Ordinal))
+        if (made.IsNull && s.Dev.LastRefusalWasRoom)
         {
             s.DownUntil = s.Dev.Frame + VkBackend.MoveBackPeriod;
             if (!s.DownSaid)

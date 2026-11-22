@@ -175,6 +175,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private int _faults;
     /// <summary>The reason the last refusal gave, whether or not it still reached the log.</summary>
     private string _lastFault = "";
+    /// <summary>The last refusal was for want of heap room: what its reason carries <see cref="NoRoomTag"/> for.</summary>
+    private bool _lastNoRoom;
 
     public DeviceCaps Caps { get; }
 
@@ -662,8 +664,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         VkResult r = d.Memory == MemoryKind.Device ? PlaceBuffer(&bci, &aci, d.Bytes, o, &b, &a)
                    : Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null);
         if (r != VkResult.Success && NoRoom(r) && o == Overflow.Refuse) return Unplaced<BufferId>($"buffer {d.Label}: {NoRoomTag}: {d.Bytes} bytes");
-        if (r != VkResult.Success)
-            return Refused<BufferId>($"buffer {d.Label}: {(NoRoom(r) ? NoRoomTag + ": " : "")}VMA refused {d.Bytes} bytes ({r})");
+        if (NoRoom(r)) return RefusedForRoom<BufferId>($"buffer {d.Label}: {NoRoomTag}: VMA refused {d.Bytes} bytes ({r})");
+        if (r != VkResult.Success) return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes ({r})");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
         Vma.vmaSetAllocationName(_vma, a, d.Label);
         var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));
@@ -899,9 +901,13 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private T Refused<T>(string why) where T : struct { Fault(why); return default; }
 
+    /// <summary>A refusal for want of room on every heap: logged, and <see cref="LastRefusalWasRoom"/> reads true.</summary>
+    private T RefusedForRoom<T>(string why) where T : struct { Fault(why); _lastNoRoom = true; return default; }
+
     private bool Fault(string why)
     {
         _lastFault = why;
+        _lastNoRoom = false;
         if (++_faults <= LoggedFaults)
             _log.Always($"VkBackend: REFUSED {why}" + (_faults == LoggedFaults ? " -- further refusals are only counted" : ""));
         return false;

@@ -290,7 +290,7 @@ internal static partial class GpuGolden
         ImageId img = OwnedTexture(dev, gl, BigSide, "golden residency refused");
         check.Expect(img.IsNull, "E2: a 64MiB texture was made with 8MiB of room and nothing idle to evict");
         check.Expect(VkTextures.Index((int)gl) == 0, "E2: the refused texture does not draw with the fallback's null index");
-        int named = Count(heard, "VkTextures", "golden residency refused", "64 MiB");
+        int named = Count(heard, VkTextures.WaitsForRoomTag, "golden residency refused", "64 MiB");
         check.Expect(named == 1, $"E2: cx.log names the refused texture with its 64 MiB {named} times, not once");
         return gl;
     }
@@ -310,7 +310,7 @@ internal static partial class GpuGolden
         }
         for (int i = 0; i < Refusals; i++)
         {
-            int named = Count(heard, "VkTextures", $"golden residency many {(char)('a' + i)}", "64 MiB");
+            int named = Count(heard, VkTextures.WaitsForRoomTag, $"golden residency many {(char)('a' + i)}", "64 MiB");
             check.Expect(named == 1, $"E10: refusal {i + 1} of {Refusals} is named with its 64 MiB {named} times, not once");
         }
         int lines = heard.Count;
@@ -586,7 +586,7 @@ internal static partial class GpuGolden
         MeshArena.VkPumpForCheck(dev);
         BufferId after = MeshArena.VkVbo(MeshArena.Fmt.Static);
         check.Expect(!after.IsNull && after == before, "E9: the refused grow did not leave the uploaded meshes on their own vertex buffer");
-        int named = Count(heard, "MeshArena", "grow", $"{GrowMiB} MiB");
+        int named = Count(heard, MeshArena.GrowRefusedTag, $"{GrowMiB} MiB");
         check.Expect(named == 1, $"E9: cx.log names the {GrowMiB} MiB grow {named} times, not once");
         dev.Destroy(fill);
         MeshArena.Release(small);
@@ -607,14 +607,14 @@ internal static partial class GpuGolden
         check.Expect(reset, "GrowWaits: the arena holds live meshes");
         if (!reset) return;
         MeshArena.VkForgetForCheck();
-        int before0 = Count(heard, "MeshArena", "grow", $"{GrowMiB} MiB");
+        int before0 = Count(heard, MeshArena.GrowRefusedTag, $"{GrowMiB} MiB");
         int small = ResidencyMesh(6393, 1000);
         MeshArena.VkPumpForCheck(dev);
         BufferId before = MeshArena.VkVbo(MeshArena.Fmt.Static);
         BufferId fill = Filler(dev, 8 * MiB, "golden grow-wait filler");
         int[] big = GrowMeshes(6410);
         for (int f = 0; f <= Period + 1; f++) { MeshArena.VkPumpForCheck(dev); ResidencyFrame(dev, log); }
-        int named = Count(heard, "MeshArena", "grow", $"{GrowMiB} MiB") - before0;
+        int named = Count(heard, MeshArena.GrowRefusedTag, $"{GrowMiB} MiB") - before0;
         check.Expect(named == 1, $"GrowWaits: two refused periods named the grow {named} times, not once");
         dev.Destroy(fill);
         for (int f = 0; f < Period / 2; f++) { MeshArena.VkPumpForCheck(dev); ResidencyFrame(dev, log); }
