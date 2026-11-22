@@ -148,8 +148,11 @@ internal static unsafe partial class LightmapBake
         return true;
     }
 
-    /// <summary>The face size the bake renders its static cubes at.</summary>
-    internal static int BakeCubeSize => Math.Max(CasterPass.CubeFaceSize, 64);
+    /// <summary>The face size the bake renders its static cubes at: the one <c>shadow.cubesize</c> names, lowered or not.</summary>
+    internal static int BakeCubeSize => Math.Max(VramLadder.CubeNamed, 64);
+
+    /// <summary>The ladder's scratch rung: the scratch goes now if no page is open and no readback is in flight.</summary>
+    internal static void FreeIdleScratch() => VkFreeScratch();
 
     /// <summary>A page is waiting for room for its scratch, and the area draws with the lightmaps it has.</summary>
     internal static bool ScratchWaits => false;

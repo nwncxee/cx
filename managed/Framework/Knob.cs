@@ -41,6 +41,9 @@ public abstract class Knob
     /// <summary>When set and false, the panel lays out no row for this knob; chat and cx.cfg still reach it. Read
     /// at each layout, which a press that changes it triggers.</summary>
     public Func<bool>? ShowIf;
+    /// <summary>A line the panel shows under the row's label while it returns text, on any tier; null says nothing.
+    /// Read at each layout, so a note never changes the knob's value or what the file keeps.</summary>
+    public Func<string?>? Note;
     /// <summary>Placeholder an empty box shows: a List's add box. "" when none.</summary>
     public string Hint { get; init; } = "";
     /// <summary>Layout-affecting: only the Dropdown factory can set it, so the panel never has to re-lay

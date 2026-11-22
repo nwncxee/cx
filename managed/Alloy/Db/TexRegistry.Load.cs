@@ -890,6 +890,18 @@ internal static unsafe partial class TexRegistry
                 Retire(_idleHead);
     }
 
+    /// <summary>Every idle texture let go now, oldest first, whatever the budget: the bytes that freed. Game thread;
+    /// the names go to the graveyard for the drain.</summary>
+    internal static long EvictIdle()
+    {
+        lock (_lock)
+        {
+            long before = _idleBytes;
+            while (_idleHead >= 0) Retire(_idleHead);
+            return before - _idleBytes;
+        }
+    }
+
     /// <summary>Trim back to the budget: idle textures oldest first off the LRU head, then, while still over,
     /// the least recently used idle model with the textures only it held. Game thread; the names go to the
     /// graveyard for the drain. What is left over the budget is what the area itself draws.</summary>
