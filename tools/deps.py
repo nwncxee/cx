@@ -35,8 +35,6 @@ def sha256(path):
 ATTEMPTS = 5
 # The first retry's wait in seconds, doubling after; a test shrinks it, so a failing download is fast to prove.
 RETRY_BASE = float(os.environ.get('CX_DEPS_RETRY_BASE', '1'))
-if not RETRY_BASE >= 0:
-    sys.exit(f'!! CX_DEPS_RETRY_BASE must be a number of seconds, 0 or more, not {RETRY_BASE}')
 
 
 def download(url, tmp):
