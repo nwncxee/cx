@@ -47,7 +47,7 @@ d[sys.argv[2]] = {'url': sys.argv[3], 'sha256': sys.argv[4], 'file': sys.argv[2]
 f.write_text(json.dumps(d))
 PY
 }
-fetch() { CX_DEPS_CACHE="$tmp/cache" timeout 120 python3 "$tmp/tool/deps.py" "$1" "$tmp/out-$1" > "$tmp/$1.log" 2>&1; }
+fetch() { CX_DEPS_CACHE="$tmp/cache" CX_DEPS_RETRY_BASE=0.01 timeout 120 python3 "$tmp/tool/deps.py" "$1" "$tmp/out-$1" > "$tmp/$1.log" 2>&1; }
 
 # Two 504s and then the file: the download is retried and the archive unpacks.
 stage flaky 2
@@ -65,9 +65,9 @@ if fetch gone; then fail "gone: deps.py succeeded on a 404"; fi
 
 # A host that never recovers stops the build after five attempts, with the URL in the message.
 stage down -1
-start=$SECONDS
 if fetch down; then fail "down: deps.py succeeded against a host that only answers 504"; fi
-[ $((SECONDS - start)) -ge 14 ] || fail "down: gave up after $((SECONDS - start)) s, expected the 1+2+4+8 s waits"
+waits=$(sed -n 's/.*retrying in \([0-9.]*\) s$/\1/p' "$tmp/down.log" | paste -sd' ')
+[ "$waits" = "0.01 0.02 0.04 0.08" ] || fail "down: waited '$waits', expected the 1+2+4+8 steps of the base"
 [ "$(cat "$tmp/down.hits")" = 5 ] || fail "down: $(cat "$tmp/down.hits") attempts, expected 5"
 grep -q "127.0.0.1:$port/down" "$tmp/down.log" || fail "down: the failure does not name the URL"
 

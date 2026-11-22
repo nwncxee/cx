@@ -1,5 +1,5 @@
 // The type definitions, type references and assembly references of one .NET assembly, a line each, for
-// core_approved_examples.sh: "def <namespace>.<name>", "ref <namespace>.<name>", "asm <name>". Run with dotnet fsi.
+// core_regression.sh: "def <namespace>.<name>", "ref <namespace>.<name>", "asm <name>". Run with dotnet fsi.
 open System.IO
 open System.Reflection.Metadata
 open System.Reflection.PortableExecutable
