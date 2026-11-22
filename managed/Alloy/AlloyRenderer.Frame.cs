@@ -448,7 +448,7 @@ public sealed unsafe partial class AlloyRenderer
                     int slot = _dSlot[k];
                     Sphere sp = _dSph[slot];
                     var s = new Vector4(sp.Center, sp.Radius);
-                    if (s.W >= NeverCull)
+                    if (Uncullable(s.W))
                     {
                         int part = _oDbPart[slot];
                         s = part >= 0 ? SceneDb.ObjSphere[SceneDb.PartObj[part].Index] : default;

@@ -289,6 +289,10 @@ public sealed partial class KnobPanel
             z.PanelStatus = () => "line one\nline two that is long enough to wrap in the column at seven twenty by twelve eighty for sure";
             p._subs = new[] { new SubMenu(g), new SubMenu(z) }; p.SelectSub(1); p.LayoutRows();
             check.Expect(p.Sub == 1 && !p.AdvOpen && p.Rows.Count == 1 && p.Rows[0].Kind == RowKind.Status && p.Rows[0].Help.Length >= 3 && !p._resettable, "a zero-knob group renders its status as the whole body, no reset box");
+            p.Sub = 7;
+            bool threw = false;
+            try { p.LayoutRows(); } catch (IndexOutOfRangeException) { threw = true; }
+            check.Expect(!threw && p.Sub == 1, "a tab past the end opens the last tab");
             // A ShowIf row: absent while its predicate says no, laid out once a pick turns it true.
             var cg = new KnobGroup("cx-panelshowif", "Controls", "ShowIf", null, null, true, Effect.Live, null, null, "", register: false);
             var pick = cg.Dropdown("pick", "Pick", new[] { "a", "b" }, "a", help: "Which one.");

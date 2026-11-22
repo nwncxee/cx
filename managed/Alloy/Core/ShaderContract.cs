@@ -121,6 +121,8 @@ internal static class ShaderContract
           "the second declarator on a line is a declaration");
         check.Expect(!SlotSafe("uniform sampler2D uSrcAtlas;\nvoid main() { }\n", "uSrc"),
           "a name is not a prefix of another name");
+        check.Expect(!SlotSafe("layout(binding = 0, rgba8) uniform image2D uSrc;\nvoid main() { }\n", "uSrc"),
+          "an image of the sampler's name is the wrong bind kind");
         return check.Ok;
     }
 
@@ -211,7 +213,6 @@ internal static class ShaderContract
         string members = Std140.Members(decl, "CxPass") ?? "";
         if (!members.StartsWith($"layout(std140,binding={AlloyRenderer.PassBinding})uniformCxPass{{", StringComparison.Ordinal))
             bad.Add("binding");
-        int end = 0;
         var pinned = new[] {
             ("uLocalLight", AlloyRenderer.PbLight), ("uLocalDynPage", AlloyRenderer.PbDynPage), ("uLocalFade", AlloyRenderer.PbFade),
             ("uSunVp", AlloyRenderer.PbSunVp), ("uSunTexel", AlloyRenderer.PbSunTexel), ("uSunBias", AlloyRenderer.PbSunBias),
@@ -227,12 +228,7 @@ internal static class ShaderContract
             ("uBounds", AlloyRenderer.PbBounds), ("uShBudget", AlloyRenderer.PbShBudget),
             ("uLightFloor", AlloyRenderer.PbLightFloor), ("uFullModel", AlloyRenderer.PbFullModel),
             ("uSunPenum", AlloyRenderer.PbSunPenum), ("uSearchTaps", AlloyRenderer.PbSearchTaps) };
-        foreach ((string name, int off) in pinned)
-        {
-            int at = Std140.Offset(members, name, out int size);
-            if (at != off) bad.Add($"{name} at {at}, C# stages {off}");
-            end = Math.Max(end, at + size);
-        }
+        int end = PinnedEnd(members, pinned, bad);
         if (end > AlloyRenderer.PassBytes || members.Split(';').Length - 1 != pinned.Length) bad.Add($"the block is {end}B / has a member C# does not stage");
         foreach (string res in typeof(ShaderContract).Assembly.GetManifestResourceNames())
         {
@@ -772,5 +768,32 @@ internal static class ShaderContract
               $"stride {DrawFloats * sizeof(float)}B) or the #102 linear/display-space pairing drifted; " +
               "standing down rather than drawing from the wrong records");
         return ok;
+    }
+
+    /// <summary>Where the furthest pinned member ends, with a line in <paramref name="bad"/> for each member that
+    /// is not where C# stages it.</summary>
+    internal static int PinnedEnd(string members, (string Name, int Off)[] pinned, System.Collections.Generic.List<string> bad)
+    {
+        int end = 0;
+        foreach ((string name, int off) in pinned)
+        {
+            int at = Std140.Offset(members, name, out int size);
+            if (at != off) bad.Add($"{name} at {at}, C# stages {off}");
+            end = Math.Max(end, at + size);
+        }
+        return end;
+    }
+
+    /// <summary>The block's end is its furthest member's end, whatever order the members are pinned in. Oracle:
+    /// std140 offsets worked by hand for a vec4 then a float.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    internal static void PinnedEndSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "ShaderContract.PinnedEndSelfCheck");
+        string members = Std140.Members("layout(std140, binding = 0) uniform CxT { vec4 uA; float uB; };", "CxT") ?? "";
+        var bad = new System.Collections.Generic.List<string>();
+        int end = PinnedEnd(members, [("uB", 16), ("uA", 0)], bad);
+        check.Expect(end == 20 && bad.Count == 0, $"furthest: a vec4 then a float end at byte 20, not {end} ({string.Join("; ", bad)})");
+        log.Info(check.Ok ? "ShaderContract.PinnedEndSelfCheck: passed" : "ShaderContract.PinnedEndSelfCheck: FAILED");
     }
 }

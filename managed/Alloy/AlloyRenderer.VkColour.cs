@@ -201,7 +201,7 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState s = _vkc;
         RecordUploads.NoteMarks(n);
         if (s.DirtyAll) return;
-        if (whole || s.DirtyN + n > s.Dirty.Length)
+        if (whole || DirtyFull(s.DirtyN, n, s.Dirty.Length))
         {
             if (!whole) RecordUploads.Claim(RecordWhole.Handover);
             s.DirtyAll = true; s.DirtyN = 0; return;
@@ -851,4 +851,7 @@ public sealed unsafe partial class AlloyRenderer
         0 => BlendFactor.SrcAlpha, 1 => BlendFactor.OneMinusSrcAlpha, 2 => BlendFactor.One, 3 => BlendFactor.Zero,
         4 => BlendFactor.DstColor, 5 => BlendFactor.SrcColor, 6 => BlendFactor.OneMinusDstAlpha, _ => BlendFactor.SrcAlpha,
     };
+
+    /// <summary>The dirty list cannot take <paramref name="n"/> more slots, so the whole table goes instead.</summary>
+    internal static bool DirtyFull(int used, int n, int cap) => used + n > cap;
 }

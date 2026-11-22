@@ -300,7 +300,7 @@ internal sealed unsafe partial class VkBackend
     private VkImageView AttachView(VkImg img, int layer)
     {
         int layers = Layers(img.Desc);
-        if (layer >= layers) return default;
+        if (LayerOutside(layer, layers)) return default;
         if (layers == 1) return img.View;
         // index `layers` holds the whole-array view, past the per-layer ones
         img.LayerViews ??= new VkImageView[layers + 1];
@@ -827,4 +827,7 @@ internal sealed unsafe partial class VkBackend
         if (!_onAsync) _vkd.vkCmdBindDescriptorSets(_cmd, VkPipelineBindPoint.Graphics, _pipeLayout, VulkanToolchain.BindlessSet, 1, &set, 0, null);
         _vkd.vkCmdBindDescriptorSets(_cmd, VkPipelineBindPoint.Compute, _pipeLayout, VulkanToolchain.BindlessSet, 1, &set, 0, null);
     }
+
+    /// <summary>An attachment layer past an image's last one has no view.</summary>
+    internal static bool LayerOutside(int layer, int layers) => layer >= layers;
 }

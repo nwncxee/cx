@@ -45,7 +45,7 @@ public static class InputStripLayout
             if (a > digit) digit = a;
         }
         float w = digits * digit;
-        if (textLength >= CounterWarn) w += Advance(atlas, new Rune('/')) + digits * digit;
+        if (ShowsCap(textLength)) w += Advance(atlas, new Rune('/')) + digits * digit;
         return w + ChatWindow.Pad;
     }
 
@@ -197,4 +197,7 @@ public static class InputStripLayout
         win.InputScroll = 0f;
         log.Info(check.Ok ? "InputStripLayout.SelfCheck PASS" : "InputStripLayout.SelfCheck had FAILURES");
     }
+
+    /// <summary>The counter shows the cap beside the count from <see cref="CounterWarn"/> characters on.</summary>
+    internal static bool ShowsCap(int textLength) => textLength >= CounterWarn;
 }

@@ -13,7 +13,7 @@ namespace CX.Alloy;
 /// over the Vulkan frame's scene colour and depth, into the post stack's first image or the screen. Each bloom
 /// level is an image of its own rather than a mip, so no pass samples the image it writes. Also the full-screen
 /// helpers every post program on Vulkan draws through.</summary>
-internal static unsafe class PostChainVk
+internal static unsafe partial class PostChainVk
 {
     /// <summary>The resolve's loose terms: the view and the fog, whose matrices and vectors a block carries. Its
     /// scalars are <see cref="ResolvePush"/>'s.</summary>
@@ -482,7 +482,7 @@ internal static unsafe class PostChainVk
         PostVkState s = _s;
         int align = Math.Max(s.Dev!.UniformAlign, 16);
         int at = (s.UboUsed + align - 1) & ~(align - 1);
-        if (at + p.Block.Length > UboBytes) return 0;
+        if (UboOver(at, p.Block.Length)) return 0;
         cl.UpdateBuffer(s.Ubo, at, p.Block);
         s.UboUsed = at + p.Block.Length;
         return at;
@@ -573,8 +573,23 @@ internal static unsafe class PostChainVk
         return id;
     }
 
-    private static int LevelW(PostVkState s, int i) => Math.Max(s.W >> (i + 1), 1);
-    private static int LevelH(PostVkState s, int i) => Math.Max(s.H >> (i + 1), 1);
+    private static int LevelW(PostVkState s, int i) => Level(s.W, i);
+    private static int LevelH(PostVkState s, int i) => Level(s.H, i);
+
+    /// <summary>Bloom level <paramref name="i"/>'s side: half the level above it, and never under one texel.</summary>
+    internal static int Level(int side, int i) => Math.Max(side >> (i + 1), 1);
+
+    /// <summary>How many bloom levels a scene gets: one more while both sides keep 8 texels, at most
+    /// <see cref="MaxLevels"/>, and at least one.</summary>
+    internal static int BloomLevels(int w, int h)
+    {
+        int levels = 0;
+        while (levels < MaxLevels && Math.Min(Level(w, levels), Level(h, levels)) >= 8) levels++;
+        return Math.Max(levels, 1);
+    }
+
+    /// <summary>A block of <paramref name="bytes"/> staged at <paramref name="at"/> runs past the frame's uniform buffer.</summary>
+    internal static bool UboOver(int at, int bytes) => at + bytes > UboBytes;
 
     /// <summary>The device's samplers, block buffer and the chain's three programs, made once. A refusal is said
     /// once and fails the frame: there is no other encode on Vulkan.</summary>
@@ -625,9 +640,7 @@ internal static unsafe class PostChainVk
         foreach (ImageId i in s.Bloom) vk.Destroy(i);
         Array.Clear(s.Bloom);
         s.W = w; s.H = h;
-        int levels = 0;
-        while (levels < MaxLevels && Math.Min(LevelW(s, levels), LevelH(s, levels)) >= 8) levels++;
-        s.Levels = Math.Max(levels, 1);
+        s.Levels = BloomLevels(w, h);
         for (int i = 0; i < s.Levels; i++)
         {
             s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), s.BloomFmt, $"vk bloom {i}",
