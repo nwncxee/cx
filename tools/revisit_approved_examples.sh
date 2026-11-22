@@ -72,5 +72,28 @@ grade "$T/control.log"
 [ "$rc" = 0 ] && grep -q '^PASS' <<<"$out" || no E10 "the uncapped control, revisit 2.30 ms after 2.25 ms, does not PASS"
 grep -qE '2[.,]25' <<<"$out" && grep -qE '2[.,]30' <<<"$out" || no E10 "the control's PASS does not name the first visit's 2.25 ms and the revisit's 2.30 ms"
 
+# Found, not approved: a stood-down session that wrote no [load] line at all still fails on its missing GPU time.
+s=0; : > "$T/bare.log"
+line "$T/bare.log" "UiHostService: [frame] avg 7,40ms (135fps) max 13,0ms, >6.9ms 60/900, >16.7ms 0/900, gc 0/0/0 on 10KiB allocated"
+grade "$T/bare.log"
+[ "$rc" = 1 ] && grep -qF "$no_gpu_time" <<<"$out" || no found "a session with no [load] and no [vkgpu] line does not FAIL saying no GPU time was measured"
+
+# Found, not approved: a session that never returns to the first area fails, rather than grading the second area.
+ladder "$T/stuck.log" 2950 3072 2,25 2,30 2,30
+sed -i "$(grep -n 'TexStream: \[load\]' "$T/stuck.log" | tail -1 | cut -d: -f1),\$d" "$T/stuck.log"
+grade "$T/stuck.log"
+[ "$rc" = 1 ] && grep -q '^FAIL' <<<"$out" || no found "a session of two area visits does not FAIL"
+
+# Found, not approved: a session that loaded areas but measured no GPU time says so, before it counts the visits.
+sed '/\[vkgpu\]/d' "$T/stuck.log" > "$T/dark.log"
+grade "$T/dark.log"
+[ "$rc" = 1 ] && grep -qF "$no_gpu_time" <<<"$out" || no found "a session of two area loads and no [vkgpu] line does not FAIL saying no GPU time was measured"
+
+# Found, not approved: a load spike in the first visit's first period does not hide a slow return.
+ladder "$T/spike.log" 3400 3072 2,25 4,00 4,10
+sed -i "0,/\[vkgpu\] 2,25 ms/s//[vkgpu] 9,00 ms/" "$T/spike.log"
+grade "$T/spike.log"
+[ "$rc" = 1 ] && grep -qE '2[.,]25' <<<"$out" || no found "a 9 ms spike in the first visit's first period hides a revisit at 4.10 ms after 2.25 ms"
+
 [ "$fail" = 0 ] && echo "revisit: approved examples passed"
 exit "$fail"
