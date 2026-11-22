@@ -5,6 +5,7 @@
 # type names the ticket lists, and the core assembly's own metadata (core_types.fsx). Exit 0 PASS, 1 FAIL, 2 setup.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
+# shellcheck source=tools/selfcheck/examples_lib.sh disable=SC1091 # linted on its own
 . tools/selfcheck/examples_lib.sh
 rc=0
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/cx-core-examples.XXXXXX")

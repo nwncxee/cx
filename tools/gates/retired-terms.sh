@@ -16,10 +16,10 @@ rc=0
 while IFS=$'\t' read -r term ticket allow; do
   case "$term" in ''|'#'*) continue ;; esac
   hits=$(grep -niE -- "$term" "$tmp/text" | cut -d: -f1 | awk 'NR == FNR { want[$1]; next } FNR in want' - "$tmp/hits" \
-         | { [ -n "$allow" ] && grep -viE -- "$allow" || cat; })
+         | if [ -n "$allow" ]; then grep -viE -- "$allow"; else cat; fi)
   [ -z "$hits" ] && continue
   echo "!! retired-terms: \"$term\" was retired by $ticket and still appears:" >&2
-  echo "$hits" | sed 's/^/  /' >&2
+  while IFS= read -r l; do echo "  $l"; done <<< "$hits" >&2
   [ -n "$allow" ] && echo "  (a line that means something else must say so: /$allow/)" >&2
   rc=1
 done < "$list"
