@@ -255,17 +255,19 @@ internal static unsafe partial class OccludeApprovedExamples
     }
 
     // Found work. Given a trunk's record lane, stamped once with the trunk faded
-    // When it is stamped again with the same fade, then with the fade gone
-    // Then the repeat says nothing moved, and the clear says it moved and leaves no cut and no cylinder
+    // When it is stamped again with the same fade, then after walls.radius widens, then with the fade gone
+    // Then the repeat says nothing moved, the wider cylinder and the clear each say it moved, and no cut is left
     private static void StampSaysWhenItMoved(Checker check, Rig rig)
     {
         int tile = ForestTile(rig, out _);
         Vector4 lane = default;
         bool first = OccludeFan.Stamp(ref lane, tile, 0.6f);
         bool again = OccludeFan.Stamp(ref lane, tile, 0.6f);
+        Walls.Radius.V = 1f;
+        bool wider = OccludeFan.Stamp(ref lane, tile, 0.6f);
         bool cleared = OccludeFan.Stamp(ref lane, tile, 0f);
-        check.Expect(first && !again && cleared && lane == Vector4.Zero,
-                     $"T5 a stamp reports a move only when the lane changes: first {first}, again {again}, cleared {cleared}, lane {lane}");
+        check.Expect(first && !again && wider && cleared && lane == Vector4.Zero,
+                     $"T5 a stamp reports a move only when the lane changes: first {first}, again {again}, wider {wider}, cleared {cleared}, lane {lane}");
     }
 
     // Given the keyhole is on and a trunk below its cut height stands between the camera and the character
