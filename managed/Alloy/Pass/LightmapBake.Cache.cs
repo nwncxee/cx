@@ -38,7 +38,7 @@ internal sealed class BakeCache
         internal int Rect; internal ulong Key; internal int W, H;
         internal byte[]? Data; internal int X, Y, Uw, Uh; internal Entry[]? Table; internal bool Write; internal int Buf;
         internal string? File; internal int Page, X0, Y0;
-        internal bool Area; internal LightmapAreaPlan? Plan;
+        internal bool Area; internal LightmapAreaPlan? Plan; internal bool Retarget;
     }
     private readonly Queue<Job> _in = new();
     private readonly Queue<Job> _out = new();
@@ -48,6 +48,10 @@ internal sealed class BakeCache
     private Thread? _thread;
     private ExtenderLog? _log;
     private int _writes;
+    /// <summary>The folder the blobs live in, null = CX's own cache folder; the index answers for it once built.</summary>
+    private string? _dir;
+    private bool _indexed;
+    private string Dir => _dir ?? MeshChart.LedgerDir();
     /// <summary>Key -&gt; where it sits in which blob. Cache thread only.</summary>
     private readonly Dictionary<ulong, (int file, Entry e)> _index = new();
     private readonly List<string> _files = new();
@@ -71,6 +75,18 @@ internal sealed class BakeCache
         if (_thread != null) return;
         _thread = new Thread(Work) { IsBackground = true, Name = "cx-lmcache" };
         _thread.Start();
+    }
+
+    /// <summary>Point the cache at <paramref name="dir"/> (null = CX's own folder) from the next job on, with an
+    /// index of that folder alone: the goldens bake into a folder of their own and never read the player's.</summary>
+    internal void Retarget(string? dir)
+    {
+        lock (_gate)
+        {
+            if (_thread == null) { _dir = dir; _indexed = false; return; }
+            _in.Enqueue(new Job { Rect = -1, Retarget = true, File = dir });
+            Monitor.Pulse(_gate);
+        }
     }
 
     /// <summary>Ask for a key's rect; the answer (a union and the rect's place in it, or null for a miss) comes
@@ -137,7 +153,7 @@ internal sealed class BakeCache
         lock (_gate)
         {
             var keep = new Queue<Job>();
-            while (_in.Count > 0) { Job j = _in.Dequeue(); if (j.Write || j.Area) keep.Enqueue(j); }
+            while (_in.Count > 0) { Job j = _in.Dequeue(); if (j.Write || j.Area || j.Retarget) keep.Enqueue(j); }
             while (keep.Count > 0) _in.Enqueue(keep.Dequeue());
             _out.Clear();
         }
@@ -149,9 +165,10 @@ internal sealed class BakeCache
     /// The index comes first: on a cold box the delete of 18k files is seconds, and the probes queue behind it.</summary>
     private void BuildIndex()
     {
+        _indexed = true;
         try
         {
-            string dir = MeshChart.LedgerDir();
+            string dir = Dir;
             if (!Directory.Exists(dir)) return;
             var blobs = new DirectoryInfo(dir).GetFiles("*" + Ext);
             Array.Sort(blobs, (a, b) => a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc));
@@ -223,6 +240,8 @@ internal sealed class BakeCache
         for (int k = 0; k < batch.Count; k++)
         {
             Job j = batch[k];
+            if (j.Retarget) { AnswerGrouped(); _index.Clear(); _files.Clear(); _dir = j.File; _indexed = false; continue; }
+            if (!_indexed) BuildIndex();
             if (j.Area) { if (j.Write) WriteArea(j.Plan!); else ReadArea(j.Key); continue; }
             if (j.Write) { try { WriteBlob(j); } catch (Exception e) { _log?.Info($"LightmapBake: a blob write faulted -- {e.Message}"); } finally { Interlocked.Decrement(ref Outstanding); Interlocked.Decrement(ref Busy[j.Buf]); } continue; }
             if (_index.TryGetValue(j.Key, out var hit) && hit.e.W == j.W && hit.e.H == j.H)
@@ -234,6 +253,12 @@ internal sealed class BakeCache
             }
             else Answer(j);
         }
+        AnswerGrouped();
+    }
+
+    /// <summary>The probes grouped so far, each blob read and inflated once and every rect of it answered.</summary>
+    private void AnswerGrouped()
+    {
         foreach (var (file, jobs) in _byFile)
         {
             byte[]? union = ReadBlobFile(_files[file], out Union u, out _, _log);
@@ -331,7 +356,7 @@ internal sealed class BakeCache
     /// join the index at once so a repack inside the session hits them.</summary>
     private void WriteBlob(Job j)
     {
-        string dir = MeshChart.LedgerDir();
+        string dir = Dir;
         string file = Path.Combine(dir, j.File!);
         if (!WriteBlobFile(file, j.Page, j.X0, j.Y0, j.Uw, j.Uh, j.Table!, j.Data!)) return;
         Index(file, j.Table!);
@@ -344,7 +369,7 @@ internal sealed class BakeCache
     /// a stranded prefetch would leave the edge waiting for an answer that never comes.</summary>
     private void ReadArea(ulong key)
     {
-        string dir = MeshChart.LedgerDir();
+        string dir = Dir;
         string file = Path.Combine(dir, $"{key:x16}{AreaExt}");
         LightmapAreaPlan? plan = null;
         string? why = null;
@@ -397,7 +422,7 @@ internal sealed class BakeCache
     {
         try
         {
-            string dir = MeshChart.LedgerDir();
+            string dir = Dir;
             if (!WriteSerialized(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), plan.SerializeTo))
             {
                 _log?.Info($"LightmapBake: the area bake cache for {plan.Key:x16} could not be written");

@@ -33,9 +33,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkLmState _vkLm = new();
 
-    /// <summary>One rect of a bake pass: its record slot, its origin and scale on the page, the shadow disc's world
-    /// floor, the mover channel this light writes, and its chart range in the arena format <see cref="Fmt"/>.</summary>
-    internal readonly record struct VkLmDraw(int Slot, int X, int Y, float S, float SoftWorld, int Chan, int Fmt,
+    /// <summary>One rect of a bake pass: its record slot, its origin, size and scale on the page, the shadow disc's
+    /// world floor, the mover channel this light writes, and its chart range in the arena format <see cref="Fmt"/>.</summary>
+    internal readonly record struct VkLmDraw(int Slot, int X, int Y, int W, int H, float S, float SoftWorld, int Chan, int Fmt,
                                              int BaseVertex, int FirstIndex, int Count);
 
     /// <summary>Both programs and the bake's pipelines, once per device; a refusal is logged and stays.</summary>
@@ -179,6 +179,8 @@ public sealed unsafe partial class AlloyRenderer
                 side.SetPipeline(pipes[fmt]);
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)fmt));
             }
+            // the rect's own texels only: a pushed or mitred edge in the gutter is read by the finish's dilation of the neighbouring cell
+            side.SetScissor(d.X - bandX, d.Y, d.W, d.H);
             push.DrawBase = d.Slot; push.Decal = d.X; push.Solid = d.Y; push.AlphaCut = d.S;
             push.AoDirect = d.SoftWorld; push.OitGob = d.Chan;
             side.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkBatchPush>(in push)));

@@ -49,6 +49,8 @@ internal static unsafe partial class LightmapBake
         /// <summary>The bake's scratch planes and blocks exist, and the frames since anything last needed them.</summary>
         public bool Scratched;
         public int ScratchIdle;
+        /// <summary>The device bytes the last scratch made took, as the allocator counted them.</summary>
+        public long ScratchTook;
         /// <summary>The scratch's columns, the page column its column 0 holds for the page open now, and whether a
         /// page waits for room for it.</summary>
         public int Cols, BandX;
@@ -170,16 +172,6 @@ internal static unsafe partial class LightmapBake
     /// <summary>A page is waiting for room for its scratch, and the area draws with the lightmaps it has.</summary>
     internal static bool ScratchWaits => _vkb.Waits;
 
-    /// <summary>A fixture area baked on <paramref name="vk"/> through the bake's own path, with the scratch the ladder
-    /// gives now, its disk cache in <paramref name="cacheDir"/>: the pages' bytes, null when it could not run, the rects
-    /// the cache answered, and the bytes the bake's scratch took.</summary>
-    internal static byte[]? FixtureBake(VkBackend vk, ExtenderLog log, string cacheDir, out int cacheHits, out long scratchBytes)
-    {
-        cacheHits = 0;
-        scratchBytes = 0;
-        return null;
-    }
-
     /// <summary>A page is opening: the scratch planes and block images, at the columns the ladder gives, made if the last
     /// ones were let go or were another size. No room for them: the page waits, nothing stands down, and it tries
     /// again after a period not past 90%, or a move-back period on.</summary>
@@ -195,6 +187,7 @@ internal static unsafe partial class LightmapBake
         const ImageUse plane = ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.NoSpill;
         const ImageUse blocks = ImageUse.Storage | ImageUse.CopySrc | ImageUse.NoSpill;
         bool made = true;
+        long before = vk.Allocations.Bytes;
         s.ScrA = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch A");
         s.ScrB = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch B");
         s.ScrC = Made(Format.Rgba16F, cols, PageSize, plane, "vk lightmap scratch C");
@@ -203,6 +196,7 @@ internal static unsafe partial class LightmapBake
         s.BlkB = Made(Format.Rgba32Ui, cols / Block, PageSize / Block, blocks, "vk lightmap blocks B");
         if (made)
         {
+            s.ScratchTook = vk.Allocations.Bytes - before;
             s.Scratched = true; s.Cols = cols;
             if (s.Waits) _log?.Always($"LightmapBake: {ScratchRoomTag} -- the waiting bake goes on with its {cols}-column scratch");
             s.Waits = false;
@@ -377,7 +371,7 @@ internal static unsafe partial class LightmapBake
         if (r.Slot < 0 || !MeshChart.Range(r.Vao, r.Item, 0, out int baseVertex, out nint off, out int count, out _)) return;
         int range = MeshChart.RangeOf(r.Vao, r.Item);
         if (range < 0) return;
-        d.Add(new AlloyRenderer.VkLmDraw(r.Slot, r.X, r.Y, r.S, 1f / (MeshChart.AtlasTexelsPerUnit * r.S), chan,
+        d.Add(new AlloyRenderer.VkLmDraw(r.Slot, r.X, r.Y, r.W, r.H, r.S, 1f / (MeshChart.AtlasTexelsPerUnit * r.S), chan,
                                          (int)Db.MeshArena.PubFormat(range), baseVertex, (int)(off / sizeof(ushort)), count));
     }
 

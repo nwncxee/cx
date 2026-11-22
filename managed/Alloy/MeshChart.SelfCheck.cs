@@ -215,4 +215,19 @@ internal static partial class MeshChart
         }
         catch (Exception e) { log.Info($"MeshChart.SelfCheck: the fixture did not load -- {e.Message}"); return null; }
     }
+
+    /// <summary>File a charted entry for (<paramref name="slot"/>, <paramref name="item"/>) as the charter would, taking
+    /// over the caller's reference to arena <paramref name="range"/>: a golden's fixture mesh, charted by hand.</summary>
+    internal static void FileFixture(int slot, int item, int range, int w, int h, ulong content, System.Numerics.Vector3 bmin, System.Numerics.Vector3 bmax)
+    {
+        _table[KeyOf(slot, item)] = new Entry { Done = true, Range = range, W = (ushort)w, H = (ushort)h, Content = content, Bmin = bmin, Bmax = bmax, NV = 3 };
+        _epoch++;
+    }
+
+    /// <summary>Forget a <see cref="FileFixture"/> entry and give its arena reference back.</summary>
+    internal static void ForgetFixture(int slot, int item)
+    {
+        if (_table.Remove(KeyOf(slot, item), out Entry e)) Drop(e);
+        _epoch++;
+    }
 }
