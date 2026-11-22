@@ -4,5 +4,8 @@ against the return to it, the area visits split at TexStream's [load] lines. Exi
 Usage: python3 -I tools/live/revisit.py <cx.log>"""
 import sys
 
+# the marker a FAIL line carries when the session measured no GPU time: what a caller matches, never the prose
+NO_GPU_TIME = "[revisit] no-gpu-time"
+
 if __name__ == "__main__":
     sys.exit(0)

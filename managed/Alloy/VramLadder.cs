@@ -9,6 +9,18 @@ internal enum VramRung { None, Textures, Scratch, Pool, Shadows }
 /// scratch, the lightmap pool at an area change, shadow resolution -- and under 80% an area change takes it back.</summary>
 internal static class VramLadder
 {
+    /// <summary>The marker of the line a period that evicted idle textures gives, once per area.</summary>
+    internal const string TexturesTag = "[vram] rung textures";
+
+    /// <summary>The key the textures line gives what the eviction freed under, as <c>freed N MiB</c>.</summary>
+    internal const string FreedKey = "freed";
+
+    /// <summary>The marker of the line that says shadow quality was lowered to fit VRAM, once per lowering.</summary>
+    internal const string ShadowsTag = "[vram] rung shadows";
+
+    /// <summary>What a shadow size row in <c>/settings</c> says while the ladder draws it below its value.</summary>
+    internal const string LoweredNote = "lowered to fit VRAM";
+
     /// <summary>What the ladder has given this session, and the shadow sizes it was armed with.</summary>
     private sealed class LadderState
     {

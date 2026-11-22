@@ -856,7 +856,7 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>ADR 0023's budget, read the same way: <c>texcache_mb</c> -1 is a quarter of probed VRAM, 0
     /// evicts an idle slot as soon as it is idle.</summary>
-    private static long BudgetBytes() => BudgetFor(Renderer.TexCache.Boot, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+    internal static long BudgetBytes() => BudgetFor(Renderer.TexCache.Boot, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
 
     /// <summary>Pure: the budget, bytes, for <c>texcache_mb</c> <paramref name="mb"/> on a card of <paramref name="totalMib"/>
     /// with <paramref name="freeMib"/> free (either 0 = unknown).</summary>
@@ -867,6 +867,15 @@ internal static unsafe partial class TexRegistry
         long vram = totalMib > 0 ? totalMib : freeMib;
         return vram > 0 ? (vram << 20) / 4 : 512L << 20;
     }
+
+    /// <summary>The key the texture part gives the period's budget under, as <c>tex budget N MiB</c>.</summary>
+    internal const string BudgetKey = "tex budget";
+
+    /// <summary>The key the texture part gives under, as <c>tex over N MiB</c>, by how much the area's own textures pass the budget.</summary>
+    internal const string OverKey = "tex over";
+
+    /// <summary>The key the texture part gives the period's evicted models under, as <c>models evicted N</c>.</summary>
+    internal const string EvictedKey = "models evicted";
 
     /// <summary>The frame line's texture part: the period's budget, the models it evicted, and by how many MiB
     /// the current area's own textures pass the budget.</summary>

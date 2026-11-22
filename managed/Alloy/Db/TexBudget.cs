@@ -20,6 +20,12 @@ internal static class TexBudget
     /// <summary>The inputs the current period's budget was worked out from.</summary>
     internal static TexBudgetInputs Inputs => _state.Inputs;
 
+    /// <summary>A period's inputs from the device's figures: <paramref name="vmaBudgetBytes"/> is the allocator's
+    /// budget for the device-local heaps (the driver's own figure with <c>VK_EXT_memory_budget</c>, the allocator's
+    /// estimate without) and <paramref name="heapSizeBytes"/> their size.</summary>
+    internal static TexBudgetInputs InputsFrom(int texCacheMib, bool memoryBudget, long vmaBudgetBytes, long heapSizeBytes, long otherBytes)
+        => new(texCacheMib, heapSizeBytes, otherBytes);
+
     /// <summary>Start a period: its budget is worked out from <paramref name="inputs"/>, and its count of
     /// evicted models starts at zero.</summary>
     internal static void BeginPeriod(in TexBudgetInputs inputs) => _state.Inputs = inputs;

@@ -59,6 +59,25 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>The marker every cx.log line about <c>alloy.vramcap</c> opens with.</summary>
+    internal const string CapPrefix = "[vram] cap ";
+
+    /// <summary>The marker of the line that says <c>alloy.vramcap</c> caps the device-local heaps at <paramref name="mib"/>.</summary>
+    internal static string CapTag(long mib) => $"{CapPrefix}{mib}MiB";
+
+    /// <summary>The marker of the line that says <c>alloy.vramcap</c> is past the card's size and caps nothing.</summary>
+    internal const string NoCapTag = CapPrefix + "none";
+
+    /// <summary>The marker of the creation line that says memory priorities are on: render targets, shadows and the
+    /// mesh arena high, textures low.</summary>
+    internal const string PriorityOnTag = "[vram] priority high=targets,shadows,arena low=textures";
+
+    /// <summary>The marker of the creation line that says the driver lacks <c>VK_EXT_memory_priority</c>.</summary>
+    internal const string PriorityAbsentTag = "[vram] priority absent";
+
+    /// <summary>The marker a refusal carries when no heap, device-local or system RAM, has room for the allocation.</summary>
+    internal const string NoRoomTag = "[vram] no heap room";
+
     /// <summary>How many of the device's memory heaps are device-local.</summary>
     internal int DeviceLocalHeaps
     {

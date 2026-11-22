@@ -127,6 +127,12 @@ public sealed unsafe partial class CasterPass
         return VkArray(ref s.Cascades, ref s.SunSize, ref s.SunLayers, ImageKind.Tex2DArray, size, layers, "vk sun cascades", copySrc: true);
     }
 
+    /// <summary>The marker of the line that says the bake stood down for now and is tried again at the next move back.</summary>
+    internal const string StandDownNowTag = "[vram] caster stand-down retry";
+
+    /// <summary>The marker of the line that says the bake stood down for the session.</summary>
+    internal const string StandDownSessionTag = "[vram] caster stand-down session";
+
     /// <summary>The bake stood down over a refused program or target.</summary>
     internal static bool BakeStoodDown => _vk.Failed;
 

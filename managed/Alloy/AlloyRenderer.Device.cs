@@ -18,6 +18,25 @@ public sealed unsafe partial class AlloyRenderer
     internal static void SampleVram()
     {
         if (_log == null || AlloyDevice.VulkanMade is not VkBackend vk) return;
+        SampleVram(vk, _log);
+    }
+
+    /// <summary>Runs <paramref name="read"/> with the probe settled from <paramref name="vk"/> as a first frame on it
+    /// settles it, then puts the session's probe back: a check reads the live figures of a device of its own.</summary>
+    internal static T WithVramOf<T>(VkBackend vk, Func<T> read)
+    {
+        VramState was = _vram;
+        _vram = new VramState();
+        try
+        {
+            SampleVram(vk, null);
+            return read();
+        }
+        finally { _vram = was; }
+    }
+
+    private static void SampleVram(VkBackend vk, ExtenderLog? log)
+    {
         vk.DeviceLocalBytes(out long usage, out long budget, out long size, out _);
         long free = Math.Max(budget - usage, 0) / 1024, total = size / 1024;
         _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
@@ -25,7 +44,7 @@ public sealed unsafe partial class AlloyRenderer
         _vram.Probed = true;
         _vram.Ext = vk.MemoryBudget ? "VK_EXT_memory_budget" : "the Vulkan allocator's estimate (no VK_EXT_memory_budget)";
         _vram.TotalKib = (int)Math.Min(total, int.MaxValue);
-        _log.Info($"AlloyRenderer: [vram] {_vram.Ext}, {_vram.TotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
+        log?.Info($"AlloyRenderer: [vram] {_vram.Ext}, {_vram.TotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
     /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
@@ -65,8 +84,14 @@ public sealed unsafe partial class AlloyRenderer
     internal static string FrameVram(VkBackend vk, ExtenderLog log)
     {
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
-        return VramLine(held, usage, budget, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
+        return FrameVram(held, usage, budget, 0, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
     }
+
+    /// <summary>The frame line's memory part from the device's figures, bytes, and <paramref name="systemRamBytes"/> of
+    /// Alloy's allocations in system RAM; what idle models hold it reads itself.</summary>
+    internal static string FrameVram(long heldBytes, long usageBytes, long budgetBytes, long systemRamBytes,
+                                     ReadOnlySpan<(string Name, long Bytes)> top)
+        => VramLine(heldBytes, usageBytes, budgetBytes, top);
 
     /// <summary>The device's memory figures as last sampled, KiB, and which query answered: what the probe
     /// settled for the session, beside the free figure every bracket resamples.</summary>
@@ -78,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
         public int TotalKib;
     }
 
-    private static readonly VramState _vram = new();
+    private static VramState _vram = new();
 
     /// <summary>The probe's total, MiB; 0 before the probe or when the device answers nothing.</summary>
     internal static long VramTotalMib => _vram.TotalKib / 1024;

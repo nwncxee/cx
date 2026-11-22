@@ -152,12 +152,13 @@ internal static unsafe partial class LightmapBake
     /// <summary>A page is waiting for room for its scratch, and the area draws with the lightmaps it has.</summary>
     internal static bool ScratchWaits => false;
 
-    /// <summary>A fixture area baked on <paramref name="vk"/> through the bake's own path with the scratch whole or
-    /// halved, its disk cache in <paramref name="cacheDir"/>: the pages' bytes, null when it could not run, and the
-    /// rects the cache answered.</summary>
-    internal static byte[]? FixtureBake(VkBackend vk, ExtenderLog log, bool halfScratch, string cacheDir, out int cacheHits)
+    /// <summary>A fixture area baked on <paramref name="vk"/> through the bake's own path, with the scratch the ladder
+    /// gives now, its disk cache in <paramref name="cacheDir"/>: the pages' bytes, null when it could not run, the rects
+    /// the cache answered, and the bytes the bake's scratch took.</summary>
+    internal static byte[]? FixtureBake(VkBackend vk, ExtenderLog log, string cacheDir, out int cacheHits, out long scratchBytes)
     {
         cacheHits = 0;
+        scratchBytes = 0;
         return null;
     }
 
@@ -200,6 +201,9 @@ internal static unsafe partial class LightmapBake
     private static ImageId VkImage(VkBackend vk, ImageKind kind, Format f, int size, int layers, ImageUse use, string label)
         => vk.CreateImage(new ImageDesc(kind, f, size, size, 1, 1, layers, 1, use, label));
 
+    /// <summary>Pages the pool takes for <c>lightmap.vram</c> on the device as last probed.</summary>
+    internal static int PoolPagesNow() => PoolPages(Lightmap.Vram.V, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+
     /// <summary><see cref="Pool"/> on Vulkan: the three page arrays, sized once per <c>lightmap.vram</c> value.</summary>
     private static bool VkPool()
     {
@@ -207,7 +211,7 @@ internal static unsafe partial class LightmapBake
         VkBackend vk = s.Dev!;
         if (s.Layers > 0 && s.PoolMib == Lightmap.Vram.V) { VkClearPages(); return true; }
         if (s.Layers > 0) { VkFreePages(); Revoke(); }
-        int n = PoolPages(Lightmap.Vram.V, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+        int n = PoolPagesNow();
         s.PageA = VkImage(vk, ImageKind.Tex2DArray, Format.Bc6U, PageSize, n, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "vk lightmap irradiance");
         s.PageB = VkImage(vk, ImageKind.Tex2DArray, Format.Bc7, PageSize, n, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "vk lightmap direction");
         s.PageC = VkImage(vk, ImageKind.Tex2DArray, Format.Rgba8, PageSize, n,
