@@ -170,12 +170,13 @@ internal static class VkTextures
     }
 
     /// <summary>Free about <paramref name="bytes"/> of idle mirrors, least recently drawn first: each one's levels are
-    /// read back to system RAM, and it waits there until a draw asks for it. False, every image kept, when nothing was
-    /// idle or the readback did not land.</summary>
+    /// read back to system RAM, and it waits there until a draw asks for it. A name a live record holds is never idle.
+    /// False, every image kept, when nothing was idle or the readback did not land.</summary>
     private static bool EvictIdle(VkTexState t, long bytes)
     {
         VkBackend? vk = t.Dev;
         if (vk == null) return false;
+        AlloyRenderer.HoldRecordTextures();
         long idleBefore = vk.Frame - 1, freed = 0, at = 0;
         var batch = new List<(Entry E, long At)>();
         while (freed < bytes)
@@ -243,6 +244,7 @@ internal static class VkTextures
     {
         if (t.Parked.Count == 0 || t.Dev is not VkBackend vk) return;
         long frame = vk.Frame;
+        bool seated = false;
         for (int i = t.Parked.Count - 1; i >= 0; i--)
         {
             if (i >= t.Parked.Count) continue;
@@ -261,7 +263,10 @@ internal static class VkTextures
             e.Texels = null;
             e.Wanted = false;
             e.Drawn = frame;
+            seated = true;
         }
+        // a record staged while its texture waited holds the stand-in's index until it is staged again
+        if (seated) AlloyRenderer.InvalidateRecords(RecordWhole.Handles);
     }
 
     /// <summary>Every kept level onto <paramref name="img"/>; false when the device refuses one.</summary>
@@ -341,6 +346,14 @@ internal static class VkTextures
         e.Drawn = t.Dev!.Frame;
         if (e.Image.IsNull) e.Wanted = true;
         return e;
+    }
+
+    /// <summary>A live record holds owned name <paramref name="gl"/>: marked drawn this frame, though the record resolved
+    /// its index when it was last staged.</summary>
+    internal static void Held(uint gl)
+    {
+        VkTexState t = _s;
+        if (t.Dev is VkBackend vk && t.ByName.TryGetValue(gl, out Entry? e)) e.Drawn = vk.Frame;
     }
 
     /// <summary>The bindless index of <paramref name="gl"/>'s mirror; 0 when it has none or it waits for room.</summary>

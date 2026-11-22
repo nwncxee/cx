@@ -141,6 +141,7 @@ internal static partial class GpuGolden
         ContentTintSelfCheck(vk, check, log);
         ResidencyApprovedSelfCheck(vk, check, log);
         MoveBackFoundSelfCheck(vk, check, log);
+        EvictFoundSelfCheck(vk, check, log);
         ContentTintApprovedSelfCheck(vk, check, log);
         ContentSelfIllumSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);
