@@ -5,7 +5,7 @@ Usage: codehash.py [--tree] [checkout]     (default: the checkout this script li
        --tree: the exact tree's fingerprint instead, every file whole, for build.sh's record of what its checks passed on
 
 Every tracked or untracked file the repo's .gitignore files do not ignore counts, and so does every file under
-managed/ but the bin/ and obj/ of its projects (cx_managed and the core), which MSBuild compiles whatever a .gitignore says. Markdown is left out, except under
+managed/ but the bin/ and obj/ of its projects (cx_managed, the core and its tests), which MSBuild compiles whatever a .gitignore says. Markdown is left out, except under
 third_party/ (whose notices packaging/licenses.sh ships). A submodule counts by its checked-out commit, and a .cs
 file counts with its comments removed and its blank lines dropped. Everything inside a C# string literal counts, a `//` line
 held in a raw string being shader text rather than a comment, so this lexes C# instead of matching lines. A .glsl
@@ -178,7 +178,7 @@ def files(root):
     found = {p.decode() for p in listed if p}
     # MSBuild compiles every file under managed/ but each project's own bin/ and obj/, whatever a .gitignore says of it.
     managed = os.path.join(root, 'managed')
-    projects = {managed, os.path.join(managed, 'Core')}
+    projects = {managed, os.path.join(managed, 'Core'), os.path.join(managed, 'Core', 'Tests')}
     for top, dirs, names in os.walk(managed):
         if top in projects:
             dirs[:] = [d for d in dirs if d not in ('bin', 'obj')]

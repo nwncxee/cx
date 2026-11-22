@@ -17,7 +17,7 @@ fail() { echo "!! $1"; rc=1; }
 command -v dotnet >/dev/null || { echo ">> run this inside nix develop" >&2; exit 2; }
 [ -x tools/stryker.sh ] || { echo "!! no tools/stryker.sh: the repo's Stryker command does not exist"; echo "!! Stryker approved examples: FAILED (above)" >&2; exit 1; }
 F=$(src HexColour.cs) || exit 2
-case "$F" in managed/Core/*) ;; *) echo "!! $F is not in the core project"; exit 1 ;; esac
+grep -qF "Include=\"${F#managed/}\"" managed/Core/core.files.props || { echo "!! $F is not in the core project"; exit 1; }
 git worktree add -q --detach "$wt" HEAD || exit 2
 ln -s "$repo/build" "$wt/build"
 cp "$wt/$F" "$tmp/before.cs"

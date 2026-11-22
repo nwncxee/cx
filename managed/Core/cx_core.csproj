@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="cx_managed" />
+    <InternalsVisibleTo Include="cx_core.Tests" />
   </ItemGroup>
 
   <Import Project="core.files.props" />

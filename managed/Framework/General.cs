@@ -8,7 +8,7 @@ namespace CX.Framework;
 /// report). Declared on first touch -- <see cref="HookService"/>'s constructor reads <see cref="HookDebug"/> right
 /// after <see cref="Settings.Load"/> -- so it is the first group in the walk.
 /// </summary>
-public static class General
+public static partial class General
 {
     public static readonly KnobGroup G;
     /// <summary>Off by default: every CX command but <c>/settings</c> then goes to the server as chat.</summary>

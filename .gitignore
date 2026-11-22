@@ -25,3 +25,4 @@ tools/*/obj/
 # Per-machine paths (tools/paths.py; see local.env.example).
 local.env
 *.spv
+/managed/Core/Tests/bin/
