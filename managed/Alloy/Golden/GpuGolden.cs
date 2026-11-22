@@ -47,6 +47,17 @@ internal static partial class GpuGolden
         return why;
     }
 
+    /// <summary>The bake's VRAM examples and found tests, reported under a name of their own so one can be judged
+    /// apart from the suite; a failure fails the suite too.</summary>
+    private static void VramSelfCheck(VkBackend vk, Checker suite, ExtenderLog log)
+    {
+        var check = new Checker(log, "LightmapBake.Vram.SelfCheck");
+        LightmapBake.VramGoldens(vk, check, log);
+        LightmapBake.VramFound(vk, check, log);
+        if (!check.Ok) suite.Ok = false;
+        log.Info(check.Ok ? "LightmapBake.Vram.SelfCheck: passed" : "LightmapBake.Vram.SelfCheck: FAILED");
+    }
+
     /// <summary>Every golden on <paramref name="vk"/>, each cleaning up after itself.</summary>
     private static void Run(VkBackend vk, Checker check, ExtenderLog log)
     {
@@ -69,7 +80,7 @@ internal static partial class GpuGolden
         VmaSelfCheck(vk, check, log);
         VmaMoreSelfCheck(vk, check, log);
         VramCapApprovedSelfCheck(vk, log);
-        LightmapBake.VramGoldens(vk, check, log);
+        VramSelfCheck(vk, check, log);
         SystemRamSelfCheck(check, log);
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
