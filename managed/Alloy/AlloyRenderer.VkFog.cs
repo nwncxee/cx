@@ -34,6 +34,8 @@ public sealed unsafe partial class AlloyRenderer
         public int W, H, D;
         /// <summary>This frame's volume is built, so its readers may sample it.</summary>
         public bool Built;
+        /// <summary>The four volumes' move-backs as last seen.</summary>
+        public int Moves;
     }
 
     private static VkFogState _vkFog = new();
@@ -55,6 +57,7 @@ public sealed unsafe partial class AlloyRenderer
         FogVolume.NotBuilt();
         float rain = Weather.VeilShare;
         if (!FogVolume.Runs(rain > 0f, VolumetricFog.Enabled.V) || !VkFogEnsure(vk, s, log)) return;
+        VkFogFollow(vk, s);
         if (!FogVolume.Prepare(view, vpClean, viewport, far, main && !_capturing, lightingOn, rain, out FogVolume.Terms t)) return;
         if (!VkFogVolumes(vk, s, t.W, t.H, t.D, log)) return;
         bool a = FogVolume.CurrentIsA;
@@ -128,6 +131,29 @@ public sealed unsafe partial class AlloyRenderer
         });
         LooseBlock.Resolve(s.Sum.Names, () => f.S = FogVolume.GridLocsOf());
         return true;
+    }
+
+    /// <summary>A volume moved back to device memory and holds nothing: this frame's medium stands without history.</summary>
+    private static void VkFogFollow(VkBackend vk, VkFogState s)
+    {
+        if (vk.MovedBack(ref s.Moves, s.MedA, s.MedB, s.SumA, s.SumB)) FogVolume.Revoke();
+    }
+
+    /// <summary>The fog history over these volumes is dropped once <paramref name="moved"/> has run between two
+    /// frames' follows; the live flag comes back as it was.</summary>
+    internal static bool VkFogDropsForCheck(VkBackend vk, ImageId medA, ImageId medB, ImageId sumA, ImageId sumB, Action moved)
+    {
+        var s = new VkFogState { Dev = vk, MedA = medA, MedB = medB, SumA = sumA, SumB = sumB };
+        bool was = FogVolume.HasHistory;
+        try
+        {
+            VkFogFollow(vk, s);
+            FogVolume.HistoryForCheck(true);
+            moved();
+            VkFogFollow(vk, s);
+            return !FogVolume.HasHistory;
+        }
+        finally { FogVolume.HistoryForCheck(was); }
     }
 
     /// <summary>The four volumes at this grid; a new grid is new storage and starts without history.</summary>

@@ -29,6 +29,8 @@ public sealed unsafe partial class AlloyRenderer
         public int CoverSize, EsmSize, MapSize, ShelSize;
         /// <summary>The noise tile was written last frame and owes its mips, which an upload runs ahead of the next submit.</summary>
         public bool NoiseMips;
+        /// <summary>The move-backs as last seen of the moment pair, the wetness map, the shelter cache and the noise tile.</summary>
+        public int EsmMoves, MapMoves, ShelMoves, NoiseMoves;
         public SamplerId Clamp, Tile, Print;
     }
 
@@ -43,6 +45,7 @@ public sealed unsafe partial class AlloyRenderer
         VkWxSurfState s = _vkWxs;
         if (s.Dev != vk) { _vkWxs = s = new VkWxSurfState { Dev = vk }; Weather.VkReset(); }
         if (!Weather.SurfacesVk || !VkWxsEnsure(vk, s, log)) return;
+        VkWxFollow(vk, s);
         int bake = Weather.CoverToFilterVk(out int mapSize, out int layer);
         if (bake >= 0) VkWxFilter(vk, cl, s, bake, mapSize, layer, log);
         VkWxMap(vk, cl, s, bake >= 0, log);
@@ -55,6 +58,29 @@ public sealed unsafe partial class AlloyRenderer
             log.Always($"AlloyRenderer: the Vulkan weather surfaces are LIVE -- the cover layer filtered at {s.EsmSize}px, "
                      + $"the wetness map at {s.MapSize}px, the shelter cache at {s.ShelSize}px");
         }
+    }
+
+    /// <summary>A map that moved back to device memory holds nothing: the moments filter again, the wetness map clears,
+    /// the shelter cache bakes again and the noise tile is made anew.</summary>
+    private static void VkWxFollow(VkBackend vk, VkWxSurfState s)
+    {
+        if (vk.MovedBack(ref s.EsmMoves, s.Esm0, s.Esm1)) Weather.CoverLostVk();
+        if (vk.MovedBack(ref s.MapMoves, s.Map)) Weather.MapLostVk();
+        if (vk.MovedBack(ref s.ShelMoves, s.ShelTex)) Weather.ShelterLostVk();
+        if (!vk.MovedBack(ref s.NoiseMoves, s.NoiseTex)) return;
+        vk.Destroy(s.NoiseTex);
+        s.NoiseTex = default; s.NoiseMips = false; s.NoiseMoves = 0;
+        Weather.NoiseLostVk();
+    }
+
+    /// <summary>What the weather owes once <paramref name="moved"/> has run between two frames' follows over these
+    /// maps, as <see cref="Weather.LostForCheck"/> reads it; true in Noise also means the tile was let go.</summary>
+    internal static (bool Cover, bool Map, bool Shelter, bool Noise) VkWxLosesForCheck(VkBackend vk, ImageId esm0, ImageId esm1,
+                                                                                        ImageId map, ImageId shel, ImageId noise, Action moved)
+    {
+        var s = new VkWxSurfState { Dev = vk, Esm0 = esm0, Esm1 = esm1, Map = map, ShelTex = shel, NoiseTex = noise };
+        (bool cover, bool map2, bool shelter, bool noise2) = Weather.LostForCheck(() => VkWxFollow(vk, s), () => { moved(); VkWxFollow(vk, s); });
+        return (cover, map2, shelter, noise2 && s.NoiseTex.IsNull);
     }
 
     /// <summary>The stages, the filter program and the samplers, made once per device; a refusal is said once and

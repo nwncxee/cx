@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using CX.Graphics;
 using CX.Rhi;
@@ -73,6 +74,25 @@ public sealed unsafe partial class CasterPass
     /// <summary>Area edge: the map and the key it was rendered under both describe an area that has gone, even
     /// when the client hands the next area the same <c>CNWCArea</c>, which would otherwise read as still fresh.</summary>
     internal static void SkyAreaEdge() => SkyRelease();
+
+    /// <summary>The Vulkan map baked from the view moved back to device memory and holds nothing: the view renders again.</summary>
+    internal static void SkyMapLost() => SkyRelease();
+
+    /// <summary>Whether <paramref name="follow"/> drops a rendered view, after <paramref name="baseline"/>; the view's
+    /// key comes back as it was.</summary>
+    internal static bool SkyLostForCheck(Action baseline, Action follow)
+    {
+        SkyPassState k = _sky;
+        (bool baked, bool pending, SkyFit key, int keyGen, int gen, SkyFit fit, nint area) = (k.Baked, k.Pending, k.Key, k.KeyGen, k.Gen, k.Fit, k.Area);
+        try
+        {
+            baseline();
+            k.Baked = true;
+            follow();
+            return !k.Baked;
+        }
+        finally { (k.Baked, k.Pending, k.Key, k.KeyGen, k.Gen, k.Fit, k.Area) = (baked, pending, key, keyGen, gen, fit, area); }
+    }
 
     /// <summary>The caster set went away (area edge, module unload, a failed flush): so did the world the
     /// map was baked from.</summary>

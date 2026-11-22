@@ -329,7 +329,7 @@ internal static unsafe partial class StageResources
         var g = _gl;
         int vw = g.HaveView ? g.ViewW : Math.Max(viewport[2], 1);
         int vh = g.HaveView ? g.ViewH : Math.Max(viewport[3], 1);
-        bool stale = !r.Made;
+        bool stale = !r.Made || VkMovedBack(vk, r);
         for (int k = 0; k < s.Images.Length && !stale; k++)
         {
             Extent(s.Images[k], vw, vh, out int w, out int h, out int d);
@@ -357,6 +357,24 @@ internal static unsafe partial class StageResources
                     + $"(main view {vw}x{vh})");
         VkPasses(cl, id, s, r, viewport, once: true);
         return true;
+    }
+
+    /// <summary>One of the stage's images moved back to device memory and holds nothing: the stage is made again, its
+    /// <c>once</c> passes with it. Every image is new at a make, so any move at all is one since.</summary>
+    private static bool VkMovedBack(VkBackend vk, VkStageRes r)
+    {
+        for (int k = 0; k < r.Tex.Length; k++)
+            if (vk.MovesOf(r.Tex[k]) + vk.MovesOf(r.Prev[k]) != 0) return true;
+        return false;
+    }
+
+    /// <summary>A stage made over the new images <paramref name="tex"/> and <paramref name="prev"/> is owed again once
+    /// <paramref name="moved"/> has run.</summary>
+    internal static bool VkRemakesForCheck(VkBackend vk, ImageId tex, ImageId prev, Action moved)
+    {
+        var r = new VkStageRes { Tex = [tex], Prev = [prev], Made = true };
+        moved();
+        return VkMovedBack(vk, r);
     }
 
     /// <summary>One declared image on Vulkan, zeroed so a frame before the first pass that writes it reads a known value.</summary>

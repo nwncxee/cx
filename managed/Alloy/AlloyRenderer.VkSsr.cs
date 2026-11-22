@@ -30,6 +30,8 @@ public sealed unsafe partial class AlloyRenderer
         public ImageId Hist0, Hist1;
         public int HistAt;
         public bool HistValid;
+        /// <summary>The history pair's move-backs as last seen.</summary>
+        public int HistMoves;
         public Matrix4x4 PrevVp;
         /// <summary>The mirror: its draw target and depth, the mip chain the trace samples, at <see cref="PlW"/> x
         /// <see cref="PlH"/>; <see cref="PlOn"/> = this frame's chain holds the mirror at <see cref="PlZ"/>.</summary>
@@ -72,6 +74,7 @@ public sealed unsafe partial class AlloyRenderer
         s.HistValid &= want;
         if (!want || !VkSsrEnsure(vk, s, log)) return false;
         if (!VkSsrTargets(vk, s, w, h, Lighting.SsrDetail.V, log)) return false;
+        VkSsrFollow(vk, s);
         s.Armed = true;
         return true;
     }
@@ -302,6 +305,24 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The world edge and a camera cut: the reflection history shows another place, so the next frame's
     /// resolve stands alone.</summary>
     internal static void VkSsrRevoke() => _vkSsr.HistValid = false;
+
+    /// <summary>A history image moved back to device memory and holds nothing: the next resolve stands alone.</summary>
+    private static void VkSsrFollow(VkBackend vk, VkSsrState s)
+    {
+        if (vk.MovedBack(ref s.HistMoves, s.Hist0, s.Hist1)) s.HistValid = false;
+    }
+
+    /// <summary>The reflection history over <paramref name="h0"/> and <paramref name="h1"/> is dropped once
+    /// <paramref name="moved"/> has run between two frames' follows.</summary>
+    internal static bool VkSsrDropsForCheck(VkBackend vk, ImageId h0, ImageId h1, Action moved)
+    {
+        var s = new VkSsrState { Dev = vk, Hist0 = h0, Hist1 = h1 };
+        VkSsrFollow(vk, s);
+        s.HistValid = true;
+        moved();
+        VkSsrFollow(vk, s);
+        return !s.HistValid;
+    }
 
     /// <summary>The planar mirror -- the opaque set mirrored across the ground at the player's feet into a
     /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane, and the

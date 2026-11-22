@@ -158,6 +158,20 @@ internal sealed unsafe partial class VkBackend
     /// contents the move started over. Zero for a stale id.</summary>
     internal int MovesOf(ImageId i) => _images.TryGet(i.Value, out VkImg img) ? img.Moves : 0;
 
+    /// <summary>One of these images moved back since <paramref name="seen"/> was latched, which it now is: their owner
+    /// remakes what they held. A null id counts no moves.</summary>
+    internal bool MovedBack(ref int seen, ImageId a, ImageId b = default, ImageId c = default, ImageId d = default)
+    {
+        int moves = MovesOf(a) + MovesOf(b) + MovesOf(c) + MovesOf(d);
+        if (moves == seen) return false;
+        seen = moves;
+        return true;
+    }
+
+    /// <summary>Image <paramref name="i"/> remade in device memory now, as a move-back period remakes a spilled one;
+    /// false for a stale id or no room.</summary>
+    internal bool MoveBackForCheck(ImageId i) => _images.TryGet(i.Value, out VkImg img) && MoveBack(img);
+
     /// <summary>Images placed in system RAM that have not moved back yet; a stale id is dropped at the next try.</summary>
     private readonly System.Collections.Generic.List<uint> _spilled = new();
 

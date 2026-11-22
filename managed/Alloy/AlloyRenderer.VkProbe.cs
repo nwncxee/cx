@@ -27,6 +27,8 @@ public sealed unsafe partial class AlloyRenderer
         public VkDefStage? Box, Ggx, Proj;
         public SamplerId Trilinear;
         public int Size, Mips, POrigin = -1;
+        /// <summary>The published cube's move-backs as last seen.</summary>
+        public int TexMoves;
     }
 
     /// <summary>The GGX prefilter's push block, member for member: the level this dispatch writes, which is the only
@@ -69,6 +71,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkProbeCapture(VkBackend vk, CommandList cl, VkColourState c, float far, bool lightingOn, ExtenderLog log)
     {
         VkProbeState s = VkProbeOwner(vk);
+        VkProbeFollow(vk, s);
         if (!lightingOn || s.Failed || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return;
         bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
         if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
@@ -215,6 +218,29 @@ public sealed unsafe partial class AlloyRenderer
         _vkProbe = s = new VkProbeState { Dev = vk };
         EnvProbe.Revoke();
         return s;
+    }
+
+    /// <summary>The published cube moved back to device memory and holds nothing: no stage samples it until a capture refills it.</summary>
+    private static void VkProbeFollow(VkBackend vk, VkProbeState s)
+    {
+        if (vk.MovedBack(ref s.TexMoves, s.Tex)) EnvProbe.Revoke();
+    }
+
+    /// <summary>A capture over <paramref name="tex"/> is revoked once <paramref name="moved"/> has run between two
+    /// frames' follows; <see cref="EnvProbe.Ready"/> comes back as it was.</summary>
+    internal static bool VkProbeRevokesForCheck(VkBackend vk, ImageId tex, Action moved)
+    {
+        var s = new VkProbeState { Dev = vk, Tex = tex };
+        bool was = EnvProbe.Ready;
+        try
+        {
+            VkProbeFollow(vk, s);
+            EnvProbe.ReadyForCheck(true);
+            moved();
+            VkProbeFollow(vk, s);
+            return !EnvProbe.Ready;
+        }
+        finally { EnvProbe.ReadyForCheck(was); }
     }
 
     /// <summary>The three stages, the two cubes, the face depth and the SH9 block, once per device; a refusal is said

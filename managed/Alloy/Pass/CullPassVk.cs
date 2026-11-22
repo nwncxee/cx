@@ -59,6 +59,8 @@ internal static class CullPassVk
         public int PyrW, PyrH, PyrLevels;
         public Matrix4x4 PyrVp;
         public bool Stale, Fresh, RetestPending;
+        /// <summary>The pyramid's move-backs as last seen.</summary>
+        public int PyrMoves;
         /// <summary>This frame's list, staged at the cull site; <see cref="Groups"/> 0 means nothing to cut.</summary>
         public CullSrcRec[]? Records;
         public Sphere[]? Spheres;
@@ -171,6 +173,7 @@ internal static class CullPassVk
         s.Groups = 0;
         s.Publish = false;
         s.Ran = s.Fresh = s.RetestPending = false;
+        Follow(vk, s);
         if (publish && s.Spheres != null && !PublishSpheres(vk, cl, s.Spheres.AsSpan(0, s.SphereSlots)))
         {
             log.Always("CullPassVk: the device REFUSED the cull bounds buffer -- no visibility test and no shadow bounds");
@@ -374,6 +377,24 @@ internal static class CullPassVk
             cl.BindSet(0, new BindSet(default, default, sampled, images));
             cl.Dispatch((lw + HiZGroup - 1) / HiZGroup, (lh + HiZGroup - 1) / HiZGroup);
         }
+    }
+
+    /// <summary>The pyramid moved back to device memory and holds nothing: the prepass tests no occlusion until it is reduced again.</summary>
+    private static void Follow(VkBackend vk, CullVkState s)
+    {
+        if (vk.MovedBack(ref s.PyrMoves, s.Pyr)) s.Stale = false;
+    }
+
+    /// <summary>A prior frame's pyramid in <paramref name="pyr"/> is no longer tested against once <paramref name="moved"/>
+    /// has run between two frames' follows.</summary>
+    internal static bool DropsForCheck(VkBackend vk, ImageId pyr, Action moved)
+    {
+        var s = new CullVkState { Dev = vk, Pyr = pyr };
+        Follow(vk, s);
+        s.Stale = true;
+        moved();
+        Follow(vk, s);
+        return !s.Stale;
     }
 
     /// <summary>The pyramid at <paramref name="w"/> x <paramref name="h"/>, remade (and no longer stale) on a resize.</summary>

@@ -184,6 +184,9 @@ internal static class EnvProbe
     /// that asks for a new one; the device's targets survive and the next capture reuses them.</summary>
     internal static void Revoke() => Ready = false;
 
+    /// <summary>Sets <see cref="Ready"/> as a capture would leave it, for a self-check that puts it back after.</summary>
+    internal static void ReadyForCheck(bool ready) => Ready = ready;
+
     internal static (float near, float far) FacePlanes => (FaceNear, _far);
 
     /// <summary>Occurrences of <paramref name="what"/> in <paramref name="s"/>, for SelfCheck's source contracts.</summary>
