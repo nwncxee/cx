@@ -105,7 +105,8 @@ for l in open(sys.argv[1], errors="replace"):
 g = max(((b[0] - a[0]).total_seconds(), b[1]) for a, b in zip(ts, ts[1:]))
 print(f"{g[0]:.1f} {(ts[-1][0] - ts[0][0]).total_seconds():.1f} {g[1]}")' "$1"; }
 if command -v vulkaninfo > /dev/null && vulkaninfo --summary > /dev/null 2>&1; then
-  cfg="build/selfcheck/home/.local/share/Neverwinter Nights/cx.cfg"
+  suites_home=build/selfcheck/home
+  cfg="$suites_home/.local/share/Neverwinter Nights/cx.cfg"
   trap 'rm -rf "$tmp"; rm -f "$cfg"' EXIT
   vk_ran=1
   for boot in 1 2; do
