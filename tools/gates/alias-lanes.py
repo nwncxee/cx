@@ -25,11 +25,22 @@ ASSIGN = re.compile(r'(?<![A-Za-z0-9_])Alias\s*=(?![=>])')
 DECLARES = ('class', 'struct', 'record', 'interface')
 
 
+_BLANK_STOPS = re.compile(r'//|/\*|@"|["\']')
+_NOT_NL = re.compile(r'[^\n]')
+
+
 def blank(text):
     """Comments and the insides of literals blanked out, every offset and newline kept, so the scanner below
     sees code only. The quotes themselves stay: a literal still reads as `""`, which is the mark looked for."""
     out, i, n = [], 0, len(text)
     while i < n:
+        m = _BLANK_STOPS.search(text, i)
+        if m is None:
+            out.append(text[i:])
+            break
+        if m.start() > i:
+            out.append(text[i:m.start()])
+            i = m.start()
         two = text[i:i + 2]
         if two == '//':
             j = text.find('\n', i)
@@ -47,7 +58,7 @@ def blank(text):
                     break
                 else:
                     j += 1
-            out.append('"'); out.extend(' ' if c != '\n' else '\n' for c in text[i + 1:j - 1]); out.append('"')
+            out.append('"'); out.append(_NOT_NL.sub(' ', text[i + 1:j - 1])); out.append('"')
             i = j
             continue
         elif text[i] in '"\'':
@@ -60,13 +71,13 @@ def blank(text):
                     j += 1
                     break
                 j += 1
-            out.append(q); out.extend(' ' for _ in text[i + 1:j - 1]); out.append(text[j - 1] if j - 1 > i else q)
+            out.append(q); out.append(' ' * len(text[i + 1:j - 1])); out.append(text[j - 1] if j - 1 > i else q)
             i = j
             continue
         else:
             out.append(text[i]); i += 1
             continue
-        out.extend(c if c == '\n' else ' ' for c in text[i:j])
+        out.append(_NOT_NL.sub(' ', text[i:j]))
         i = j
     return ''.join(out)
 

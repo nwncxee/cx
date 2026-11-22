@@ -22,6 +22,7 @@ CS_DECODE = re.compile(r"\bnear / \(far - near\)")
 CS_DECODE_HOME = os.path.join("Core", "WorldDepth.cs")
 FN_HEAD = re.compile(r"^\s*(?:\w+\s+)+?(\w+)\s*\(([^()]*)\)\s*\{?\s*$")
 CALL = re.compile(r"\b(\w+)\s*\(")
+HELD = re.compile(r"\b(?:float\s+)?(\w+)\s*=\s*" + READ + r"\b" + WORLD_DEPTH)
 KEYWORDS = {"if", "for", "while", "switch", "return", "texture", "textureLod", "texelFetch"}
 
 
@@ -83,6 +84,8 @@ def misses(path, lines, world):
     """Lines of `lines` that read world depth the GL way; `world` maps a line to the extra world names in scope."""
     out, held = [], set()
     for i, code in enumerate(lines, 1):
+        if not code:
+            continue
         names = WORLD_DEPTH + "".join("|" + re.escape(n) for n in sorted(world(i - 1)))
         read = re.compile(READ + r"\b(?:" + names + r")\b")
         m = re.search(r"\b(?:float\s+)?(\w+)\s*=\s*" + read.pattern, code)
@@ -112,19 +115,23 @@ def world_params(texts):
             held = set()
             for i, raw in enumerate(lines):
                 code = code_of(raw)
-                m = re.search(r"\b(?:float\s+)?(\w+)\s*=\s*" + READ + r"\b" + WORLD_DEPTH, code)
+                if not code:
+                    continue
+                m = HELD.search(code)
                 if m:
                     held.add(m.group(1))
-                scope = set(held)
-                for name, (a, b, _) in here.items():
-                    if a <= i <= b:
-                        scope |= reach.get(name, set())
-                world = re.compile(r"^(?:" + WORLD_DEPTH + "".join("|" + re.escape(n) for n in scope) + r")$"
-                                   r"|" + READ + r"\b" + WORLD_DEPTH)
+                world = None
                 for m in CALL.finditer(code):
                     callee = m.group(1)
                     if callee not in fns:
                         continue
+                    if world is None:
+                        scope = set(held)
+                        for name, (a, b, _) in here.items():
+                            if a <= i <= b:
+                                scope |= reach.get(name, set())
+                        world = re.compile(r"^(?:" + WORLD_DEPTH + "".join("|" + re.escape(n) for n in scope) + r")$"
+                                           r"|" + READ + r"\b" + WORLD_DEPTH)
                     params = fns[callee][2]
                     for k, arg in enumerate(args_at(code, m.end() - 1)):
                         if k < len(params) and world.search(arg) and params[k] not in reach[callee]:

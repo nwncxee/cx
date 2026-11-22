@@ -16,11 +16,11 @@ A field is matched to its declaration by the class that declares it (`HitCheck =
 `Renderer`), and a read to that declaration by its qualifier (`Renderer.HitCheck.Boot`), or, bare, by the class
 or the file it is read in. `Size`, `Viz`, `X` and the like are declared by several passes, so a bare read in a
 third class names no declaration; those reads are listed under `-v` and fail nothing."""
-import os, re, sys, collections
+import bisect, os, re, sys, collections
 
 ROOT = os.environ.get('CX_ROOT', '.')
-FACT = re.compile(r'\b(\w+)\s*=\s*\w+\.(?:Toggle|Slider|Dropdown|Swatch|Text|List)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
-READ = re.compile(r'(?:(\w+)\s*\.\s*)?\b(\w+)\.(V|Boot)\b')
+FACT = re.compile(r'\b(\w++)\s*=\s*\w++\.(?:Toggle|Slider|Dropdown|Swatch|Text|List)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
+READ = re.compile(r'(?:\b(\w++)\s*\.\s*)?\b(\w++)\.(V|Boot)\b')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 
 
@@ -67,6 +67,17 @@ def balanced(text, start):
     return text[start + 1:balanced_end(text, start)]
 
 
+_NEWLINES = {}
+
+
+def line_of(path, text, pos):
+    """The 1-based line `pos` falls on, from the file's newline offsets, found once."""
+    nl = _NEWLINES.get(path)
+    if nl is None:
+        nl = _NEWLINES[path] = [m.start() for m in re.finditer('\n', text)]
+    return bisect.bisect_left(nl, pos) + 1
+
+
 texts = {}
 for root, _, files in os.walk(os.path.join(ROOT, 'managed')):
     for name in sorted(files):
@@ -105,7 +116,7 @@ for path, text in texts.items():
     for m in FACT.finditer(text):
         field, open_at, key = m.group(1), m.start(2), m.group(3)
         args = balanced(text, open_at)
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         cls = owner(path, m.start()) or ''
         decl[(cls, field)] = (key, 'Effect.Restart' in args, path, line)
         by_field[field].append((cls, path))
@@ -122,7 +133,7 @@ for path, text in texts.items():
         candidates = by_field.get(field)
         if not candidates:
             continue
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         if len(candidates) == 1:
             pick = candidates[0][0]
         else:
@@ -135,11 +146,14 @@ for path, text in texts.items():
             continue
         reads[(pick, field)].append((path, line, how))
 
+per = collections.Counter(u.split(':')[0] for u in unresolved)
 if '--census' in sys.argv:
-    per = collections.Counter(u.split(':')[0] for u in unresolved)
     for f, n in sorted(per.items()):
         print(n, f)
     sys.exit(0)
+if '--census-to' in sys.argv:
+    with open(sys.argv[sys.argv.index('--census-to') + 1], 'w') as out:
+        out.writelines(f'{n} {f}\n' for f, n in sorted(per.items()))
 
 verbose = '-v' in sys.argv
 for (cls, field), (key, restart, path, line) in sorted(decl.items()):

@@ -39,6 +39,7 @@ NUMBER = re.compile(r"0[xXbB][0-9a-fA-F_]+[uUlL]*|\.?[0-9][0-9_]*(?:\.[0-9_]+)?(
 _STOPS = re.compile(r"[/\"']")
 _SLASH = re.compile(r"/")
 _NOT_NL = re.compile(r"[^\n]")
+_QUOTES = str.maketrans("\"'", "  ")
 
 
 def mask(src: str, strings: bool = True) -> str:
@@ -105,7 +106,7 @@ def mask(src: str, strings: bool = True) -> str:
     if not strings:
         return "".join(out)
     # the opening quote/apostrophe itself
-    return "".join(" " if ch in "\"'" else ch for ch in out)
+    return "".join(out).translate(_QUOTES)
 
 
 def regions(path: Path, masked: str):
@@ -402,9 +403,10 @@ def scan(path: Path, qualified=None):
 
 def main():
     """Default: report every hit and fail on any but the const-against-literal shape, whose standing
-    instances are a shrink-only census instead (`--census`, fed to ratchet.sh by selfcheck.sh)."""
+    instances are a shrink-only census instead (`--census`; `--census-to FILE` writes it beside the report)."""
     verbose = "-v" in sys.argv
     census = "--census" in sys.argv
+    census_to = sys.argv[sys.argv.index("--census-to") + 1] if "--census-to" in sys.argv else None
     hard, counts = 0, {}
     qualified = qualified_consts()
     for path in sorted(MANAGED.rglob("*.cs")):
@@ -424,6 +426,9 @@ def main():
         for name in sorted(counts):
             print(f"{counts[name]} {name}")
         return 0
+    if census_to:
+        with open(census_to, "w") as f:
+            f.writelines(f"{counts[name]} {name}\n" for name in sorted(counts))
     if hard:
         print(f"!! selfcheck: {hard} assertion(s) that cannot fail, or an uncounted skip (CX-200).", file=sys.stderr)
         print("!! A self-check's expected value comes from an INDEPENDENT oracle: a hand-written literal,", file=sys.stderr)

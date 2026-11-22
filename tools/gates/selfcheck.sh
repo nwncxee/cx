@@ -7,6 +7,7 @@
 # const-against-literal shape's standing instances are a shrink-only baseline.
 # `python3 tools/gates/selfcheck.py -v` prints each hit's expression.
 cd "$(dirname "$0")/../.." || exit 2
-python3 tools/gates/selfcheck.py || exit 1
+census=$(mktemp); trap 'rm -f "$census"' EXIT
+python3 tools/gates/selfcheck.py --census-to "$census" || exit 1
 # the const-against-literal shape has standing instances; they may only shrink
-python3 tools/gates/selfcheck.py --census | tools/gates/ratchet.sh tools/gates/selfcheck.baseline "$1"
+tools/gates/ratchet.sh tools/gates/selfcheck.baseline "$1" < "$census"

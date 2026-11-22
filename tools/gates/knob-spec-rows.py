@@ -23,48 +23,63 @@ stands for all three camera modes. A family covers the SHAPE its cell declares a
 but not a future `chat.wrap` -- a stem taken as a bare prefix would exempt the whole family tree.
 
 Prints one line per key with no row and per row with no key; `-v` prints the whole census."""
-import os, re, sys, collections
+import bisect, os, re, sys, collections
 
 ROOT = os.environ.get('CX_ROOT', '.')
 FACTORIES = ('Toggle', 'Slider', 'Dropdown', 'Swatch', 'Text', 'List', 'Button', 'Link', 'Bag')
-DECL = re.compile(r'(?:(\w+)\s*=\s*)?KnobGroup\.Declare\(\s*(?:"([A-Za-z0-9_.\-]+)"|(\w+))')
-FACT = re.compile(r'\b(\w+)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*\(')
+DECL = re.compile(r'(?:\b(\w++)\s*=\s*)?KnobGroup\.Declare\(\s*(?:"([A-Za-z0-9_.\-]+)"|(\w+))')
+FACT = re.compile(r'\b(\w++)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*\(')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 NEWOF = re.compile(r'new\s+(\w+)\s*\(\s*"([a-z0-9]+)"')
 TEXTSTYLE = re.compile(r'new\s+(?:[\w.]+\.)?TextStyle\s*(\()\s*(\w+)\s*,')
 CAMERA_MODES = ('chase', 'topdown', 'driving')
 
 
+_STOPS = {}
+_TAILS = {'"': re.compile(r'(?:\\.|[^"\\])*', re.S), "'": re.compile(r"(?:\\.|[^'\\])*", re.S)}
+
+
 def balanced(text, start, open_c='(', close_c=')'):
-    """The span inside the brackets opening at `start`, string literals and comments skipped."""
+    """The span inside the brackets opening at `start`, string literals and comments skipped. Jumps from one
+    quote, comment or bracket to the next rather than stepping every character."""
+    stops = _STOPS.get((open_c, close_c))
+    if stops is None:
+        stops = _STOPS[(open_c, close_c)] = re.compile('"|\'|//|/\\*|' + re.escape(open_c) + '|' + re.escape(close_c))
     depth, i, n = 0, start, len(text)
     while i < n:
-        c = text[i]
-        if c == '"':
-            i += 1
-            while i < n and text[i] != '"':
-                i += 2 if text[i] == '\\' else 1
-        elif c == "'":
-            i += 1
-            while i < n and text[i] != "'":
-                i += 2 if text[i] == '\\' else 1
-        elif text.startswith('//', i):
-            i = text.find('\n', i)
+        m = stops.search(text, i)
+        if m is None:
+            break
+        j, t = m.start(), m.group()
+        if t in _TAILS:
+            i = _TAILS[t].match(text, j + 1).end() + 1
+        elif t == '//':
+            i = text.find('\n', j)
             if i < 0:
-                return text[start + 1:], n
-        elif text.startswith('/*', i):
-            i = text.find('*/', i)
-            if i < 0:
-                return text[start + 1:], n
+                break
             i += 1
-        elif c == open_c:
-            depth += 1
-        elif c == close_c:
-            depth -= 1
+        elif t == '/*':
+            i = text.find('*/', j)
+            if i < 0:
+                break
+            i += 2
+        else:
+            depth += 1 if t == open_c else -1
             if depth == 0:
-                return text[start + 1:i], i
-        i += 1
+                return text[start + 1:j], j
+            i = j + 1
     return text[start + 1:], n
+
+
+_NEWLINES = {}
+
+
+def line_of(path, text, pos):
+    """The 1-based line `pos` falls on, from the file's newline offsets, found once."""
+    nl = _NEWLINES.get(path)
+    if nl is None:
+        nl = _NEWLINES[path] = [m.start() for m in re.finditer('\n', text)]
+    return bisect.bisect_left(nl, pos) + 1
 
 
 def walk():
@@ -102,7 +117,7 @@ def owner(path, pos):
 class_group = collections.defaultdict(set)
 dynamic = {}
 for path, text in texts.items():
-    for m in DECL.finditer(text):
+    for m in (DECL.finditer(text) if 'KnobGroup.Declare' in text else ()):
         var, group, _ident = m.group(1), m.group(2), m.group(3)
         cls = owner(path, m.start())
         if cls is None:
@@ -141,7 +156,7 @@ for path, text in texts.items():
         names = keys_of(text, body)
         if not names:
             continue
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         cls = owner(path, m.start())
         groups = sorted(g for v, g in class_group.get(cls, ()) if v == var)
         if not groups:
@@ -157,7 +172,7 @@ for path, text in texts.items():
         var = m.group(2)
         body, _ = balanced(text, m.start(1))
         cls = owner(path, m.start())
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         pre = re.search(r'prefix:\s*"([a-z0-9_]*)"', body)
         prefix = pre.group(1) if pre else ''
         t = re.search(r'tier:\s*Tier\.(\w+)', body)
@@ -171,14 +186,14 @@ for m in re.finditer(r'=\s*Area\(\s*"([a-z0-9]+)"', texts.get(quality, '')):
     knobs[f'quality.{m.group(1)}'] = ('User', quality, 0, 'Quality.Area')
 
 for path, text in texts.items():
-    for m in DECL.finditer(text):
+    for m in (DECL.finditer(text) if 'KnobGroup.Declare' in text else ()):
         var, group, _ident = m.group(1), m.group(2), m.group(3)
         cls = owner(path, m.start())
         body, _ = balanced(text, text.index('(', m.start()))
         if not re.search(r'(?:^|[(,]\s*)master:\s*"', body):
             continue
         t = re.search(r'masterTier:\s*Tier\.(\w+)', body)
-        line = text[:m.start()].count('\n') + 1
+        line = line_of(path, text, m.start())
         for g in ([group] if group else sorted(g for v, g in class_group.get(cls, ()) if v == (var or 'G'))):
             knobs[f'{g}.enabled'] = (t.group(1) if t else 'User', path, line, 'master')
 

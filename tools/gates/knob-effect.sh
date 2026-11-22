@@ -6,10 +6,11 @@
 # sites left are counted per file against a shrink-only baseline. `python3 tools/gates/knob-effect.py -v`
 # lists each of them.
 cd "$(dirname "$0")/../.." || exit 2
-out=$(python3 tools/gates/knob-effect.py) || exit $?
+census=$(mktemp); trap 'rm -f "$census"' EXIT
+out=$(python3 tools/gates/knob-effect.py --census-to "$census") || exit $?
 if [ -n "$out" ]; then
   echo "!! knob-effect: a knob's declared effect does not match its readers:" >&2
   while IFS= read -r l; do printf '  %s\n' "$l"; done <<< "$out" >&2
   exit 1
 fi
-python3 tools/gates/knob-effect.py --census | bash tools/gates/ratchet.sh tools/gates/knob-effect.baseline "$@"
+bash tools/gates/ratchet.sh tools/gates/knob-effect.baseline "$@" < "$census"
