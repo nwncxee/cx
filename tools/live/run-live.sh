@@ -743,6 +743,9 @@ if [ "$LADDER" = 1 ]; then
     downed=$(grep -oE 'CXLADDER: combat-result [0-9]+/' "$LADDER_MARKS" | tail -1 | grep -oE '[0-9]+')
     [ "${downed:-1}" != 0 ] || fails+=("LADDER: combat-result 0/3 -- the fight started but nothing went down")
     [ -s "$LADDER_MARKS" ] || fails+=("LADDER: no CXLADDER marker anywhere -- did OnClientEnter run? see $OUT/nwserverLog1.txt")
+    # The return to the first area must cost no more GPU time than the first visit did (tools/live/revisit.py).
+    revisit=$(python3 -I "$ROOT/tools/live/revisit.py" "$OUT/cx.log") || fails+=("REVISIT: $revisit")
+    [ -n "$revisit" ] && echo "run-live: $revisit"
 fi
 
 {

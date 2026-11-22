@@ -71,6 +71,8 @@ internal static class Renderer
                                         Gui, Movie, OneQueue;
     internal static readonly Knob<int> Border, Oit, TexCache, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
+    /// <summary>MiB the device-local heaps are capped at, as a smaller card would be; 0 caps nothing.</summary>
+    internal static readonly Knob<int> VramCap;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
@@ -169,6 +171,8 @@ internal static class Renderer
                                DrawFunnelService.DrawModeBatch, tier: Tier.ChatOnly, effect: Effect.Restart);
         OwnedTex = G.Toggle("ownedtex", "ownedtex", true, Tier.ChatOnly, Effect.Restart);
         OneQueue = G.Toggle("onequeue", "onequeue", false, Tier.ChatOnly, Effect.Restart);
+        VramCap = G.Slider("vramcap", "VRAM cap", 0, 65536, 256, 0, "MiB", Tier.ChatOnly, Effect.Restart,
+                           help: "Caps the video memory the renderer may use at this many MiB, as a smaller card would; 0 caps nothing.");
         // CX-117: compare Alloy's whole PLT chain (file decode + master palette + scheme rows + resolve)
         // against the engine's own CPU composite, once per PLT texture at its first build. Cold, and
         // off by default: it reads every PLT file a second time.

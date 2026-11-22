@@ -368,8 +368,8 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. <paramref name="meshShaders"/>
     /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be; <paramref name="oneQueue"/> opens no
-    /// async or transfer queue, so every submit rides the graphics one.</summary>
-    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false)
+    /// async or transfer queue, so every submit rides the graphics one; <paramref name="capMib"/> caps the device-local heaps (0 = none).</summary>
+    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false, long capMib = 0)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
         if (Open(log, out VkInstance inst, out VkPhysicalDevice phys, out uint family, out VkPhysicalDeviceFeatures feats) is string late)

@@ -68,6 +68,7 @@ internal static partial class GpuGolden
         TransferRefill(vk, check);
         VmaSelfCheck(vk, check, log);
         VmaMoreSelfCheck(vk, check, log);
+        VramCapApprovedSelfCheck(vk, log);
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
         DestroyedBufferSelfCheck(vk, check, log);

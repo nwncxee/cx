@@ -59,6 +59,20 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>How many of the device's memory heaps are device-local.</summary>
+    internal int DeviceLocalHeaps
+    {
+        get
+        {
+            VkPhysicalDeviceMemoryProperties mp;
+            _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+            int n = 0;
+            for (int i = 0; i < mp.memoryHeapCount; i++)
+                if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) n++;
+            return n;
+        }
+    }
+
     /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers
     /// keep resident, which no VRAM figure counts.</summary>
     internal long HostHeldBytes()

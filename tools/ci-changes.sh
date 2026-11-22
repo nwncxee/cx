@@ -47,6 +47,7 @@ linux=(
   tools/live/harness-lib.sh
   tools/live/xtool.py
   tools/live/run-live.sh
+  tools/live/revisit.py
   tools/vk/report.py
   tools/vk/mutants.sh
   tools/vk/mutate.py

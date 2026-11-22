@@ -856,12 +856,15 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>ADR 0023's budget, read the same way: <c>texcache_mb</c> -1 is a quarter of probed VRAM, 0
     /// evicts an idle slot as soon as it is idle.</summary>
-    private static long BudgetBytes()
+    private static long BudgetBytes() => BudgetFor(Renderer.TexCache.Boot, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
+
+    /// <summary>Pure: the budget, bytes, for <c>texcache_mb</c> <paramref name="mb"/> on a card of <paramref name="totalMib"/>
+    /// with <paramref name="freeMib"/> free (either 0 = unknown).</summary>
+    internal static long BudgetFor(int mb, long totalMib, long freeMib)
     {
-        int mb = Renderer.TexCache.Boot;
         if (mb > 0) return (long)mb << 20;
         if (mb == 0) return 0;
-        long vram = AlloyRenderer.VramTotalMib > 0 ? AlloyRenderer.VramTotalMib : AlloyRenderer.VramFreeMib;
+        long vram = totalMib > 0 ? totalMib : freeMib;
         return vram > 0 ? (vram << 20) / 4 : 512L << 20;
     }
 
