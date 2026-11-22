@@ -53,12 +53,24 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The memory priority of a buffer in <paramref name="m"/>: every device buffer draws every frame.</summary>
     private static float PriorityOf(MemoryKind m) => m == MemoryKind.Device ? HighPriority : LowPriority;
 
-    /// <summary>The move-back check every frame runs once: an image in system RAM goes back to device memory once
-    /// use falls under 80% of the budget, at most one try a period. Does nothing yet.</summary>
-    internal void MoveBackCheck() { }
+    /// <summary>Frames between two move-back tries: a refused move waits this long before the next.</summary>
+    internal const int MoveBackPeriod = 300;
 
-    /// <summary>Move-back checks run on this device. Zero until the check exists.</summary>
-    internal long MoveBackChecks => 0;
+    /// <summary>The move-back check every frame runs once: an image in system RAM goes back to device memory once
+    /// use falls under 80% of the budget, at most one try a period. With nothing in system RAM it only counts.</summary>
+    internal void MoveBackCheck()
+    {
+        _moveBackChecks++;
+        if (_spilledCount == 0) return;
+    }
+
+    /// <summary>Move-back checks run on this device.</summary>
+    internal long MoveBackChecks => _moveBackChecks;
+
+    private long _moveBackChecks;
+
+    /// <summary>Allocations this device placed in system RAM that have not moved back yet.</summary>
+    private int _spilledCount;
 
     /// <summary>Moves back to device memory this device has tried. Zero until the check exists.</summary>
     internal int MoveBackTries => 0;

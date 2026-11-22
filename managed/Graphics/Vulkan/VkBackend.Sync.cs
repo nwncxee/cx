@@ -117,6 +117,7 @@ internal sealed unsafe partial class VkBackend
         // VMA refreshes its heap budget from the driver as the frame index moves
         Vma.vmaSetCurrentFrameIndex(_vma, (uint)_frames);
         EndAliasFrame();
+        MoveBackCheck();
     }
 
     /// <summary>The acquire semaphore of the window image taken last.</summary>
