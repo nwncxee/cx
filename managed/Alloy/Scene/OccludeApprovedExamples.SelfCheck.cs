@@ -59,6 +59,7 @@ internal static unsafe partial class OccludeApprovedExamples
             Each(check, RecordKeepsTheRoofMin);
             Each(check, RecordLeavesTheKeyhole);
             Each(check, CylinderHasAFloor);
+            Each(check, StampSaysWhenItMoved);
             HelpNamesThem();
             AlloyOffGreysFade(check);
         }
@@ -251,6 +252,20 @@ internal static unsafe partial class OccludeApprovedExamples
         float half = OccludeFan.Cylinder;
         check.Expect(none == 0.25f && half == 0.5f,
                      $"T4 the cut's cylinder is 0.25 m at walls.radius 0 and 0.5 m at 0.5: got {none} and {half}");
+    }
+
+    // Found work. Given a trunk's record lane, stamped once with the trunk faded
+    // When it is stamped again with the same fade, then with the fade gone
+    // Then the repeat says nothing moved, and the clear says it moved and leaves no cut and no cylinder
+    private static void StampSaysWhenItMoved(Checker check, Rig rig)
+    {
+        int tile = ForestTile(rig, out _);
+        Vector4 lane = default;
+        bool first = OccludeFan.Stamp(ref lane, tile, 0.6f);
+        bool again = OccludeFan.Stamp(ref lane, tile, 0.6f);
+        bool cleared = OccludeFan.Stamp(ref lane, tile, 0f);
+        check.Expect(first && !again && cleared && lane == Vector4.Zero,
+                     $"T5 a stamp reports a move only when the lane changes: first {first}, again {again}, cleared {cleared}, lane {lane}");
     }
 
     // Given the keyhole is on and a trunk below its cut height stands between the camera and the character

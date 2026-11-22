@@ -298,9 +298,7 @@ public sealed unsafe partial class AlloyRenderer
         float hidden = 1f - SceneDb.PartReveal[part];
         bool revealMoved = r.Ext.Ext2.W != hidden;
         r.Ext.Ext2.W = hidden;
-        float cut = OccludeFan.Cut(part, _gate[i].OccFade), cyl = cut > 0f ? OccludeFan.Cylinder : 0f;
-        bool cutMoved = r.Occ.X != cut || r.Occ.Y != cyl;
-        r.Occ.X = cut; r.Occ.Y = cyl;
+        bool cutMoved = OccludeFan.Stamp(ref r.Occ, part, _gate[i].OccFade);
         bool stale = _gate[i].RecGen != _recEpoch || _gate[i].RecEnroll != _gate[i].EnrollGen;
         if (stale) DbWriteStable(ref r, i);
         // #302, as the engine path: the mover level wants GEOMETRY motion compared before the write consumes it,

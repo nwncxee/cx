@@ -115,8 +115,18 @@ internal static class OccludeFan
     public static float Cut(int part, float occ)
     {
         float tile = SceneDb.PartFade[part];
-        if (occ <= 0f || tile <= 0f || SceneDb.PartDissolve[part] < 1f) return 0f;
+        if (tile <= 0f || SceneDb.PartDissolve[part] < 1f) return 0f;
         return 1f - MathF.Min(tile, 1f - occ) / tile;
+    }
+
+    /// <summary>Write <paramref name="part"/>'s cut and cylinder into its record lane <paramref name="occ"/> for
+    /// occluder fade <paramref name="fade"/>; true when either moved, so the record must upload again.</summary>
+    public static bool Stamp(ref Vector4 occ, int part, float fade)
+    {
+        float cut = Cut(part, fade), cyl = cut > 0f ? Cylinder : 0f;
+        bool moved = occ.X != cut || occ.Y != cyl;
+        occ.X = cut; occ.Y = cyl;
+        return moved;
     }
 
     /// <summary>The cylinder's radius around the camera ray the cut applies in: walls.radius, at least
