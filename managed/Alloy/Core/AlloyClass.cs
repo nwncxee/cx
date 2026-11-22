@@ -167,8 +167,7 @@ internal static class AlloyClasses
         check.Expect(Slot(AlloyClass.Cutout, graded: true) == AlloyClass.Cutout, "a plain graded cutout stays a cutout");
         check.Expect(Slot(AlloyClass.Opaque) == AlloyClass.Opaque, "an opaque part stays opaque");
 
-        // A flat sheet's route, wash rule into slot class, expected answers written out by hand: a placeable laid on the
-        // ground is a wash, and a tile's own ground is the surface a wash lies on, so it draws in its recipe's class.
+        // Wash rule into slot class, by hand: a placeable's sheet is a wash, a tile's own ground is what it lies on.
         const ObjFlag placeable = ObjFlag.Static, tile = ObjFlag.Static | ObjFlag.Tile;
         bool groundWash = Washes((int)AlloyClass.Cutout, RecipeFlag.Wash, tile, env: false);
         check.Expect(!groundWash && Slot(AlloyClass.Cutout, graded: true, wash: groundWash) == AlloyClass.Cutout,
