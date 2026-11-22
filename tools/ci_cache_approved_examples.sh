@@ -25,8 +25,22 @@ want=$(printf '%s\n' "$key" "$act" .github/workflows/ffx-cache.yml | sort)
 got=$(sed -n '/^  push:/,/^  [a-z_]*:$/p' .github/workflows/ffx-cache.yml | sed -n "s/^ *- '*\([^']*\)'*$/\1/p" | sort)
 [ "$got" = "$want" ] || { echo "!! ci cache: ffx-cache.yml's push paths are not the cache key's inputs:" >&2; diff <(echo "$want") <(echo "$got") >&2; rc=1; }
 # and what build.sh fetches into the cached build/deps, main's job fetches too, so a restored copy is the whole of it
-for d in $(grep -oE 'deps\.py [a-z-]+ build/deps[^ ]*' build.sh | tr ' ' '|'); do
+fetches=$(grep -oE 'deps\.py[[:space:]]+[a-z-]+[[:space:]]+build/deps[^[:space:]]*' build.sh | sed -E 's/[[:space:]]+/|/g')
+[ -n "$fetches" ] || { echo "!! ci cache: found no tools/deps.py fetch into build/deps in build.sh" >&2; rc=1; }
+for d in $fetches; do
   grep -qF "${d//|/ }" .github/workflows/ffx-cache.yml || { echo "!! ci cache: ffx-cache.yml does not fetch ${d//|/ } as build.sh does" >&2; rc=1; }
 done
+# main's job saves from main alone, on push and on its keep-alive schedule
+on=$(sed -n '/^on:/,/^[a-z]/p' .github/workflows/ffx-cache.yml)
+if ! grep -qE '^  push:' <<< "$on" || ! grep -qE '^    branches: \[main\]$' <<< "$on"; then
+  echo "!! ci cache: ffx-cache.yml does not run on a push to main alone" >&2; rc=1
+fi
+if ! grep -qE '^  schedule:' <<< "$on" || ! grep -qE "^    - cron: '[^']+'$" <<< "$on"; then
+  echo "!! ci cache: ffx-cache.yml has no schedule to keep its cache from eviction" >&2; rc=1
+fi
+# the cached paths are everything FSR's build writes: the deps, the patched SDK and shaders, the library and its key
+paths=$(sed -n '/^ *path: |$/,/^ *key:/p' "$act" | sed '1d;$d' | tr -d ' ')
+[ "$paths" = "$(printf '%s\n' build/deps build/ffx build/libcxfsr.a build/libcxfsr.a.key)" ] \
+  || { echo "!! ci cache: $act caches ${paths//$'\n'/ }, not build/deps build/ffx build/libcxfsr.a build/libcxfsr.a.key" >&2; rc=1; }
 [ $rc = 0 ] && echo "ci cache approved examples: E5 passes"
 exit $rc
