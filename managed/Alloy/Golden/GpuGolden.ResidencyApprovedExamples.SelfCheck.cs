@@ -44,11 +44,11 @@ internal static partial class GpuGolden
     private static void ResidencyApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         UnifiedHeapNothingSpills(vk, log);
-        vk.DeviceLocalBytes(out _, out _, out long heap, out _);
-        if (heap < (CapMib + 1024) * MiB)
+        vk.DeviceLocalBytes(out _, out long budget, out long heap, out _);
+        if (heap < (CapMib + 1024) * MiB || budget < (CapMib + 1024) * MiB)
         {
             new Checker(log, "GpuGolden.Residency.SelfCheck").Skip(
-                $"the texture examples cap a {CapMib}MiB heap and this device's is {heap / MiB}MiB");
+                $"the texture examples cap a {CapMib}MiB heap and this device's is {heap / MiB}MiB, with a budget of {budget / MiB}MiB");
             return;
         }
         TextureExamples(check, log);
