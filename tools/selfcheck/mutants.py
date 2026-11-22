@@ -381,13 +381,13 @@ def run(work, out, build, k, timeout, only=None):
     cmd = [RUN, '--out', out, '--overlay', work] + (['--no-analyzers'] if build else ['--no-build'])
     if _stop.is_set():
         raise SystemExit(143)
-    p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
                          start_new_session=True)
     _live.add(p)
     lines, booted, size = [], [], [0]
 
     def pump():
-        for line in p.stdout:
+        for line in iter(lambda: p.stdout.readline(1 << 16), ''):
             size[0] += len(line)
             if size[0] > OUTPUT_CAP:
                 continue
