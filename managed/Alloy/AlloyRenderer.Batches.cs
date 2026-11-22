@@ -49,13 +49,14 @@ public sealed unsafe partial class AlloyRenderer
                     Counters._skipFogTile++;
                     _oFading[i] = true; continue;
                 }
-                _oFading[i] = fade < 1f;
+                _oFading[i] = OccludeFan.CasterFading(fade, _gate[i].OccFade);
                 // #537: a faded occluder is a translucent part like any other, so it takes the blended run too.
                 // ...and the object's own fade (CNWCObject::FadeObject through SetColorShifting): a creature or
                 // placeable the server adds or drops in perception range fades over 2 s, as vanilla's does
                 float objAlpha = DbObjAlpha(i);
                 if (objAlpha <= 0f) continue;
-                float alpha = PartAlphaCached(i, tri) * fade * (1f - OccludeVerdict(i)) * objAlpha;
+                float alpha = OccludeFan.Fold(PartAlphaCached(i, tri), fade, OccludeVerdict(i),
+                                              DbSlot(i) && SceneDb.PartDissolve[_oDbPart[i]] < 1f) * objAlpha;
                 bool dis = alpha >= 1f && Dissolves(i, tri, ref _stageCounters[0]);
                 if (samp) FrameZones.AddSampled(FrameZones.Zone.Fade, tFade, ChaseEvery);
                 if (alpha < 1f)

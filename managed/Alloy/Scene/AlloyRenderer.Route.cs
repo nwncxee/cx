@@ -525,7 +525,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>How far toward the floor the part is faded, 0 = not at all. Zero is the row's default, so
         /// a fresh slot needs no seeding and a re-tenanted one is cleared in <see cref="UnstampChase"/>.</summary>
         public float OccFade;
-        /// <summary>Seconds of <c>OccHold</c> left since the last hit; cleared with the fade.</summary>
+        /// <summary>Seconds of <see cref="OccludeFan.Hold"/> left since the last hit; cleared with the fade.</summary>
         public float OccHeld;
         /// <summary>The record's owned texture name RETIRED under it (the transcode drip swapping a raw upload
         /// for its compressed copy): the engine pointer is unchanged, so a pointer compare alone would keep the

@@ -4,12 +4,6 @@ using CX.Framework;
 
 namespace CX.Services.Camera;
 
-/// <summary>One segment cast the spring arm makes: the nearest wall on it, if any.</summary>
-internal interface IArmCast
-{
-    bool Cast(Vector3 from, Vector3 to, out Vector3 hit);
-}
-
 /// <summary>The spring arm across frames: where it sits, how long its rays have been clear, and the period's counts.</summary>
 internal sealed class SpringArmState
 {
@@ -44,7 +38,7 @@ internal static unsafe class SpringArm
     /// less <paramref name="margin"/>, over the rig's length, held between <see cref="ArmMin"/> and 1; 1 with no wall.
     /// Every ray starts at the pivot, so one beside a wall never starts inside it.</summary>
     internal static float Reach<TCast>(ref TCast cast, Vector3 pivot, Vector3 want, float radius, float margin)
-        where TCast : struct, IArmCast
+        where TCast : struct, IStaticWorld
     {
         Vector3 seg = want - pivot;
         float len = seg.Length();
@@ -83,10 +77,20 @@ internal static unsafe class SpringArm
         return s.Arm;
     }
 
-    /// <summary>The live cast: <see cref="SceneRay.CastStatic"/> through the world scene.</summary>
-    private struct SceneCast : IArmCast
+    /// <summary>The live cast: <see cref="SceneRay.CastStatic"/> through the world scene, looked up at the first ask.</summary>
+    internal struct SceneCast : IStaticWorld
     {
         internal IntPtr Scene;
+        private bool _looked;
+
+        public bool Present
+        {
+            get
+            {
+                if (!_looked) { _looked = true; Scene = SceneRay.Armed ? SceneRay.WorldScene() : IntPtr.Zero; }
+                return Scene != IntPtr.Zero;
+            }
+        }
 
         public bool Cast(Vector3 from, Vector3 to, out Vector3 hit)
         {
@@ -97,18 +101,20 @@ internal static unsafe class SpringArm
         }
     }
 
-    /// <summary>This frame's arm for a rig from <paramref name="pivot"/> to <paramref name="want"/>: the camera
-    /// position it allows.</summary>
-    internal static Vector3 Place(Vector3 pivot, Vector3 want, float dt)
+    /// <summary>The world the live arm casts in: the world scene, or none.</summary>
+    internal static SceneCast Live() => default;
+
+    /// <summary>This frame's arm for a rig from <paramref name="pivot"/> to <paramref name="want"/> in
+    /// <paramref name="world"/>: the camera position it allows.</summary>
+    internal static Vector3 Place<TWorld>(ref TWorld world, Vector3 pivot, Vector3 want, float dt)
+        where TWorld : struct, IStaticWorld
     {
-        IntPtr scene = SceneRay.Armed ? SceneRay.WorldScene() : IntPtr.Zero;
         float target = 1f;
-        if (scene == IntPtr.Zero) S.NoScene++;
+        if (!world.Present) S.NoScene++;
         else
         {
             S.Casts++;
-            var cast = new SceneCast { Scene = scene };
-            target = Reach(ref cast, pivot, want, Walls.ArmRadius.V, Walls.Margin.V);
+            target = Reach(ref world, pivot, want, Walls.ArmRadius.V, Walls.Margin.V);
         }
         if (target < S.Arm) S.Pulls++;
         Settle(S, target, dt, Walls.ArmIn.V, Walls.ArmOut.V);
@@ -132,42 +138,6 @@ internal static unsafe class SpringArm
 
     // ---- self-check ------------------------------------------------------------------------------
 
-    /// <summary>A world of axis-aligned wall boxes for the self-check, hit where a segment enters one and, from
-    /// inside it, where it leaves: the two faces a two-sided mesh shows a ray.</summary>
-    private struct BoxCast : IArmCast
-    {
-        internal (Vector3 Lo, Vector3 Hi)[] Boxes;
-
-        public bool Cast(Vector3 from, Vector3 to, out Vector3 hit)
-        {
-            hit = default;
-            float best = float.MaxValue;
-            Vector3 d = to - from;
-            foreach (var b in Boxes)
-                if (Slab(from, d, b.Lo, b.Hi, out float t) && t < best) best = t;
-            if (best == float.MaxValue) return false;
-            hit = from + d * best;
-            return true;
-        }
-
-        private static bool Slab(Vector3 o, Vector3 d, Vector3 lo, Vector3 hi, out float t)
-        {
-            float t0 = 0f, t1 = 1f;
-            for (int a = 0; a < 3; a++)
-            {
-                float oa = a == 0 ? o.X : a == 1 ? o.Y : o.Z, da = a == 0 ? d.X : a == 1 ? d.Y : d.Z;
-                float la = a == 0 ? lo.X : a == 1 ? lo.Y : lo.Z, ha = a == 0 ? hi.X : a == 1 ? hi.Y : hi.Z;
-                if (MathF.Abs(da) < 1e-9f) { if (oa < la || oa > ha) { t = 0f; return false; } continue; }
-                float u = (la - oa) / da, v = (ha - oa) / da;
-                if (u > v) (u, v) = (v, u);
-                t0 = MathF.Max(t0, u); t1 = MathF.Min(t1, v);
-                if (t0 > t1) { t = 0f; return false; }
-            }
-            t = t0 > 0f ? t0 : t1;
-            return t > 0f && t <= 1f;
-        }
-    }
-
     /// <summary>The arm's geometry and its timing, against a box world laid out by hand: the oracles are the hand
     /// distances of each wall, worked in the comments. What counts as a wall is <c>HitTestCheck.CameraArm</c>'s.</summary>
     internal static void SelfCheck(ExtenderLog log)
@@ -178,24 +148,24 @@ internal static unsafe class SpringArm
         // A wall 3 m behind the pivot, 0.2 m thick, wide and tall enough that every ray of the fan meets its face.
         var wall = (new Vector3(-5f, -3.2f, -5f), new Vector3(5f, -3f, 5f));
 
-        var clear = new BoxCast { Boxes = Array.Empty<(Vector3, Vector3)>() };
+        var clear = new BoxWorld { Boxes = Array.Empty<(Vector3, Vector3)>() };
         check.Expect(Reach(ref clear, pivot, back, Radius, Margin) == 1f, "nothing in the way: the full rig, no margin taken");
 
         // The face is 3 m out along every ray (they all run due south here): (3 - 0.3) / 5 = 0.54.
-        var walled = new BoxCast { Boxes = new[] { wall } };
+        var walled = new BoxWorld { Boxes = new[] { wall } };
         float w = Reach(ref walled, pivot, back, Radius, Margin);
         check.Expect(MathF.Abs(w - 0.54f) < 1e-3f, $"a wall 3 m back holds the camera at 0.54 of a 5 m rig (got {w:0.###})");
 
         // A post 2 m back that only the fan's ray toward -x meets (at y -2 that ray is at x -0.12), in front of the
         // same wall: the nearest of the rays wins, (2 - 0.3) / 5 = 0.34.
         var post = (new Vector3(-0.2f, -2.1f, 0f), new Vector3(-0.1f, -2f, 2f));
-        var posted = new BoxCast { Boxes = new[] { post, wall } };
+        var posted = new BoxWorld { Boxes = new[] { post, wall } };
         float pw = Reach(ref posted, pivot, back, Radius, Margin);
         check.Expect(MathF.Abs(pw - 0.34f) < 1e-3f, $"one ray meeting a nearer post holds the camera in front of it (got {pw:0.###}, want 0.34)");
 
         // A wall 0.1 m to the character's right (x 0.1..0.4) with the camera off to the left and behind: every ray
         // starts at the pivot (x 0) and runs left, so none reaches x 0.1 and the rig stays whole.
-        var side = new BoxCast { Boxes = new[] { (new Vector3(0.1f, -20f, -5f), new Vector3(0.4f, 20f, 5f)) } };
+        var side = new BoxWorld { Boxes = new[] { (new Vector3(0.1f, -20f, -5f), new Vector3(0.4f, 20f, 5f)) } };
         float sd = Reach(ref side, pivot, new Vector3(-1.5f, -5f, 1f), Radius, Margin);
         check.Expect(sd == 1f, $"a wall beside the character on the side away from the camera does not collapse the arm (got {sd:0.###})");
 

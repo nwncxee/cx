@@ -9,20 +9,12 @@ using CX.Services.Camera;
 
 namespace CX.Alloy;
 
-/// <summary>Occlusion fade instead of the camera pull-in (<c>UpdateNormalCameraCollision</c>): a fan of <see cref="OccRays"/> segments from the
-/// camera focus to the camera is marched through <c>Scene::HitCheck</c> each frame, <see cref="OccHitsPerRay"/> hits each, and the route walk
+/// <summary>Occlusion fade instead of the camera pull-in (<c>UpdateNormalCameraCollision</c>): a fan of <see cref="OccludeFan.Rays"/> segments from the
+/// camera focus to the camera is cast through <see cref="HitTest.Cast"/> each frame, <see cref="OccludeFan.HitsPerRay"/> hits each, and the route walk
 /// fades the PLACEABLE parts behind a hit toward <c>walls.floor</c> -- into the blended (OIT) run, class untouched so the caster pass sees them
 /// whole. The pull-in is off via <see cref="CameraFlagDisableCollision"/>; only the bit this session set is cleared.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    private const int OccRays = 5, OccHitsPerRay = 3, OccMaxHits = OccRays * OccHitsPerRay;
-    private const float OccNudge = SceneRay.Nudge;
-    /// <summary>The fade's ease rate per second (a knob would only ever be set to this).</summary>
-    private const float OccRate = 8f;
-    /// <summary>Seconds a part counts as hit after its last ray hit: a ray grazing an edge flips hit/miss
-    /// frame to frame, and without the hold the screen-door re-thresholds every frame (flicker).</summary>
-    private const float OccHold = 0.25f;
-
     private static bool _occArmed;
     private static long _occLastTick;
     private static string _occWhy = "never ran";
@@ -31,8 +23,7 @@ public sealed unsafe partial class AlloyRenderer
     private static GetModuleFn _occGetModule;
 
     /// <summary>This frame's hits: the placeable each ray landed on, as its database handle.</summary>
-    private static readonly uint[] _occHitObj = new uint[OccMaxHits];
-    private static int _occHitN;
+    private static readonly OccludeHits _occHits = new();
     // The per-slot fade and its hold are RouteGate's rows -- the route memo reads both per candidate.
     private static long _occFrames, _occCalls, _occTagged;
 
@@ -72,82 +63,38 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Once per frame, before the route walk: settle the collision flag, then cast the fan.</summary>
     private static void OccludeFrame()
     {
-        _occHitN = 0;
+        _occHits.N = 0;
         OccludeTick();
         if (!_occArmed) return;
         CameraService.SettleCollision(OccludeModule());
-        if (!Walls.Fade.V) return;
         IntPtr scene = SceneRay.WorldScene();
         if (scene == IntPtr.Zero) return;
         IntPtr player = OccludeTargetGob();
         if (player == IntPtr.Zero) return;
         _occFrames++;
-        Vector3 focus = Rt.CamFocus, cam = FrameInputs.CameraPos;
-        Vector3 d = cam - focus;
-        float len = d.Length();
-        if (len < 0.05f) return;
-        d /= len;
-        Vector3 right = Vector3.Cross(d, Vector3.UnitZ);
-        if (right.LengthSquared() < 1e-6f) right = Vector3.UnitX; else right = Vector3.Normalize(right);
-        Vector3 up = Vector3.Cross(right, d);
-        float radius = Walls.Radius.V;
-        for (int r = 0; r < OccRays; r++)
-        {
-            Vector3 o = r switch
-            {
-                1 => right * radius, 2 => -right * radius, 3 => up * radius, 4 => -up * radius, _ => Vector3.Zero,
-            };
-            Vector3 from = focus + o, to = cam + o;
-            for (int h = 0; h < OccHitsPerRay; h++)
-            {
-                _occCalls++;
-                if (!SceneRay.Cast(scene, from, to, player, out Vector3 hit, out IntPtr gob)) break;
-                if (SceneRay.IsPlaceable(gob))
-                {
-                    int n = _occHitN++;
-                    _occHitObj[n] = Facade.ObjectId(gob).Value;
-                }
-                from = hit + d * OccNudge;
-                if (Vector3.Dot(to - from, d) <= 0f) break;
-            }
-        }
+        _occCalls += OccludeFan.Cast(Facade.SceneId(scene), Rt.CamFocus, FrameInputs.CameraPos, Facade.ObjectId(player), _occHits);
         SceneRay.Release();
     }
 
     /// <summary>Route-walk verdict for one opaque/cutout part: ease its fade toward "hit this frame" and
-    /// return it (0 = solid; the caller multiplies alpha by 1 - fade). Bounded by <see cref="OccMaxHits"/>
+    /// return it (0 = solid; the caller folds it into the part's alpha). Bounded by <see cref="OccludeFan.MaxHits"/>
     /// compares per part.</summary>
     private static float OccludeVerdict(int i)
     {
         ref RouteGate g = ref _gate[i];
-        float f = g.OccFade;
-        bool hit = false;
-        if (_occHitN > 0 && _oLit[i])
-        {
-            uint obj = DbSlot(i) ? SceneDb.PartObj[_oDbPart[i]].Value : 0u;
-            if (obj != 0)
-                for (int n = 0; n < _occHitN && !hit; n++) hit = _occHitObj[n] == obj;
-        }
-        if (hit) g.OccHeld = OccHold;
-        else if (g.OccHeld > 0f) { g.OccHeld -= _occDt; hit = true; }
-        if (!hit && f == 0f) return 0f;
-        float target = hit ? 1f - Walls.Floor.V : 0f;
-        f += (target - f) * _occStep;
-        if (MathF.Abs(target - f) < 0.005f) f = target;
-        g.OccFade = f;
+        float f = OccludeFan.Verdict(ref g.OccFade, ref g.OccHeld, DbSlot(i) ? _oDbPart[i] : -1, _oLit[i], _occHits, _occDt);
         if (f > 0f) _occTagged++;
         return f;
     }
 
-    private static float _occStep, _occDt;
+    private static float _occDt;
 
-    /// <summary>The easing step for this frame, from wall-clock dt (clamped so a hitch does not snap).</summary>
+    /// <summary>This frame's wall-clock dt, clamped so a hitch does not snap the easing.</summary>
     private static void OccludeTick()
     {
         long now = Stopwatch.GetTimestamp();
         float dt = _occLastTick == 0 ? 1f / 60f : (float)((now - _occLastTick) / (double)Stopwatch.Frequency);
         _occLastTick = now;
         _occDt = Math.Min(dt, 0.1f);
-        _occStep = Math.Clamp(_occDt * OccRate, 0f, 1f);
     }
 }

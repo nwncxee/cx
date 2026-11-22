@@ -51,6 +51,11 @@ public abstract class Knob
     /// <summary>A row that exists but cannot be edited yet: the panel
     /// greys it and ignores its presses; chat and the file still read it.</summary>
     public bool Disabled;
+    /// <summary>What the row needs to apply; when <see cref="KnobNeeds"/> says it is missing, the row is unavailable
+    /// and says <see cref="Unavailable"/>.</summary>
+    public KnobNeed Requires;
+    /// <summary>Why the row cannot apply now -- its need's one declared reason -- or null while it can.</summary>
+    public string? Unavailable => KnobNeeds.Missing(Requires) ? KnobNeeds.Reason(Requires) : null;
     /// <summary>A server policy (<see cref="ServerPolicy"/>) holds this knob: <c>V</c> is the server's value, the
     /// player's own lives on underneath and is what the file keeps. The panel greys the row.</summary>
     public bool Enforced { get; private protected set; }

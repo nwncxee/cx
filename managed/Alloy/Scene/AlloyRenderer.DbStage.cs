@@ -346,7 +346,7 @@ public sealed unsafe partial class AlloyRenderer
         // Honest about its reach: no tile is mid-ramp anywhere in the forest area this was measured in, so it
         // changes no pixel there. It closes the hole, not a symptom; the roofed interiors the ramp actually
         // runs in are where it would have shown.
-        _oFading[i] = SceneDb.PartFade[part] < 1f;
+        _oFading[i] = OccludeFan.CasterFading(SceneDb.PartFade[part], _gate[i].OccFade);
         // ...and never a hidden .lod alternate: a swap restages the WHOLE range, the hidden tree included, and
         // its shadow over the shown one is two silhouettes fighting in the cascades
         bool castOk = mayCast && !_oFading[i] && tint.W > 0f && !SceneDb.LodHidden(SceneDb.PartLodTree[part], SceneDb.ObjLodShown[o]) && (_oCls[i] <= (byte)AlloyClass.Cutout
