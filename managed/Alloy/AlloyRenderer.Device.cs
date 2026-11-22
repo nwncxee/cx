@@ -31,7 +31,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
     /// the largest allocations by name. Empty with no budget to measure against -- before a frame has read the
     /// device, and on a device that answers no memory query -- because a row of zeros reads as a card holding none.</summary>
-    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top)
+    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top,
+                                    long systemRamBytes = 0, long idleModelBytes = 0)
     {
         const int Shift = 20;
         if (budgetBytes <= 0) return "";
@@ -56,6 +57,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static string FrameVram()
     {
         if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
+        return FrameVram(vk, _log!);
+    }
+
+    /// <summary>The frame line's memory part as <paramref name="vk"/> reads now; an allocation first seen in system
+    /// RAM is warned about on <paramref name="log"/>.</summary>
+    internal static string FrameVram(VkBackend vk, ExtenderLog log)
+    {
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
         return VramLine(held, usage, budget, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
     }

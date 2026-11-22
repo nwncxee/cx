@@ -21,6 +21,7 @@ public sealed partial class AlloyRenderer
 
     /// <summary>Approved-spec: the frame line's two new memory clauses stay off a line no frame has read the device for.
     /// Oracles: hand-written device, system-RAM and idle-model figures in MiB, and a line with a budget as the control.</summary>
+    [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void MemoryClausesSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.MemoryClausesSelfCheck");

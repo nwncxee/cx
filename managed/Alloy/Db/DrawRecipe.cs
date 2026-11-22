@@ -793,6 +793,10 @@ internal static partial class DrawRecipe
     /// <summary>Recipes retired with their model.</summary>
     internal static int Retired { get; private set; }
 
+    /// <summary>Bytes of the textures that only recipes of idle cached models hold: a texture a held model also
+    /// draws, and one no recipe holds, count nothing.</summary>
+    internal static long IdleModelTextureBytes() => 0;
+
     /// <summary>Subscribe to the model cache's eviction edge. Multicast (<c>+=</c>), because the cache's other
     /// listeners are not ours to replace.</summary>
     internal static void Attach()
