@@ -32,6 +32,7 @@ internal static class AlloyDevice
             // the seam's image copies and the translation counters against fixtures, before the first pass records one
             s.Vk?.CopyDeviceCheck(log);
             s.Vk?.TallyDeviceCheck(log);
+            if (s.Vk != null) VramLadder.Reset(log, Shadows.CubeSize.Boot, Shadows.DynSize.Boot);
         }
         return s.Vk;
     }

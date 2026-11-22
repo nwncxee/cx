@@ -20,6 +20,11 @@ public sealed unsafe partial class AlloyRenderer
         CreatureParityAreaEdge();          // ...and so is the creature dump's
         Unseen.Reset();                    // the perception list is the new area's
         DbBlackProbeAreaEdge();            // ...and so is the black probe's budget
+        if (AlloyDevice.VulkanMade is CX.Graphics.Rhi.VkBackend vk)
+        {
+            vk.DeviceLocalBytes(out long usage, out long budget, out _, out _);
+            VramLadder.AreaChanged(usage >> 20, budget >> 20, LightmapBake.PoolHeldMib);
+        }
         LightmapBake.EndAreaEdge();
         _log?.Info($"AlloyRenderer: [areaedge] {why} -- every persistent record unstamped. "
                  + "Kept (content-keyed): the texture cache, the bake blob cache, the pool tables");

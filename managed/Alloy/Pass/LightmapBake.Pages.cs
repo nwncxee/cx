@@ -5,9 +5,9 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The resident pages: one fixed pool, sized once from <c>lightmap.vram</c> and the card and kept across
-/// areas, so no area ever pays for a growth. A rect finds its page through its slot's chart record, which is the
-/// residency table. A knob change or a lost context reallocates; the main menu or the pass off frees it.</summary>
+/// <summary>The resident pages: one fixed pool, sized from <c>lightmap.vram</c>, the card and the VRAM ladder's page
+/// cap and kept across areas unless the ladder moves that cap at an area change. A rect finds its page through its
+/// slot's chart record. A knob change or a lost context reallocates; the main menu or the pass off frees it.</summary>
 internal static unsafe partial class LightmapBake
 {
     /// <summary>Pure: pool pages for a budget of <paramref name="vramMib"/>, at most a quarter of the card and what

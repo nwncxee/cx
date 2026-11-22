@@ -83,11 +83,14 @@ public sealed unsafe partial class AlloyRenderer
     private const int VramOwnerRows = 14;
 
     /// <summary>The frame line's memory part as the device reads now, closed by the texture budget period it ends;
-    /// empty before the first frame, which makes the device. The next period begins from the device's figures now.</summary>
+    /// empty before the first frame, which makes the device. The ladder takes the period's use, then the next period
+    /// begins from the device's figures after whatever it gave.</summary>
     internal static string FrameVram()
     {
         if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
         string line = FrameVram(vk, _log!) + "; " + TexRegistry.BudgetLine();
+        vk.DeviceLocalBytes(out long usage, out long budget, out _, out _);
+        VramLadder.Period(usage >> 20, budget >> 20);
         BeginTexPeriod(vk);
         return line;
     }
