@@ -5,11 +5,9 @@ namespace CX.Services.Camera;
 
 /// <summary>A self-check world of axis-aligned boxes, hit where a segment enters one and, from inside it, where it
 /// leaves: the two faces a two-sided mesh shows a ray.</summary>
-internal struct BoxWorld : IStaticWorld
+internal struct BoxWorld
 {
     internal (Vector3 Lo, Vector3 Hi)[] Boxes;
-
-    public readonly bool Present => true;
 
     public readonly bool Cast(Vector3 from, Vector3 to, out Vector3 hit)
     {

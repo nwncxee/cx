@@ -499,8 +499,8 @@ a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each
 closes on them with a spear and casts at them, with nothing but its own gear, the goblins, their corpses, the arrows and the spell
 between it and the camera. Its keys then middle-drag the camera three times with a left click halfway through each drag
 (`bdown:2`, `rel:dx,dy,n,ms`, `btn:1`, `bup:2`: buttons and relative motion where the pointer already is). Run it as
-`--showcase camjerk --camera-mode 0 --cfg chase.offsetx=1.5` (camera mode 0 is chase) and read the `[camera]` lines: `pull-in(s)` is the spring arm
-moving in, and `yaw jumps` counts frames that turned the camera more than 30 degrees.
+`--showcase camjerk --camera-mode 0 --cfg chase.offsetx=1.5` (camera mode 0 is chase) and read the `[camera]` lines: `engine pull-ins` counts the engine's own camera
+pull-ins, and `yaw jumps` counts frames that turned the camera more than 30 degrees.
 
 `rain` is the fixed rain capture: the PC jumps to the module's first outdoor area, heavy rain at noon there, a snap to one camera angle, then a slow scripted
 pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0.png` to `pan5.png`), so two builds

@@ -9,14 +9,6 @@ using static CX.Framework.EngineLayout;
 
 namespace CX.Services.Camera;
 
-/// <summary>The area's static geometry as the camera sees it: whether there is an area to cast in, and one
-/// segment cast against it, the nearest wall on it if any.</summary>
-internal interface IStaticWorld
-{
-    bool Present { get; }
-    bool Cast(Vector3 from, Vector3 to, out Vector3 hit);
-}
-
 /// <summary>One segment test through the engine's own <c>Scene::HitCheck</c> -- tile BSP parts then gobs, nearest
 /// hit wins -- with the one <c>CHitInfo</c> its users share. The record is allocated once and never moves: a hit
 /// links it into the gob's SafePointer list, so <see cref="Release"/> must unlink it before the frame ends; no
@@ -24,7 +16,7 @@ internal interface IStaticWorld
 public static unsafe class SceneRay
 {
     private static SceneHitCheckFn _hitCheck;
-    /// <summary>Resolved once: a cast runs per creature per frame and up to 15 times per spring arm.</summary>
+    /// <summary>Resolved once: a cast runs per creature per frame and 15 times per occluder fan.</summary>
     private static HitInfoResetFn _reset;
     private static IntPtr* _scene;
     private static int* _statics;
@@ -89,36 +81,8 @@ public static unsafe class SceneRay
         return r != 0;
     }
 
-    /// <summary>Nearest STATIC hit on <paramref name="from"/>-&gt;<paramref name="to"/>: tiles and static placeables,
-    /// never an object -- the engine's own camera cast (<see cref="HitQuery.CameraWall"/>).</summary>
-    public static bool CastStatic(IntPtr scene, Vector3 from, Vector3 to, out Vector3 hit)
-    {
-        hit = default;
-        if (CX.Alloy.Renderer.On)
-        {
-            DbId s = Facade.SceneId(scene);
-            if (s.IsNull || !HitTest.Cast(HitQuery.CameraWall(s, from, to), out HitResult r)) return false;
-            hit = r.Point;
-            return true;
-        }
-        var info = new CHitInfo((IntPtr)_info);
-        _reset((IntPtr)_info, 0, -0x40000001L, 0);
-        // mode 1 = the BSP pass alone, as UpdateNormalCameraCollision sets it after the same Reset
-        info.Mode = 1;
-        info.IgnoreCount = 0;
-        Vec3 h;
-        Vec3 a = new() { X = from.X, Y = from.Y, Z = from.Z }, b = new() { X = to.X, Y = to.Y, Z = to.Z };
-        int was = _statics == null ? 0 : *_statics;
-        if (_statics != null) *_statics = 1;
-        int got = _hitCheck(scene, VectorArg.Of(&a), VectorArg.Of(&b), &h, (IntPtr)_info);
-        if (_statics != null) *_statics = was;
-        _reset((IntPtr)_info, 0, -0x40000001L, 0);
-        hit = new Vector3(h.X, h.Y, h.Z);
-        return got != 0;
-    }
-
     /// <summary>The ignore list, one slot, allocated once: a <see cref="HitQuery"/> carries it by reference and
-    /// the spring arm casts fifteen times a frame.</summary>
+    /// the occluder fan casts fifteen times a frame.</summary>
     private static readonly DbId[] _dbIgnore = new DbId[1];
 
     /// <inheritdoc cref="Cast(IntPtr, Vector3, Vector3, IntPtr, out Vector3, out IntPtr, bool)"/>

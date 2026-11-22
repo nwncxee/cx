@@ -85,16 +85,6 @@ public struct HitQuery
         Ground = HitTest.GroundPlane,
     };
 
-    /// <summary>The camera's wall cast: the area's static geometry and static placeables, no object at all --
-    /// <c>UpdateNormalCameraCollision</c> sets <c>CHitInfo+0x00</c>, so no creature, gear, projectile, effect, door
-    /// or dynamic placeable can pull the camera in.</summary>
-    public static HitQuery CameraWall(DbId scene, Vector3 from, Vector3 to)
-    {
-        HitQuery q = Ray(scene, from, to, statics: true);
-        q.Objects = false;
-        return q;
-    }
-
     /// <summary>A geometry cast (footstep, item drop): triangles, no triggers, statics as the caller asks.</summary>
     public static HitQuery Ray(DbId scene, Vector3 from, Vector3 to, bool statics = false) => new()
     {

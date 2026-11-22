@@ -38,8 +38,7 @@ public sealed unsafe partial class AlloyRenderer
         log.Info($"AlloyRenderer: walls.fade {(Walls.Fade.V ? "on" : "off")} ({_occWhy})");
         Walls.G.Status = () => FormattableString.Invariant(
             $"fade {(Walls.Fade.V ? "on" : "off")} radius {Walls.Radius.V:F2} floor {Walls.Floor.V:F2} ({_occWhy}; ")
-            + $"{(_occFrames == 0 ? 0 : _occCalls / _occFrames)} casts, {(_occFrames == 0 ? 0 : _occTagged / _occFrames)} parts tagged per frame)"
-            + FormattableString.Invariant($" | arm {CameraService.ArmFraction:0.00} (margin {Walls.Margin.V:0.##} in {Walls.ArmIn.V:0.#} out {Walls.ArmOut.V:0.#} radius {Walls.ArmRadius.V:0.##})");
+            + $"{(_occFrames == 0 ? 0 : _occCalls / _occFrames)} casts, {(_occFrames == 0 ? 0 : _occTagged / _occFrames)} parts tagged per frame)";
     }
 
     /// <summary>The CNWCModule, through the engine's own chain (the UiHostService gate's derefs).</summary>
@@ -57,7 +56,7 @@ public sealed unsafe partial class AlloyRenderer
     private static IntPtr OccludeTargetGob() => (IntPtr)Facade.ObjectShell(new DbId(_dbCamFollow));
 
     /// <summary>The fade wants the engine's pull-in off; <see cref="CameraService.SettleCollision"/> is the
-    /// one writer of the flag, so a spring-arm session ending cannot hand the pull-in back mid-fade.</summary>
+    /// one writer of the flag, so an offset rig ending cannot hand the pull-in back mid-fade.</summary>
     public static bool OccludeFadeWanted => _occArmed && Walls.Fade.V;
 
     /// <summary>Once per frame, before the route walk: settle the collision flag, then cast the fan.</summary>

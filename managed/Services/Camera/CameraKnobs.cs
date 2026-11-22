@@ -47,7 +47,7 @@ internal static class CameraKnobs
         check.Expect(KnobGroup.Find("free.enter") is KnobButton && FreeCam.G.Knobs[0] == FreeCam.Enter, "free.enter is the first row and a button");
         check.Expect(FreeCam.Fov.Default == 0f && FreeCam.Fov.Min == 0f && FreeCam.Leash.Default == FreeCam.LeashMax && FreeCam.Leash.Max == FreeCam.LeashMax,
           "free.fov keeps 0 = the mode's; the leash never exceeds the engine's 25");
-        check.Expect(Walls.Fade.Default && Walls.Floor.Default == 0.5f && Walls.ArmOut.Default == 4f, "walls defaults are the #537/#538 boot values");
+        check.Expect(Walls.Fade.Default && Walls.Floor.Default == 0.5f && Walls.Radius.Default == 0.5f, "walls defaults are the #537/#538 boot values");
         check.Expect(!MouseLook.Right.Default && MouseLook.Sens.Default == 1f && MouseLook.Threshold.Default == 4 && !MouseLook.Invert.Default, "mouselook defaults are the old boot keys'");
         check.Expect(MouseLook.HeadTrack.Default && MouseLook.HeadYaw.Default == 70f && MouseLook.HeadPitch.Default == 30f
           && MouseLook.HeadYaw.Max == 89f && MouseLook.HeadPitch.Max == 89f,
@@ -210,14 +210,13 @@ internal static class CameraModes
     }
 }
 
-/// <summary>The <c>walls</c> group: the occlusion fade (read by <c>AlloyRenderer.Occlude</c>) and the offset
-/// camera's spring arm (read by <see cref="CameraService"/>). The fade rate stays a const; the spring arm's
-/// own rates are nobody's dial but the one who tuned them, so they are ChatOnly (ADR 0030).</summary>
+/// <summary>The <c>walls</c> group: the occlusion fade, read by <c>AlloyRenderer.Occlude</c>. The fade rate stays a
+/// const, and the fan's width is nobody's dial but the one who tuned it, so it is ChatOnly (ADR 0030).</summary>
 internal static class Walls
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Fade;
-    internal static readonly Knob<float> Floor, Radius, Margin, ArmIn, ArmOut, ArmRadius;
+    internal static readonly Knob<float> Floor, Radius;
 
     static Walls()
     {
@@ -229,12 +228,6 @@ internal static class Walls
                          help: "How solid a faded object stays. 0 hides it entirely.");
         Radius = G.Slider("radius", "Fade ray width", 0f, 5f, 0.1f, 0.5f, "m", Tier.ChatOnly,
                           help: "Half-width of the ray fan that finds occluders.");
-        G.Section("Spring arm");
-        Margin = G.Slider("margin", "Arm margin", 0f, 5f, 0.1f, 0.3f, "m", Tier.ChatOnly,
-                          help: "How far short of a wall the offset camera stops.");
-        ArmIn = G.Slider("armin", "Arm pull-in rate", 0f, 60f, 1f, 0f, "/s", Tier.ChatOnly, help: "0 = snap.");
-        ArmOut = G.Slider("armout", "Arm ease-out rate", 0f, 60f, 1f, 4f, "/s", Tier.ChatOnly);
-        ArmRadius = G.Slider("armradius", "Arm ray width", 0f, 2f, 0.1f, 0.3f, "m", Tier.ChatOnly, help: "0 = one ray.");
     }
 }
 

@@ -12,7 +12,6 @@ internal static class SpringArmGoneApprovedExamples
 {
     /// <summary>The follow focus, and the rig the engine hands back for yaw 0, pitch 90, 5 m: due south of it.</summary>
     private static readonly Vector3 Focus = new(0f, 0f, 1f), Engine = new(0f, -5f, 1f);
-    private const float Dt = 1f / 60f;
     private const int Frames = 30;
 
     /// <summary>A trunk 2.8 to 3.2 m south of the focus, x -0.4 to 1.6: the centre ray to (1.5, -5, 1) meets it at
@@ -56,14 +55,13 @@ internal static class SpringArmGoneApprovedExamples
     private static (float Off, bool BitLost, bool WordMoved, bool Hidden) Run(Quaternion q, (Vector3, Vector3) box,
         float offX, float offY, bool fade, Vector3 full, ref int flags, ref bool weSet)
     {
-        SpringArm.Rest();
         var world = new BoxWorld { Boxes = [box] };
         int start = flags;
         float off = 0f;
         bool lost = false, moved = false, hidden = true;
         for (int i = 0; i < Frames; i++)
         {
-            Vector3 at = CameraService.Rig(ref world, Focus, Engine, q, offX, offY, Dt, out bool on);
+            Vector3 at = CameraService.Rig(Engine, q, offX, offY, out bool on);
             CameraService.SettleFlag(ref flags, on, fade, ref weSet);
             off = MathF.Max(off, Vector3.Distance(at, full));
             lost |= (flags & EngineLayout.CameraFlagDisableCollision) == 0;
