@@ -9,6 +9,7 @@
 #   --out      the build folder (default build/selfcheck); the mutant runner gives each run its own
 #   --overlay  a folder whose managed/ holds .cs files that replace or add to managed/ in this build only
 #   --no-build boot what --out already holds (the mutant runner boots one build once per mutant)
+#   --no-analyzers  compile without the analyzers, which judge the tree and not a mutant (the mutant runner's compiles)
 #
 # Exit 0 when no self-check failed, 1 when one did, 2 for a setup problem.
 set -uo pipefail
@@ -17,11 +18,13 @@ repo=$PWD
 out=$repo/build/selfcheck
 overlay=""
 build=1
+analyzers=true
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) out=$(realpath -m -- "$2"); shift 2 ;;
     --overlay) overlay=$(realpath -- "$2"); shift 2 ;;
     --no-build) build=0; shift ;;
+    --no-analyzers) analyzers=false; shift ;;
     -h|--help) awk 'NR > 1 { if (!/^#/) exit; print }' "$0"; exit 0 ;;
     *) echo ">> unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -76,7 +79,7 @@ if [ "$build" = 1 ]; then
          -p:CxJitOut="$out"
          # PublishAot writes the image's feature switches into the runtimeconfig, which keeps the JIT run on the
          # image's code paths; one of them refuses the native host this build is loaded by, and it alone goes back on.
-         -p:_EnableConsumingManagedCodeFromNativeHosting=true)
+         -p:_EnableConsumingManagedCodeFromNativeHosting=true -p:RunAnalyzers=$analyzers)
   [ -z "$overlay" ] || props+=(-p:CxOverlay="$overlay")
   # One process and no build server: the compile stays inside the caller's memory scope and ends with the run.
   if ! dotnet build managed/cx_managed.csproj -c Release --disable-build-servers -m:1 -nologo -v:q -clp:ErrorsOnly \

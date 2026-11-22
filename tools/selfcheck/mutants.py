@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Runs a list of hand mutants against the self-checks with one compile for the lot.
 
-Usage: tools/selfcheck/mutants.py [--whole] [--logs DIR] <mutants.tsv>
+Usage: tools/selfcheck/mutants.py [--whole] [--jobs N] [--logs DIR] <mutants.tsv>
 
   --whole     boot every suite for every mutant
+  --jobs N    boot N mutants side by side, each in a build folder of its own (default: half the cores, at most 3)
   --logs DIR  keep each mutant boot's cx.log as DIR/<name>.cx.log
 
 Each line of the list is a mutant, four fields split by tabs: a name, a file under managed/, the exact text to
 change (it must occur in the file exactly once) and what it becomes (empty: the text is removed, which only a whole
-statement may be). Blank lines and lines starting with # are skipped.
+statement may be). Blank lines and lines starting with # are skipped. Text that ends on a binary operator, or whose
+edge falls inside a literal or a comment, is refused by name before anything compiles.
 
 The tree is never edited. Every mutated file is copied to a folder of the runner's own, each mutant's text wrapped in
 a switch -- an expression in `(on ? new : old)`, a statement (text ending in `;`) in `if (on) { new } else { old }` --
-and that copy is compiled once with tools/selfcheck/run.sh --overlay. The switch class exists only in that copy and
-reads which mutant is on from a file in the same folder, so a staged build carries no switch and reads no setting.
+and that copy is compiled once, without the analyzers, with tools/selfcheck/run.sh --overlay. The switch class exists
+only in that copy and reads which mutant is on from a file beside the build it is loaded from, so each worker's
+hard-linked copy of the build boots its own mutant, and a staged build carries no switch and reads no setting.
 The unmutated run goes first and must pass, and writes down which unit (a registered suite, or one service's
 Initialize) was running each time a mutant's site ran. Then each mutant is booted in turn on just those units; a
 site that never ran boots every unit, and so does one whose units fail unmutated on their
@@ -40,6 +43,8 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import codehash  # noqa: E402 -- tools/ is only on the path once the line above has run
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+from queue import Queue  # noqa: E402
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 RUN = os.path.join(ROOT, 'tools', 'selfcheck', 'run.sh')
@@ -52,6 +57,24 @@ OUTSIDE = '(host)'
 COMPILE_TIMEOUT = 1200
 BOOTING = '>> booting the self-checks'
 POLL = 0.1  # the stop fires this early, so a poll's lag never carries a boot past its deadline
+BIN = os.path.join('bin', 'Release', 'net10.0', 'linux-x64')
+JOBS = max(1, min(3, (os.cpu_count() or 2) // 2))
+_held = threading.local()
+_live, _stop = set(), threading.Event()  # every run's process, and the runner going down
+
+
+class _Held:
+    """stdout, held per thread while a worker boots a mutant, so each mutant's lines come out together."""
+    def __init__(self, real):
+        self.real = real
+
+    def write(self, s):
+        buf = getattr(_held, 'buf', None)
+        return buf.append(s) if buf is not None else self.real.write(s)
+
+    def flush(self):
+        if getattr(_held, 'buf', None) is None:
+            self.real.flush()
 
 
 class Mutant:
@@ -92,6 +115,14 @@ def parse(listing):
             refusals.append(f'{m.name}: its text occurs {count} time(s) in {m.path}, not once')
             continue
         m.at = text.index(m.old)
+        end = m.at + len(m.old)
+        if any(a < m.at < b or a < end < b for a, b in codehash.spans(text)):
+            refusals.append(f'{m.name}: its text reaches into a literal or a comment; cut it at the literal\'s edge')
+            continue
+        op = None if m.statement() else dangling(m.old)
+        if op:
+            refusals.append(f'{m.name}: its text ends on an operator ({op}); cut it before the operator')
+            continue
         if not m.new and not m.statement():
             refusals.append(f'{m.name}: only a whole statement (text ending in ;) may be removed')
     by_file = {}
@@ -120,6 +151,20 @@ OPCHARS = set('+-*/%<>=!&|^?:~')
 OPEN_EDGE = set('([{,;')
 CLOSE_EDGE = set(')]},;')
 EDGE_WORDS = {'return', 'throw', 'in', 'case', 'when', 'else', 'yield'}
+
+
+def dangling(old):
+    """The binary operator ``old`` ends on, which leaves its right operand outside the text, or None. A postfix
+    operator, a null-forgiving !, a generic's closing > and a nullable type's ? end a whole operand."""
+    tail = old.rstrip()
+    op = re.search(r'[' + re.escape(''.join(sorted(OPCHARS))) + r']+$', tail)
+    if not op or op.group() not in PREC:
+        return None
+    if op.group().endswith('>') and re.search(r'\w\s*<[\w\s,.<>?\[\]]*>$', tail):
+        return None
+    if op.group() == '?' and re.search(r'[\w>\]]\?$', tail):
+        return None
+    return op.group()
 
 
 def _loosest_inside(old):
@@ -155,6 +200,7 @@ def _loosest_inside(old):
     return worst
 
 
+ASSOCIATIVE = {'&&', '||'}  # a tie with one of these on the left regroups to the same value, in the same order
 RIGHT_ASSOC = {'?', ':', '??', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '??=', '=>'}
 STATEMENT_EDGE = set(';{}):')
 
@@ -225,7 +271,7 @@ def switchable(text, at, old):
     while k >= 0 and text[k].isspace():
         k -= 1
     unary = k < 0 or text[k] in OPCHARS or text[k] in OPEN_EDGE
-    return not unary and left in PREC and PREC[left] > inner
+    return not unary and left in PREC and (PREC[left] > inner or (PREC[left] == inner and left in ASSOCIATIVE))
 
 
 def wrap(m):
@@ -263,7 +309,9 @@ SWITCH_CS = '''namespace CX
     internal static class CxMutantSwitch
     {
         internal const string Work = @"@WORK@";
-        internal static readonly int Active = int.Parse(System.IO.File.ReadAllText(Work + "/cx-mutant-active").Trim());
+        internal static readonly string Mine =
+            System.IO.Path.GetDirectoryName(typeof(CxMutantSwitch).Assembly.Location) + "/";
+        internal static readonly int Active = int.Parse(System.IO.File.ReadAllText(Mine + "cx-mutant-active").Trim());
         private static readonly System.Collections.Generic.HashSet<(int, string)> Seen = new();
 
         /// <summary>True for the mutant numbered <paramref name="k"/> when it is the one on.</summary>
@@ -288,8 +336,8 @@ namespace CX.Framework
     public static partial class SelfCheckUnits
     {
         private static readonly System.Collections.Generic.HashSet<string>? Only =
-            System.IO.File.Exists(global::CX.CxMutantSwitch.Work + "/cx-mutant-suites")
-                ? new(System.IO.File.ReadAllLines(global::CX.CxMutantSwitch.Work + "/cx-mutant-suites"))
+            System.IO.File.Exists(global::CX.CxMutantSwitch.Mine + "cx-mutant-suites")
+                ? new(System.IO.File.ReadAllLines(global::CX.CxMutantSwitch.Mine + "cx-mutant-suites"))
                 : null;
 
         static partial void Admit(string unit, ref bool run)
@@ -303,22 +351,32 @@ namespace CX.Framework
 '''
 
 
+def put(path, text):
+    """Writes a file by replacing it, so a worker's hard-linked copy of a build folder never shares the write."""
+    with open(path + '.new', 'w', encoding='utf-8') as f:
+        f.write(text)
+    os.replace(path + '.new', path)
+
+
 def run(work, out, build, k, timeout, only=None):
     """Boots the self-checks with mutant k on (0: none), compiling first when asked, running only the units ``only``
     names (None: every unit). Returns (exit, output, the boot's seconds). The compile has COMPILE_TIMEOUT and the boot,
     timed from run.sh's booting line, has ``timeout``; past either the whole process group is stopped, exit 124."""
-    with open(os.path.join(work, ACTIVE), 'w') as f:
-        f.write(str(k))
-    only_file = os.path.join(work, ONLY)
+    mine = os.path.join(out, BIN)
+    os.makedirs(mine, exist_ok=True)
+    put(os.path.join(mine, ACTIVE), str(k))
+    only_file = os.path.join(mine, ONLY)
     if only is None:
         if os.path.exists(only_file):
             os.remove(only_file)
     else:
-        with open(only_file, 'w', encoding='utf-8') as f:
-            f.write(''.join(u + '\n' for u in sorted(only)))
-    cmd = [RUN, '--out', out, '--overlay', work] + ([] if build else ['--no-build'])
+        put(only_file, ''.join(u + '\n' for u in sorted(only)))
+    cmd = [RUN, '--out', out, '--overlay', work] + (['--no-analyzers'] if build else ['--no-build'])
+    if _stop.is_set():
+        raise SystemExit(143)
     p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          start_new_session=True)
+    _live.add(p)
     lines, booted = [], []
 
     def pump():
@@ -345,6 +403,8 @@ def run(work, out, build, k, timeout, only=None):
         os.killpg(p.pid, signal.SIGKILL)
         p.wait()
         raise
+    finally:
+        _live.discard(p)
     took = (stopped or time.monotonic()) - booted[0] if booted else 0.0
     output = ''.join(lines)
     if rc is None:
@@ -420,10 +480,17 @@ def verdict(m, rc, output):
 
 def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # so the work folder's cleanup below runs on a TERM
-    args, logs = argv[1:], None
+    args, logs, jobs = argv[1:], None, JOBS
     whole = '--whole' in args
     if whole:
         args.remove('--whole')
+    if '--jobs' in args:
+        i = args.index('--jobs')
+        if i + 1 >= len(args) or not args[i + 1].isdigit() or int(args[i + 1]) < 1:
+            print(__doc__, file=sys.stderr)
+            return 2
+        jobs = int(args[i + 1])
+        del args[i:i + 2]
     if '--logs' in args:
         i = args.index('--logs')
         if i + 1 >= len(args):
@@ -447,11 +514,12 @@ def main(argv):
         out = os.path.join(work, 'build')
         for m in mutants:
             if m.alone:
-                print(f'>> {m.name}: a switch would regroup or land in a literal, so it is compiled on its own', flush=True)
+                print(f'>> {m.name}: a switch would regroup the code around it, so it is compiled on its own', flush=True)
         switched = [m for m in mutants if not m.alone]
         while True:
             overlay(work, switched, True)
-            rc, output, _ = run(work, out, True, 0, COMPILE_TIMEOUT)
+            print(f'>> compiling the switched set: {len(switched)} mutant(s)', flush=True)
+            rc, output, took = run(work, out, True, 0, COMPILE_TIMEOUT)
             if rc != 1 or '>> FAIL: the managed build failed' not in output:
                 break
             broken = failed_lines(output, work)
@@ -474,46 +542,76 @@ def main(argv):
             print(output, file=sys.stderr)
             return 2
         print(f'>> 1 compile for {len(switched)} switched mutant(s); the unmutated run passes', flush=True)
-        rc, output, took = run(work, out, False, 0, COMPILE_TIMEOUT)
-        if rc != 0:
-            print('!! the unmutated tree fails its self-checks on a second boot:', file=sys.stderr)
-            print(output, file=sys.stderr)
-            return 2
         timeout = 1.5 * took + 3
         print(f'>> the unmutated boot took {took:.1f}s; a mutant is stopped at {timeout:.1f}s', flush=True)
         skips = [re.sub(r'^.*?\[cx\] ', '', l) for l in open(os.path.join(out, 'cx.log'), encoding='utf-8').read().splitlines()
                  if re.search(r'SelfCheck\w* SKIPPED:', l)]
         units, reach = read_reach(work)
-        clean = {}
+        clean, outs = {}, Queue()
+        for i in range(jobs):
+            mine = os.path.join(work, f'worker-{i}')
+            shutil.copytree(os.path.join(out, 'bin'), os.path.join(mine, 'bin'), copy_function=os.link)
+            outs.put(mine)
 
-        def judge(m, only):
+        def lend(fn, *a):
+            """Runs fn on a worker's own build folder, holding what it prints until it is done."""
+            mine, _held.buf = outs.get(), []
+            try:
+                return fn(mine, *a), ''.join(_held.buf)
+            finally:
+                _held.buf = None
+                outs.put(mine)
+
+        def judge(mine, m, only):
             """Boots mutant m on the units ``only`` names (None: every unit), and says which and how long."""
             names = ', '.join(sorted(only)) if only is not None else 'every suite'
             print(f'>> {m.name}: booting {len(units) if only is None else len(only)} of {len(units)} suites: {names}',
                   flush=True)
-            rc, output, took = run(work, out, False, m.k, timeout, only)
+            rc, output, took = run(work, mine, False, m.k, timeout, only)
             print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
             return rc, output
 
-        survived = 0
-        for m in switched:
-            only = None if whole else filtered(reach.get(m.k))
+        def unmutated(mine, only):
+            """True when the units ``only`` names pass with no mutant on."""
+            return run(work, mine, False, 0, timeout, only)[0] == 0
+
+        def one(mine, m, only):
+            """The whole of one mutant: its boots, its kept log and its verdict. True when it counts against the run."""
             if only is not None:
                 key = frozenset(only)
-                if key not in clean:
-                    clean[key] = run(work, out, False, 0, timeout, only)[0] == 0
-                if not clean[key]:
-                    print(f'>> {m.name}: its suites fail unmutated on their own, so it boots every suite', flush=True)
-                    only = None
-            rc, output = judge(m, only)
+                with gate:
+                    lock = locks.setdefault(key, threading.Lock())
+                with lock:
+                    if key not in clean:
+                        clean[key] = unmutated(mine, only)
+            if only is not None and not clean[key]:
+                print(f'>> {m.name}: its suites fail unmutated on their own, so it boots every suite', flush=True)
+                only = None
+            rc, output = judge(mine, m, only)
             if only is not None and rc == 0:
                 print(f'>> {m.name}: survived the filtered boot, booting it with every suite', flush=True)
-                rc, output = judge(m, None)
-            keep(m.name, out)
+                rc, output = judge(mine, m, None)
+            keep(m.name, mine)
             if rc == 0 and not filtered(reach.get(m.k)):
-                survived += untested(m, skips)
-            else:
-                survived += not verdict(m, rc, output)
+                return untested(m, skips)
+            return not verdict(m, rc, output)
+
+        plan = [(m, None if whole else filtered(reach.get(m.k))) for m in switched]
+        gate, locks = threading.Lock(), {}
+        sys.stdout, pool = _Held(sys.stdout), ThreadPoolExecutor(jobs)
+        try:
+            survived = 0
+            for bad, said in pool.map(lambda p: lend(one, *p), plan):
+                sys.stdout.real.write(said)
+                sys.stdout.real.flush()
+                survived += bad
+        finally:
+            _stop.set()
+            for p in list(_live):  # a TERM lands in this thread only: the workers' boots go down with it
+                os.killpg(p.pid, signal.SIGKILL)
+            pool.shutdown(cancel_futures=True)
+            _stop.clear()
+            sys.stdout = sys.stdout.real
         for m in [m for m in mutants if m.alone]:
             overlay(work, [m], False)
             alone = os.path.join(work, 'alone-' + str(m.k))

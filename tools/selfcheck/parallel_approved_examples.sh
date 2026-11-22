@@ -49,6 +49,15 @@ grep -qE 'refusing dangling: .*operator' "$tmp/e2.out" || fail "E2: dangling is 
 grep -qE 'refusing in-literal: .*literal' "$tmp/e2.out" || fail "E2: in-literal is not refused for reaching into a literal"
 grep -q 'refusing fine' "$tmp/e2.out" && fail "E2: a well cut mutant was refused"
 grep -q '^>> compiling' "$tmp/e2.out" && fail "E2: the runner compiled before refusing"
+# Found work: text that ends on a postfix operator, a null-forgiving !, a generic's > or a nullable ? is whole.
+for t in 'n--' 'i++' 'value!' 'List<int>' 'int?' 'Dictionary<string, List<int>>'; do
+  python3 -c 'import sys; sys.path.insert(0, "tools/selfcheck"); import mutants; sys.exit(mutants.dangling(sys.argv[1]) is not None)' "$t" \
+    || fail "found: '$t' is refused as ending on an operator"
+done
+for t in 'a &&' 'x +' 'p =>' 'b ?' 'c >'; do
+  python3 -c 'import sys; sys.path.insert(0, "tools/selfcheck"); import mutants; sys.exit(mutants.dangling(sys.argv[1]) is None)' "$t" \
+    || fail "found: '$t' is not refused as ending on an operator"
+done
 
 # E3
 # Given a switched compile that fails in three files
