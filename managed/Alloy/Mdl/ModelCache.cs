@@ -767,6 +767,8 @@ public static partial class ModelCache
     /// nothing else reads it.</summary>
     internal static int Finished { get { lock (Gate) return _done.Count; } }
     internal static int RefsOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Refs : 0;
+    /// <summary>The cache keeps <paramref name="m"/> and nothing holds a reference to it: no area uses it.</summary>
+    internal static bool Idle(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) && s.Refs == 0;
     internal static int DepthOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Depth : -1;
     internal static long Hits => _hits;
     internal static long Misses => _misses;

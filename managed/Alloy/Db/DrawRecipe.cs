@@ -795,7 +795,15 @@ internal static partial class DrawRecipe
 
     /// <summary>Bytes of the textures that only recipes of idle cached models hold: a texture a held model also
     /// draws, and one no recipe holds, count nothing.</summary>
-    internal static long IdleModelTextureBytes() => 0;
+    internal static long IdleModelTextureBytes()
+    {
+        for (int r = 0; r < _n; r++)
+        {
+            if (!_own.Held[r] || _own.Orphan[r] || _model[r] is not ModelDef m || !ModelCache.Idle(m)) continue;
+            for (int s = 0; s < TexSlots; s++) TexRegistry.Tally(Tex(r, s));
+        }
+        return TexRegistry.TakeSoleBytes();
+    }
 
     /// <summary>Subscribe to the model cache's eviction edge. Multicast (<c>+=</c>), because the cache's other
     /// listeners are not ours to replace.</summary>

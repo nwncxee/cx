@@ -58,8 +58,8 @@ public sealed unsafe partial class AlloyRenderer
         log?.Info($"AlloyRenderer: [vram] {_vram.Ext}, {_vram.TotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
-    /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
-    /// the largest allocations by name. Empty with no budget to measure against -- before a frame has read the
+    /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, what
+    /// sits in system RAM and what idle models hold, and the largest allocations by name. Empty with no budget -- before a frame has read the
     /// device, and on a device that answers no memory query -- because a row of zeros reads as a card holding none.</summary>
     internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top,
                                     long systemRamBytes = 0, long idleModelBytes = 0)
@@ -68,6 +68,7 @@ public sealed unsafe partial class AlloyRenderer
         if (budgetBytes <= 0) return "";
         var line = new System.Text.StringBuilder($", vram {heldBytes >> Shift}MiB held, {usageBytes >> Shift}/{budgetBytes >> Shift}MiB of the budget used");
         if (usageBytes > budgetBytes) line.Append($", OVER BUDGET by {(usageBytes - budgetBytes) >> Shift}MiB");
+        line.Append($", in system RAM {systemRamBytes >> Shift}MiB, held by idle models {idleModelBytes >> Shift}MiB");
         for (int i = 0; i < top.Length; i++) line.Append(i == 0 ? "; largest " : ", ").Append($"{top[i].Name} {top[i].Bytes >> Shift}MiB");
         return line.ToString();
     }
@@ -100,14 +101,14 @@ public sealed unsafe partial class AlloyRenderer
     internal static string FrameVram(VkBackend vk, ExtenderLog log)
     {
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
-        return FrameVram(held, usage, budget, 0, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
+        return FrameVram(held, usage, budget, vk.SystemRamBytes(log), vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
     }
 
     /// <summary>The frame line's memory part from the device's figures, bytes, and <paramref name="systemRamBytes"/> of
     /// Alloy's allocations in system RAM; what idle models hold it reads itself.</summary>
     internal static string FrameVram(long heldBytes, long usageBytes, long budgetBytes, long systemRamBytes,
                                      ReadOnlySpan<(string Name, long Bytes)> top)
-        => VramLine(heldBytes, usageBytes, budgetBytes, top);
+        => VramLine(heldBytes, usageBytes, budgetBytes, top, systemRamBytes, DrawRecipe.IdleModelTextureBytes());
 
     /// <summary>The device's memory figures as last sampled, KiB, and which query answered: what the probe
     /// settled for the session, beside the free figure every bracket resamples.</summary>

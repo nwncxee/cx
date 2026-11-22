@@ -26,6 +26,46 @@ internal sealed unsafe partial class VkBackend
         return !DeviceLocal(mp, (int)heap);
     }
 
+    /// <summary>The marker of the line that warns an allocation landed in system RAM.</summary>
+    internal const string SystemRamTag = "[vram] in system RAM";
+
+    /// <summary>Bytes of this device's allocations in system RAM, upload and readback buffers left out. Each one that
+    /// was not there at the last call is warned about once on <paramref name="log"/>, by label and size. Cold: a walk
+    /// of every live allocation.</summary>
+    internal long SystemRamBytes(ExtenderLog log)
+    {
+        if (!OnThread("SystemRamBytes")) return 0;
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        _inSystemRamNow.Clear();
+        long sum = 0;
+        foreach (VkImg g in _images.Live()) if (g.Group == null && !g.Window) sum += Spilled(mp, g, g.Desc.Label, g.Alloc, log);
+        foreach (AliasGroup g in _alias.Values) sum += Spilled(mp, g, "alias " + g.Name, g.Alloc, log);
+        foreach (VkBuf b in _buffers.Live()) if (b.Desc.Memory == MemoryKind.Device) sum += Spilled(mp, b, b.Desc.Label, b.Alloc, log);
+        _inSystemRam.IntersectWith(_inSystemRamNow);
+        return sum;
+    }
+
+    /// <summary>The bytes of <paramref name="a"/> when it sits off the device-local heaps, else 0; warned about when
+    /// <paramref name="owner"/> was not in system RAM at the last walk.</summary>
+    private long Spilled(in VkPhysicalDeviceMemoryProperties mp, object owner, string label, VmaAllocation a, ExtenderLog log)
+    {
+        if (a.IsNull) return 0;
+        VmaAllocationInfo info;
+        Vma.vmaGetAllocationInfo(_vma, a, &info);
+        if (DeviceLocal(mp, (int)mp.memoryTypes[(int)info.memoryType].heapIndex)) return 0;
+        long bytes = (long)info.size;
+        _inSystemRamNow.Add(owner);
+        if (_inSystemRam.Add(owner))
+            log.Always($"VkBackend: {SystemRamTag}: {label} {bytes >> 20}MiB -- device memory had no room, so the GPU reads it across the bus until it moves back");
+        return bytes;
+    }
+
+    /// <summary>The images, alias groups and buffers the last <see cref="SystemRamBytes"/> found in system RAM, and the
+    /// ones the walk under way has found.</summary>
+    private readonly System.Collections.Generic.HashSet<object> _inSystemRam = new(ReferenceEqualityComparer.Instance),
+                                                                _inSystemRamNow = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Every device-local memory type is also host-visible: an integrated GPU, whose one heap is system RAM.</summary>
     internal bool UnifiedMemory
     {

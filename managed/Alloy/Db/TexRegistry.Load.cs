@@ -862,6 +862,40 @@ internal static unsafe partial class TexRegistry
     /// <summary>The bytes the world textures hold on the device, resident and idle.</summary>
     internal static long HeldBytes { get { lock (_lock) return _residentBytes + _idleBytes; } }
 
+    /// <summary>References counted by <see cref="Tally"/> since the last <see cref="TakeSoleBytes"/>, and the slots they name.</summary>
+    private sealed class TallyState
+    {
+        public readonly int[] Refs = new int[MaxSlots];
+        public readonly int[] Slots = new int[MaxSlots];
+        public int N;
+    }
+    private static TallyState _tally = new();
+
+    /// <summary>Count one reference to <paramref name="id"/> toward <see cref="TakeSoleBytes"/>; a stale or null id counts
+    /// nothing. Game thread.</summary>
+    internal static void Tally(TexId id)
+    {
+        if (!Valid(id)) return;
+        int i = id.Index;
+        if (_tally.Refs[i]++ == 0) _tally.Slots[_tally.N++] = i;
+    }
+
+    /// <summary>Bytes of the tallied textures that hold no reference past the tallied ones, each counted once; the tally
+    /// starts over. Game thread, and allocates nothing.</summary>
+    internal static long TakeSoleBytes()
+    {
+        long sum = 0;
+        lock (_lock)
+            for (int k = 0; k < _tally.N; k++)
+            {
+                int i = _tally.Slots[k];
+                if (_refs[i] == _tally.Refs[i]) sum += _bytes[i];
+                _tally.Refs[i] = 0;
+            }
+        _tally.N = 0;
+        return sum;
+    }
+
     /// <summary>The key the texture part gives the period's budget under, as <c>tex budget N MiB</c>.</summary>
     internal const string BudgetKey = "tex budget";
 
