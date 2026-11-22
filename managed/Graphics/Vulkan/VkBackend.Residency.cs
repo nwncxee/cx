@@ -172,6 +172,10 @@ internal sealed unsafe partial class VkBackend
     /// false for a stale id or no room.</summary>
     internal bool MoveBackForCheck(ImageId i) => _images.TryGet(i.Value, out VkImg img) && MoveBack(img);
 
+    /// <summary>The layout the backend tracks image <paramref name="i"/> in, which its next barrier moves it from;
+    /// undefined for a stale id.</summary>
+    internal VkImageLayout LayoutForCheck(ImageId i) => _images.TryGet(i.Value, out VkImg img) ? img.Layout : VkImageLayout.Undefined;
+
     /// <summary>Images placed in system RAM that have not moved back yet; a stale id is dropped at the next try.</summary>
     private readonly System.Collections.Generic.List<uint> _spilled = new();
 

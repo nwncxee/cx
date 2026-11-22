@@ -2,6 +2,7 @@ using System;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -11,6 +12,8 @@ internal static partial class GpuGolden
 {
     /// <summary>Side of every image these tests move; the move remakes it at its own size, so any size serves.</summary>
     private const int MovedSide = 8;
+    /// <summary>Bytes one texel of the moved images' half-float RGBA holds: four channels of two bytes.</summary>
+    private const int MovedTexel = 8;
 
     /// <summary>The found move-back tests, under a name of their own; a failure fails <paramref name="suite"/> too.</summary>
     private static void MoveBackFoundSelfCheck(VkBackend vk, Checker suite, ExtenderLog log)
@@ -29,6 +32,7 @@ internal static partial class GpuGolden
         MovedOwner(vk, check, "content stage", Store, 2, (i, m) => StageResources.VkRemakesForCheck(vk, i[0], i[1], m));
         WeatherMapsMoved(vk, check);
         MoveSeenOnce(vk, check);
+        MovedStartsUndefined(vk, check, log);
         if (!check.Ok) suite.Ok = false;
         log.Info(check.Ok ? "GpuGolden.MoveBackFound: passed" : "GpuGolden.MoveBackFound: FAILED");
     }
@@ -111,6 +115,27 @@ internal static partial class GpuGolden
         {
             foreach (ImageId i in ids) vk.Destroy(i);
         }
+    }
+
+    // Given an image filled by an upload, so the backend tracks it shader-readable
+    // When it moves back to device memory
+    // Then the backend tracks it undefined, so its next barrier does not claim contents the new image never held
+    private static void MovedStartsUndefined(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        ImageId id = MoveImage(vk, ImageUse.Sampled | ImageUse.CopyDst, "golden moveback layout");
+        if (id.IsNull) { check.Expect(false, "move back layout: the image was refused"); return; }
+        try
+        {
+            bool sent = vk.Upload(id, 0, 0, new byte[MovedSide * MovedSide * MovedTexel]);
+            vk.Submit(new CommandList("golden moveback layout", 1 << 8, log));
+            VkImageLayout filled = vk.LayoutForCheck(id);
+            bool moved = vk.MoveBackForCheck(id);
+            check.Expect(sent && filled == VkImageLayout.ShaderReadOnlyOptimal && moved,
+                         $"move back layout: precondition: uploaded {sent}, then tracked {filled}, then moved {moved}");
+            check.Expect(vk.LayoutForCheck(id) == VkImageLayout.Undefined,
+                         $"move back layout: the remade image is tracked {vk.LayoutForCheck(id)}, not undefined");
+        }
+        finally { vk.Destroy(id); }
     }
 
     /// <summary><paramref name="n"/> new images of <paramref name="use"/>; null (failed on <paramref name="check"/>) when one was refused.</summary>
