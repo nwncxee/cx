@@ -578,8 +578,8 @@ public static unsafe partial class DbAnim
         // built from the same model re-uses them and one from another model gets its own.
         ScanTree(i);
         // Every object RIDING this one holds an absolute index into the range that just changed. Re-resolve
-        // each by the node name it was attached to, or a rider silently stops being placed and keeps the
-        // world matrix it last had -- a body part standing beside its creature.
+        // each by the node name it was attached to, across the whole composition as its first attach did, or
+        // a rider silently stops being placed and keeps the world matrix it last had.
         Reanchor(obj);
         Moved(i);
         SceneDb.Objects.Mark(i, Dirty.Tree);
@@ -595,7 +595,7 @@ public static unsafe partial class DbAnim
             if (SceneDb.ObjAttachTo[c].Value != parent.Value) continue;
             string? name = SceneDb.ObjAttachNode[c];
             if (name == null) continue;   // attached to the root, or to a part whose node had no name
-            int now = PartByName(parent, name);
+            int now = CX.Alloy.Seam.ObjectSlots.PartByName(parent, name);
             if (now == SceneDb.ObjAttachPart[c]) continue;
             SceneDb.ObjAttachPart[c] = now;
             _reanchored++;

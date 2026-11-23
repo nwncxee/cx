@@ -29,7 +29,7 @@ public static partial class PartTree
 
     /// <summary>Cumulative since boot (trees built, parts merged away, trees refused); <see cref="HeldSlots"/>
     /// is the only live figure here, and it comes off the allocator.</summary>
-    private static int _built, _merged, _collapsed, _refused, _refusedParts, _animMesh, _dangly, _deepTrees;
+    private static int _built, _merged, _collapsed, _refused, _refusedParts, _dangly, _deepTrees;
 
     internal static void Attach(ExtenderLog log)
     {
@@ -309,13 +309,7 @@ public static partial class PartTree
         SceneDb.PartAlpha[p] = RestAlpha(n);
         SceneDb.PartSelfIllum[p] = RestSelfIllum(n);
         SceneDb.PartKindOf[p] = Kind(n.Kind);
-        // CX-114's stated refusal: the arena holds ONE immutable copy per distinct mesh, so a part whose
-        // vertices change per instance and per frame cannot be served from it. An animmesh keeps its base
-        // mesh's range (its rest frame draws correctly) and its morph is not applied; a dangly keeps its
-        // range and its solve is not applied. Both are counted and named on the period line, never silent.
-        // The owned animation runtime morphing into a per-instance arena range is the follow-up.
-        if (SceneDb.PartKindOf[p] == PartKind.AnimMesh) _animMesh++;
-        else if (SceneDb.PartKindOf[p] == PartKind.Dangly) _dangly++;
+        if (SceneDb.PartKindOf[p] == PartKind.Dangly) _dangly++;
         // only the PRIMARY model's nodes are in the plan: a reference expansion's parts index another
         // model's node array, and the plan says nothing about them
         bool folded = swallowed != null && ReferenceEquals(plan.Model, primary)
@@ -861,7 +855,6 @@ public static partial class PartTree
         return $"parts {HeldSlots} in {_built} trees"
                + (_collapsed > 0 ? $", {_collapsed} collapsed" : "")
                + (_merged > 0 ? $", {_merged} merged away" : "")
-               + (_animMesh > 0 ? $", {_animMesh} animmesh parts NOT MORPHED (rest frame from the arena)" : "")
                + (_dangly > 0 ? $", {_dangly} dangly parts NOT SOLVED (rest frame from the arena)" : "")
                + (_refused > 0 ? $", {_refused} trees REFUSED ({_refusedParts} parts past the {SceneDb.MaxParts} slots)" : "")
                + (_deepTrees > 0 ? $", {_deepTrees} chains past {MaxHops} hops" : "")
@@ -871,7 +864,7 @@ public static partial class PartTree
     /// <summary>Off-device reset, for the self-check suite.</summary>
     internal static void ResetForCheck()
     {
-        _built = _merged = _collapsed = _refused = _refusedParts = _animMesh = _dangly = _deepTrees = 0;
+        _built = _merged = _collapsed = _refused = _refusedParts = _dangly = _deepTrees = 0;
         PartGate.ResetForCheck();
     }
 }

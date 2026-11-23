@@ -301,9 +301,9 @@ public sealed unsafe partial class ObjectSlots
     }
 
     /// <summary>The managed-string twin of the <c>byte*</c> overload, searching the COMPOSITION the same way:
-    /// <c>Gob::Append</c> is its caller, a creature's body parts are appended one after another, and an anchor
-    /// node in a piece already appended -- a forearm under a bicep -- must resolve or the append refuses and
-    /// that piece of the creature never exists. Two overloads of one question must not give two answers.</summary>
+    /// <c>Gob::Append</c> anchors a piece on a node an earlier piece brought (a forearm under a bicep), and a
+    /// tree change re-anchors each rider by the node name it first attached to, wherever that node lives.
+    /// Two overloads of one question must not give two answers.</summary>
     internal static int PartByName(DbId obj, string? name) => PartByName(obj, name, 0);
 
     /// <inheritdoc cref="PartByName(DbId, string?)"/>
