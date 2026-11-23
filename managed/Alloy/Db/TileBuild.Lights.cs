@@ -59,10 +59,10 @@ public static partial class TileBuild
         SceneDb.Tiles.Mark(t, Dirty.Tree);
     }
 
-    /// <summary>One flame slot, ported from <c>Scene::SetSingleTileFlame</c> @0x55ef30: an unchanged slot does
-    /// nothing; otherwise the old object leaves (its lights re-shade) and the new one takes the
-    /// <c>sl1</c>/<c>sl2</c> PART's pose. CX's parts are MODEL-space, so the flame's world pose is the tile
-    /// placement composed with the part's. No <c>sl</c> part: the object is left be and the refusal counted.</summary>
+    /// <summary>One flame slot, ported from <c>Scene::SetSingleTileFlame</c> @0x55ef30: an unchanged slot does nothing;
+    /// otherwise the old object leaves (its lights re-shade) and the new one takes the <c>sl1</c>/<c>sl2</c> PART's
+    /// MODEL-space pose composed with the tile's, then joins the scene as <c>Gob::SetScene</c> does, since a flame off
+    /// the member list is never animated. No <c>sl</c> part: the object is left be.</summary>
     private static void PlaceFlame(int t, ref DbId slot, DbId want, int node, Vector3 nodePos, Quaternion nodeRot)
     {
         if (slot == want) return;
@@ -79,7 +79,9 @@ public static partial class TileBuild
             ? Quaternion.Identity : Quaternion.CreateFromAxisAngle(Vector3.UnitZ, SceneDb.TileOrient[t] * 90f * (MathF.PI / 180f));
         SceneDb.ObjPos[o] = SceneDb.TilePos[t] + Vector3.Transform(nodePos, tileRot);
         SceneDb.ObjRot[o] = Quaternion.Normalize(tileRot * nodeRot);
-        SceneDb.ObjScene[o] = SceneDb.TileScene[t];
+        DbId scene = SceneDb.TileScene[t];
+        if (scene.IsNull) SceneDb.ObjScene[o] = scene;
+        else CX.Alloy.Seam.ObjectSlots.JoinScene(want, CX.Alloy.Seam.Facade.ObjectShell(want), scene, SceneDb.SceneFacade[scene.Index]);
         SceneDb.ObjVisible[o] = true;
         Matrix4x4 w = Matrix4x4.CreateFromQuaternion(SceneDb.ObjRot[o]);
         w.Translation = SceneDb.ObjPos[o];
