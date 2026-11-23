@@ -56,18 +56,18 @@ expect "a count that is not a number prints no line" "$(shutdown_crash_line '' 3
 # Given a ladder session's frame lines
 # When the harness grades the recipe table
 # Then each fault clause the frame line prints is named, and a clean frame line names none
-mkdir -p "$t/repo/managed/Alloy/Db"
-echo '    internal const string EvictedKey = "models evicted for recipes";' > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
 f="$t/cx.log"
-echo 'dbfeed: frames 120 recipes 900 retired 69 box-grown 67' > "$f"
-expect "a clean frame line names no fault" "$(recipe_fault_lines "$f" "$t/repo")" ""
+keys='[cx] dbfeed: recipe fault keys: RECIPES SPILLED|models evicted for recipes|RECIPES EVICTED IN USE|RECIPES RETIRED TWICE'
+printf '%s\n%s\n' "$keys" 'dbfeed: frames 120 recipes 900 retired 69 box-grown 67' > "$f"
+expect "a clean frame line names no fault" "$(recipe_fault_lines "$f")" ""
 for clause in 'RECIPES SPILLED 3' 'models evicted for recipes 2' 'RECIPES EVICTED IN USE 14' 'RECIPES RETIRED TWICE 1'; do
-    echo "dbfeed: frames 240 recipes 900 $clause retired 69" > "$f"
-    expect "the frame line's $clause is named" "$(recipe_fault_lines "$f" "$t/repo")" "$clause"
+    printf '%s\n%s\n' "$keys" "dbfeed: frames 240 recipes 900 $clause retired 69" > "$f"
+    expect "the frame line's $clause is named" "$(recipe_fault_lines "$f")" "$clause"
 done
-echo '    internal const string EvictedKey = "models dropped for room";' > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
-echo 'dbfeed: frames 240 models dropped for room 5' > "$f"
-expect "a renamed key is read from the source" "$(recipe_fault_lines "$f" "$t/repo")" "models dropped for room 5"
-: > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
-expect "a source with no key is a fault, not a pass" "$(recipe_fault_lines "$f" "$t/repo")" "no EvictedKey in DrawRecipe.cs"
+printf '%s\n%s\n' '[cx] dbfeed: recipe fault keys: TABLE OVERFLOW|models dropped for room' 'dbfeed: frames 240 models dropped for room 5 TABLE OVERFLOW 2' > "$f"
+expect "renamed keys are read from the session's own log" "$(recipe_fault_lines "$f")" "TABLE OVERFLOW 2,models dropped for room 5"
+echo 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a frame line with no key line is a fault, not a pass" "$(recipe_fault_lines "$f")" "no recipe fault keys in cx.log"
+echo '[cx] Alloy stood down: no Vulkan device' > "$f"
+expect "a session with no frame line names no fault" "$(recipe_fault_lines "$f")" ""
 exit $fail

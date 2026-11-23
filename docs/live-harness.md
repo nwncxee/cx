@@ -163,7 +163,8 @@ writes `CXLADDER: <rung>-FAILED: ...` and fails the run with its reason. The two
 graded too -- a `walked` under 1 m and a `combat-result 0/3` both fail, because a rung that ran is not
 a rung that did anything. The ladder's areas fill a sliver of the recipe table, so a frame line saying
 `RECIPES SPILLED`, `models evicted for recipes`, `RECIPES EVICTED IN USE` or `RECIPES RETIRED TWICE` fails
-the run too: a boot self-check's counts leaked into the session, or the table broke. `$OUT/ladder-markers.txt` holds every marker the run saw and the summary
+the run too: a boot self-check's counts leaked into the session, or the table broke. The grade reads those keys
+from the `dbfeed: recipe fault keys:` line the client logs at boot, and a frame line with no such line fails. `$OUT/ladder-markers.txt` holds every marker the run saw and the summary
 repeats them.
 
 **Where the markers land.** `WriteTimestampedLogEntry` is a server-side call, but `+TestNewModule`

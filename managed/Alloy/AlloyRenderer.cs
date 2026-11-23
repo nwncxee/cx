@@ -352,6 +352,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
         Db.DrawRecipe.Counts = bootCounts;
+        log.Info(Db.DrawRecipe.FaultKeysLine);
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);

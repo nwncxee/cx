@@ -35,12 +35,14 @@ shutdown_crash_line() {
     return 0
 }
 
-# The recipe table's fault clauses on a session's frame lines, comma-joined; empty when there are none. The room
-# eviction clause is read out of DrawRecipe.EvictedKey, so a renamed key cannot disarm the grade.
+# The recipe table's fault clauses on a session's frame lines, comma-joined; empty when there are none. The keys
+# come from the line the client logs at boot, so a renamed key cannot disarm the grade.
 recipe_fault_lines() {
-    local log=$1 repo=$2 key
-    key=$(grep -oP 'EvictedKey = "\K[^"]+' "$repo/managed/Alloy/Db/DrawRecipe.cs" 2>/dev/null)
-    [ -n "$key" ] || { echo "no EvictedKey in DrawRecipe.cs"; return 0; }
-    grep -aoE "RECIPES SPILLED [0-9]+|$key [0-9]+|RECIPES EVICTED IN USE [0-9]+|RECIPES RETIRED TWICE [0-9]+" "$log" \
-        | sort -u | paste -sd, -
+    local log=$1 keys
+    keys=$(grep -aoP 'dbfeed: recipe fault keys: \K.+' "$log" | tail -n 1)
+    if [ -z "$keys" ]; then
+        grep -aq 'dbfeed: frames' "$log" && echo "no recipe fault keys in cx.log"
+        return 0
+    fi
+    grep -aoE "($keys) [0-9]+" "$log" | LC_ALL=C sort -u | paste -sd, -
 }

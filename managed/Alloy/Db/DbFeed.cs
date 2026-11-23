@@ -209,10 +209,10 @@ public static partial class DbFeed
         => $"dbfeed: frames {_frames} rec-writes {_lastRecWrites} visible {LastVisible} retry {Retrying} "
          + $"recipes {DrawRecipe.Count} (diffuse {DrawRecipe.DiffuseCensus().resolved}/{DrawRecipe.DiffuseCensus().named} resolved, {DrawRecipe.DiffuseCensus().standIn} stand-in) grid {DbGrid.Filed}/{DbGrid.Movers}/{DbGrid.Unboxed} {DrawRecipe.WaterNote()}"
          + (DbGrid.Refused > 0 ? $" GRID REFUSED {DbGrid.Refused}" : "")
-         + (DrawRecipe.Spilled > 0 ? $" RECIPES SPILLED {DrawRecipe.Spilled}" : "")
+         + (DrawRecipe.Spilled > 0 ? $" {DrawRecipe.SpilledKey} {DrawRecipe.Spilled}" : "")
          + (DrawRecipe.RoomEvicted > 0 ? $" {DrawRecipe.EvictedKey} {DrawRecipe.RoomEvicted}" : "")
-         + (DrawRecipe.RetiredInUse > 0 ? $" RECIPES EVICTED IN USE {DrawRecipe.RetiredInUse}" : "")
-         + (DrawRecipe.DoubleRetire > 0 ? $" RECIPES RETIRED TWICE {DrawRecipe.DoubleRetire}" : "")
+         + (DrawRecipe.RetiredInUse > 0 ? $" {DrawRecipe.InUseKey} {DrawRecipe.RetiredInUse}" : "")
+         + (DrawRecipe.DoubleRetire > 0 ? $" {DrawRecipe.TwiceKey} {DrawRecipe.DoubleRetire}" : "")
          + (DrawRecipe.TwinRefused > 0 ? $" twin-shadowed {DrawRecipe.TwinRefused}" : "")
          + (DrawRecipe.BoxGrown > 0 ? $" box-grown {DrawRecipe.BoxGrown} (first {DrawRecipe.BoxGrownFirst})" : "")
          + (DrawRecipe.Retired > 0 ? $" retired {DrawRecipe.Retired}" : "")

@@ -743,7 +743,7 @@ if [ "$LADDER" = 1 ]; then
     downed=$(grep -oE 'CXLADDER: combat-result [0-9]+/' "$LADDER_MARKS" | tail -1 | grep -oE '[0-9]+')
     [ "${downed:-1}" != 0 ] || fails+=("LADDER: combat-result 0/3 -- the fight started but nothing went down")
     # The ladder's areas fill a sliver of the recipe table, so any recipe fault is a count leaked or a table broken.
-    roomlines=$(recipe_fault_lines "$OUT/cx.log" "$ROOT")
+    roomlines=$(recipe_fault_lines "$OUT/cx.log")
     [ -z "$roomlines" ] || fails+=("LADDER: the frame line says $roomlines -- the ladder never fills the recipe table")
     [ -s "$LADDER_MARKS" ] || fails+=("LADDER: no CXLADDER marker anywhere -- did OnClientEnter run? see $OUT/nwserverLog1.txt")
     # The return to the first area must cost at most 1.5x the first visit's GPU time per frame (tools/live/revisit.py's SLOWER).

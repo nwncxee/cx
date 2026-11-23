@@ -150,7 +150,7 @@ internal static partial class DrawRecipe
         public string BoxGrownFirst;
     }
 
-    /// <summary>The frame line's recipe counts; set only by a self-check giving back what it found.</summary>
+    /// <summary>The frame line's recipe counts; set only to give back what a self-check moved.</summary>
     internal static Tally Counts { get => _own.Counts; set => _own.Counts = value; }
 
     /// <summary>The log the ownership refusals are said on. Set by the feed.</summary>
@@ -338,7 +338,7 @@ internal static partial class DrawRecipe
     /// <summary>A retire refused because the slot was not held: it would have reached the free list twice.</summary>
     internal static int DoubleRetire => _own.Counts.DoubleRetire;
     /// <summary>Recipes whose model was evicted while a part still named them: kept until that part lets go.</summary>
-    internal static int RetiredInUse { get => _own.Counts.RetiredInUse; set => _own.Counts.RetiredInUse = value; }
+    internal static int RetiredInUse => _own.Counts.RetiredInUse;
 
     /// <summary>How many recipes actually have a resolved diffuse, and how many are drawing the white stand-in.
     /// "Most surfaces are untextured" is a question about these two numbers and nothing else.</summary>
@@ -840,6 +840,18 @@ internal static partial class DrawRecipe
 
     /// <summary>The frame line's key for the models evicted to make room in the table.</summary>
     internal const string EvictedKey = "models evicted for recipes";
+
+    /// <summary>The frame line's key for new recipes the full table refused.</summary>
+    internal const string SpilledKey = "RECIPES SPILLED";
+
+    /// <summary>The frame line's key for recipes retired while a part still named them.</summary>
+    internal const string InUseKey = "RECIPES EVICTED IN USE";
+
+    /// <summary>The frame line's key for recipes retired a second time.</summary>
+    internal const string TwiceKey = "RECIPES RETIRED TWICE";
+
+    /// <summary>The boot line naming every recipe fault key, so a grader reads the keys from the session it grades.</summary>
+    internal const string FaultKeysLine = "dbfeed: recipe fault keys: " + SpilledKey + "|" + EvictedKey + "|" + InUseKey + "|" + TwiceKey;
 
     /// <summary>The area change: the model cache's own edge, then idle models evicted, least recently used first,
     /// until at most a quarter of the table is in use. Runs behind the loading screen.</summary>
