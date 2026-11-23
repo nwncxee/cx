@@ -89,6 +89,7 @@ internal static class EscOrderApprovedExamples
         return UiInputService.PumpKeyDown(Esc, 0, under) || UiInputService.RouteKeyDown(Esc, 0, false, under);
     }
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "EscOrderApprovedExamples.SelfCheck");

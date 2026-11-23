@@ -45,6 +45,7 @@ internal static unsafe class ClickOrderApprovedExamples
     /// <summary>The frame with Alloy off, the overlays drawn as <paramref name="overlays"/>.</summary>
     private static string GlFrame(StringBuilder drawn, string overlays = Cursor) => FrameLetters.Gl(drawn, Sheet, overlays);
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "ClickOrderApprovedExamples.SelfCheck");

@@ -84,6 +84,7 @@ internal static class PopupBandApprovedExamples
         => UiInputService.RoutePress(UiInputService.SdlButtonLeft, x, y, new UiInputService.PointerUnder(nui, false, false))
            == UiInputService.PointerOutcome.Taken;
 
+    [SelfCheckSuite(SuitePhase.AfterServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "PopupBandApprovedExamples.SelfCheck");
