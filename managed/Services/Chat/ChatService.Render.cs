@@ -38,22 +38,49 @@ public sealed unsafe partial class ChatService
         // input through the window's delegates. The chatbox owns many sub-windows internally (ChatLayout), so it
         // stays one framework Window with a hit-test override (its UI extends outside any single rect -- channel
         // lists) and self-manages focus; WantsKeyboard is driven via KeyboardMode -> RequestKeyboard.
-        _uiWindow = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            DrawContent = OnFrame,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnChatKey,
-            OnText = InsertUtf8,
-            HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
-        };
+        _uiWindow = NewSurfaces().Below;
         UiHost.AddChordConsumer(new SlashChord());   // "/" opens a command line
         log.Info("ChatService: registered as a framework Window (content-draw + routed input), \"/\" opens a command line");
     }
 
+    /// <summary>Registers the two framework Windows the chatbox draws and takes input through: the one above NUI for
+    /// the chat windows set to draw there, first, and the one under NUI for the rest.</summary>
+    internal static (Window Below, Window Above) NewSurfaces()
+    {
+        Window above = Surface(true);
+        return (Surface(false), above);
+    }
+
+    /// <summary>The framework Window for the chat windows on <paramref name="above"/>'s side of NUI: their draw, routed
+    /// input, hit-test and open lists. The settings panel goes with the focused window's side.</summary>
+    private static Window Surface(bool above) => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        Layer = above ? UiLayer.AboveNui : UiLayer.BelowNui,
+        DrawContent = above ? OnFrameAbove : OnFrame,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnChatKey,
+        OnText = InsertUtf8,
+        HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py, above),
+        PopupOpen = () => PopupOpen(above),
+    };
+
+    /// <summary>The above-NUI chat surface's content draw: the frames and settings panel of the windows set above NUI.
+    /// The per-frame edges run once, in <see cref="OnFrame"/>.</summary>
+    private static void OnFrameAbove()
+    {
+        if (!GameGate.InGame) return;
+        ChatRenderer.Draw(true);
+        if (SettingsAbove()) DrawSettings();
+    }
+
+    /// <summary>Whether the settings panel draws and takes input above NUI: it belongs to the focused window.</summary>
+    private static bool SettingsAbove() => _layout != null && _layout.Focused.AboveNui;
+
     private static Window? _uiWindow;
+
     private static bool _booted;                  // first-frame viewport relayout done
     private static int _swapTid;                  // managed thread id of the frame-present thread (probe)
     private static bool _wasInModule;             // last frame's GameGate.InModule, for the module-unload edge
@@ -163,8 +190,8 @@ public sealed unsafe partial class ChatService
             }
             PollGameClock();
             KeepOnScreen();
-            ChatRenderer.Draw();
-            DrawSettings();
+            ChatRenderer.Draw(false);
+            if (!SettingsAbove()) DrawSettings();
             // Dialog and the quickbar draw themselves: each registers its own framework Window and UiHostService's
             // z-order roll-call invokes their content-draw after ours. No cross-call from here.
         }
@@ -342,6 +369,7 @@ public sealed unsafe partial class ChatService
             footer, footer ? Edit.Text : "", footer ? Edit.Cursor : 0, grip,
             footer ? Edit.Selection : null, chrome: atlas);
         frame.ApplyResidual = focused && win.AnimEnabled;
+        frame.AboveNui = win.AboveNui;
         return frame;
     }
 

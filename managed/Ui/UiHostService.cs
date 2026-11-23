@@ -47,7 +47,11 @@ public sealed unsafe class UiHostService : IExtenderService
         _nkSlot = hooks.ChainNkSdlRender(&OnNkRender, 20);
         log.Info(_nkSlot != null
             ? "UiHostService: window roll-call straddles NUI (chained on nk_sdl_render)"
-            : "UiHostService: nk_sdl_render unavailable -- both window layers stay at the present (above NUI)");
+            : "UiHostService: nk_sdl_render unavailable -- every layer draws at the present (above NUI)");
+        _viewSlot = hooks.ChainCameraRenderScene(&OnRenderScene, ViewChainPriority);
+        log.Info(_viewSlot != null
+            ? "UiHostService: world-anchored windows draw on the world view, under the game's panels"
+            : "UiHostService: Camera::RenderScene unavailable -- world-anchored windows draw over the game's panels");
 
         // the gear's window. Its rect is the sprite's; it hits only while the main menu or the in-game Options
         // panel is up, so in play and on the loading screen it is inert for the cursor pick, the click routing and
@@ -200,6 +204,7 @@ public sealed unsafe class UiHostService : IExtenderService
 
     private static SwapBuffersFn _swapOrig;
     private static NkSdlRenderFn* _nkSlot;   // chain slot: the next nk_sdl_render subscriber (null = not chained)
+    private static CameraRenderSceneFn* _viewSlot;   // chain slot: the next Camera::RenderScene layer (null = not chained)
     // Resolved once at init, not per frame: every one of these runs on the present.
     private static GetGuiScaleFn _getGuiScale;   // CAurora::GetGUIScale -> live GUI-scale multiplier
     private static RiResetRenderStatesFn _resetStates;    // RenderInterface::ResetRenderStates -- the hand-back resync
@@ -208,8 +213,8 @@ public sealed unsafe class UiHostService : IExtenderService
     private const uint GlArrayBuffer = 0x8892;  // not-an-offset: a GL enum
 
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
-    /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
-    /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
+    /// itself happens earlier, on the world view and at <see cref="OnNkRender"/>; it falls back to here, every
+    /// layer over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
     [UnmanagedCallersOnly]
     private static void OnSwap(IntPtr window)
     {
@@ -229,7 +234,8 @@ public sealed unsafe class UiHostService : IExtenderService
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --
         // after this point -- and would otherwise overwrite everything drawn here, which is what made CX's chat
         // vanish the moment the world started drawing.
-        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // every layer, above NUI
+        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows(_nk.UnderDrawn ? UiLayer.BelowNui : UiLayer.UnderGui);
+        _nk.UnderDrawn = false;
         FrameRegistry.Global.Run(FramePhase.PrePresent);
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant. With Alloy rendering, only when something drew in this context this frame.
@@ -242,25 +248,51 @@ public sealed unsafe class UiHostService : IExtenderService
         FrameRegistry.Global.Run(FramePhase.PostPresent);
     }
 
-    /// <summary>The window roll-call's draw site with Alloy off: the below-NUI layer, resync, the rest of the chain
-    /// and nuklear's own flush, then the above-NUI layer. Hot, and on the same thread as the present.</summary>
+    /// <summary>The window roll-call's draw site with Alloy off: the below-NUI layer (and the world-anchored one when no
+    /// world view drew it), the rest of the chain and nuklear's flush, then the above-NUI and popup layers. Hot.</summary>
     [UnmanagedCallersOnly]
     private static void OnNkRender(float aa)
     {
         if (CX.Alloy.Renderer.On) { (*_nkSlot)(aa); return; }   // Alloy's frame draws every layer at its own place
-        DrawWindows(UiLayer.UnderGui, UiLayer.BelowNui);
-        (*_nkSlot)(aa);
-        DrawWindows(UiLayer.AboveNui, UiLayer.AboveNui);
+        NkFrame.Flush(new NkSink(aa), _nk.UnderDrawn);
+        _nk.UnderDrawn = true;
+    }
+
+    /// <summary>Every view's draw. With Alloy off, the frame's first world view ends with the finished world on the
+    /// default framebuffer and no 2D drawn yet: the world-anchored windows go there, under the game's panels.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnRenderScene(IntPtr cam)
+    {
+        (*_viewSlot)(cam);
+        if (CX.Alloy.Renderer.On || cam == IntPtr.Zero) return;
+        IntPtr scene = new CX.Engine.Camera(cam).Scene.Ptr;
+        if (scene == IntPtr.Zero || !new CX.Engine.Scene(scene).IsWorld) return;
+        NkFrame.World(new NkSink(0f), ref _nk.UnderDrawn);
+    }
+
+    /// <summary>The Alloy-off frame's latch: whether this frame's world-anchored windows have drawn.</summary>
+    private sealed class NkFrameState { public bool UnderDrawn; }
+
+    private static readonly NkFrameState _nk = new();
+
+    /// <summary>Outside Alloy's camera, so the world-anchored windows draw after the view is finished.</summary>
+    private const int ViewChainPriority = 20;
+
+    /// <summary>The Alloy-off frame's steps on the engine's context: CX's layers drawn at once, NUI the chain's rest.</summary>
+    private readonly struct NkSink(float aa) : INkFrameSink
+    {
+        public void Windows(UiLayer from, UiLayer to) => DrawWindows(from, to);
+        public void Nui() => (*_nkSlot)(aa);
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
     /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
-    private static readonly UiDrawList[] _layers = { new(), new(), new() };
+    private static readonly UiDrawList[] _layers = Array.ConvertAll(UiHost.Layers, _ => new UiDrawList());
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
 
-    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing nothing: Alloy's GUI pass
+    /// <summary>Record CX's own 2D windows for the frame Alloy draws, every layer, issuing nothing: Alloy's GUI pass
     /// replays them into its own frame. Game thread.</summary>
     internal static void RecordWindowsForDbFrame()
     {
@@ -271,8 +303,8 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>The engine-context draw with Alloy off: record layers <paramref name="from"/> to <paramref name="to"/>,
     /// replaying each at once, then hand the GL state back -- our raw GL desyncs GLRender's shadow cache and what
-    /// renders next is NUI. The engine has drawn its panels by now, so here an under-GUI window is over them.</summary>
-    private static void DrawWindows(UiLayer from = UiLayer.UnderGui, UiLayer to = UiLayer.AboveNui)
+    /// renders next is NUI, or the engine's panels when the world view calls it for the world-anchored windows.</summary>
+    private static void DrawWindows(UiLayer from, UiLayer to = UiLayer.Popup)
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         for (UiLayer layer = from; layer <= to; layer++)

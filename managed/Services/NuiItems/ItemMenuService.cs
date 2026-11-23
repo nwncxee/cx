@@ -53,21 +53,24 @@ internal static class ItemMenuService
     {
         _s.Log = log;
         ItemMenuPolicy.Init();
-        _s.Window = new Window(0, 0, 0, 0)
-        {
-            Layer = UiLayer.AboveNui,
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnKey,
-            HitTestOverride = (px, py) => Menu.Open && Menu.Contains(px, py),
-        };
+        _s.Window = NewWindow();
         Capabilities.Register("menu", 1, static () => On);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
     }
+
+    /// <summary>The menu's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
+    internal static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Layer = UiLayer.Popup,
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnKey,
+        HitTestOverride = (px, py) => Menu.Open && Menu.Contains(px, py),
+    };
 
     /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it as the server's
     /// own NUI menu looks: the NUI skin's font, the server's colours and row height, no frame art and no fade.</summary>
@@ -85,10 +88,20 @@ internal static class ItemMenuService
         VertexBatch b = _s.Batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
         _s.Style = Look(Environment.TickCount64, m.Look);
-        Menu.Draw(b, atlas, atlas.Ascent, in _s.Style);
-        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
-        foreach (IconQuad q in Menu.Icons)
-            if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
+        var paint = new LevelPainter();
+        Menu.Render(ref paint, b, atlas, atlas.Ascent, in _s.Style);
+    }
+
+    /// <summary>One cascade level onto the screen: its fills and text, then its icons.</summary>
+    private readonly struct LevelPainter : ICascadeSink
+    {
+        public void Begin() { }
+        public void Paint(VertexBatch b, ReadOnlySpan<IconQuad> icons)
+        {
+            TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
+            foreach (IconQuad q in icons)
+                if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
+        }
     }
 
     /// <summary>The menu's look at <paramref name="nowMs"/>: it stands in for the server's NUI Item menu, so it takes the stock NUI

@@ -539,6 +539,41 @@ public sealed partial class KnobPanel
             check.Expect(p.MouseDown(p.X + p.W + 5f, p.Y + 5f) && !p.Open && p.MouseUp(), "an off-panel press closes a modal panel and is owned");
         }
 
+        // Given the settings panel open
+        // When one of its rows shows a tooltip
+        // Then its window draws in the popup band, so the tooltip draws over NUI, and leaves it when the tooltip goes
+        {
+            Func<long> clock = Tooltip.Clock;
+            long t = 1_000_000;
+            Tooltip.Clock = () => t;
+            try
+            {
+                UiHost.Alone(() =>
+                {
+                    var p = new KnobPanel();
+                    Window w = KnobPanelService.NewWindow(p);
+                    UiLayer quiet = w.Band;
+                    p.Tip.Hover("row", "Help", 50f, 50f, 70f);
+                    t += System.Diagnostics.Stopwatch.Frequency * 5;
+                    UiLayer shown = w.Band;
+                    p.Tip.Cut();
+                    check.Expect(quiet != UiLayer.Popup && shown == UiLayer.Popup && w.Band == quiet,
+                        $"a shown settings tooltip lifts its window into the popup band and the window leaves it after: {quiet} -> {shown} -> {w.Band}");
+                });
+            }
+            finally { Tooltip.Clock = clock; }
+        }
+
+        // Examples: none, because found work: a player adjusting settings lost the panel under a server's NUI window, with no setting to lift it
+        // Given the settings panel open, with no tooltip or dropdown showing
+        // When a server's NUI window is on screen
+        // Then the settings window draws and takes clicks above NUI
+        UiHost.Alone(() =>
+        {
+            Window w = KnobPanelService.NewWindow(new KnobPanel());
+            check.Expect(w.Band == UiLayer.AboveNui && !w.CoveredByNui(true), $"the settings window draws above NUI: {w.Band}");
+        });
+
         log.Info(check.Ok ? "KnobPanel.SelfCheck: passed" : "KnobPanel.SelfCheck: FAILED");
     }
 }

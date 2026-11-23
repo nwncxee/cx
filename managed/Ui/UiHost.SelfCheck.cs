@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using CX.Framework;
 
 namespace CX.Ui;
@@ -48,15 +49,15 @@ public static partial class UiHost
         created.Add(a); created.Add(up); created.Add(c);
 
         DrawFrame(UiLayer.BelowNui);
-        check.Expect(drawn.ToString() == "aco", "the below layer draws its windows by z, then its overlays");
+        check.Expect(drawn.ToString() == "ac", "the below layer draws its windows by z, and leaves their tooltips to the popup band");
         drawn.Clear(); DrawFrame(UiLayer.AboveNui);
         check.Expect(drawn.ToString() == "U", "the above layer draws only its own windows");
         drawn.Clear(); DrawFrame();
-        check.Expect(drawn.ToString() == "acoU", "a full roll-call is below, then above");
+        check.Expect(drawn.ToString() == "acUo", "a full roll-call is below, then above, then the tooltips in the popup band");
 
         Focus(a);
         drawn.Clear(); DrawFrame(UiLayer.BelowNui);
-        check.Expect(drawn.ToString() == "cao", "focus reorders a layer");
+        check.Expect(drawn.ToString() == "ca", "focus reorders a layer");
         check.Expect(HitTest(10, 10) == up, "an above window wins the overlap over a freshly focused below one");
         check.Expect(HitTest(80, 80) == a, "outside the above window the focused below one wins");
 
@@ -71,7 +72,7 @@ public static partial class UiHost
         created.Add(g);
         SendToBack(a);
         drawn.Clear(); DrawFrame();
-        check.Expect(drawn.ToString() == "gacoU", "a full roll-call starts under the GUI, even with a below-NUI window sent to the back");
+        check.Expect(drawn.ToString() == "gacUo", "a full roll-call starts under the GUI, even with a below-NUI window sent to the back");
         asked.Clear(); upConsumes = false;
         DispatchMouseButton(true, 1, 10, 10);
         check.Expect(asked.ToString() == "Uag", "input visits an under-GUI window last");
@@ -89,6 +90,20 @@ public static partial class UiHost
         var only = new Window(200, 200, 50, 50) { Layer = UiLayer.UnderGui, CapturesPointer = true };
         created.Add(only);
         check.Expect(!OverGuiAt(210, 210), "an under-GUI window is drawn beneath the engine GUI, so it takes nothing from it");
+        var rolled = new StringBuilder();
+        only.OnMouseWheel = _ => { rolled.Append('o'); return true; };
+        var wheely = new Window(300, 300, 10, 10) { OnMouseWheel = _ => { rolled.Append('w'); return true; } };
+        created.Add(wheely);
+        var gui = new UiInputService.PointerUnder(false, true, false);
+        check.Expect(UiInputService.RouteWheel(1, 210, 210, gui) == UiInputService.PointerOutcome.Engine && rolled.Length == 0,
+            $"a wheel notch over a stock panel with an under-GUI window beneath it is the panel's: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 150, 150, gui) == UiInputService.PointerOutcome.Engine && rolled.Length == 0,
+            $"a wheel notch over a stock panel no CX window covers is the panel's, though a window elsewhere takes any: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 305, 305, new UiInputService.PointerUnder(true, false, false)) == UiInputService.PointerOutcome.Engine
+                     && rolled.Length == 0, $"a wheel notch over NUI is NUI's, though the CX window beneath takes any: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 305, 305, new UiInputService.PointerUnder(false, true, true)) == UiInputService.PointerOutcome.Taken
+                     && rolled.ToString() == "w", $"a wheel notch over the menu where the gear surface hands the point to a CX window is that window's: asked '{rolled}'");
+        Unregister(wheely); created.Remove(wheely);
         Unregister(only); created.Remove(only);
         foreach (Window w in new[] { a, up, c, g }) { Unregister(w); created.Remove(w); }
     }
@@ -289,9 +304,18 @@ public static partial class UiHost
                 lo.HitTestOverride = null;
 
                 // Focus mode: hover-to-focus focuses on motion only when enabled; click-to-focus is the default.
-                check.Expect(HoverFocusAt(5, 5) == null, "click-to-focus (default): hover does not focus");
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: false) == null, "click-to-focus (default): hover does not focus");
                 HoverToFocus = true;
-                check.Expect(HoverFocusAt(5, 5) == upper && Focused == upper, "hover-to-focus: the topmost focusable window under the pointer takes focus");
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: false) == upper && Focused == upper, "hover-to-focus: the topmost focusable window under the pointer takes focus");
+                SetFocused(null);
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: true) == null && Focused == null,
+                    "hover-to-focus: a NUI window over the pointer keeps a CX window under NUI from taking focus");
+                UiInputService.HoverMoved(5, 5, new UiInputService.PointerUnder(true, false, false));
+                check.Expect(Focused == null, "hover-to-focus: the input pump passes NUI's cover, so the window under NUI stays unfocused");
+                upper.Layer = UiLayer.AboveNui;
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: true) == upper && Focused == upper,
+                    "hover-to-focus: a CX window above NUI takes focus over the NUI window under it");
+                upper.Layer = UiLayer.BelowNui;
                 HoverToFocus = false;
 
                 Unregister(lo); created.Remove(lo);

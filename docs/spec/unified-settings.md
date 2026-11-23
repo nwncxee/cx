@@ -406,7 +406,7 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 | chat.undo | Undo and redo | T | on | A | L | Editing | Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
-| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, weight, style, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, clickthrough, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
+| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, weight, style, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, clickthrough, abovenui, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
 | snippets.enabled | Expand chat shortcuts | T | on | U | L | — | Type a shortcut, then a space (or Enter), and it turns into its text. Ctrl+Z right after takes it back. |
 | snippets.list | Shortcuts | L | empty, hint `;bow *bows deeply*` | U | L | — | Each entry is the word to type, a space, then what it becomes. Enter adds the next one; clear an entry or press × to remove it. |
 
@@ -477,6 +477,7 @@ takes no pointer. *Click-through* (`w<N>.clickthrough`) is a row of every window
 | quickbar.arrange | Arrange sets | D | Stacked / Side by side · Stacked | U | L | CX quickbar | Stacked puts Shift above plain and Ctrl above Shift; side by side lines them up plain, Shift, Ctrl from the left. |
 | quickbar.size | Size | S | 0.5–3 × step 0.05 · 1 | U | L | CX quickbar | Scale over the UI font scale. |
 | quickbar.labels | Show key labels | T | on | U | L | CX quickbar | Each button's key in its corner. |
+| quickbar.abovenui | Draw above NUI | T | off | U | L | CX quickbar | The CX quickbar draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers the CX quickbar. |
 | quickbar.typeface / outline | — | D | default · thin | U | L | CX quickbar | the bar's element text rows; unsized, because *Size* scales it |
 | quickbar.gapx / gapy | Spacing across / Spacing down | S | 0–24 px step 1 · `QuickbarLayout.GapPx` | A | L | CX quickbar | Space between two buttons side by side, and between two stacked rows, before *Size* scales it. |
 | quickbar.keys / shiftkeys / ctrlkeys | Plain keys / Shift set keys / Ctrl set keys | X | F1–F12, then the same with Shift and with Ctrl | A | L | CX quickbar keys | Twelve keys, left to right, space-separated: SDL key names with Ctrl+, Shift+ or Alt+ in front, `-` for none. *Bind keys on the bar* writes these. |
@@ -613,6 +614,7 @@ flow in slot order; no rows is vanilla order, *Reset layout* drops the root kind
 | dialog.lock | Lock position and size | T | off | U | L | — | The window can't be dragged or resized. |
 | dialog.maxheight | Height before scrolling | S | 120–800 px step 10 · 320 | U | L | — | The window grows with the text up to this height, then scrolls. The resize grip sets it too. |
 | dialog.justify | Justify text | T | off | U | L | — | Stretch lines to the window width. Off is ragged right. |
+| dialog.abovenui | Draw above NUI | T | off | U | L | — | Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it. |
 | dialog.anim | Animations | T | on | U | L | — | Text fades in and out between nodes. Off, it snaps. |
 | dialog.fadein / fadeout | Fade in / Fade out | S | 0–500 ms step 10 · 180 / 140 | A | L | — | |
 | dialog.font / typeface / outline | Text size / Typeface / Text outline | D | as UI · default · off | A | L | Text | the dialog window's element text rows |
@@ -623,6 +625,7 @@ flow in slot order; no rows is vanilla order, *Reset layout* drops the root kind
 | inventory.search | Search box | T | on | U | L | — | A box in the title bar that dims every item whose name doesn't match. |
 | inventory.kilograms | Kilograms tooltip | T | off | U | L | — | Hovering the weight shows it in kilograms (1 lb = 0.4536 kg). The window itself keeps the game's pounds. |
 | inventory.dropground | Drag out to drop | T | on | U | L | — | Releasing a dragged item over the world acts as the stock panel does: on the ground it drops there, on another creature it offers a trade, on you or your associate a potion is drunk. Off: only quickbar drops leave the window. |
+| inventory.abovenui | Draw above NUI | T | off | U | L | — | Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it. |
 | inventory.typeface / outline | — | D | default · off | C | L | Text | the inventory's element text rows; its text size follows its own *Size* row |
 | inventory.x / y / placed | — | S, T | window state | H | | — | |
 

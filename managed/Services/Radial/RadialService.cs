@@ -129,8 +129,9 @@ public sealed unsafe partial class RadialService : IExtenderService
     }
 
     /// <summary>The cascade's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
-    private static Window NewWindow() => new(0, 0, 0, 0)
+    internal static Window NewWindow() => new(0, 0, 0, 0)
     {
+        Layer = UiLayer.Popup,
         Focusable = false,
         CapturesPointer = true,
         DrawContent = Draw,
@@ -940,24 +941,29 @@ public sealed unsafe partial class RadialService : IExtenderService
         _style = CascadeStyle.Current;
         _style.Alpha = RadialKnobs.Opacity.V;
         _style.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0; _style.NowMs = Environment.TickCount64;
-        Skin? skin = Theme.IsNative && _skin.Arm(_log, "") ? _skin : null;
-        skin?.Begin();
-        _menu.Draw(b, atlas, atlas.Ascent, in _style, skin);
-        skin?.Flush();
-        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
-        foreach (IconQuad q in _menu.Icons)
-        {
-            if (q.Handle != IntPtr.Zero) RadialIcons.Draw(q.Handle, q.X, q.Y, q.Size, q.Alpha);
-            else TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
-        }
+        var paint = new LevelPainter { Skin = Theme.IsNative && _skin.Arm(_log, "") ? _skin : null };
+        _menu.Render(ref paint, b, atlas, atlas.Ascent, in _style, paint.Skin);
         if (!_ctx.Open) return;
-        VertexBatch cb = _ctxBatch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);   // after the icons: the popup is on top of everything
-        cb.Reset(atlas.SolidU, atlas.SolidV);
+        VertexBatch cb = _ctxBatch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);   // after the menu: the popup is on top of everything
         cb.Outline = b.Outline;
-        skin?.Begin();
-        _ctx.Draw(cb, atlas, atlas.Ascent, in _style, skin);
-        skin?.Flush();
-        TextRig.DrawBatch(cb.AsSpan(), cb.VertexCount);
+        _ctx.Render(ref paint, cb, atlas, atlas.Ascent, in _style, paint.Skin);
+    }
+
+    /// <summary>One cascade level onto the screen: its skin frame, then its fills and text, then its icons.</summary>
+    private struct LevelPainter : ICascadeSink
+    {
+        public Skin? Skin;
+        public readonly void Begin() => Skin?.Begin();
+        public readonly void Paint(VertexBatch b, ReadOnlySpan<IconQuad> icons)
+        {
+            Skin?.Flush();
+            TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
+            foreach (IconQuad q in icons)
+            {
+                if (q.Handle != IntPtr.Zero) RadialIcons.Draw(q.Handle, q.X, q.Y, q.Size, q.Alpha);
+                else TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
+            }
+        }
     }
 
     /// <summary>PostPresent: serve what <see cref="Draw"/> queued -- a close, else one dwell descent. The draw runs

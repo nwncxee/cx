@@ -159,6 +159,8 @@ public sealed partial class SettingsWindow
                   "No moving, resizing or tab dragging on this window.");
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
+        AddToggle(rows, SetAct.AboveNui, CX.Ui.Window.AboveNuiLabel, win.AboveNui, 0,
+                  CX.Ui.Window.AboveNuiHelp);
         if (win.Closeable)
             AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
                       "The window becomes non-interactable. Warning: after this is toggled, the only way to reach this window's settings is to choose the dropdown at the top.");
@@ -360,6 +362,7 @@ public sealed partial class SettingsWindow
             case SetAct.AutoHideHdr: win.AutoHideHeader = !win.AutoHideHeader; break;
             case SetAct.AutoHideFrame: win.AutoHideFrame = !win.AutoHideFrame; break;
             case SetAct.LockWin: win.Locked = !win.Locked; break;
+            case SetAct.AboveNui: win.AboveNui = !win.AboveNui; break;
             case SetAct.TellsHere: win.TellsHere = !win.TellsHere; TellsHereChanged = win.TellsHere; break;
             case SetAct.CycleTellOpen: TellOpenPicked = row.Selected; break;
             case SetAct.AnimOn: win.AnimEnabled = !win.AnimEnabled; break;

@@ -124,6 +124,8 @@ internal sealed partial class InventoryWindow
     private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
     private long _lastClickAt;
     private readonly Tooltip _tip = new();
+    /// <summary>The service's batch for <see cref="DrawTip"/>, kept across frames.</summary>
+    internal VertexBatch? TipBatch;
     private readonly HashSet<uint> _dim = new();
     private int _dimEpoch = -1, _dimLootEpoch = -1;
     private string _dimFor = "";
@@ -451,7 +453,8 @@ internal sealed partial class InventoryWindow
         return true;
     }
 
-    /// <summary>Keys: typing into a focused search box; Ctrl+F focuses it; Esc closes (or leaves the box / a drag);
+    /// <summary>Keys: typing into a focused search box; Ctrl+F focuses it; Esc closes (or leaves the box / a drag /
+    /// the open container, as its X does);
     /// PageUp/PageDown turn a page. <paramref name="mods"/> is the SDL modifier state. Returns consumed.</summary>
     public bool Key(uint key, int mods = 0)
     {
@@ -461,6 +464,7 @@ internal sealed partial class InventoryWindow
         {
             if (_drag || _press) { _drag = _press = false; return true; }
             if (SearchFocused) { SearchFocused = false; return true; }
+            if (LootShown) { Act?.Invoke(new InvAction(InvActKind.CloseLoot, Other: Loot.Oid)); return true; }
             Act?.Invoke(new InvAction(InvActKind.Close));
             return true;
         }

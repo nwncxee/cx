@@ -193,7 +193,11 @@ public sealed unsafe partial class ChatService
     }
 
     /// <summary>True when a NUI window covers the box's centre, so the line would be typed unseen.</summary>
-    internal static bool Hidden(ChatWindow w) => UiInputService.NuiCovers(w.X + w.W * 0.5f, w.Y + w.H * 0.5f);
+    internal static bool Hidden(ChatWindow w) => HiddenAt(w, UiInputService.NuiCovers(w.X + w.W * 0.5f, w.Y + w.H * 0.5f));
+
+    /// <summary>Whether <paramref name="w"/>'s typed line would be unseen: a NUI window covers its centre and the
+    /// window draws under NUI.</summary>
+    internal static bool HiddenAt(ChatWindow w, bool nuiCovers) => nuiCovers && !w.AboveNui;
 
     /// <summary>
     /// Release the keyboard. <paramref name="submit"/> recalls the line into history; either way the
@@ -238,6 +242,7 @@ public sealed unsafe partial class ChatService
         else { ParkDraft(); Edit.Clear(); }
         _typingTab = null;
         IsTyping = false;
+        if (_layout != null) foreach (ChatWindow w in _layout.Windows) w.ChannelListOpen = false;
         // After the send, like vanilla's HandleEnter (ParseChatString, then the unfocus event). Cancel
         // paths (Esc, focus loss, a window losing its sendable channel) all funnel here too, so the
         // server never keeps a stuck "typing" state -- the same three cases vanilla covers.
@@ -297,10 +302,15 @@ public sealed unsafe partial class ChatService
     /// The arbiter routes here first via the keyboard-owner path when <see cref="WantsKey"/> is set.</summary>
     private static bool OnChatKey(uint key, int mods)
     {
-        if (!WantsKey) return false;
+        if (!TakesKey(key, IsTyping, _settings)) return false;
         RouteKey(key, mods);
         return true;
     }
+
+    /// <summary>Whether chat's window takes <paramref name="key"/>: while chat owns the keyboard, as <see cref="WantsKey"/>
+    /// says with <paramref name="typing"/> and the gear panel <paramref name="settings"/>, and Esc while that panel is open.</summary>
+    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings)
+        => Owns(typing, settings) || (key == KeyEsc && settings.Open);
 
     /// <summary>Dispatch a control/nav key to the edit line while the box owns the keyboard.</summary>
     public static void RouteKey(uint key, int mods)
@@ -321,6 +331,11 @@ public sealed unsafe partial class ChatService
             SyncFieldKeyboard(); Rebuild();
             return;
         }
+        if (!IsTyping && _settings.Open)
+        {
+            if (key == KeyEsc) { if (_settings.Panel.Drop.Open) _settings.Panel.Drop.Close(); else _settings.Reset(); Rebuild(); }
+            return;
+        }
         bool shift = (mods & KmodShift) != 0;
         bool ctrl  = (mods & KmodCtrl) != 0;
         if (key != KeyTab) _completer.Reset();
@@ -336,6 +351,7 @@ public sealed unsafe partial class ChatService
                 Rebuild(); return;
             }
         }
+        if (key == KeyEsc && _focused is { ChannelListOpen: true } open) { open.ChannelListOpen = false; Rebuild(); return; }
         bool words = ctrl && ChatKnobs.DelWord.V;
         switch (key)
         {

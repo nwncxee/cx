@@ -30,8 +30,8 @@ internal static unsafe partial class GuiPassVk
 
     private const int KindCount = (int)UiDrawKind.IconPlt + 1;
 
-    /// <summary>The vertex buffer <see cref="ReplayNow"/>'s list takes, past the three layers'.</summary>
-    private const int NowList = (int)UiLayer.AboveNui + 1;
+    /// <summary>The vertex buffer <see cref="ReplayNow"/>'s list takes, past every band's.</summary>
+    private static readonly int NowList = UiHost.Layers.Length;
 
     /// <summary>A list drawn outside the GUI flush -- the loading screen's lines, the compile notice -- recorded over the
     /// screen and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on

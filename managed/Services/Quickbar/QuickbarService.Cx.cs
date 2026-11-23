@@ -116,15 +116,14 @@ public sealed unsafe partial class QuickbarService
         fixed (byte* p = utf8) return EngineFn.SdlGetKeyFromName(p);
     }
 
-    private static void InitCx(ExtenderLog log, HookService hooks)
+    /// <summary>The CX quickbar's window, registered at the back of the UI host on creation; the self-checks build one
+    /// of their own.</summary>
+    internal static Window NewWindow()
     {
-        if (!QuickbarNative.Attach(log, hooks)) return;
-        RadialIcons.Init(log);
-        KeysChanged();
-        UiHost.AddChordConsumer(new Chords());
-        _cx.Window = new Window(0, 0, 0, 0)
+        var w = new Window(0, 0, 0, 0)
         {
             Focusable = false,
+            RaiseAboveNui = static () => QuickbarKnobs.AboveNui.V,
             CapturesPointer = true,
             DrawContent = DrawBar,
             DrawOver = DrawOverBar,
@@ -133,7 +132,17 @@ public sealed unsafe partial class QuickbarService
             OnKey = BindKey,
             HitTestOverride = (px, py) => CxShowing && _cx.Layout.Contains(px, py),
         };
-        UiHost.SendToBack(_cx.Window);   // a HUD element: every other CX window, and what it drags, paints over it
+        UiHost.SendToBack(w);   // a HUD element: every other CX window, and what it drags, paints over it
+        return w;
+    }
+
+    private static void InitCx(ExtenderLog log, HookService hooks)
+    {
+        if (!QuickbarNative.Attach(log, hooks)) return;
+        RadialIcons.Init(log);
+        KeysChanged();
+        UiHost.AddChordConsumer(new Chords());
+        _cx.Window = NewWindow();
         FrameRegistry.Global.Register(FramePhase.Start, 51, BuildModels, "Quickbar.models", log);
         _cx.Armed = true;
         log.Info($"QuickbarService: CX quickbar armed ({(QuickbarKnobs.Cx ? "drawing the quickbar" : "off -- quickbar.replace")})");
@@ -143,10 +152,13 @@ public sealed unsafe partial class QuickbarService
 
     /// <summary>The engine button under SDL point (<paramref name="x"/>, <paramref name="y"/>) when the CX bar is the topmost
     /// thing there, else -1: a NUI window, another CX window over the bar or an engine modal keeps the point.</summary>
-    internal static int SlotAt(int x, int y)
+    internal static int SlotAt(int x, int y) => _cx.Layout.Contains(x, y) ? SlotAt(x, y, UiInputService.NuiCovers(x, y)) : -1;
+
+    /// <summary><see cref="SlotAt(int, int)"/> where <paramref name="nuiCovers"/> says whether a NUI window covers the point.</summary>
+    internal static int SlotAt(int x, int y, bool nuiCovers)
     {
         QuickbarLayout l = _cx.Layout;
-        if (_cx.Binding || !l.Contains(x, y) || UiInputService.NuiCovers(x, y) || Native.ModalPanelUp()) return -1;
+        if (_cx.Binding || !l.Contains(x, y) || _cx.Window == null || _cx.Window.CoveredByNui(nuiCovers) || Native.ModalPanelUp()) return -1;
         if (l.GripAt(x, y) && !QuickbarNative.EngineDragging()) return -1;   // the grip's press is the bar's own, a drop on it a button's
         if (UiHost.HitTest(x, y) != _cx.Window) return -1;
         return l.SlotAt(x, y, _cx.Held);

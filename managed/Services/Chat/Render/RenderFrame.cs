@@ -25,6 +25,8 @@ public sealed class RenderFrame
     public int BodyStart, BodyEnd;    // vertex indices bounding the animated body slice
     public float Bx, By, Bw, Bh;      // body rect (px, y-down) -- the scissor for the body draw
     public bool Scrolled;             // active tab scrolled up (ScrollPx != 0): freeze the fade -- reading history
+    /// <summary>The window draws above NUI, so the above-NUI chat surface draws this frame and the other skips it.</summary>
+    public bool AboveNui;
     public bool ApplyResidual;       // true for the focused window (slide/scroll ease); others snap content in
     // Per-window animation settings (carried here so the hot draw reads frame-local values, not shared statics).
     public bool AnimEnabled;

@@ -10,16 +10,10 @@ namespace CX.Ui;
 /// before plates moved under the game's panels: plain regression tests, the examples E2 and E6 among them.</summary>
 internal static class GuiFrameSelfCheck
 {
-    /// <summary>Appends a letter per thing drawn: Q then E for the game's quickbar and its Examine window, the
-    /// order the engine lists those panels in, N for NUI, O then M for the game's overlay and its cursor, and
-    /// whatever each CX window on a layer appends.</summary>
-    private readonly struct LetterSink(StringBuilder drawn) : IGuiFrameSink
-    {
-        public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
-        public bool Panels() { drawn.Append("QE"); return true; }
-        public bool Nui() { drawn.Append('N'); return true; }
-        public bool Overlays() { drawn.Append("OM"); return true; }
-    }
+    /// <summary>Q then E for the game's quickbar and its Examine window, the order the engine lists those panels in.</summary>
+    private const string Panels = "QE";
+    /// <summary>O then M for the game's overlay and its cursor.</summary>
+    private const string Overlays = "OM";
 
     /// <summary>A frame with the two world-anchored windows the services make (p = nameplates and chat bubbles,
     /// d = damage numbers), a CX chat box (c) and a hover card over NUI (u), each drawing its letter.</summary>
@@ -33,7 +27,7 @@ internal static class GuiFrameSelfCheck
             p.DrawContent = () => drawn.Append('p');
             _ = new Window(0, 0, 100, 100) { DrawContent = () => drawn.Append('c') };
             _ = new Window(0, 0, 50, 50) { Layer = UiLayer.AboveNui, DrawContent = () => drawn.Append('u') };
-            GuiFrame.Draw(new LetterSink(drawn), true);
+            FrameLetters.Alloy(drawn, Panels, Overlays);
         });
         return drawn.ToString();
     }
@@ -62,6 +56,23 @@ internal static class GuiFrameSelfCheck
             $"the cursor draws over a CX window above NUI and over NUI, last: {f}");
         check.Expect(f.IndexOf('O', StringComparison.Ordinal) > f.IndexOf('u', StringComparison.Ordinal),
             $"the game's overlay scene draws over the CX windows above NUI, as the engine draws it after NUI: {f}");
+        string menu = "", twice = "";
+        var drawn = new StringBuilder();
+        UiHost.Alone(() =>
+        {
+            NameplateService.NewWindow().DrawContent = () => drawn.Append('p');
+            _ = new Window(0, 0, 50, 50) { Layer = UiLayer.AboveNui, DrawContent = () => drawn.Append('u') };
+            menu = FrameLetters.Gl(drawn, Panels, Overlays, world: false);
+            drawn.Clear();
+            var sink = new FrameLetters(drawn, Panels, Overlays);
+            bool under = false;
+            NkFrame.World(sink, ref under);
+            NkFrame.World(sink, ref under);
+            NkFrame.Flush(sink, under);
+            twice = drawn.ToString();
+        });
+        check.Expect(menu == "QEpNuOM", $"with Alloy off and no world view, the world-anchored windows draw at nuklear's flush, under NUI and a window above it: {menu}");
+        check.Expect(twice == "pNu", $"with Alloy off a second world view in one frame draws the world-anchored windows no second time: {twice}");
         if (check.Ok) log.Info("GuiFrame.SelfCheck: passed");
     }
 }

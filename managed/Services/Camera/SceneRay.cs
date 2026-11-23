@@ -44,7 +44,7 @@ public static unsafe class SceneRay
     {
         if (CX.Alloy.Renderer.On) return DbWorldShell();
         IntPtr s = _scene == null ? IntPtr.Zero : *_scene;
-        return s == IntPtr.Zero || new Scene(s).BspRoot == IntPtr.Zero ? IntPtr.Zero : s;
+        return s == IntPtr.Zero || !new Scene(s).IsWorld ? IntPtr.Zero : s;
     }
 
     /// <summary>DB mode's world scene, as the facade the game holds for it.</summary>

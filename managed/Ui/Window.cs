@@ -12,6 +12,9 @@ public enum UiLayer
     BelowNui,
     /// <summary>Over every NUI window: a hover card, or an image that follows the pointer.</summary>
     AboveNui,
+    /// <summary>Over every other CX window and NUI, under only the game's overlay and cursor: an open menu, a dropdown's
+    /// list, a tooltip. A window is here while its <see cref="Window.PopupOpen"/> says so, or always when set here.</summary>
+    Popup,
 }
 
 /// <summary>A first-class UI window: rect, z-order, focus/keyboard state, capability flags, and the cursor regions
@@ -31,16 +34,61 @@ public sealed class Window
     /// Compared within a layer only: <see cref="Order"/> is the whole-screen order.</summary>
     public int Z { get; internal set; }
 
-    /// <summary>Which side of the vanilla GUI and of NUI this window draws on. Set before the first frame; the window
-    /// then keeps its <see cref="Z"/> order inside that layer, and a higher layer is above every lower one for
-    /// draw, hit-test and input alike.</summary>
-    public UiLayer Layer = UiLayer.BelowNui;
+    /// <summary>Which side of the vanilla GUI and of NUI this window draws on: <see cref="UiLayer.AboveNui"/> while
+    /// <see cref="RaiseAboveNui"/> says so, else the layer it was given. The window keeps its <see cref="Z"/> order
+    /// inside that layer, and a higher layer is above every lower one for draw, hit-test and input alike.</summary>
+    public UiLayer Layer
+    {
+        get => RaiseAboveNui != null && RaiseAboveNui() ? UiLayer.AboveNui : _layer;
+        set => _layer = value;
+    }
+
+    private UiLayer _layer = UiLayer.BelowNui;
+
+    /// <summary>The player's Draw above NUI setting for this window, read every frame so a change moves it at once.
+    /// Null for a window with no such setting.</summary>
+    public Func<bool>? RaiseAboveNui;
+
+    /// <summary>The label every window's Draw above NUI setting shows.</summary>
+    public const string AboveNuiLabel = "Draw above NUI";
+
+    /// <summary>The help text of a window's Draw above NUI setting.</summary>
+    public const string AboveNuiHelp = "Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it.";
 
     /// <summary>The distance in <see cref="Order"/> between one layer and the next. Far past any z the counter reaches.</summary>
     private const int LayerBias = 1 << 28;
 
-    /// <summary>The order across layers: draw ascending, hit-test and input descending.</summary>
-    internal int Order => Z + ((int)Layer - (int)UiLayer.BelowNui) * LayerBias;
+    /// <summary>Whether this window has a popup open (a dropdown's list, a menu it opened): while true the whole window
+    /// draws and takes input in the <see cref="UiLayer.Popup"/> band. Null for a window that opens none.</summary>
+    public Func<bool>? PopupOpen;
+
+    /// <summary>The band the window draws and takes input in this frame: <see cref="UiLayer.Popup"/> while a popup of its
+    /// is open, else its <see cref="Layer"/>.</summary>
+    internal UiLayer Band => PopupOpen != null && PopupOpen() ? UiLayer.Popup : Layer;
+
+    /// <summary>The band this frame's draw files the window in, read once a frame so a popup or tooltip that opens or
+    /// closes partway through the draw moves the window at the next frame, never drawing it twice or not at all.</summary>
+    internal UiLayer DrawBand
+    {
+        get
+        {
+            if (_bandFrame != UiHost.DrawFrameNo) { _drawBand = Band; _bandFrame = UiHost.DrawFrameNo; }
+            return _drawBand;
+        }
+    }
+
+    private UiLayer _drawBand;
+    private int _bandFrame = -1;
+
+    /// <summary><see cref="Order"/> as the current input walk began, so a handler that closes a popup partway does not
+    /// move its window under the walk's cursor; <see cref="int.MinValue"/> for one registered since.</summary>
+    internal int WalkOrder = int.MinValue;
+
+    /// <summary>True when a NUI window covers the point (<paramref name="nuiCovers"/>) and this window draws under NUI.</summary>
+    internal bool CoveredByNui(bool nuiCovers) => nuiCovers && Band < UiLayer.AboveNui;
+
+    /// <summary>The order across bands: draw ascending, hit-test and input descending.</summary>
+    internal int Order => Z + ((int)Band - (int)UiLayer.BelowNui) * LayerBias;
 
     /// <summary>Capability flags. A non-focusable window is skipped by focus hit-testing but still drives the
     /// cursor; draggable/resizable expose the move/resize cursor zones.
@@ -80,6 +128,10 @@ public sealed class Window
     /// channel list -- supplies this). Null falls back to <see cref="Contains"/>. Zero-alloc: read on the render
     /// thread by the cursor pick and on the input thread by focus routing.</summary>
     public Func<float, float, bool>? HitTestOverride;
+
+    /// <summary>The screen rect an Esc would close in this window, or null while Esc closes nothing here. A server NUI
+    /// window drawn over that rect from above is closed by Esc first. Null for a window Esc does not close.</summary>
+    public Func<(float X, float Y, float W, float H)?>? EscArea;
 
     /// <summary>Content-supplied cursor regions (absolute px). Mutated cold when content relayouts, read hot
     /// during cursor pick. Built-in grip/drag zones are derived from the rect, not stored here.</summary>

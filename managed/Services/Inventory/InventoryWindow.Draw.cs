@@ -368,8 +368,11 @@ internal sealed partial class InventoryWindow
             else if (h.Kind == InvHitKind.Slot)
                 Outline(over, Sx(_slots[h.Index].X0), Sy(_slots[h.Index].Y0), Sx(_slots[h.Index].X1), Sy(_slots[h.Index].Y1), Hi, 0.8f);
         }
-        _tip.Draw(over, small, small.Ascent, C(SubBg), Tx, Math.Max(X + W, LootShown ? LootX + LootW : 0f) + 400f * s, Y + H + 200f * s);
     }
+
+    /// <summary>The item tooltip, into a batch of its own that the service draws in the popup band, over NUI and every window.</summary>
+    public void DrawTip(VertexBatch b, GlyphAtlas small)
+        => _tip.Draw(b, small, small.Ascent, C(SubBg), Tx, Math.Max(X + W, LootShown ? LootX + LootW : 0f) + 400f * S, Y + H + 200f * S);
 
     /// <summary>The drag ghost: the dragged item's icon under the pointer, where the grabbed cell was.</summary>
     public bool DragIcon(out InvIcon icon)

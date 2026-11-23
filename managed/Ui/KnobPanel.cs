@@ -232,7 +232,6 @@ public sealed partial class KnobPanel
     public Action<Row, string>? CommitLabel;
 
     public readonly ScrollColumn Cats = new(), SubCol = new(), List = new();
-    public readonly Dropdown Drop = new();
     public readonly Tooltip Tip = new();
 
     private bool _moving; private float _mgx, _mgy;

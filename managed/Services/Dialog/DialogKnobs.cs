@@ -10,7 +10,7 @@ namespace CX.Services.Dialog;
 internal static class DialogKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Lock, Justify, Anim, Placed;
+    internal static readonly Knob<bool> Enabled, Lock, Justify, Anim, AboveNui, Placed;
     internal static readonly Knob<int> MaxHeight, FadeIn, FadeOut;
     internal static readonly Knob<float> X, Y, W;
     internal static readonly TextStyle Text;
@@ -31,6 +31,7 @@ internal static class DialogKnobs
                              help: "The window grows with the text up to this height, then scrolls. The resize grip sets it too.");
         Justify = G.Toggle("justify", "Justify text", false, help: "Stretch lines to the window width. Off is ragged right.",
                            changed: DialogService.Relayout);
+        AboveNui = G.Toggle("abovenui", CX.Ui.Window.AboveNuiLabel, false, help: CX.Ui.Window.AboveNuiHelp);
         Anim = G.Toggle("anim", "Animations", true, help: "Text fades in and out between nodes. Off, it snaps.");
         FadeIn = G.Slider("fadein", "Fade in", 0, 500, 10, 180, "ms", Tier.Advanced);
         FadeOut = G.Slider("fadeout", "Fade out", 0, 500, 10, 140, "ms", Tier.Advanced);

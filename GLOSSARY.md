@@ -155,6 +155,14 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   (1) the focused Window's content, (2) registered **input consumers** (chords),
   (3) engine gameplay keybinds. Each layer consumes the event or passes it down. A global
   hotkey fires only when no window wants the key.
+- **Band** — one layer of the UI stack, bottom to top: under the GUI (world-anchored windows such as
+  nameplates), **native panels**, below NUI, NUI, above NUI, the **popup band**, then the game's overlay and
+  cursor. A window draws, takes clicks and answers Esc by its band (`Window.Band`); within a band, by z-order.
+  A window's home band is its `Layer`; the "Draw above NUI" setting raises it to above NUI.
+- **Popup band** — the band over every CX window and NUI, for menus and lists that open on top: the radial,
+  the item menu, tooltips, and any window while its list is open (`Window.PopupOpen`).
+- **Native panel** — a panel the engine's own GUI draws (`CGuiMan`): the character sheet, the stock quickbar,
+  the Examine window. Not a NUI window, which the server builds, nor a CX **Window**.
 - **Input consumer** — a service that registers to receive input at a defined priority
   *without* owning a Window (e.g. the Hotkeys service's chords). A Window, by contrast,
   receives input by being focused or hit-tested.

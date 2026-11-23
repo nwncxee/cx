@@ -44,7 +44,9 @@ internal static unsafe class AlloyCamera
     internal const int ModeProjection = 0, ModeView = 1;
 
     private static ExtenderLog? _log;
-    private static CameraRenderSceneFn _orig;
+    private static CameraRenderSceneFn* _orig;
+    /// <summary>Inside the UI's world-view tail, so each view is measured and latched around the engine's own draw.</summary>
+    private const int ChainPriority = 10;
     private static int* _screenW, _screenH, _glViewport;
     private static byte* _stacks;
     private static CameraUpscaleViewportFn _upscale;
@@ -110,7 +112,7 @@ internal static unsafe class AlloyCamera
     {
         _log = log;
         if (!EngineLayout.Require(log, "AlloyCamera", "Camera", "Scene")) return;
-        _orig = hooks.InstallCameraRenderScene(&OnRenderScene);
+        _orig = hooks.ChainCameraRenderScene(&OnRenderScene, ChainPriority);
         if (_orig == null)
         {
             // CX-45: not a quiet fallback. Without the hook Alloy has no camera of its own, and the one thing
@@ -134,7 +136,7 @@ internal static unsafe class AlloyCamera
     {
         AlloyView savedView = _activeView;
         Measure(cam);
-        _orig(cam);
+        (*_orig)(cam);
         _activeView = savedView;
     }
 
@@ -145,10 +147,8 @@ internal static unsafe class AlloyCamera
         if (cam == IntPtr.Zero) return;
         IntPtr scene = new Camera(cam).Scene.Ptr;
         if (scene == IntPtr.Zero) return;   // Camera::RenderScene's own first test: no scene, no view
-        // world-scene-discriminator: Scene+0x188 (the static tile BSP root) is non-null iff this is the
-        // world/area scene, and Scene::Render forks on the same field.
         var sc = new CX.Engine.Scene(scene);
-        bool world = sc.BspRoot != IntPtr.Zero;
+        bool world = sc.IsWorld;
         Build(cam, (byte*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref sc.Name), out _activeView);
         if (world)
         {

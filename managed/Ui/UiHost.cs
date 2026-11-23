@@ -129,6 +129,11 @@ public static partial class UiHost
     public static bool OfferOverGui(bool down, int button, int x, int y)
         => HitTest(x, y) is Window w && new ButtonOffer(down, button, x, y).Offer(w);
 
+    /// <summary>Offer a wheel notch over the engine GUI to the CX window drawn over it at the pointer alone, as
+    /// <see cref="OfferOverGui"/> offers a press: one that declines it, or no such window, leaves it to the engine.</summary>
+    public static bool OfferWheelOverGui(int dy, float x, float y)
+        => HitTest(x, y) is { Layer: not UiLayer.UnderGui, CapturesPointer: true } w && new WheelOffer(dy).Offer(w);
+
     /// <summary>Topmost FOCUSABLE window under the point: non-focusable windows are skipped for focus, so a
     /// click passes through an overlay to the focusable window beneath it.</summary>
     public static Window? HitTestFocusable(float px, float py)
@@ -155,12 +160,14 @@ public static partial class UiHost
 
     /// <summary>Hover-to-focus resolution: when <see cref="HoverToFocus"/> is set, focus the topmost
     /// focusable window under the point as the pointer moves over it. No-op (returns null) in click-to-focus
-    /// mode; empty space never releases focus on hover (only a click does).</summary>
-    public static Window? HoverFocusAt(float px, float py)
+    /// mode; empty space never releases focus on hover (only a click does), and a window under NUI is skipped
+    /// where <paramref name="nuiCovers"/> says a NUI window covers the point.</summary>
+    public static Window? HoverFocusAt(float px, float py, bool nuiCovers)
     {
         if (!HoverToFocus) return null;
         var w = HitTestFocusable(px, py);
-        if (w != null) Focus(w);
+        if (w == null || w.CoveredByNui(nuiCovers)) return null;
+        Focus(w);
         return w;
     }
 
@@ -259,9 +266,9 @@ public static partial class UiHost
     }
 
     /// <summary>Whether a window is asked ahead of the engine-GUI yield: a modal pointer-capturing window always,
-    /// and an above-NUI window while the pointer is over it -- it is drawn over NUI, so it gets the press first.</summary>
+    /// and one in a band over NUI while the pointer is over it -- it is drawn over NUI, so it gets the press first.</summary>
     private static bool TakesBeforeNui(Window w, float x, float y)
-        => (w.CapturesPointer && w.SuppressChords) || (w.Layer == UiLayer.AboveNui && w.Hit(x, y));
+        => (w.CapturesPointer && w.SuppressChords) || (w.Band >= UiLayer.AboveNui && w.Hit(x, y));
 
     /// <summary>Route pointer motion to window content, topmost-first; true at the first consumer (a drag owns
     /// motion until release, so handlers self-gate on their own grab state).</summary>
@@ -279,11 +286,15 @@ public static partial class UiHost
     public static bool DispatchMouseWheel(int dy, bool captureOnly = false, float px = float.NaN, float py = float.NaN)
         => Route(new WheelOffer(dy), captureOnly, px, py);
 
-    /// <summary>Every registered window, topmost-first. Zero-alloc: a struct enumerator over the O(n^2)
-    /// descending-z scan (z values are unique, from the monotonic counter, so the walk terminates even when a
-    /// handler unregisters a window mid-walk); no buffer, no sort, safe on the render thread.
+    /// <summary>Every registered window, topmost-first, by each one's order as the walk starts: a handler that raises a
+    /// window, closes a popup or opens a window changes nothing the walk has left to visit. Zero-alloc: a struct
+    /// enumerator over an O(n^2) descending scan; no buffer, no sort, safe on the render thread.
     /// ponytail: O(n^2) is free at this n; swap for a kept-sorted list only if the window count ever grows big.</summary>
-    private static ZWalk TopmostFirst() => new() { _lastZ = int.MaxValue };
+    private static ZWalk TopmostFirst()
+    {
+        for (int i = 0; i < _windows.Count; i++) _windows[i].WalkOrder = _windows[i].Order;
+        return new() { _lastZ = int.MaxValue };
+    }
 
     /// <summary>The <see cref="TopmostFirst"/> enumerator. Only the factory seeds it: <c>default</c> starts at z 0
     /// and silently visits nothing.</summary>
@@ -297,19 +308,19 @@ public static partial class UiHost
             var next = NextBelow(_lastZ);
             if (next == null) return false;
             Current = next;
-            _lastZ = next.Order;
+            _lastZ = next.WalkOrder;
             return true;
         }
     }
 
-    /// <summary>The registered window with the highest z strictly below <paramref name="belowZ"/>, or null.</summary>
+    /// <summary>The registered window with the highest latched order strictly below <paramref name="belowZ"/>, or null.</summary>
     private static Window? NextBelow(int belowZ)
     {
         Window? next = null;
         for (int i = 0; i < _windows.Count; i++)
         {
             var w = _windows[i];
-            if (w.Order < belowZ && (next == null || w.Order > next.Order)) next = w;
+            if (w.WalkOrder != int.MinValue && w.WalkOrder < belowZ && (next == null || w.WalkOrder > next.WalkOrder)) next = w;
         }
         return next;
     }
@@ -360,8 +371,16 @@ public static partial class UiHost
         for (int i = 0; i < _chords.Count; i++) _chords[i].FireMouse(button, sdlMods);
     }
 
+    /// <summary>The frame's draw count: every frame's draw starts at <see cref="UiLayer.UnderGui"/>, once.</summary>
+    private sealed class DrawFrameState { public int No; }
+
+    private static readonly DrawFrameState _drawFrame = new();
+
+    /// <summary>The current frame's number, the stamp <see cref="Window.DrawBand"/> latches against.</summary>
+    internal static int DrawFrameNo => _drawFrame.No;
+
     /// <summary>Every layer, bottom to top.</summary>
-    internal static readonly UiLayer[] Layers = [UiLayer.UnderGui, UiLayer.BelowNui, UiLayer.AboveNui];
+    internal static readonly UiLayer[] Layers = Enum.GetValues<UiLayer>();
 
     /// <summary>The per-frame draw roll-call over every layer, bottom to top, for a site that cannot draw between
     /// the vanilla GUI and NUI; one that can calls <see cref="DrawFrame(UiLayer)"/> at each layer's place.</summary>
@@ -370,12 +389,13 @@ public static partial class UiHost
         foreach (UiLayer layer in Layers) DrawFrame(layer);
     }
 
-    /// <summary>One layer's roll-call: every window's <see cref="Window.DrawContent"/> on that layer in ascending z, so the
-    /// focused window paints last, then that layer's <see cref="Window.DrawOver"/>. Zero-alloc: it runs on the render
+    /// <summary>One band's roll-call: every window's <see cref="Window.DrawContent"/> in that band in ascending z, so the
+    /// focused window paints last; the popup band then draws every <see cref="Window.DrawOver"/>. Zero-alloc: it runs on the render
     /// thread inside SwapBuffers.
     /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
     public static void DrawFrame(UiLayer layer)
     {
+        if (layer == UiLayer.UnderGui) _drawFrame.No++;
         int lastZ = int.MinValue;
         for (int drawn = 0; drawn < _windows.Count; drawn++)
         {
@@ -383,13 +403,13 @@ public static partial class UiHost
             for (int i = 0; i < _windows.Count; i++)
             {
                 var w = _windows[i];
-                if (w.Layer == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
+                if (w.DrawBand == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
             }
             if (next == null) break;   // no window on this layer with a higher z -> done
             lastZ = next.Z;
             next.DrawContent?.Invoke();
         }
-        for (int i = 0; i < _windows.Count; i++) if (_windows[i].Layer == layer) _windows[i].DrawOver?.Invoke();
+        if (layer == UiLayer.Popup) for (int i = 0; i < _windows.Count; i++) _windows[i].DrawOver?.Invoke();
     }
 
     public static void AddChordConsumer(IChordConsumer c) { if (!_chords.Contains(c)) _chords.Add(c); }

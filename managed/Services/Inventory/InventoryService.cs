@@ -64,23 +64,33 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
         _inv.HoverItem = InventoryNative.PriceInStore;
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
-        _window = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
-            OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
-            OnMouseWheel = dy => !Native.ModalPanelUp() && Input(_inv.MouseWheel(dy)),
-            OnKey = (key, mods) => !Native.ModalPanelUp() && Input(_inv.Key(key, mods)),
-            OnText = p => { _inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
-            HitTestOverride = (px, py) => _inv.Contains(px, py) && !Native.ModalPanelUp(),
-        };
+        _window = NewWindow();
         InitGold();
         FrameRegistry.Global.Register(FramePhase.Start, 50, BuildModels, "Inventory.models", log);
         _ready = true;
         log.Info($"InventoryService: armed ({(InventoryKnobs.Enabled.V ? "replacing the stock panel" : "off -- inventory.enabled")})");
     }
+
+    /// <summary>The framework Window the inventory draws in: its routed input, withheld while an engine modal is up.</summary>
+    internal static Window NewWindow() => NewWindow(_inv);
+
+    /// <summary>The framework Window for the inventory model <paramref name="inv"/>; the service's own is
+    /// <see cref="NewWindow()"/>. Esc closes its rect while it is open.</summary>
+    internal static Window NewWindow(InventoryWindow inv) => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
+        DrawContent = Draw,
+        DrawOver = DrawTip,
+        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+        OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(inv.MouseMove(x, y)),
+        OnMouseWheel = dy => !Native.ModalPanelUp() && Input(inv.MouseWheel(dy)),
+        OnKey = (key, mods) => !Native.ModalPanelUp() && Input(inv.Key(key, mods)),
+        OnText = p => { inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
+        HitTestOverride = (px, py) => inv.Contains(px, py) && !Native.ModalPanelUp(),
+        EscArea = () => inv.Open ? (inv.X, inv.Y, inv.W, inv.H) : null,
+    };
 
     /// <summary>Knob hooks: a size / pages / search change re-lays out on the next frame.</summary>
     internal static void Relayout() => _layoutDirty = true;
@@ -361,6 +371,17 @@ public sealed unsafe partial class InventoryService : IExtenderService
         TextRig.DrawBatch(_lootOver.AsSpan(), _lootOver.VertexCount, clip: true, cx: lx, cy: ly, cw: lw, ch: lh);
         TextRig.DrawBatch(_over.AsSpan(), _over.VertexCount);
         if (_inv.DragIcon(out InvIcon d)) RadialIcons.Draw((IntPtr)d.Oid, d.X, d.Y, d.W, d.H, d.Alpha, d.CellsW, d.CellsH);
+    }
+
+    /// <summary>Over every window and NUI: the item tooltip, which must not stay in the inventory's own band.</summary>
+    private static void DrawTip()
+    {
+        if (!_inv.Open || !GameGate.InGame || _text == null || _small == null || Native.ModalPanelUp()) return;
+        VertexBatch b = _inv.TipBatch ??= new VertexBatch(_text.SolidU, _text.SolidV);
+        b.Reset(_text.SolidU, _text.SolidV);
+        b.Outline = Halo;
+        _inv.DrawTip(b, _small);
+        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
     }
 
     /// <summary>The <c>inventory.outline</c> halo radius at the window's text size.</summary>
