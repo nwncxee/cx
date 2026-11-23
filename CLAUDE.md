@@ -28,7 +28,7 @@ user-visible, not renamed (#530).
 ## Build & run
 
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
-    ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
+    ./build.sh          # enters `nix develop` itself where nix exists; sizes the AOT threads to free memory. Else needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
     tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host, inside a 2G cap; adds to
                             # run-demo.sh, never replaces it. tools/selfcheck/mutants.py: hand mutants, one compile

@@ -123,7 +123,7 @@ else
 fi
 
 echo ">> building cx_managed.dll (NativeAOT win-x64, lld-link)..."
-CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
+CX_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
 # CppLinker must be a global property: the ILCompiler targets reset it to `link` otherwise.
 if ! dotnet publish managed/cx_managed.csproj -c Release -r win-x64 -o build/win \
      -p:CppLinker=lld-link -p:CppLibCreator=llvm-lib -p:WinLib="$WABS/lib" \

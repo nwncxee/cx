@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
+# On a machine with Nix, outside the dev shell, the toolchain is the flake's: enter it, so `./build.sh` is the
+# whole command there as everywhere else. `nix develop` and CI set IN_NIX_SHELL; a machine without nix uses its own.
+if [ -z "${IN_NIX_SHELL:-}" ] && command -v nix >/dev/null 2>&1; then
+  echo ">> entering the flake's dev shell (nix develop)..."
+  exec nix --extra-experimental-features 'nix-command flakes' develop --command ./build.sh "$@"
+fi
 # Up front, so a client that has this checkout's staged runtime loaded costs a second rather than a build.
 bash tools/no-loaded-runtime.sh
 mkdir -p build
@@ -141,13 +147,20 @@ fi
 CODE=$(python3 tools/codehash.py)
 bash tools/keep-staged.sh "$CODE" && exit 0
 
-echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
-CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
+# The AOT compiler's peak grows with its threads: past 10G unbounded on 12 cores, 3.6G at 2. One thread per 3 GiB
+# free when the build starts keeps it inside what the machine has; IlcMaxParallelism set by hand wins.
+if [ -z "${IlcMaxParallelism:-}" ]; then
+  IlcMaxParallelism=$(awk -v cpus="$(nproc)" '/^MemAvailable:/ {
+    n = int($2 / 1048576 / 3); if (n < 1) n = 1; if (n > cpus) n = cpus; print n }' /proc/meminfo)
+  export IlcMaxParallelism
+fi
+echo ">> building managed lib (C# NativeAOT -> cx_managed.so, $IlcMaxParallelism AOT thread(s))..."
+CX_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
 # Quiet on success, but NEVER swallow a failure: discarding stderr here once hid a compile error behind a
 # stale staged .so, and run-demo.sh happily booted the old build.
 # No build server: VBCSCompiler outlives the compile and holds its memory while ILC runs.
 if ! dotnet publish managed/cx_managed.csproj -c Release -o build --disable-build-servers -p:UseSharedCompilation=false \
-     -p:InformationalVersion="$CX_VERSION" > build-managed.log 2>&1; then
+     -p:InformationalVersion="$CX_VERSION" -p:IlcMaxParallelism="$IlcMaxParallelism" > build-managed.log 2>&1; then
   echo ">> managed build FAILED:"; grep -E "error|rror" build-managed.log | head -20; exit 1
 fi
 
