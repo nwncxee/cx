@@ -248,9 +248,31 @@ public sealed unsafe class UiHostService : IExtenderService
     private static void OnNkRender(float aa)
     {
         if (CX.Alloy.Renderer.On) { (*_nkSlot)(aa); return; }   // Alloy's frame draws every layer at its own place
-        DrawWindows(UiLayer.UnderGui, UiLayer.BelowNui);
-        (*_nkSlot)(aa);
-        DrawWindows(UiLayer.AboveNui, UiLayer.AboveNui);
+        AtNuklear(new GlNkSink(aa));
+    }
+
+    /// <summary>What the GL path draws at nuklear's flush: CX's windows on a run of layers, and NUI itself.</summary>
+    internal interface INkSiteSink
+    {
+        /// <summary>CX's windows on layers <paramref name="from"/> to <paramref name="to"/>, bottom to top.</summary>
+        void Windows(UiLayer from, UiLayer to);
+        /// <summary>Every NUI window: the rest of the chain and nuklear's own flush.</summary>
+        void Nui();
+    }
+
+    /// <summary>The GL path's order at nuklear's flush, which the engine reaches after drawing its panels.</summary>
+    internal static void AtNuklear<T>(in T sink) where T : struct, INkSiteSink
+    {
+        sink.Windows(UiLayer.UnderGui, UiLayer.BelowNui);
+        sink.Nui();
+        sink.Windows(UiLayer.AboveNui, UiLayer.AboveNui);
+    }
+
+    /// <summary>The live GL path: each run of layers drawn in the engine's context, NUI the next subscriber's.</summary>
+    private readonly struct GlNkSink(float aa) : INkSiteSink
+    {
+        public void Windows(UiLayer from, UiLayer to) => DrawWindows(from, to);
+        public void Nui() => (*_nkSlot)(aa);
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either

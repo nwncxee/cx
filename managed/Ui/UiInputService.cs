@@ -180,7 +180,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     CX.Services.NuiItems.ItemDragService.OnMotion(mx, my);   // a held press turns into a drag once the pointer travels
                     CX.Services.NuiItems.ItemMenuService.OnPointer(mx, my);   // a menu.open=pointer opens here
-                    if (UiHost.HoverToFocus) UiHost.HoverFocusAt(mx, my);
+                    if (UiHost.HoverToFocus) HoverMoved(mx, my, NuiHovered());
                     if (UiHost.DispatchMouseMotion(mx, my))
                     {
                         // Swallowing motion (a settings panel open, a drag in progress) starves nuklear's own
@@ -198,26 +198,11 @@ public sealed unsafe class UiInputService : IExtenderService
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);
-                    bool cxOver = UiHost.OverGuiAt(mx, my);
                     if (KeyDiag)
                         _log?.Info($"[keydiag] mouse btn={btn} at ({mx},{my}) owner={UiHost.AnyKeyboardOwner} kbmode={KeyboardModeActive()} gui=0x{gui:x} ({GuiTag(gui)}) menuOurs={ours}");
-                    if (UiHost.DispatchMouseButton(true, btn, mx, my, captureOnly: true)) return 0;   // Window.CapturesPointer: ahead of the GUI yield
-                    // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
-                    // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
-                    // otherwise have released our windows' focus.
-                    if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.NuiItems.ItemDragService.OnPress(mx, my); CX.Services.Nui.NuiModelView.OnPress(); }
-                    if (NuiHovered() || (gui != IntPtr.Zero && !ours && !cxOver)) { UiHost.Blur(); break; }
-                    // A CX window drawn over the engine GUI is offered the press first; one that declines it leaves it to the
-                    // engine object beneath, exactly as before.
-                    if (gui != IntPtr.Zero && !ours)
-                    {
-                        if (UiHost.OfferOverGui(true, btn, mx, my)) return 0;
-                        UiHost.Blur();
-                        break;
-                    }
-                    if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
-                    if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
-                    if (ChordGateClear()) UiHost.FireMouseChords(btn, RawMods());
+                    PointerOutcome press = RoutePress(btn, mx, my, new PointerUnder(NuiHovered(), gui != IntPtr.Zero, ours));
+                    if (press == PointerOutcome.Taken) return 0;
+                    if (press == PointerOutcome.Unclaimed && ChordGateClear()) UiHost.FireMouseChords(btn, RawMods());
                     break;
                 }
                 case SdlMouseUp:
@@ -230,16 +215,54 @@ public sealed unsafe class UiInputService : IExtenderService
                     break;
                 }
                 case SdlMouseWheel:
+                {
                     Pointer(out float x, out float y);
-                    if (UiHost.DispatchMouseWheel(((SdlEvent*)ev)->WheelY, captureOnly: true, x, y)) return 0;
-                    if (NuiHovered() && CX.Services.Nui.NuiModelView.OnWheel(((SdlEvent*)ev)->WheelY)) return 0;
-                    if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
-                    if (UiHost.DispatchMouseWheel(((SdlEvent*)ev)->WheelY)) return 0;
+                    var under = new PointerUnder(NuiHovered(), VanillaGuiAt(GuiWheelMask) != IntPtr.Zero, MenuWindowUnderPointer());
+                    if (RouteWheel(((SdlEvent*)ev)->WheelY, x, y, under) == PointerOutcome.Taken) return 0;
                     break;
+                }
             }
         }
         return _winMsg != null ? (*_winMsg)(ev) : 0;
     }
+
+    /// <summary>What the engine's probes find under the pointer at a press or a wheel notch: a NUI window, a stock GUI
+    /// object, and whether the gear surface's exemption hands the point to a CX window.</summary>
+    internal readonly record struct PointerUnder(bool Nui, bool Gui, bool MenuOurs);
+
+    /// <summary>Where a press or a wheel notch ended: taken on CX's side, left to the engine, or claimed by no one.</summary>
+    internal enum PointerOutcome { Taken, Engine, Unclaimed }
+
+    /// <summary>The press decision the pump makes: CX windows ahead of the GUI yield first, then NUI or a stock GUI object
+    /// beneath, then CX's windows. A press left to the engine blurs CX's focus, since it is a click elsewhere.</summary>
+    internal static PointerOutcome RoutePress(byte btn, int mx, int my, in PointerUnder under)
+    {
+        bool cxOver = UiHost.OverGuiAt(mx, my);
+        if (UiHost.DispatchMouseButton(true, btn, mx, my, captureOnly: true)) return PointerOutcome.Taken;
+        if (under.Nui && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.NuiItems.ItemDragService.OnPress(mx, my); CX.Services.Nui.NuiModelView.OnPress(); }
+        if (under.Nui || (under.Gui && !under.MenuOurs && !cxOver)) { UiHost.Blur(); return PointerOutcome.Engine; }
+        if (under.Gui && !under.MenuOurs)
+        {
+            if (UiHost.OfferOverGui(true, btn, mx, my)) return PointerOutcome.Taken;
+            UiHost.Blur();
+            return PointerOutcome.Engine;
+        }
+        if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);
+        return UiHost.DispatchMouseButton(true, btn, mx, my) ? PointerOutcome.Taken : PointerOutcome.Unclaimed;
+    }
+
+    /// <summary>The wheel decision the pump makes at SDL's pointer: CX windows ahead of the GUI yield, a NUI model view,
+    /// NUI or a stock GUI object beneath, then CX's windows.</summary>
+    internal static PointerOutcome RouteWheel(int dy, float x, float y, in PointerUnder under)
+    {
+        if (UiHost.DispatchMouseWheel(dy, captureOnly: true, x, y)) return PointerOutcome.Taken;
+        if (under.Nui && CX.Services.Nui.NuiModelView.OnWheel(dy)) return PointerOutcome.Taken;
+        if (under.Nui || (under.Gui && !under.MenuOurs)) return PointerOutcome.Engine;
+        return UiHost.DispatchMouseWheel(dy) ? PointerOutcome.Taken : PointerOutcome.Unclaimed;
+    }
+
+    /// <summary>The pointer moved with hover-to-focus on; <paramref name="nui"/> is whether a NUI window is under it.</summary>
+    internal static void HoverMoved(int mx, int my, bool nui) => UiHost.HoverFocusAt(mx, my);
 
     // ---- focus edges ----------------------------------------------------------------------------
     // self is CClientExoApp* -- cache it so the player resolver can walk to the live in-game GUI.
@@ -289,15 +312,21 @@ public sealed unsafe class UiInputService : IExtenderService
     private static bool NuiHovered()
     {
         if (_nuklearGlobal == IntPtr.Zero) return false;
+        int mx = 0, my = 0;
         if (_nkAnyHovered == null)
         {
             if (EngineFn.SdlGetMouseState == null) return false;
-            int mx = 0, my = 0;
             EngineFn.SdlGetMouseState(&mx, &my);
-            return NuiCovers(mx, my);
         }
-        IntPtr ctx = *(IntPtr*)_nuklearGlobal;
-        return ctx != IntPtr.Zero && _nkAnyHovered(ctx) != 0;
+        return NuiOver(*(IntPtr*)_nuklearGlobal, _nkAnyHovered, mx, my);
+    }
+
+    /// <summary>Whether NUI is under the pointer in context <paramref name="ctx"/>: nuklear's own hover answer, or, where
+    /// that call is not exported (<paramref name="hovered"/> null), its window list at SDL's pointer.</summary>
+    internal static bool NuiOver(IntPtr ctx, NkWindowIsAnyHoveredFn hovered, int mx, int my)
+    {
+        if (hovered == null) return NuiCoversIn(ctx, mx, my);
+        return ctx != IntPtr.Zero && hovered(ctx) != 0;
     }
 
     /// <summary>A GUI object's <c>GetGuiObjType</c> tag as its four letters (<c>'Stor'</c>, <c>'InvB'</c>), for the diagnostic line.</summary>
@@ -361,9 +390,11 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary>True when a shown NUI window covers the point (SDL window pixels) -- it draws over our below-NUI
     /// windows there. The context is anchored on both OSes; the window-list offsets are read off the Linux build.</summary>
     internal static bool NuiCovers(float x, float y)
+        => _nuklearGlobal != IntPtr.Zero && NuiCoversIn(*(IntPtr*)_nuklearGlobal, x, y);
+
+    /// <summary><see cref="NuiCovers(float, float)"/> over the window list of context <paramref name="ctx"/>.</summary>
+    internal static bool NuiCoversIn(IntPtr ctx, float x, float y)
     {
-        if (_nuklearGlobal == IntPtr.Zero) return false;
-        IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         if (ctx == IntPtr.Zero) return false;
         for (var w = new NkWindow(new NkContext(ctx).WindowBegin); !w.IsNull; w = new NkWindow(w.Next))
         {
