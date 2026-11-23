@@ -124,6 +124,7 @@ internal static partial class GpuGolden
         ShadingParitySelfCheck(vk, check, log);
         NegativeLightSelfCheck(vk, check, log);
         FaceNormalApprovedSelfCheck(vk, check, log);
+        ParticleLightSelfCheck(vk, check, log);
         ReflShadeSelfCheck(vk, check, log);
         AmbientClassApprovedSelfCheck(vk, check, log);
         SofteningApprovedSelfCheck(vk, check, log);
