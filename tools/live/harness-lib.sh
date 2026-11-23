@@ -34,3 +34,13 @@ shutdown_crash_line() {
     [ "$after" -gt "$before" ] && echo "shutdown crash  $(( after - before )) written after grading, not graded"
     return 0
 }
+
+# The recipe table's fault clauses on a session's frame lines, comma-joined; empty when there are none. The room
+# eviction clause is read out of DrawRecipe.EvictedKey, so a renamed key cannot disarm the grade.
+recipe_fault_lines() {
+    local log=$1 repo=$2 key
+    key=$(grep -oP 'EvictedKey = "\K[^"]+' "$repo/managed/Alloy/Db/DrawRecipe.cs" 2>/dev/null)
+    [ -n "$key" ] || { echo "no EvictedKey in DrawRecipe.cs"; return 0; }
+    grep -aoE "RECIPES SPILLED [0-9]+|$key [0-9]+|RECIPES EVICTED IN USE [0-9]+|RECIPES RETIRED TWICE [0-9]+" "$log" \
+        | sort -u | paste -sd, -
+}

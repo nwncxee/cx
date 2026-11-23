@@ -239,6 +239,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
+        // The boot self-checks drive the recipe table; the session's frame line must not report their counts.
+        Db.DrawRecipe.Tally bootCounts = Db.DrawRecipe.Counts;
         // #165: ahead of every stand-down and every check below -- /alloy reports the renderer for a
         // misrendering session, so it must exist even in a session whose renderer never armed.
         RenderCommands.Register();
@@ -349,6 +351,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // whole Alloy path down.
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
+        Db.DrawRecipe.Counts = bootCounts;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);

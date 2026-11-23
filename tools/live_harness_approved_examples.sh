@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The live harness's offline examples: typed text keeps its shifted characters, a stage built before the
-# harness or the runtime changed is refused by name, and a crash report written during shutdown gets its own
-# ungraded line. None of them starts a client.
+# harness or the runtime changed is refused by name, a crash report written during shutdown gets its own
+# ungraded line, and a recipe fault on the frame line is named. None of them starts a client.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
@@ -53,4 +53,21 @@ expect "no shutdown crash, no line" "$(shutdown_crash_line 0 0 /c)" ""
 expect "a shutdown crash is named, ungraded" "$(shutdown_crash_line 0 1 /c)" "shutdown crash  1 written after grading, not graded"
 expect "only the new ones count" "$(shutdown_crash_line 2 3 /c)" "shutdown crash  1 written after grading, not graded"
 expect "a count that is not a number prints no line" "$(shutdown_crash_line '' 3 /c 2>&1)" ""
+# Given a ladder session's frame lines
+# When the harness grades the recipe table
+# Then each fault clause the frame line prints is named, and a clean frame line names none
+mkdir -p "$t/repo/managed/Alloy/Db"
+echo '    internal const string EvictedKey = "models evicted for recipes";' > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
+f="$t/cx.log"
+echo 'dbfeed: frames 120 recipes 900 retired 69 box-grown 67' > "$f"
+expect "a clean frame line names no fault" "$(recipe_fault_lines "$f" "$t/repo")" ""
+for clause in 'RECIPES SPILLED 3' 'models evicted for recipes 2' 'RECIPES EVICTED IN USE 14' 'RECIPES RETIRED TWICE 1'; do
+    echo "dbfeed: frames 240 recipes 900 $clause retired 69" > "$f"
+    expect "the frame line's $clause is named" "$(recipe_fault_lines "$f" "$t/repo")" "$clause"
+done
+echo '    internal const string EvictedKey = "models dropped for room";' > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
+echo 'dbfeed: frames 240 models dropped for room 5' > "$f"
+expect "a renamed key is read from the source" "$(recipe_fault_lines "$f" "$t/repo")" "models dropped for room 5"
+: > "$t/repo/managed/Alloy/Db/DrawRecipe.cs"
+expect "a source with no key is a fault, not a pass" "$(recipe_fault_lines "$f" "$t/repo")" "no EvictedKey in DrawRecipe.cs"
 exit $fail
