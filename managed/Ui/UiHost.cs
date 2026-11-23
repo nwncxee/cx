@@ -286,11 +286,15 @@ public static partial class UiHost
     public static bool DispatchMouseWheel(int dy, bool captureOnly = false, float px = float.NaN, float py = float.NaN)
         => Route(new WheelOffer(dy), captureOnly, px, py);
 
-    /// <summary>Every registered window, topmost-first. Zero-alloc: a struct enumerator over the O(n^2)
-    /// descending-z scan (z values are unique, from the monotonic counter, so the walk terminates even when a
-    /// handler unregisters a window mid-walk); no buffer, no sort, safe on the render thread.
+    /// <summary>Every registered window, topmost-first, by each one's order as the walk starts: a handler that raises a
+    /// window, closes a popup or opens a window changes nothing the walk has left to visit. Zero-alloc: a struct
+    /// enumerator over an O(n^2) descending scan; no buffer, no sort, safe on the render thread.
     /// ponytail: O(n^2) is free at this n; swap for a kept-sorted list only if the window count ever grows big.</summary>
-    private static ZWalk TopmostFirst() => new() { _lastZ = int.MaxValue };
+    private static ZWalk TopmostFirst()
+    {
+        for (int i = 0; i < _windows.Count; i++) _windows[i].WalkOrder = _windows[i].Order;
+        return new() { _lastZ = int.MaxValue };
+    }
 
     /// <summary>The <see cref="TopmostFirst"/> enumerator. Only the factory seeds it: <c>default</c> starts at z 0
     /// and silently visits nothing.</summary>
@@ -304,19 +308,19 @@ public static partial class UiHost
             var next = NextBelow(_lastZ);
             if (next == null) return false;
             Current = next;
-            _lastZ = next.Order;
+            _lastZ = next.WalkOrder;
             return true;
         }
     }
 
-    /// <summary>The registered window with the highest z strictly below <paramref name="belowZ"/>, or null.</summary>
+    /// <summary>The registered window with the highest latched order strictly below <paramref name="belowZ"/>, or null.</summary>
     private static Window? NextBelow(int belowZ)
     {
         Window? next = null;
         for (int i = 0; i < _windows.Count; i++)
         {
             var w = _windows[i];
-            if (w.Order < belowZ && (next == null || w.Order > next.Order)) next = w;
+            if (w.WalkOrder != int.MinValue && w.WalkOrder < belowZ && (next == null || w.WalkOrder > next.WalkOrder)) next = w;
         }
         return next;
     }
@@ -367,6 +371,14 @@ public static partial class UiHost
         for (int i = 0; i < _chords.Count; i++) _chords[i].FireMouse(button, sdlMods);
     }
 
+    /// <summary>The frame's draw count: every frame's draw starts at <see cref="UiLayer.UnderGui"/>, once.</summary>
+    private sealed class DrawFrameState { public int No; }
+
+    private static readonly DrawFrameState _drawFrame = new();
+
+    /// <summary>The current frame's number, the stamp <see cref="Window.DrawBand"/> latches against.</summary>
+    internal static int DrawFrameNo => _drawFrame.No;
+
     /// <summary>Every layer, bottom to top.</summary>
     internal static readonly UiLayer[] Layers = Enum.GetValues<UiLayer>();
 
@@ -383,6 +395,7 @@ public static partial class UiHost
     /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
     public static void DrawFrame(UiLayer layer)
     {
+        if (layer == UiLayer.UnderGui) _drawFrame.No++;
         int lastZ = int.MinValue;
         for (int drawn = 0; drawn < _windows.Count; drawn++)
         {
@@ -390,7 +403,7 @@ public static partial class UiHost
             for (int i = 0; i < _windows.Count; i++)
             {
                 var w = _windows[i];
-                if (w.Band == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
+                if (w.DrawBand == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
             }
             if (next == null) break;   // no window on this layer with a higher z -> done
             lastZ = next.Z;

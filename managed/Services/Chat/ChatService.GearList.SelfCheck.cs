@@ -50,6 +50,25 @@ public sealed unsafe partial class ChatService
                         $"a gear tooltip lifts chat's under-NUI surface into the popup band: open={_settings.Open} before {quiet}, shown {below.Band}");
                 }
                 finally { _settings.Panel.Tip.Cut(); Tooltip.Clock = clock; }
+
+                // Given the chat gear panel open under NUI with a row's tooltip showing
+                // When the pointer rests on the panel
+                // Then chat's surface over NUI stays in its own band and leaves the panel's pointer to the surface under NUI
+                (Window under, Window over) = NewSurfaces();
+                _settings.Reset();
+                _ = UiHost.DispatchMouseButton(true, 1, (int)(win.X + win.W - 2), (int)(win.Y + 2));
+                Tooltip.Clock = () => t;
+                try
+                {
+                    _settings.Panel.Tip.Hover("row", "Help", 120f, 120f, 140f);
+                    t += System.Diagnostics.Stopwatch.Frequency * 5;
+                    _settings.Panel.X = 600f; _settings.Panel.Y = 600f; _settings.Panel.W = 300f; _settings.Panel.H = 200f;
+                    float px = _settings.X + 2f, py = _settings.Y + 2f;
+                    bool chatThere = win.HitTestFull((int)px, (int)py);
+                    check.Expect(_settings.Open && !chatThere && over.Band == UiLayer.AboveNui && under.Hit(px, py) && !over.Hit(px, py),
+                        $"a gear panel under NUI lifts and hits only chat's under-NUI surface: open={_settings.Open} chat window there {chatThere}, over band {over.Band}, under hit {under.Hit(px, py)}, over hit {over.Hit(px, py)}");
+                }
+                finally { _settings.Panel.Tip.Cut(); Tooltip.Clock = clock; }
             });
         }
         finally { GameGate.InGame = inGame; IsTyping = typing; UseLayout(was); _settings.Reset(); }

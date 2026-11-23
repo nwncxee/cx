@@ -66,6 +66,24 @@ public sealed class Window
     /// is open, else its <see cref="Layer"/>.</summary>
     internal UiLayer Band => PopupOpen != null && PopupOpen() ? UiLayer.Popup : Layer;
 
+    /// <summary>The band this frame's draw files the window in, read once a frame so a popup or tooltip that opens or
+    /// closes partway through the draw moves the window at the next frame, never drawing it twice or not at all.</summary>
+    internal UiLayer DrawBand
+    {
+        get
+        {
+            if (_bandFrame != UiHost.DrawFrameNo) { _drawBand = Band; _bandFrame = UiHost.DrawFrameNo; }
+            return _drawBand;
+        }
+    }
+
+    private UiLayer _drawBand;
+    private int _bandFrame = -1;
+
+    /// <summary><see cref="Order"/> as the current input walk began, so a handler that closes a popup partway does not
+    /// move its window under the walk's cursor; <see cref="int.MinValue"/> for one registered since.</summary>
+    internal int WalkOrder = int.MinValue;
+
     /// <summary>True when a NUI window covers the point (<paramref name="nuiCovers"/>) and this window draws under NUI.</summary>
     internal bool CoveredByNui(bool nuiCovers) => nuiCovers && Band < UiLayer.AboveNui;
 
