@@ -61,7 +61,7 @@ internal static class ItemMenuService
     /// <summary>The menu's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
     internal static Window NewWindow() => new(0, 0, 0, 0)
     {
-        Layer = UiLayer.AboveNui,
+        Layer = UiLayer.Popup,
         Focusable = false,
         CapturesPointer = true,
         DrawContent = Draw,

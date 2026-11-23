@@ -388,6 +388,17 @@ public sealed unsafe partial class ChatService
         return i;
     }
 
+    /// <summary>True while a chat list is open: a window's channel list, or a dropdown of the chat settings panel.</summary>
+    private static bool PopupOpen()
+    {
+        if (_layout == null || !GameGate.InGame) return false;
+        if (_settings.Open && _settings.Panel.Drop.Open) return true;
+        ChatWindow[] wins = _layout.Windows;
+        for (int i = 0; i < wins.Length; i++)
+            if (wins[i].ChannelListOpen) return true;
+        return false;
+    }
+
     /// <summary>True when (<paramref name="x"/>, <paramref name="y"/>) is over any chat UI element:
     /// window frames, input strips, open channel dropdowns, or the settings panel.</summary>
     public static bool MouseOverUi(int x, int y)

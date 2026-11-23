@@ -290,7 +290,7 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
     /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
-    private static readonly UiDrawList[] _layers = { new(), new(), new() };
+    private static readonly UiDrawList[] _layers = { new(), new(), new(), new() };
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
@@ -307,7 +307,7 @@ public sealed unsafe class UiHostService : IExtenderService
     /// <summary>The engine-context draw with Alloy off: record layers <paramref name="from"/> to <paramref name="to"/>,
     /// replaying each at once, then hand the GL state back -- our raw GL desyncs GLRender's shadow cache and what
     /// renders next is NUI. The engine has drawn its panels by now, so here an under-GUI window is over them.</summary>
-    private static void DrawWindows(UiLayer from = UiLayer.UnderGui, UiLayer to = UiLayer.AboveNui)
+    private static void DrawWindows(UiLayer from = UiLayer.UnderGui, UiLayer to = UiLayer.Popup)
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         for (UiLayer layer = from; layer <= to; layer++)

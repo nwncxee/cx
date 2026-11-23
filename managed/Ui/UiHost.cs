@@ -264,9 +264,9 @@ public static partial class UiHost
     }
 
     /// <summary>Whether a window is asked ahead of the engine-GUI yield: a modal pointer-capturing window always,
-    /// and an above-NUI window while the pointer is over it -- it is drawn over NUI, so it gets the press first.</summary>
+    /// and one in a band over NUI while the pointer is over it -- it is drawn over NUI, so it gets the press first.</summary>
     private static bool TakesBeforeNui(Window w, float x, float y)
-        => (w.CapturesPointer && w.SuppressChords) || (w.Layer == UiLayer.AboveNui && w.Hit(x, y));
+        => (w.CapturesPointer && w.SuppressChords) || (w.Band >= UiLayer.AboveNui && w.Hit(x, y));
 
     /// <summary>Route pointer motion to window content, topmost-first; true at the first consumer (a drag owns
     /// motion until release, so handlers self-gate on their own grab state).</summary>
@@ -366,7 +366,7 @@ public static partial class UiHost
     }
 
     /// <summary>Every layer, bottom to top.</summary>
-    internal static readonly UiLayer[] Layers = [UiLayer.UnderGui, UiLayer.BelowNui, UiLayer.AboveNui];
+    internal static readonly UiLayer[] Layers = [UiLayer.UnderGui, UiLayer.BelowNui, UiLayer.AboveNui, UiLayer.Popup];
 
     /// <summary>The per-frame draw roll-call over every layer, bottom to top, for a site that cannot draw between
     /// the vanilla GUI and NUI; one that can calls <see cref="DrawFrame(UiLayer)"/> at each layer's place.</summary>
@@ -375,8 +375,8 @@ public static partial class UiHost
         foreach (UiLayer layer in Layers) DrawFrame(layer);
     }
 
-    /// <summary>One layer's roll-call: every window's <see cref="Window.DrawContent"/> on that layer in ascending z, so the
-    /// focused window paints last, then that layer's <see cref="Window.DrawOver"/>. Zero-alloc: it runs on the render
+    /// <summary>One band's roll-call: every window's <see cref="Window.DrawContent"/> in that band in ascending z, so the
+    /// focused window paints last; the popup band then draws every <see cref="Window.DrawOver"/>. Zero-alloc: it runs on the render
     /// thread inside SwapBuffers.
     /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
     public static void DrawFrame(UiLayer layer)
@@ -388,13 +388,13 @@ public static partial class UiHost
             for (int i = 0; i < _windows.Count; i++)
             {
                 var w = _windows[i];
-                if (w.Layer == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
+                if (w.Band == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
             }
             if (next == null) break;   // no window on this layer with a higher z -> done
             lastZ = next.Z;
             next.DrawContent?.Invoke();
         }
-        for (int i = 0; i < _windows.Count; i++) if (_windows[i].Layer == layer) _windows[i].DrawOver?.Invoke();
+        if (layer == UiLayer.Popup) for (int i = 0; i < _windows.Count; i++) _windows[i].DrawOver?.Invoke();
     }
 
     public static void AddChordConsumer(IChordConsumer c) { if (!_chords.Contains(c)) _chords.Add(c); }

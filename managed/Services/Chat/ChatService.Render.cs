@@ -55,6 +55,7 @@ public sealed unsafe partial class ChatService
         OnKey = OnChatKey,
         OnText = InsertUtf8,
         HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
+        PopupOpen = PopupOpen,
     };
 
     private static Window? _uiWindow;

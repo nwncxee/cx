@@ -16,8 +16,8 @@ internal interface IGuiFrameSink
 /// <summary>The frame's 2D order, bottom to top, said once: whoever draws a frame's GUI walks it through here.</summary>
 internal static class GuiFrame
 {
-    /// <summary>CX's world-anchored windows, the game's panels, CX's windows under NUI, NUI, the windows over it, then
-    /// the game's overlay scenes, the cursor last, as the engine draws them after NUI. <paramref name="windows"/> false
+    /// <summary>CX's world-anchored windows, the game's panels, CX's windows under NUI, NUI, the windows over it, the
+    /// popups, then the game's overlay scenes, the cursor last, as the engine draws them after NUI. <paramref name="windows"/> false
     /// leaves CX's windows out: a flush of panels alone.</summary>
     internal static bool Draw<T>(in T sink, bool windows) where T : struct, IGuiFrameSink
         => (!windows || sink.Windows(UiLayer.UnderGui))
@@ -25,6 +25,7 @@ internal static class GuiFrame
            && (!windows || sink.Windows(UiLayer.BelowNui))
            && sink.Nui()
            && (!windows || sink.Windows(UiLayer.AboveNui))
+           && (!windows || sink.Windows(UiLayer.Popup))
            && sink.Overlays();
 }
 
@@ -51,11 +52,11 @@ internal static class NkFrame
     }
 
     /// <summary>Nuklear's flush: the world-anchored windows when no world view drew them (a menu), then CX's layers
-    /// below NUI, NUI, and the layer over it.</summary>
+    /// below NUI, NUI, the layer over it and the popups.</summary>
     internal static void Flush<T>(in T sink, bool worldDrawn) where T : struct, INkFrameSink
     {
         sink.Windows(worldDrawn ? UiLayer.BelowNui : UiLayer.UnderGui, UiLayer.BelowNui);
         sink.Nui();
-        sink.Windows(UiLayer.AboveNui, UiLayer.AboveNui);
+        sink.Windows(UiLayer.AboveNui, UiLayer.Popup);
     }
 }

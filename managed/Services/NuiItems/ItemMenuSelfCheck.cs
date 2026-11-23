@@ -105,7 +105,7 @@ internal static class ItemMenuSelfCheck
         m.Set("open", "200;200");
         ItemMenuService.Show(m, atlas, 1920, 1080);
         check.Expect(ItemMenuService.IsOpen, "the declared menu opens");
-        check.Expect(CX.Ui.UiHost.HitTest(205, 205)?.Layer == CX.Ui.UiLayer.AboveNui, "the menu draws above every NUI window, so the inventory cannot cover it");
+        check.Expect(CX.Ui.UiHost.HitTest(205, 205)?.Band == CX.Ui.UiLayer.Popup, "the menu draws in the popup band, above every NUI window, so the inventory cannot cover it");
 
         var sent = new System.Collections.Generic.List<string>();
         var was = ServerPolicy.Send;

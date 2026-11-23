@@ -49,15 +49,15 @@ public static partial class UiHost
         created.Add(a); created.Add(up); created.Add(c);
 
         DrawFrame(UiLayer.BelowNui);
-        check.Expect(drawn.ToString() == "aco", "the below layer draws its windows by z, then its overlays");
+        check.Expect(drawn.ToString() == "ac", "the below layer draws its windows by z, and leaves their tooltips to the popup band");
         drawn.Clear(); DrawFrame(UiLayer.AboveNui);
         check.Expect(drawn.ToString() == "U", "the above layer draws only its own windows");
         drawn.Clear(); DrawFrame();
-        check.Expect(drawn.ToString() == "acoU", "a full roll-call is below, then above");
+        check.Expect(drawn.ToString() == "acUo", "a full roll-call is below, then above, then the tooltips in the popup band");
 
         Focus(a);
         drawn.Clear(); DrawFrame(UiLayer.BelowNui);
-        check.Expect(drawn.ToString() == "cao", "focus reorders a layer");
+        check.Expect(drawn.ToString() == "ca", "focus reorders a layer");
         check.Expect(HitTest(10, 10) == up, "an above window wins the overlap over a freshly focused below one");
         check.Expect(HitTest(80, 80) == a, "outside the above window the focused below one wins");
 
@@ -72,7 +72,7 @@ public static partial class UiHost
         created.Add(g);
         SendToBack(a);
         drawn.Clear(); DrawFrame();
-        check.Expect(drawn.ToString() == "gacoU", "a full roll-call starts under the GUI, even with a below-NUI window sent to the back");
+        check.Expect(drawn.ToString() == "gacUo", "a full roll-call starts under the GUI, even with a below-NUI window sent to the back");
         asked.Clear(); upConsumes = false;
         DispatchMouseButton(true, 1, 10, 10);
         check.Expect(asked.ToString() == "Uag", "input visits an under-GUI window last");

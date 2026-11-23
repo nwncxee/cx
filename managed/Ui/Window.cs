@@ -12,6 +12,9 @@ public enum UiLayer
     BelowNui,
     /// <summary>Over every NUI window: a hover card, or an image that follows the pointer.</summary>
     AboveNui,
+    /// <summary>Over every other CX window and NUI, under only the game's overlay and cursor: an open menu, a dropdown's
+    /// list, a tooltip. A window is here while its <see cref="Window.PopupOpen"/> says so, or always when set here.</summary>
+    Popup,
 }
 
 /// <summary>A first-class UI window: rect, z-order, focus/keyboard state, capability flags, and the cursor regions
@@ -39,8 +42,16 @@ public sealed class Window
     /// <summary>The distance in <see cref="Order"/> between one layer and the next. Far past any z the counter reaches.</summary>
     private const int LayerBias = 1 << 28;
 
-    /// <summary>The order across layers: draw ascending, hit-test and input descending.</summary>
-    internal int Order => Z + ((int)Layer - (int)UiLayer.BelowNui) * LayerBias;
+    /// <summary>Whether this window has a popup open (a dropdown's list, a menu it opened): while true the whole window
+    /// draws and takes input in the <see cref="UiLayer.Popup"/> band. Null for a window that opens none.</summary>
+    public Func<bool>? PopupOpen;
+
+    /// <summary>The band the window draws and takes input in this frame: <see cref="UiLayer.Popup"/> while a popup of its
+    /// is open, else its <see cref="Layer"/>.</summary>
+    internal UiLayer Band => PopupOpen != null && PopupOpen() ? UiLayer.Popup : Layer;
+
+    /// <summary>The order across bands: draw ascending, hit-test and input descending.</summary>
+    internal int Order => Z + ((int)Band - (int)UiLayer.BelowNui) * LayerBias;
 
     /// <summary>Capability flags. A non-focusable window is skipped by focus hit-testing but still drives the
     /// cursor; draggable/resizable expose the move/resize cursor zones.
