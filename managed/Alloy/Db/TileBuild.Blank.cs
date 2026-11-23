@@ -9,6 +9,9 @@ public static partial class TileBuild
     /// lava and a pit are not walked either, but are places. ponytail: stock row ids; read <c>Label</c> if a server renumbers.</summary>
     private const ulong SolidSurfaces = (1UL << 0) | (1UL << 2) | (1UL << 7);
 
+    /// <summary>Is surfacemat.2da row <paramref name="surface"/> solid: a wall or filler, nothing lies on it?</summary>
+    internal static bool Solid(int surface) => (uint)surface >= 64 || ((SolidSurfaces >> surface) & 1UL) != 0;
+
     /// <summary>Is <paramref name="walk"/> a walkmesh with faces, every one of them solid? A model with no walkmesh
     /// face says nothing either way, and is not blank.</summary>
     internal static bool Blank(ModelDef walk)
@@ -19,7 +22,7 @@ public static partial class TileBuild
             if (n.Kind != NodeKind.Aabb || n.Mesh == null) continue;
             foreach (FaceDef f in n.Mesh.Faces)
             {
-                if ((uint)f.Surface >= 64 || ((SolidSurfaces >> f.Surface) & 1UL) == 0) return false;
+                if (!Solid(f.Surface)) return false;
                 faces++;
             }
         }

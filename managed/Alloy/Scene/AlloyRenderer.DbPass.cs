@@ -119,6 +119,8 @@ public sealed unsafe partial class AlloyRenderer
         // database's own `beaming` parts rather than the engine's bucket 15. Both are pure database reads, so
         // neither needs the engine's GL and both are pure database reads.
         EmitterSim.StepDb(scene, DbFeed.FrameSeq);
+        GroundMist.Frame(scene, DbFeed.FrameSeq, PlayerPos, FrameInputs.FogOn && h.HaveArea, h.FogAmount, EmitterSim.FrameDt,
+                         new Vector2(AlloyWind.Base.X, AlloyWind.Base.Y));
         Beams.EnrollDb(scene);
         Halos.EnrollDb(scene, h.RadiusMult);
         // CX-120 bring-up: the whole drawn set's world extent against the camera, once, after the order is

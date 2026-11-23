@@ -82,10 +82,32 @@ float CxVfHaze(vec3 world)
 }
 
 /// The ground mist's extinction at height `z` over a column whose floor is `floorZ` and whose mist is `depth`
-/// metres deep. ponytail: a seam; no mist yet.
+/// metres deep: densest on the floor, falling off with `depth` as its scale height, nothing below the floor.
 float CxMistDensity(float depth, float floorZ, float z)
 {
-    return 0.0;
+    // extinction per metre on the floor of a column of mist: a 10 m look through it loses about four fifths
+    const float floorDensity = 0.15;
+    if (depth <= 0.0 || z < floorZ) return 0.0;
+    return floorDensity * exp(-(z - floorZ) / max(depth, 0.05));
+}
+
+// The ground mist's field (GroundMist): xy its corner in whole metres, z its side in columns, w 1 = mist shows;
+// then per column, row-major from the corner, its floor height and its depth of mist.
+layout(std430, binding = 12) readonly buffer CxMistBuf
+{
+    vec4 uMistHead;
+    vec2 uMistCell[];
+};
+
+/// The ground mist's extinction at `world`, from the column it stands in; none past the field's edge.
+float CxVfMist(vec3 world)
+{
+    if (uMistHead.w <= 0.0) return 0.0;
+    ivec2 c = ivec2(floor(world.xy - uMistHead.xy));
+    int side = int(uMistHead.z);
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ivec2(side)))) return 0.0;
+    vec2 col = uMistCell[c.y * side + c.x];
+    return CxMistDensity(col.y, col.x, world.z);
 }
 
 #define CX_VFRAIN_HAZE 1
@@ -178,7 +200,7 @@ void main()
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
     // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
     float rain = uVfRain.x * CxVfBank(world);
-    vec4 v = vec4(CxVfLight(world, V, depth) * CxVfSeen(world), CxVfDensity(world, dist, open, rain, uVfRain.y));
+    vec4 v = vec4(CxVfLight(world, V, depth) * CxVfSeen(world), CxVfDensity(world, dist, open, rain, uVfRain.y) + CxVfMist(world));
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel
