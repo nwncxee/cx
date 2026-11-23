@@ -27,7 +27,7 @@ internal static class PopupBandApprovedExamples
     {
         var drawn = new StringBuilder();
         string f = "";
-        UiHost.Alone(() =>
+        Alone(() =>
         {
             setup(drawn);
             f = alloy ? FrameLetters.Alloy(drawn, Panels, Overlays) : FrameLetters.Gl(drawn, Panels, Overlays);
@@ -52,16 +52,27 @@ internal static class PopupBandApprovedExamples
         return m;
     }
 
-    /// <summary>The chatbox's own window over <paramref name="m"/>: c for the box and l for its channel list, drawn where the
-    /// chatbox draws it, and the model's hit-test, press and open list.</summary>
+    /// <summary>The chatbox's own window with <paramref name="m"/> as its one chat window and a module up: c for the box
+    /// and l for its channel list, drawn where the chatbox draws it, the model's hit-test and press, and the chatbox's
+    /// own answer to whether a list is open. Run inside <see cref="Alone"/>, which puts the chatbox back.</summary>
     private static Window ChatWin(StringBuilder drawn, ChatWindow m)
     {
+        ChatService.UseLayout(new ChatLayout(m));
+        GameGate.InGame = true;
         Window w = ChatService.NewWindow();
         w.DrawContent = () => { drawn.Append('c'); if (m.ChannelListOpen) drawn.Append('l'); };
         w.HitTestOverride = m.HitTestFull;
         w.OnMouseButton = (down, _, x, y) => down && m.MouseDown(x, y);
-        w.PopupOpen = () => m.ChannelListOpen;
         return w;
+    }
+
+    /// <summary><see cref="UiHost.Alone"/>, with the chatbox's layout and the in-game gate put back after.</summary>
+    private static void Alone(Action body)
+    {
+        bool inGame = GameGate.InGame;
+        ChatLayout? was = ChatService.UseLayout(null);
+        try { UiHost.Alone(body); }
+        finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
     }
 
     /// <summary>A left press the input pump routes with <paramref name="nui"/> saying whether a NUI window is under it;
@@ -89,7 +100,7 @@ internal static class PopupBandApprovedExamples
         {
             ChatWindow m = ChatModel(open: true);
             bool aheadOfNui = false;
-            UiHost.Alone(() =>
+            Alone(() =>
             {
                 ChatWin(new StringBuilder(), m);
                 aheadOfNui = Press(105, 720, nui: true);
@@ -152,18 +163,19 @@ internal static class PopupBandApprovedExamples
         // When the player clicks the choice drawn over the inventory
         // Then the setting takes that choice, the list draws whole over the inventory, and the inventory does not react
         {
-            var drop = new Dropdown();
+            var panel = new KnobPanel();
+            panel.OpenAt(1280f, 720f, 16f, null, null);
+            Dropdown drop = panel.Drop;
             drop.OpenAt(new[] { "low", "mid", "high" }, 0, null, 200f, 200f, 224f, 120f, 24f);
             bool invReacted = false, took = false;
             var drawn = new StringBuilder();
-            UiHost.Alone(() =>
+            Alone(() =>
             {
-                Window s = KnobPanelService.NewWindow();
+                Window s = KnobPanelService.NewWindow(panel);
                 s.SuppressChords = true;
                 s.DrawContent = () => { drawn.Append('s'); if (drop.Open) drawn.Append('d'); };
                 s.HitTestOverride = (x, y) => (x >= 100f && x < 300f && y >= 100f && y < 230f) || drop.Contains(x, y);
                 s.OnMouseButton = (down, _, x, y) => down && drop.MouseDown(x, y, out _);
-                s.PopupOpen = () => drop.Open;
                 Window v = InventoryService.NewWindow();
                 v.DrawContent = () => drawn.Append('v');
                 v.HitTestOverride = (x, y) => x >= 150f && x < 450f && y >= 240f && y < 500f;

@@ -70,12 +70,15 @@ internal static class EscOrderApprovedExamples
         // Given the stock character sheet open and nothing drawn over it
         // When the player presses Esc
         // Then the character sheet closes and the game menu does not open
+        // Given only the stock area map open
+        // When the player presses Esc
+        // Then the game menu opens and the area map stays open, as in the stock client
         UiHost.Alone(() =>
         {
             var inv = new Inventory(open: false);
             bool taken = Press();
             check.Expect(!taken && inv.Acts.Count == 0,
-              $"E19 no closed CX window takes Esc from the stock panel, which the engine closes first: taken={taken} acts=[{inv.Seen}]");
+              $"E19 E42 no closed CX window takes Esc from a stock panel, so the engine handles it as the stock client does: taken={taken} acts=[{inv.Seen}]");
         });
 
         // Given the stock character sheet open and the CX inventory over it
@@ -124,16 +127,6 @@ internal static class EscOrderApprovedExamples
             bool taken = Press();
             check.Expect(shown && taken && inv.Inv.Open && inv.Acts.Count == 1 && inv.Acts[0] == new InvAction(InvActKind.CloseLoot, Other: Chest),
               $"E39 Esc closes the chest as its X does and keeps the inventory: shown={shown} taken={taken} open={inv.Inv.Open} acts=[{inv.Seen}]");
-        });
-
-        // Given only the stock area map open
-        // When the player presses Esc
-        // Then the game menu opens and the area map stays open, as in the stock client
-        UiHost.Alone(() =>
-        {
-            var inv = new Inventory(open: false);
-            bool taken = Press();
-            check.Expect(!taken && inv.Acts.Count == 0, $"E42 with only the area map up Esc reaches the engine, which opens its menu: taken={taken} acts=[{inv.Seen}]");
         });
 
         // Given the chat window's gear panel open, no field being edited

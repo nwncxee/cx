@@ -19,6 +19,9 @@ internal static class AboveNuiApprovedExamples
     /// <summary>The setting's name inside its group, and inside a chat window's <c>w&lt;N&gt;.</c> keys.</summary>
     private const string Setting = "abovenui";
 
+    /// <summary>The stand-in window's square, (100, 100) to (500, 500), which the examples' NUI window overlaps.</summary>
+    private static bool InSquare(float px, float py) => px >= 100 && px < 500 && py >= 100 && py < 500;
+
     /// <summary>SDL's Escape and the digit 5, the keys the examples press.</summary>
     private const uint KeyEscape = 0x1B, KeyFive = 0x35;   // not-an-offset: SDLK_ESCAPE, SDLK_5
 
@@ -372,7 +375,7 @@ internal static class AboveNuiApprovedExamples
                 UiHost.Alone(() =>
                 {
                     Window inv = InventoryService.NewWindow(), gold = InventoryService.NewGoldWindow();
-                    inv.HitTestOverride = (px, py) => px >= 100 && px < 500 && py >= 100 && py < 500;
+                    inv.HitTestOverride = InSquare;
                     gold.HitTestOverride = (px, py) => px >= 200 && px < 400 && py >= 250 && py < 350;
                     gold.SuppressChords = true;
                     Window? keyed = null;
@@ -406,7 +409,7 @@ internal static class AboveNuiApprovedExamples
                 UiHost.Alone(() =>
                 {
                     Window inv = InventoryService.NewWindow();
-                    inv.HitTestOverride = (px, py) => px >= 100 && px < 500 && py >= 100 && py < 500;
+                    inv.HitTestOverride = InSquare;
                     var letters = new StringBuilder();
                     Letter(letters, inv, 'i');
                     string before = Drawn(letters);
@@ -440,7 +443,7 @@ internal static class AboveNuiApprovedExamples
             UiHost.Alone(() =>
             {
                 Window w = make();
-                w.HitTestOverride = (px, py) => px >= 100 && px < 500 && py >= 100 && py < 500;
+                w.HitTestOverride = InSquare;
                 var letters = new StringBuilder();
                 Letter(letters, w, 'w');
                 string f = Drawn(letters);
