@@ -501,7 +501,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             FireEvent(data, name, 0);
     }
 
-    /// <summary><c>Gob::AttachToObject(CAurObject*, char const*, int)</c> @0x53e0e0: ride <paramref name="parent"/>'s
+    /// <summary><c>Gob::AttachToObject(CAurObject*, char const*, int)</c> @0x43e0e0: ride <paramref name="parent"/>'s
     /// named part, or detach when it is null. A name a parent with parts lacks detaches and answers 0, scene untouched,
     /// as the engine does; a parent with no parts (a model CX could not read) is still ridden. The object's shell
     /// is the non-null token: the game only tests the engine's attachment record against 0.</summary>
