@@ -22,14 +22,14 @@ internal static unsafe class ClickOrderApprovedExamples
 
     /// <summary>A letter per thing drawn: S for the character sheet (a panel), N for NUI, O then M for the overlay scene
     /// and the cursor, and whatever each CX window appends.</summary>
-    private readonly struct Letters(StringBuilder drawn) : IGuiFrameSink, UiHostService.INkSiteSink
+    private readonly struct Letters(StringBuilder drawn) : IGuiFrameSink, INkFrameSink
     {
         public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
         public bool Panels() { drawn.Append('S'); return true; }
         public bool Nui() { drawn.Append('N'); return true; }
         public bool Overlays() { drawn.Append("OM"); return true; }
         public void Windows(UiLayer from, UiLayer to) { for (UiLayer l = from; l <= to; l++) UiHost.DrawFrame(l); }
-        void UiHostService.INkSiteSink.Nui() => drawn.Append('N');
+        void INkFrameSink.Nui() => drawn.Append('N');
     }
 
     /// <summary>A stand-in for the CX inventory window with its flags: not focusable, capturing the pointer, taking every
@@ -56,7 +56,7 @@ internal static unsafe class ClickOrderApprovedExamples
     {
         drawn.Clear();
         drawn.Append('S');
-        UiHostService.AtNuklear(new Letters(drawn));
+        NkFrame.Draw(new Letters(drawn));
         drawn.Append("OM");
         return drawn.ToString();
     }
