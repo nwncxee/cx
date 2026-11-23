@@ -1,7 +1,7 @@
 //::///////////////////////////////////////////////
-//:: vfxfix -- the effects CX-663 fixes, in one outdoor scene: a lightning bolt's beam reaches its target, a
-//:: fireball bursts on it, and a head effect on the PC keeps following the PC after its head and torso pieces
-//:: are swapped and it walks away. The target is passive and plot, so the spells play and change nothing.
+//:: vfxfix -- the effects CX-663 fixes, in one outdoor scene: a lightning beam reaches its target, a
+//:: fireball blast bursts on it, and a head effect on the PC keeps following the PC after its head and torso pieces
+//:: are swapped and it walks away. The target is passive and plot, and every effect is applied directly, so no cast stands in the way.
 //:://////////////////////////////////////////////
 #include "inc_show"
 
@@ -9,16 +9,15 @@ const float VFXFIX_BEARING = 90.0;
 
 void Bolt(object oPC, object oFoe)
 {
-    AssignCommand(oPC, ClearAllActions(TRUE));
-    AssignCommand(oPC, ActionCastSpellAtObject(SPELL_LIGHTNING_BOLT, oFoe, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE));
-    ShowMark("cast lightning bolt");
+    ApplyEffectToObject(DURATION_TYPE_TEMPORARY, EffectBeam(VFX_BEAM_LIGHTNING, oPC, BODY_NODE_HAND), oFoe, 4.0);
+    ShowMark("beam lightning");
 }
 
 void Blast(object oPC, object oFoe)
 {
-    AssignCommand(oPC, ClearAllActions(TRUE));
-    AssignCommand(oPC, ActionCastSpellAtObject(SPELL_FIREBALL, oFoe, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE));
-    ShowMark("cast fireball");
+    ApplyEffectAtLocation(DURATION_TYPE_INSTANT, EffectVisualEffect(VFX_FNF_FIREBALL), GetLocation(oFoe));
+    ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectVisualEffect(VFX_IMP_FLAME_M), oFoe);
+    ShowMark("fireball blast");
 }
 
 void Swap(object oPC)
@@ -43,8 +42,8 @@ void Place(object oPC)
     SetImmortal(oPC, TRUE);
     SetTime(12, 0, 0, 0);
     AssignCommand(oPC, SetFacing(VFXFIX_BEARING));
-    AssignCommand(oPC, SetCameraFacing(VFXFIX_BEARING + 60.0, 12.0, 65.0, CAMERA_TRANSITION_TYPE_SNAP));
-    object oFoe = ShowSpawn(oPC, "foe", "nw_goblina", VFXFIX_BEARING, 9.0);
+    AssignCommand(oPC, SetCameraFacing(VFXFIX_BEARING + 90.0, 9.0, 70.0, CAMERA_TRANSITION_TYPE_SNAP));
+    object oFoe = ShowSpawn(oPC, "foe", "nw_goblina", VFXFIX_BEARING, 5.0);
     ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectVisualEffect(VFX_DUR_MIND_AFFECTING_DOMINATED), oPC);
     ShowMark("placed");
     DelayCommand(6.0, Bolt(oPC, oFoe));
