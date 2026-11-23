@@ -1,0 +1,5 @@
+cx-update 1
+version v99.1.0
+url https://example.invalid/evil.zip
+change Download from the link above.
+change A second line.

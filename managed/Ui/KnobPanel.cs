@@ -195,7 +195,7 @@ public sealed partial class KnobPanel
         public readonly KnobGroup[] Groups;
         public SubMenu(params KnobGroup[] groups) { Groups = groups; Name = groups.Length > 0 ? groups[0].Submenu : ""; }
     }
-    private SubMenu[] _subs = Array.Empty<SubMenu>();
+    internal SubMenu[] _subs = Array.Empty<SubMenu>();
     /// <summary>The laid-out rows; the draw walks these, hit-testing reads them. A layout swaps in a fresh list
     /// (never mutates in place), so a reader on another thread iterates a stable snapshot.</summary>
     private volatile List<Row> _rows = new();

@@ -72,6 +72,10 @@ clang-cl -c -O2 -GS- native/bootstrap_win.c -Fo:build/bootstrap_win.obj
 # The C wrappers (see build.sh); the crash stamp uses stdio, so the CRT headers, /MT as NativeAOT's static CRT.
 WINC="/I$WABS/inc/um /I$WABS/inc/shared /I$WABS/inc/ucrt /I$WABS/inc/msvc -Xclang -ivfsoverlay -Xclang $WABS/vfs.yaml -w"
 clang-cl -c -O2 -MT -GS- $WINC native/cxthunk.c -Fo:build/cxthunk_win.obj
+# The release-notice verifier (see build.sh).
+clang-cl -c -O2 -MT -GS- $WINC -Ithird_party/monocypher third_party/monocypher/monocypher.c -Fo:build/monocypher_win.obj
+clang-cl -c -O2 -MT -GS- $WINC -Ithird_party/monocypher third_party/monocypher/monocypher-ed25519.c -Fo:build/monocypher-ed25519_win.obj
+llvm-lib -out:build/cxsig.lib build/monocypher_win.obj build/monocypher-ed25519_win.obj
 # #673: xatlas for version.dll, the same flags as build.sh's (see there); /MT to match NativeAOT's static CRT.
 if [ ! -f build/cxatlas.lib ] || [ native/xatlas/xatlas.cpp -nt build/cxatlas.lib ] || [ native/cxatlas.cpp -nt build/cxatlas.lib ]; then
   echo ">> building xatlas (cxatlas.lib, clang-cl cross)..."
