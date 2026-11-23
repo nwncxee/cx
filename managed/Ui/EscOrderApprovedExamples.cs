@@ -224,9 +224,10 @@ internal static class EscOrderApprovedExamples
                 IntPtr ctx = NuiContext(nk);
                 IntPtr over = NuiWindow(nk, ctx, Json + "quest", Closable, 150, 150, 200, 150);
                 IntPtr far = NuiWindow(nk, ctx, Json + "far", Closable, 3000, 3000, 100, 100);
+                IntPtr own = NuiWindow(nk, ctx, "options", Closable, 150, 150, 200, 150);
                 bool taken = Press(ctx);
-                check.Expect(taken && Closed(over) && Flags(far) == Closable && inv.Inv.Open && inv.Acts.Count == 0,
-                  $"E20 Esc closes the NUI window drawn over the inventory, not one elsewhere, and keeps the inventory: taken={taken} over=0x{Flags(over):x} far=0x{Flags(far):x} open={inv.Inv.Open} acts=[{inv.Seen}]");
+                check.Expect(taken && Closed(over) && Flags(far) == Closable && Flags(own) == Closable && inv.Inv.Open && inv.Acts.Count == 0,
+                  $"E20 Esc closes the server's NUI window drawn over the inventory, not one elsewhere nor the client's own: taken={taken} over=0x{Flags(over):x} far=0x{Flags(far):x} own=0x{Flags(own):x} open={inv.Inv.Open} acts=[{inv.Seen}]");
             });
         }
 
