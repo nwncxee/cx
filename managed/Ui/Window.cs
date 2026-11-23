@@ -66,6 +66,9 @@ public sealed class Window
     /// is open, else its <see cref="Layer"/>.</summary>
     internal UiLayer Band => PopupOpen != null && PopupOpen() ? UiLayer.Popup : Layer;
 
+    /// <summary>True when a NUI window covers the point (<paramref name="nuiCovers"/>) and this window draws under NUI.</summary>
+    internal bool CoveredByNui(bool nuiCovers) => nuiCovers && Band < UiLayer.AboveNui;
+
     /// <summary>The order across bands: draw ascending, hit-test and input descending.</summary>
     internal int Order => Z + ((int)Band - (int)UiLayer.BelowNui) * LayerBias;
 

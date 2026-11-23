@@ -166,7 +166,7 @@ public static partial class UiHost
     {
         if (!HoverToFocus) return null;
         var w = HitTestFocusable(px, py);
-        if (w == null || (nuiCovers && w.Band < UiLayer.AboveNui)) return null;
+        if (w == null || w.CoveredByNui(nuiCovers)) return null;
         Focus(w);
         return w;
     }
