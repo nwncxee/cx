@@ -385,8 +385,12 @@ internal static unsafe class PostChain
                          > ResolveFs.IndexOf(ToneCall, StringComparison.Ordinal)
               && ResolveFs.IndexOf("c += overlay;", StringComparison.Ordinal)
                  < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal)
-              && ResolveFs.Contains("raw = CxEncode(c + g + overlay);"),
+              && ResolveFs.Contains("raw = CxGlowOver(CxEncode(c + g + overlay), glow);"),
               "a native stage's overlay is added after the tone curve on both arms, so a lens ghost over a ridgeline is one ghost");
+            check.Expect(ResolveFs.IndexOf("outc = CxGlowOver(outc, glow);", StringComparison.Ordinal)
+                         > ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal)
+              && ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal) >= 0,
+              "the glow layer goes on after the encode on both arms, as the stock client's 8-bit target takes it");
             // The resolve is the ONLY place the Alloy frame meets 8-bit, so it is the only place a dither
             // can go. A resolve that lost it would band again, and the symptom (faint contour stripes over
             // smooth gradients) reads as a lighting bug rather than as a missing line here.

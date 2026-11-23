@@ -29,7 +29,11 @@ uniform int uViz;        // 0 = the frame; 1 = bloom only; 2 = HDR only; 3 = blo
 // so a lens ghost crossing a ridgeline is one ghost and not two exposures of it.
 uniform sampler2D uOverlay;
 uniform int uOverlayOn;
+// The additive particles, display-encoded as the stock client draws them (cx_glow): laid on after the encode.
+uniform sampler2D uGlow;
+uniform int uGlowOn;
 #include "cx_postcolor.glsl"
+#include "cx_glow.glsl"
 #include "cx_postdither.glsl"
 #include "cx_tonemap.glsl"
 
@@ -67,6 +71,7 @@ void main()
     float graded = 1.0;
     vec3 raw = vec3(0.0);
     vec3 overlay = uOverlayOn != 0 ? max(textureLod(uOverlay, vUV, 0.0).rgb, vec3(0.0)) : vec3(0.0);
+    vec3 glow = uGlowOn != 0 ? textureLod(uGlow, vUV, 0.0).rgb : vec3(0.0);
     if (uSkyRaw != 0 && sky > 0.0)
     {
         vec4 p = uInvVP * vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
@@ -79,7 +84,7 @@ void main()
         // a pixel only part sky takes the sky's own grade for that part alone
         graded = 1.0 - sky * (1.0 - graded);
         vec3 g = b * uExposure;
-        raw = CxEncode(c + g + overlay);
+        raw = CxGlowOver(CxEncode(c + g + overlay), glow);
         if (graded <= 0.0)
         {
             frag = vec4(CxDither(raw, gl_FragCoord.xy, uDither), texture(uHdr, vUV).a);
@@ -91,6 +96,7 @@ void main()
     c = CxTonemap(c, uMode, uKnee, uAcesMix);
     c += overlay;
     vec3 outc = CxEncode(c);
+    outc = CxGlowOver(outc, glow);
     if (graded < 1.0) outc = mix(raw, outc, graded);
     // Dithered in DISPLAY space, after the encode: this is where the frame meets 8 bits (or, when
     // the post stack takes it, uDither is 0 and the stack's last stage dithers instead).

@@ -27,8 +27,7 @@ internal static partial class DbSelfCheck
     internal static bool Run(ExtenderLog log)
     {
         var check = new Checker(log, "PartTree.SelfCheck");
-        Func<string, ModelDef?> savedResolve = PartTree.ResolveModel;
-        Action<DbId, int, string>? savedRef = PartTree.OnReference;
+        TreeHooks savedHooks = TreeHooks.Save();
         Func<string, byte[]?>? savedBytes = MtrDef.Bytes;
         Func<string, bool>? savedAnswered = MtrDef.Answered;
         ExtenderLog? savedArenaLog = MeshArena.Log, savedTreeLog = PartTree.Log;
@@ -70,8 +69,7 @@ internal static partial class DbSelfCheck
         }
         finally
         {
-            PartTree.ResolveModel = savedResolve;
-            PartTree.OnReference = savedRef;
+            savedHooks.Restore();
             MtrDef.Bytes = savedBytes;
             MtrDef.Answered = savedAnswered;
             MeshArena.Log = savedArenaLog;

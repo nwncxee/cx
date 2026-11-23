@@ -1,3 +1,10 @@
+// An additive sprite draws into the display-space glow layer, so its texel stays as authored, the way the stock
+// stage writes it; every other particle draws into the linear scene, so its texel's encode comes off.
+vec3 CxPartAlbedo(vec3 texel, int additive)
+{
+    return additive != 0 ? texel : CxLinear(texel);
+}
+
 void main()
 {
     fragReact = 0.0;
@@ -28,11 +35,7 @@ void main()
     }
     if (uAlphaCut >= 0.0 && c.a <= uAlphaCut) discard;
 
-    // #132: the Alloy frame is LINEAR end to end, so the texel's own encode comes off here -- for
-    // every particle, lit or not. An additive plume that stayed display-space would add the wrong
-    // curve into a linear frame, which is exactly the compositing error the whole-frame resolve
-    // exists to make impossible.
-    vec3 albedo = CxLinear(c.rgb);
+    vec3 albedo = CxPartAlbedo(c.rgb, uAdditive);
     // #336: lit per vertex; vLight is 1.0 on an unlit draw
     albedo *= vLight;
     c.rgb = albedo;

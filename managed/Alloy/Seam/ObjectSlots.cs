@@ -501,10 +501,10 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             FireEvent(data, name, 0);
     }
 
-    /// <summary><c>Gob::AttachToObject(CAurObject*, char const*, int)</c> @0x43e0e0: ride
-    /// <paramref name="parent"/>'s named part, or detach when <paramref name="parent"/> is null. The engine
-    /// returns the attachment record it created, which nothing in the game layer dereferences -- it is only
-    /// tested against 0 -- so the seam builds none and answers the object's own shell as the non-null token.</summary>
+    /// <summary><c>Gob::AttachToObject(CAurObject*, char const*, int)</c> @0x43e0e0: ride <paramref name="parent"/>'s
+    /// named part, or detach when it is null. A name a parent with parts lacks detaches and answers 0, scene untouched,
+    /// as the engine does; a parent with no parts (a model CX could not read) is still ridden. The object's shell
+    /// is the non-null token: the game only tests the engine's attachment record against 0.</summary>
     [UnmanagedCallersOnly]
     private static nint AttachToObject(nint self, nint parent, nint partName, int flags)
     {
@@ -512,9 +512,14 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (parent == 0) { Detach(id); return shell; }
         DbId p = Facade.Object(parent, 20);
         if (p.IsNull) return 0;
-        AttachAt(id, shell, p, PartByName(p, (byte*)partName), Mode(flags));
+        int part = PartByName(p, (byte*)partName);
+        if (part < 0 && SceneDb.ObjPartCount[p.Index] > 0) { Detach(id); _tree.UnresolvedAttaches++; return 0; }
+        AttachAt(id, shell, p, part, Mode(flags));
         return shell;
     }
+
+    /// <summary>The <c>AttachToObject</c> slot as the game calls it, for the self-checks.</summary>
+    internal static delegate* unmanaged<nint, nint, nint, int, nint> AttachToObjectSlot => &AttachToObject;
 
     /// <summary>The attach itself: re-file <paramref name="id"/> as a rider of <paramref name="parent"/>'s
     /// part <paramref name="part"/>. Shared by <c>Gob::AttachToObject</c> and the reference re-point, which

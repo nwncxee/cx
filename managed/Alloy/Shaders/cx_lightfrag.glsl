@@ -67,6 +67,11 @@ const int CX_CAP_MAX = 2;   // #336: the shadow cap's ceiling -- two NAMED candi
 // ship config runs and the shipped .shd assume (GAMMA_CORRECTION 1); plumb that param through if a
 // legacy-pipeline build ever needs the Alloy path.
 vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
+/// A linear colour back to display space, CxLinear's inverse: what a stage writes into the 8-bit glow layer.
+vec3 CxDisplay(vec3 c)
+{
+    return pow(max(c, vec3(0.0)), vec3(1.0 / $SRGB$));
+}
 /// A LIGHT's colour to linear, as GetColorSpaceFromSRGB @0x45d850 takes it: a positive channel on the sRGB curve,
 /// a zero or negative one unchanged. A negative light (the Darkness spell's) stays negative and subtracts.
 vec3 CxLightLinear(vec3 c)

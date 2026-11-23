@@ -123,13 +123,17 @@ internal static unsafe partial class Particles
         int iFog = ParticleFsMain.IndexOf("CxFogFactor(vWorld, vViewZ)", StringComparison.Ordinal);
         check.Expect(iDiscard >= 0 && iLit > iDiscard && iSoft > iLit && iEmis > iSoft && iFog > iEmis,
           "the fragment stage runs discard -> light -> soften -> emit -> fog, in that order");
-        // ...and the decode, which since #132 is unconditional: the Alloy target is LINEAR, so every
-        // particle's texel loses its display-space encode whether or not it is lit. A stage that kept the
-        // decode inside the `uLit` branch would composite additive plumes with the wrong curve, and the
-        // symptom is a plume that looks merely 'a bit off' rather than obviously broken.
-        check.Expect(ParticleFsMain.Contains("vec3 albedo = CxLinear(c.rgb);")
+        // Given the three particle classes: additive, alpha-blended and punch-through
+        // When the pass picks the layer each class draws into
+        // Then the additive class alone draws into the display-space glow layer, as the stock client adds it to its
+        // 8-bit target, and the other two draw into the linear scene
+        check.Expect(VkInGlow(VkAdd) && !VkInGlow(VkBlend) && !VkInGlow(VkPunch),
+          "glow G6: the additive class alone draws into the glow layer");
+        // ...and the decode, by layer and never by lighting: the scene is linear and the glow layer is display
+        // space, so what CxPartAlbedo answers per layer (the glow golden runs it) is the only decode there is.
+        check.Expect(ParticleFsMain.Contains("vec3 albedo = CxPartAlbedo(c.rgb, uAdditive);")
           && !ParticleFsMain.Contains("CxRevert"),
-          "the stage decodes to linear once, for every particle, and never re-encodes");
+          "the stage decodes through CxPartAlbedo once, for every particle, and never re-encodes");
         // The three libraries the composed stage stands on. A rename upstream would otherwise surface as a
         // shader that fails to link at the first emitter, on the user's machine and not here.
         // #336: the rig runs in the vertex stage, which has no gl_FragCoord -- it must hand the cluster lookup

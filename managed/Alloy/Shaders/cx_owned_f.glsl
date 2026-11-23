@@ -20,6 +20,15 @@ uniform float uAlphaCut;
 // one value and the sky changes it at most once per role.
 uniform vec3 uTint;
 layout(location = 0) out vec4 frag;
+#ifndef CX_GLOW_WRITE
+#define CX_GLOW_WRITE 0
+#endif
+// The scene target is LINEAR, so the texel's display-space encode comes off; the 8-bit glow layer holds
+// display space as the stock target does, so there the texel goes in as it is. CxLinear's exponent.
+vec3 CxOwnedAlbedo(vec3 tinted, bool glow)
+{
+    return glow ? tinted : pow(max(tinted, vec3(0.0)), vec3($SRGB$));
+}
 #include "cx_fogdecl.glsl"
 #include "cx_fogmix.glsl"
 #include "cx_oitout.glsl"
@@ -28,11 +37,7 @@ void main()
     if (uViz == 4) { frag = vec4(1.0, 0.0, 1.0, 1.0); return; }
     vec4 t = texture(uTex, vUV, uLodBias);
     if (uAlphaCut >= 0.0 && t.a <= uAlphaCut) discard;
-    // #132: the target is LINEAR, so the texel's display-space encode comes off here too -- the
-    // probe and the frame want the same thing now. Same exponent AlloyLights.CxLinear uses,
-    // spelled out because this stage does not include that lib.
-    vec3 tinted = t.rgb * uTint;
-    vec3 rgb = pow(max(tinted, vec3(0.0)), vec3($SRGB$));
+    vec3 rgb = CxOwnedAlbedo(t.rgb * uTint, CX_GLOW_WRITE != 0);
     // the sky's horizon band only -- an unlit PART is never fogged (vanilla compiles it FOG 0)
     if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);
     frag = CxOitOut(vec4(rgb, t.a * vAlpha));

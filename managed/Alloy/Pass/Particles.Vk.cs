@@ -26,6 +26,9 @@ internal static unsafe partial class Particles
     internal const int VkBlend = ClsBlend;
     /// <summary>The additive class, and the punch-through one that writes depth.</summary>
     internal const int VkAdd = ClsAdd, VkPunch = ClsPunch;
+    /// <summary>The class draws into the display-space glow layer, as the stock client adds it to its 8-bit target,
+    /// and not into the linear scene: the additive class alone.</summary>
+    internal static bool VkInGlow(int cls) => cls == VkAdd;
     /// <summary>The alpha cut of the punch-through class and of every other.</summary>
     internal const float VkPunchCut = PunchDiscard, VkNoCut = NoDiscard;
 

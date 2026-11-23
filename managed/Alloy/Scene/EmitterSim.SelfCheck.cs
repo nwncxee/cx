@@ -295,6 +295,7 @@ internal static unsafe partial class EmitterSim
         ParamCacheSelfCheck(check);
         RadiusSelfCheck(log);
         ParticleUploadExamples(log);
+        DetonateExamples(log);
         NoTextureSelfCheck(log);
 
         Reset();

@@ -59,6 +59,9 @@ internal static class TextureSlots
     /// <summary>The precipitation the taa stage's copy-out composites after the resolve. <see cref="PostBloom"/>'s unit:
     /// the copy-out reads no bloom.</summary>
     internal const uint PostWx = PostBloom;
+    /// <summary>The additive particles' display-space layer at the resolve. <see cref="PostHist"/>'s unit: the resolve
+    /// reads no history.</summary>
+    internal const uint PostGlow = PostHist;
     /// <summary>The SCENE's environment map, which vanilla's water reflects. Shares
     /// <see cref="Probe"/>'s unit -- the water program stopped sampling the probe when the port replaced
     /// Alloy's own reflection with stock's, so the two are never live in one program. A sampler2D here and
@@ -305,6 +308,7 @@ internal static class TextureSlots
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uBloom;"), $"{PostBloom} uBloom");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uDepth;"), $"{PostDepth} uDepth");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uOverlay;"), $"{PostOverlay} uOverlay");
+        check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uGlow;"), $"{PostGlow} uGlow");
         // #375: the post stack reuses the resolve's two units, after it and in the same bracket.
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uSrc;"), $"{PostHdr} uSrc (post stack)");
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uDepth;"), $"{PostBloom} uDepth (post stack)");

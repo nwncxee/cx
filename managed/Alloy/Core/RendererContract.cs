@@ -356,7 +356,7 @@ internal static class RendererContract
                   // ...while the ambient hemisphere keeps the RAW dot -- the hemisphere is Alloy's (stock's
                   // ambient is flat), and wrapping it would move every surface's shade side.
                   && OwnedLitFsMain.Contains("mix(0.15, 1.0, sunRaw)")
-                  // ...and the fullbright stage must DECODE, unconditionally: #132 made the target linear,
+                  // ...and the fullbright stage must DECODE for the scene: #132 made the target linear,
                   // so a stage that passed its display-space texel through would be wrong by a gamma
                   // wherever the engine is not drawing beside it.
                   && OwnedFs.Contains("vec3($SRGB$)") && OwnedFs.Contains("t.rgb * uTint") && !OwnedFs.Contains("uCapture")

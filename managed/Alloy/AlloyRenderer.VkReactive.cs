@@ -15,6 +15,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This frame's reactive mask -- the passes' accumulated coverage, zero where none of them drew.</summary>
     internal static ImageId VkReactiveMask => _capturing ? default : _vkc.React;
 
+    /// <summary>This frame's glow layer, or null when no additive particle drew into it this frame.</summary>
+    internal static ImageId VkGlowLayer => !_capturing && _vkc.GlowSeq == FrameSeq ? _vkc.Glow : default;
+
     /// <summary>The mask attachment the passes draw into beside the scene colour: loaded, because each of them
     /// adds to what the ones before it left.</summary>
     private static ColorAttachment VkReactiveAttach(VkColourState c)

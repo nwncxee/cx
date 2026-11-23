@@ -30,7 +30,7 @@ internal static unsafe partial class PostChainVk
         public float Strength;
         public PostChain.GradeTerms Grade;
         public float Dither;
-        public int Viz, OverlayOn;
+        public int Viz, OverlayOn, GlowOn;
     }
 
     /// <summary><c>cx_resolve_f</c>'s own push members, each beside the field that fills it.</summary>
@@ -49,7 +49,8 @@ internal static unsafe partial class PostChainVk
             VkPush.Of("float", "uAcesMix", ref p, ref p.Grade.AcesMix),
             VkPush.Of("float", "uDither", ref p, ref p.Dither),
             VkPush.Of("int", "uViz", ref p, ref p.Viz),
-            VkPush.Of("int", "uOverlayOn", ref p, ref p.OverlayOn));
+            VkPush.Of("int", "uOverlayOn", ref p, ref p.OverlayOn),
+            VkPush.Of("int", "uGlowOn", ref p, ref p.GlowOn));
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
@@ -118,7 +119,7 @@ internal static unsafe partial class PostChainVk
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
         ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.PostVel, ["uMask"] = TextureSlots.PostHdr,
-        ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
+        ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx, ["uGlow"] = TextureSlots.PostGlow,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
@@ -129,7 +130,8 @@ internal static unsafe partial class PostChainVk
                                            ImageId Hist = default, ImageId Vel = default, bool HistLinear = false,
                                            ImageId Mask = default, ImageId Edges = default, ImageId Area = default,
                                            ImageId Search = default, ImageId Weights = default,
-                                           BufferBinding Storage = default, ImageId React = default, ImageId Wx = default);
+                                           BufferBinding Storage = default, ImageId React = default, ImageId Wx = default,
+                                           ImageId Glow = default);
 
     /// <summary>What the resolve tells sky from scene by: the world depth, sky where it is 0, or (<paramref name="Cover"/>)
     /// a sky coverage from 0 to 1 laid on the colour it grades. <paramref name="Fogged"/>: the fog already lies on bare sky.</summary>
@@ -170,6 +172,7 @@ internal static unsafe partial class PostChainVk
         LooseBlock.Set(r.InvVp, invVp);
         LooseBlock.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
+        ImageId glow = AlloyRenderer.VkGlowLayer;
         var push = new ResolvePush
         {
             SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
@@ -177,6 +180,7 @@ internal static unsafe partial class PostChainVk
             SkyCover = sky.Cover ? 1 : 0,
             SkyFogged = sky.Fogged ? 1 : 0,
             OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
+            GlowOn = glow.IsNull ? 0 : 1,
             Strength = bloom ? Post.Bloom.V : 0f,
             Grade = PostChain.GradeTerms.Now,
             Dither = last ? PostChain.DitherLsb : 0f,
@@ -195,7 +199,7 @@ internal static unsafe partial class PostChainVk
         cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, load, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
-             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image), log);
+             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image, Glow: glow), log);
         cl.EndLabel();
         if (!s.Said)
         {
@@ -409,6 +413,7 @@ internal static unsafe partial class PostChainVk
                 "uVel" => (t.Vel, s.Linear),
                 "uReact" => (t.React, s.Linear),
                 "uWx" => (t.Wx, s.Linear),
+                "uGlow" => (t.Glow, s.Linear),
                 "uMask" => (t.Mask, s.Linear),
                 "uEdges" => (t.Edges, s.Linear),
                 "uArea" => (t.Area, s.Linear),

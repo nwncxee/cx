@@ -124,6 +124,8 @@ internal static partial class GpuGolden
         ShadingParitySelfCheck(vk, check, log);
         NegativeLightSelfCheck(vk, check, log);
         FaceNormalApprovedSelfCheck(vk, check, log);
+        ParticleLightSelfCheck(vk, check, log);
+        GlowLayerSelfCheck(vk, check, log);
         ReflShadeSelfCheck(vk, check, log);
         AmbientClassApprovedSelfCheck(vk, check, log);
         SofteningApprovedSelfCheck(vk, check, log);
@@ -203,15 +205,19 @@ internal static partial class GpuGolden
         return got;
     }
 
-    /// <summary>The body of the one function <paramref name="signature"/> opens, from <paramref name="src"/>:
-    /// through the first brace alone on a line, which is how every function in these libraries ends. Empty when
-    /// the library no longer declares it, which each golden reports rather than passing.</summary>
+    /// <summary>The one function <paramref name="signature"/> opens, from <paramref name="src"/>, through the brace
+    /// that closes its body, so a one-line function brings nothing after it. Empty when the library no longer
+    /// declares it, which each golden reports rather than passing.</summary>
     private static string Function(string src, string signature)
     {
         int at = src.IndexOf(signature, StringComparison.Ordinal);
-        if (at < 0) return "";
-        int end = src.IndexOf("\n}\n", at, StringComparison.Ordinal);
-        return end < 0 ? "" : src[at..(end + 3)];
+        int open = at < 0 ? -1 : src.IndexOf('{', at);
+        for (int i = open, depth = 0; i >= 0 && i < src.Length; i++)
+        {
+            depth += src[i] == '{' ? 1 : src[i] == '}' ? -1 : 0;
+            if (depth == 0) return src[at..(i + 1)] + "\n";
+        }
+        return "";
     }
 
     /// <summary>The whole line declaring <paramref name="name"/> in <paramref name="src"/>, empty when there is

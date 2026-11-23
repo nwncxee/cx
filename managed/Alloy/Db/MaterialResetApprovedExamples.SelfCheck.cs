@@ -16,6 +16,7 @@ internal static partial class DbSelfCheck
     {
         var check = new Checker(log, "DbSelfCheck.MaterialResetApprovedExamples.SelfCheck");
         ExtenderLog? savedTreeLog = PartTree.Log, savedArenaLog = MeshArena.Log;
+        TreeHooks savedHooks = TreeHooks.Save();
         PartTree.Log = null;
         MeshArena.Log = null;
         try
@@ -33,6 +34,7 @@ internal static partial class DbSelfCheck
             PartTree.ResetForCheck();
             MeshArena.ResetForCheck();
             MeshArena.Log = savedArenaLog;
+            savedHooks.Restore();
         }
         log.Info(check.Ok ? "DbSelfCheck.MaterialResetApprovedExamples.SelfCheck: passed"
                           : "DbSelfCheck.MaterialResetApprovedExamples.SelfCheck: FAILED");

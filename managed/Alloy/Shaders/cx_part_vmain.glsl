@@ -1,3 +1,10 @@
+// What the light rig at a lit particle's vertex makes of its colour. The stock client draws every particle unlit,
+// so that is the floor: a dark area leaves a particle as stock draws it, and light past 1 brightens and tints it.
+vec3 CxPartLight(vec3 rig)
+{
+    return max(rig, vec3(1.0));
+}
+
 
 vec3 CxSafeNorm(vec3 v)
 {
@@ -60,6 +67,6 @@ void main()
         vec3 point = CxClusteredDiffuse(world, vNrm, max(-cv.z, 1e-3));
         // the 0.15 floor and the sun-facing wrap, as every other owned stage runs them (a content
         // lighting fork's term; stock's ambient is flat)
-        vLight = CxLitFloor(uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point);
+        vLight = CxPartLight(uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point);
     }
 }

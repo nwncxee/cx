@@ -298,6 +298,24 @@ public static class TileBuildCheck
         check.Expect(SceneDb.TileFlame1[t].IsNull, "clearing the flames empties the slot");
         SceneDb.Objects.Free(flame);
         TileBuild.ResetAll();
+
+        // Given a tile placed in a live scene
+        // When the game hands it a source-light flame
+        // Then the flame is on the scene's member list, the list the animation step walks
+        DbId scene = SceneDb.Scenes.Alloc();
+        TileBuild.InitGrid(scene, 8, 8, 0, 10f);
+        TileBuild.SetTileset(Height);
+        t = TileBuild.Place(scene, def, c, 1, 0);
+        flame = SceneDb.Objects.Alloc();
+        SceneDb.ObjKindOf[flame.Index] = ObjKind.Model;
+        TileBuild.SetTileFlames(scene, c, flame, default);
+        check.Expect(t >= 0 && SceneDb.TileFlame1[t] == flame && DbScene.Members(scene).IndexOf(flame) >= 0,
+            "a tile flame joins its scene's member list, so it animates (a flame left off it froze at its first pose and drew nothing)");
+        DbScene.Leave(scene, flame);
+        SceneDb.Objects.Free(flame);
+        TileBuild.ResetAll();
+        SceneDb.SceneObjects[scene.Index] = null;
+        SceneDb.Scenes.Free(scene);
     }
 
     /// <summary>A square tile's box cannot catch a sign error in the orientation quaternion, so this one is

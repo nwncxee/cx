@@ -11,10 +11,10 @@ namespace CX.Alloy.Db;
 /// hit sounds, weapon swaps, detonation and the blur all ride on it.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Raise <paramref name="name"/> at the object's callbacks. The list is the ENGINE's own, on the
-    /// object's facade, so this hands the event to seam-obj's <c>Gob::DoEvent</c> entry -- which carries the
-    /// <c>UpdateScenes</c> propagation as well as the dispatch. An object the game holds no facade for has no
-    /// callbacks either, so the event reaches nobody, counted on <c>[dbanim]</c>.</summary>
+    /// <summary>Raise <paramref name="name"/> at the object's callbacks: its Explosion emitters' (Alloy's, so a
+    /// facade is not needed), then the ENGINE's list on the facade, through seam-obj's <c>Gob::DoEvent</c> entry
+    /// and its <c>UpdateScenes</c> propagation. With no facade the engine's list is missing, counted on
+    /// <c>[dbanim]</c>.</summary>
     private static void EventFire(DbId obj, byte* name, nint data)
     {
         if (!SceneDb.Objects.Valid(obj) || name == null) return;
@@ -37,6 +37,7 @@ public static unsafe partial class DbAnim
         _eventDepth++;
         try
         {
+            EmitterSim.DetonateEvent(obj, name);
             // THE one list: the game registers through Gob::RegisterCallBack, seam-obj's slot 11, which keeps
             // the engine's own CExoArrayList<CallBack*> at the shell's +0x460. An event delivered to a list of
             // ours would reach nobody.
