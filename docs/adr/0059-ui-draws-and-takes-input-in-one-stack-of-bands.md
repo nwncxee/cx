@@ -1,4 +1,4 @@
-# ADR-0058: Amending ADR-0004, CX windows, native panels and NUI draw and take input in one stack of bands.
+# ADR-0059: Amending ADR-0004, CX windows, native panels and NUI draw and take input in one stack of bands.
 
 Category: Architecture.
 
