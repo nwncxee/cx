@@ -10,7 +10,7 @@ namespace CX.Services.Inventory;
 internal static class InventoryKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, DragDrop, Search, Kilograms, Placed;
+    internal static readonly Knob<bool> Enabled, DragDrop, Search, Kilograms, AboveNui, Placed;
     internal static readonly Knob<string> Mode;
     internal static readonly Knob<float> Size, X, Y;
     internal static readonly TextStyle Text;
@@ -36,6 +36,7 @@ internal static class InventoryKnobs
                              help: "Hovering the weight shows it in kilograms (1 lb = 0.4536 kg). The window itself keeps the game's pounds.");
         DragDrop = G.Toggle("dropground", "Drag out to drop", true,
                             help: "Releasing a dragged item over the world acts as the stock panel does: on the ground it drops there, on another creature it offers a trade, on you or your associate a potion is drunk. Off: only quickbar drops leave the window.");
+        AboveNui = G.Toggle("abovenui", "Draw above NUI", false, help: "Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it.");
         G.Section("Text");
         Text = new TextStyle(G, "the inventory", sized: false, changed: InventoryService.Relayout, tier: Tier.ChatOnly);
         X = G.Slider("x", "x", 0f, RectMax, 1f, 0f, tier: Tier.Hidden);

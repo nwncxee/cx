@@ -147,10 +147,8 @@ internal static unsafe class AlloyCamera
         if (cam == IntPtr.Zero) return;
         IntPtr scene = new Camera(cam).Scene.Ptr;
         if (scene == IntPtr.Zero) return;   // Camera::RenderScene's own first test: no scene, no view
-        // world-scene-discriminator: Scene+0x188 (the static tile BSP root) is non-null iff this is the
-        // world/area scene, and Scene::Render forks on the same field.
         var sc = new CX.Engine.Scene(scene);
-        bool world = sc.BspRoot != IntPtr.Zero;
+        bool world = sc.IsWorld;
         Build(cam, (byte*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref sc.Name), out _activeView);
         if (world)
         {

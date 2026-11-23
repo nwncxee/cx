@@ -74,6 +74,7 @@ public sealed class ChatConfig
             if (w.Locked is bool lk) Put(p + "locked", lk ? "1" : "0");
             if (w.TellsHere is bool th) Put(p + "tellshere", th ? "1" : "0");
             if (w.ClickThrough) Put(p + "clickthrough", "1");
+            if (w.AboveNui) Put(p + "abovenui", "1");
             for (int ti = 0; ti < w.Tabs.Count; ti++)
             {
                 var (label, mask, pin, kept) = w.Tabs[ti];
@@ -165,6 +166,7 @@ public sealed class ChatConfig
             case "locked": w.Locked = val != "0"; break;
             case "tellshere": w.TellsHere = val != "0"; break;
             case "clickthrough": w.ClickThrough = wi > 0 && val != "0"; break;
+            case "abovenui": w.AboveNui = val != "0"; break;
         }
     }
 

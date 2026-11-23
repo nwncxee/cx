@@ -195,8 +195,9 @@ public sealed unsafe partial class ChatService
     /// <summary>True when a NUI window covers the box's centre, so the line would be typed unseen.</summary>
     internal static bool Hidden(ChatWindow w) => HiddenAt(w, UiInputService.NuiCovers(w.X + w.W * 0.5f, w.Y + w.H * 0.5f));
 
-    /// <summary>Whether <paramref name="w"/>'s typed line would be unseen, given whether a NUI window covers its centre.</summary>
-    internal static bool HiddenAt(ChatWindow w, bool nuiCovers) => nuiCovers;
+    /// <summary>Whether <paramref name="w"/>'s typed line would be unseen: a NUI window covers its centre and the
+    /// window draws under NUI.</summary>
+    internal static bool HiddenAt(ChatWindow w, bool nuiCovers) => nuiCovers && !w.AboveNui;
 
     /// <summary>
     /// Release the keyboard. <paramref name="submit"/> recalls the line into history; either way the
@@ -306,8 +307,9 @@ public sealed unsafe partial class ChatService
     }
 
     /// <summary>Whether chat's window takes <paramref name="key"/>: while chat owns the keyboard, as <see cref="WantsKey"/>
-    /// says with <paramref name="typing"/> and the gear panel <paramref name="settings"/>.</summary>
-    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings) => Owns(typing, settings);
+    /// says with <paramref name="typing"/> and the gear panel <paramref name="settings"/>, and Esc while that panel is open.</summary>
+    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings)
+        => Owns(typing, settings) || (key == KeyEsc && settings.Open);
 
     /// <summary>Dispatch a control/nav key to the edit line while the box owns the keyboard.</summary>
     public static void RouteKey(uint key, int mods)
@@ -326,6 +328,11 @@ public sealed unsafe partial class ChatService
             DirtyAll();
             SaveConfig();   // a keyboard commit has no paired mouse-up to persist on
             SyncFieldKeyboard(); Rebuild();
+            return;
+        }
+        if (!IsTyping && _settings.Open)
+        {
+            if (key == KeyEsc) { _settings.Reset(); Rebuild(); }
             return;
         }
         bool shift = (mods & KmodShift) != 0;

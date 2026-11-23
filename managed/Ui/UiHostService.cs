@@ -269,7 +269,7 @@ public sealed unsafe class UiHostService : IExtenderService
         (*_viewSlot)(cam);
         if (CX.Alloy.Renderer.On || cam == IntPtr.Zero) return;
         IntPtr scene = new CX.Engine.Camera(cam).Scene.Ptr;
-        if (scene == IntPtr.Zero || new CX.Engine.Scene(scene).BspRoot == IntPtr.Zero) return;   // a panel's 3D view
+        if (scene == IntPtr.Zero || !new CX.Engine.Scene(scene).IsWorld) return;
         NkFrame.World(new NkSink(0f), ref _nk.UnderDrawn);
     }
 

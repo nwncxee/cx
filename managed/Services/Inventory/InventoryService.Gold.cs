@@ -32,6 +32,7 @@ public sealed unsafe partial class InventoryService
     {
         Focusable = false,
         CapturesPointer = true,
+        RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = DrawGold,
         OnMouseButton = GoldMouseButton,
         OnMouseMotion = (x, y) => _gold.Open ? _gold.MouseMove(x, y) : false,

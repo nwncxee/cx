@@ -41,12 +41,13 @@ public sealed unsafe class KnobPanelService : IExtenderService
         // clears WantsKeyboard silently, which would leave the engine gate up with nobody to drop it). Registered
         // after Chat and Dialog by discovery order, so it paints above them; SuppressChords while open puts it in
         // the modal press pass ahead of a dialog it overlaps.
-        _window = NewWindow();
+        _window = NewWindow(_panel);
         log.Info("KnobPanelService: settings panel registered (/settings opens it)");
     }
 
-    /// <summary>The settings panel's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
-    internal static Window NewWindow() => new(0, 0, 0, 0)
+    /// <summary>The window <paramref name="panel"/> draws in, registered with the UI host on creation; the service passes
+    /// its own panel and the self-checks one of their own.</summary>
+    internal static Window NewWindow(KnobPanel panel) => new(0, 0, 0, 0)
     {
         Focusable = false,
         DrawContent = Draw,
@@ -56,7 +57,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
         OnKey = OnKey,
         OnText = OnText,
         HitTestOverride = (px, py) => _panel.Open && Visible && _panel.Contains(px, py),
-        PopupOpen = static () => _panel.Open && _panel.Drop.Open,
+        PopupOpen = () => panel.PopupOpen,
     };
 
     /// <summary>Open the panel: bake its faces, centre it in the last presented viewport, take the keyboard, and show

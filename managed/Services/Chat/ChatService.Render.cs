@@ -43,20 +43,41 @@ public sealed unsafe partial class ChatService
         log.Info("ChatService: registered as a framework Window (content-draw + routed input), \"/\" opens a command line");
     }
 
-    /// <summary>The framework Window whose content is the whole chatbox: its draw, routed input and the hit-test over
-    /// every chat surface.</summary>
-    internal static Window NewWindow() => new(0, 0, 0, 0)
+    /// <summary>The two framework Windows the chatbox draws and takes input through: one above NUI for the chat
+    /// windows set to draw there, registered first, and the one under NUI for the rest, which is returned.</summary>
+    internal static Window NewWindow()
+    {
+        _ = Surface(true);
+        return Surface(false);
+    }
+
+    /// <summary>The framework Window for the chat windows on <paramref name="above"/>'s side of NUI: their draw, routed
+    /// input, hit-test and open lists. The settings panel goes with the focused window's side.</summary>
+    private static Window Surface(bool above) => new(0, 0, 0, 0)
     {
         Focusable = false,
-        DrawContent = OnFrame,
+        Layer = above ? UiLayer.AboveNui : UiLayer.BelowNui,
+        DrawContent = above ? OnFrameAbove : OnFrame,
         OnMouseButton = OnMouseButton,
         OnMouseMotion = OnMouseMotion,
         OnMouseWheel = OnMouseWheel,
         OnKey = OnChatKey,
         OnText = InsertUtf8,
-        HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
-        PopupOpen = PopupOpen,
+        HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py, above),
+        PopupOpen = () => PopupOpen(above),
     };
+
+    /// <summary>The above-NUI chat surface's content draw: the frames and settings panel of the windows set above NUI.
+    /// The per-frame edges run once, in <see cref="OnFrame"/>.</summary>
+    private static void OnFrameAbove()
+    {
+        if (!GameGate.InGame) return;
+        ChatRenderer.Draw(true);
+        if (SettingsAbove()) DrawSettings();
+    }
+
+    /// <summary>Whether the settings panel draws and takes input above NUI: it belongs to the focused window.</summary>
+    private static bool SettingsAbove() => _layout != null && _layout.Focused.AboveNui;
 
     private static Window? _uiWindow;
 
@@ -169,8 +190,8 @@ public sealed unsafe partial class ChatService
             }
             PollGameClock();
             KeepOnScreen();
-            ChatRenderer.Draw();
-            DrawSettings();
+            ChatRenderer.Draw(false);
+            if (!SettingsAbove()) DrawSettings();
             // Dialog and the quickbar draw themselves: each registers its own framework Window and UiHostService's
             // z-order roll-call invokes their content-draw after ours. No cross-call from here.
         }
@@ -348,6 +369,7 @@ public sealed unsafe partial class ChatService
             footer, footer ? Edit.Text : "", footer ? Edit.Cursor : 0, grip,
             footer ? Edit.Selection : null, chrome: atlas);
         frame.ApplyResidual = focused && win.AnimEnabled;
+        frame.AboveNui = win.AboveNui;
         return frame;
     }
 

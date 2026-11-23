@@ -123,6 +123,7 @@ public sealed unsafe partial class QuickbarService
         var w = new Window(0, 0, 0, 0)
         {
             Focusable = false,
+            RaiseAboveNui = static () => QuickbarKnobs.AboveNui.V,
             CapturesPointer = true,
             DrawContent = DrawBar,
             DrawOver = DrawOverBar,

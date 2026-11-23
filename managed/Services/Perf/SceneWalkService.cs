@@ -94,7 +94,7 @@ public sealed unsafe class SceneWalkService : IExtenderService
     private static long OnBsp(IntPtr scene)
     {
         var s = _s;
-        bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
+        bool world = new CX.Engine.Scene(scene).IsWorld;
         if (world && s.SkipBsp && CX.Alloy.AlloyGate.Alloy) return 0;
         bool time = world && s.Timed;
         long t = time ? FrameZones.Now : 0;
@@ -107,7 +107,7 @@ public sealed unsafe class SceneWalkService : IExtenderService
     private static long OnBuckets(IntPtr scene)
     {
         var s = _s;
-        bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
+        bool world = new CX.Engine.Scene(scene).IsWorld;
         // Under 3 the two skips travel together: the bucket build's inputs are the lists the BSP visitor
         // fills, so re-arming the walk without re-arming this would leave an A/B reading half a frame.
         if (world && s.SkipBuckets && CX.Alloy.AlloyGate.Alloy) return 0;

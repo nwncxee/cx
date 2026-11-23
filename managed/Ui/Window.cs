@@ -34,10 +34,20 @@ public sealed class Window
     /// Compared within a layer only: <see cref="Order"/> is the whole-screen order.</summary>
     public int Z { get; internal set; }
 
-    /// <summary>Which side of the vanilla GUI and of NUI this window draws on. Set before the first frame; the window
-    /// then keeps its <see cref="Z"/> order inside that layer, and a higher layer is above every lower one for
-    /// draw, hit-test and input alike.</summary>
-    public UiLayer Layer = UiLayer.BelowNui;
+    /// <summary>Which side of the vanilla GUI and of NUI this window draws on: <see cref="UiLayer.AboveNui"/> while
+    /// <see cref="RaiseAboveNui"/> says so, else the layer it was given. The window keeps its <see cref="Z"/> order
+    /// inside that layer, and a higher layer is above every lower one for draw, hit-test and input alike.</summary>
+    public UiLayer Layer
+    {
+        get => RaiseAboveNui != null && RaiseAboveNui() ? UiLayer.AboveNui : _layer;
+        set => _layer = value;
+    }
+
+    private UiLayer _layer = UiLayer.BelowNui;
+
+    /// <summary>The player's Draw above NUI setting for this window, read every frame so a change moves it at once.
+    /// Null for a window with no such setting.</summary>
+    public Func<bool>? RaiseAboveNui;
 
     /// <summary>The distance in <see cref="Order"/> between one layer and the next. Far past any z the counter reaches.</summary>
     private const int LayerBias = 1 << 28;

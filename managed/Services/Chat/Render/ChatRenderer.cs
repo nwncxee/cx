@@ -78,10 +78,10 @@ public static unsafe class ChatRenderer
 
     // ---- draw ---------------------------------------------------------------------------------
 
-    /// <summary>Hot: record all published frames (one per chat window). Applies the fade/slide/scroll per frame;
+    /// <summary>Hot: record the published frames (one per chat window) on <paramref name="above"/>'s side of NUI. Applies the fade/slide/scroll per frame;
     /// the slide residual only moves the focused window's body (<see cref="RenderFrame.ApplyResidual"/>), and a
     /// settled frame records last frame's animated vertices as they are. Zero-alloc in every path.</summary>
-    public static void Draw()
+    public static void Draw(bool above)
     {
         Frame[] frames = _frames;
         if (frames.Length == 0 || _atlas == null || _log == null) return;
@@ -96,7 +96,7 @@ public static unsafe class ChatRenderer
         {
             Frame f = frames[i];
             RenderFrame rf = f.Rf;
-            if (rf.Count == 0) continue;
+            if (rf.Count == 0 || rf.AboveNui != above) continue;
 
             float residual = rf.ApplyResidual ? globalResidual : 0f;
             System.DateTime ls = rf.LastScroll;

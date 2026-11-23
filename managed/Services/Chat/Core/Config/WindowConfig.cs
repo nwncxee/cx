@@ -34,6 +34,8 @@ public sealed class WindowConfig
     public bool? TellsHere;
     /// <summary>The pointer goes through the window; never set on Main (window 0).</summary>
     public bool ClickThrough;
+    /// <summary>The window draws above NUI; off unless the player switched it on.</summary>
+    public bool AboveNui;
 
     /// <summary>Persisted tabs: (label, channel mask as hex, pinned player name, kept). Empty = use the hardcoded defaults.</summary>
     public readonly List<(string Label, uint Mask, string Pin, bool Kept)> Tabs = new();
@@ -55,6 +57,7 @@ public sealed class WindowConfig
         wc.Locked = win.Locked;
         wc.TellsHere = win.TellsHere;
         wc.ClickThrough = win.ClickThrough;
+        wc.AboveNui = win.AboveNui;
         return wc;
     }
 
@@ -85,5 +88,6 @@ public sealed class WindowConfig
         if (Locked is bool lk) win.Locked = lk;
         if (TellsHere is bool th) win.TellsHere = th;
         win.ClickThrough = ClickThrough;
+        win.AboveNui = AboveNui;
     }
 }

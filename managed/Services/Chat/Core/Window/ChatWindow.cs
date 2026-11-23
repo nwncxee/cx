@@ -146,6 +146,8 @@ public sealed partial class ChatWindow
     public bool TellsHere;
     /// <summary>The pointer goes through this window to the game, and hovering it reveals nothing. Never on Main.</summary>
     public bool ClickThrough;
+    /// <summary>The window draws over NUI windows and takes the clicks where they overlap.</summary>
+    public bool AboveNui;
 
     /// <summary>Pass-1 wrap cache: block heights + content height, keyed on (width, content, settings).
     /// Volatile swap so concurrent builds see a consistent snapshot.</summary>

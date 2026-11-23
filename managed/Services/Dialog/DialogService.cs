@@ -28,6 +28,7 @@ public sealed unsafe partial class DialogService : IExtenderService
     {
         Focusable = false,
         CapturesPointer = true,
+        RaiseAboveNui = static () => DialogKnobs.AboveNui.V,
         DrawContent = Draw,
         OnMouseButton = OnMouseButton,
         OnMouseMotion = OnMouseMotion,

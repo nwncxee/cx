@@ -160,11 +160,13 @@ public static partial class UiHost
 
     /// <summary>Hover-to-focus resolution: when <see cref="HoverToFocus"/> is set, focus the topmost
     /// focusable window under the point as the pointer moves over it. No-op (returns null) in click-to-focus
-    /// mode; empty space never releases focus on hover (only a click does).</summary>
-    public static Window? HoverFocusAt(float px, float py)
+    /// mode; empty space never releases focus on hover (only a click does), and a window under NUI is skipped
+    /// where <paramref name="nuiCovers"/> says a NUI window covers the point.</summary>
+    public static Window? HoverFocusAt(float px, float py, bool nuiCovers = false)
     {
         if (!HoverToFocus) return null;
         var w = HitTestFocusable(px, py);
+        if (w != null && nuiCovers && w.Band < UiLayer.AboveNui) return null;
         if (w != null) Focus(w);
         return w;
     }

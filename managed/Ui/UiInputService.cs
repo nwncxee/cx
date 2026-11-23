@@ -289,7 +289,7 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     /// <summary>The pointer moved with hover-to-focus on, over what <paramref name="under"/> finds there.</summary>
-    internal static void HoverMoved<T>(int mx, int my, in T under) where T : struct, IPointerUnder => UiHost.HoverFocusAt(mx, my);
+    internal static void HoverMoved<T>(int mx, int my, in T under) where T : struct, IPointerUnder => UiHost.HoverFocusAt(mx, my, under.Nui);
 
     // ---- focus edges ----------------------------------------------------------------------------
     // self is CClientExoApp* -- cache it so the player resolver can walk to the live in-game GUI.

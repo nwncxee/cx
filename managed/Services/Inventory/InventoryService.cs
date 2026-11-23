@@ -76,6 +76,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
     {
         Focusable = false,
         CapturesPointer = true,
+        RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = Draw,
         OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
         OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
