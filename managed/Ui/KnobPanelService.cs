@@ -55,9 +55,9 @@ public sealed unsafe class KnobPanelService : IExtenderService
         log.Info("KnobPanelService: settings panel registered (/settings opens it)");
     }
 
-    /// <summary>Open the panel: bake its faces, centre it in the last presented viewport, take the keyboard. Cold,
-    /// input thread; a second call while open unfolds a collapsed panel and re-takes the keyboard.</summary>
-    public static void Open()
+    /// <summary>Open the panel: bake its faces, centre it in the last presented viewport, take the keyboard, and show
+    /// <paramref name="at"/>'s submenu when given. Cold, input thread; a second call while open unfolds a collapsed panel.</summary>
+    public static void Open(KnobGroup? at = null)
     {
         if (_window == null) { _log?.Info("KnobPanelService: /settings -- no window (framework stood down)"); return; }
         RequestFaces();
@@ -70,6 +70,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
             _log?.Info($"KnobPanelService: opened {_panel.W}x{_panel.H} at ({_panel.X},{_panel.Y}) in {vw}x{vh}, face {_facePx}px");
         }
         if (_panel.Collapsed) { _panel.ToggleCollapse(); SyncRect(); }
+        if (at != null) { _panel.Show(at); SyncRect(); }
         SyncKeyboard();
     }
 

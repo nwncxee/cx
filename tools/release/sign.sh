@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Signs and publishes the draft release that release.yml built for a tag. It downloads the zips and the
 # SHA256SUMS CI wrote, checks each zip's provenance and checksum, Authenticode-signs version.dll in the
-# Windows zip when CI left it unsigned, signs SHA256SUMS with the release key, uploads what changed and
-# publishes the draft. Run it on the maintainer's machine, never in CI, so a compromised CI can't sign. The
-# key is RELEASE_SIGN_KEY (tools/paths.py). Its public half is packaging/allowed_signers, which players
+# Windows zip when CI left it unsigned, signs SHA256SUMS with the release key, writes and signs cx-update (the
+# release notice CX checks for, its version and changelog lines), uploads what changed and publishes the draft.
+# Run it on the maintainer's machine, never in CI, so a compromised CI can't sign. The key is RELEASE_SIGN_KEY
+# (tools/paths.py). Its public half is packaging/allowed_signers, which players
 # verify against. The Authenticode key is Certum's, in SimplySign's cloud: the script asks for a 6-digit code
 # from the SimplySign app, and CERTUM_EMAIL names the account (it asks for that too when it is unset).
 #
@@ -74,6 +75,18 @@ fi
 
 ssh-keygen -Y sign -f "$key" -n file SHA256SUMS
 ssh-keygen -Y verify -f "$signers" -I cx-releases -n file -s SHA256SUMS.sig < SHA256SUMS
+
+# The release notice CX reads once a session (managed/Services/Update): the tag and the first ten lines under
+# the notes' Changes heading, signed under its own namespace so no other signature of the key can pose as one.
+{
+  echo "cx-update 1"
+  echo "version $tag"
+  gh release view "$tag" -R "$repo" --json body --jq .body | tr -d '\r' |
+    awk '/^## Changes/ { on = 1; next } on && /^- / && n++ < 10 { print "change " substr($0, 3) }'
+} > cx-update
+ssh-keygen -Y sign -f "$key" -n cx-update cx-update
+ssh-keygen -Y verify -f "$signers" -I cx-releases -n cx-update -s cx-update.sig < cx-update
+uploads+=(cx-update cx-update.sig)
 
 gh release upload "$tag" -R "$repo" "${uploads[@]}" --clobber
 gh release edit "$tag" -R "$repo" --draft=false

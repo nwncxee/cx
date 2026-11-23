@@ -113,7 +113,7 @@ public sealed unsafe class UiHostService : IExtenderService
     private static bool OnGearButton(bool down, int button, int x, int y)
     {
         if (!GearSurface || !_gear.Contains(x, y)) return false;
-        if (down && button == 1) { _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel"); KnobPanelService.Open(); }
+        if (down && button == 1) { _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel"); KnobPanelService.Open(GearAttention.Menu.BadgeShown(GameGate.AtMainMenu) ? GearAttention.Menu.Target : null); }
         else if (!down && button == 1 && GameGate.OptionsOpen && KnobPanelService.IsOpen) ResumeFromOptions();
         return true;
     }
@@ -179,7 +179,23 @@ public sealed unsafe class UiHostService : IExtenderService
         VertexBatch b = _gearBatch ??= new VertexBatch(_gearFace.SolidU, _gearFace.SolidV);
         b.Reset(_gearFace.SolidU, _gearFace.SolidV);
         _gear.Emit(b, g);
+        EmitBadge(b);
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
+    }
+
+    private static readonly Tooltip _gearTip = new();
+
+    /// <summary>The gear's badge and its tooltip, at the main menu while <see cref="GearAttention.Menu"/> has a reason: the
+    /// disc from the gear's own face, the mark and the text from the default face on the same sheet. Hot, zero-alloc.</summary>
+    private static void EmitBadge(VertexBatch b)
+    {
+        GearAttention a = GearAttention.Menu;
+        GlyphAtlas? text = TextRig.Atlas;
+        if (!a.BadgeShown(GameGate.AtMainMenu) || text == null || _gearFace == null) { _gearTip.Cut(); return; }
+        if (_gearFace.TryGet(MenuGear.DiscCodepoint, out Glyph disc) && text.TryGet('!', out Glyph mark)) _gear.EmitBadge(b, disc, mark);
+        if (_gear.Hovered && a.Tip is { } tip) _gearTip.Hover(tip, tip, _gear.X, _gear.Y, _gear.Y + _gear.H);
+        else _gearTip.Leave();
+        _gearTip.Draw(b, text, text.Ascent, PanelChrome.C(PanelChrome.ListBg), PanelChrome.Tx, TextRig.ViewportW, TextRig.ViewportH);
     }
 
     private static SwapBuffersFn _swapOrig;

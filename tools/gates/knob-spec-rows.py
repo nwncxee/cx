@@ -7,12 +7,14 @@ declaration is a promise the client does not keep.
 Declarations: a group is `<var> = KnobGroup.Declare("<name>", ...)` inside some class, and its rows are the
 factory calls on that var. A class's rows are spread over its partials and one file may hold several classes,
 so a call is attributed to the INNERMOST class whose body contains it, and groups merge per class name across
-files. Three shapes declare keys no factory literal shows, and each cost this census a wrong answer before it
+files. Four shapes declare keys no factory literal shows, and each cost this census a wrong answer before it
 was written down:
   - a `Declare` whose group name is a constructor parameter (the three camera modes) takes one group per
     `new <Class>("<name>"` site;
   - `new TextStyle(G, ..., prefix: "p")` declares `<group>.<p>font` / `typeface` / `outline`;
   - `Quality.Area("x", ...)` declares `quality.x`.
+  - a class whose constructor takes a `KnobGroup` declares its rows on that parameter, and takes the group each
+    `<Class>.Declare(<group var>)` site passes (the release notice's knobs on General's About).
 A group declared with `master:` also declares `<group>.enabled`. A `new KnobGroup(...)` is a self-check's
 throwaway, registered nowhere, so an unattributed factory call is reported only under `-v` and fails nothing.
 
@@ -31,6 +33,7 @@ DECL = re.compile(r'(?:\b(\w++)\s*=\s*)?KnobGroup\.Declare\(\s*(?:"([A-Za-z0-9_.
 FACT = re.compile(r'\b(\w++)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*\(')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 NEWOF = re.compile(r'new\s+(\w+)\s*\(\s*"([a-z0-9]+)"')
+HANDED = re.compile(r'\b(?:private|public|internal)\s+(\w+)\s*\(\s*KnobGroup\s+(\w+)\s*\)')
 TEXTSTYLE = re.compile(r'new\s+(?:[\w.]+\.)?TextStyle\s*(\()\s*(\w+)\s*,')
 CAMERA_MODES = ('chase', 'topdown', 'driving')
 
@@ -130,6 +133,12 @@ for cls, var in dynamic.items():
     for newcls, name in NEWOF.findall(all_text):
         if newcls == cls:
             class_group[cls].add((var, name))
+var_group = {v: g for pairs in list(class_group.values()) for v, g in pairs}
+for m in HANDED.finditer(all_text):
+    cls, param = m.group(1), m.group(2)
+    for site in re.finditer(r'\b' + cls + r'\.Declare\(\s*(?:\w+\.)*(\w+)\s*\)', all_text):
+        if site.group(1) in var_group:
+            class_group[cls].add((param, var_group[site.group(1)]))
 
 ARRAY = re.compile(r'\bNAME\s*=\s*(?:new\s*(?:\w+)?\[\]\s*)?\{([^}]*)\}')
 LITERAL = re.compile(r'"([A-Za-z0-9_.\-]+)"')

@@ -91,6 +91,8 @@
   <!-- The client builds CX is measured against (ClientBuilds): a new client build is a new file here,
        written by tools/update/, read through the "builds/" resource prefix. -->
   <ItemGroup>
+    <EmbeddedResource Include="../packaging/allowed_signers" LogicalName="allowed_signers" />
+    <EmbeddedResource Include="Services/Update/Fixtures/*" LogicalName="update/%(Filename)%(Extension)" WithCulture="false" />
     <EmbeddedResource Include="Framework/Builds/*.tsv" LogicalName="builds/%(Filename)%(Extension)" />
   </ItemGroup>
 
@@ -124,6 +126,10 @@
     <DirectPInvoke Include="cxaudio" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxaudio.a" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxaudio.lib" />
+    <!-- Monocypher (third_party/monocypher): Ed25519 and SHA-512 for the signed release notice. -->
+    <DirectPInvoke Include="cxsig" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxsig.a" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxsig.lib" />
     <!-- native/cxthunk.c: C wrappers for engine functions that throw C++ exceptions, so no managed frame is unwound. -->
     <DirectPInvoke Include="cxthunk" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxthunk.a" />

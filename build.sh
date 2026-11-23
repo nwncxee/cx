@@ -78,6 +78,14 @@ if [ ! -f build/libcxthunk.a ] || [ native/cxthunk.c -nt build/libcxthunk.a ]; t
   rm -f build/libcxthunk.a && ar rcs build/libcxthunk.a build/cxthunk.o
 fi
 
+# The release-notice verifier: Monocypher's Ed25519 and SHA-512 (third_party/monocypher, DirectPInvoke "cxsig").
+MC=third_party/monocypher
+if [ ! -f build/libcxsig.a ] || [ $MC/monocypher.c -nt build/libcxsig.a ] || [ $MC/monocypher-ed25519.c -nt build/libcxsig.a ]; then
+  cc -O2 -fPIC -I$MC -c $MC/monocypher.c -o build/monocypher.o
+  cc -O2 -fPIC -I$MC -c $MC/monocypher-ed25519.c -o build/monocypher-ed25519.o
+  rm -f build/libcxsig.a && ar rcs build/libcxsig.a build/monocypher.o build/monocypher-ed25519.o
+fi
+
 # CX-57: the pinned audio runtime (tools/deps.json, fetched by tools/deps.py: sha256-checked, cached in
 # ~/.cache/cx-deps). OpenAL Soft is built from its release source into its own shared object -- LGPL-2.1, so it
 # ships beside us rather than inside us -- by tools/build-openal.sh. Steam Audio's libphonon.so is Valve's

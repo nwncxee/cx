@@ -9,8 +9,8 @@ cd "$(dirname "$0")/../.." || exit 1
 c=$(plant signed "SIGNED-LEAF:$certum")
 if run "$c" /dev/null; then
   [ ! -f "$c/ssign-calls" ] || fail "signed: sign.sh ran ssign on a signed version.dll"
-  [ "$(cat "$c/uploaded" 2> /dev/null)" = SHA256SUMS.sig ] ||
-    fail "signed: sign.sh uploaded [$(paste -sd' ' "$c/uploaded" 2> /dev/null)], expected [SHA256SUMS.sig]"
+  [ "$(paste -sd' ' "$c/uploaded" 2> /dev/null)" = "SHA256SUMS.sig cx-update cx-update.sig" ] ||
+    fail "signed: sign.sh uploaded [$(paste -sd' ' "$c/uploaded" 2> /dev/null)], expected [SHA256SUMS.sig cx-update cx-update.sig]"
 else
   fail "signed: sign.sh failed -- $(tail -3 "$c/out")"
 fi
@@ -24,6 +24,21 @@ if run "$c" "$tmp/code"; then
   (cd "$c/draft" && sha256sum -c --quiet SHA256SUMS) || fail "sums: a checksum in SHA256SUMS is wrong"
 else
   fail "sums: sign.sh failed -- $(tail -3 "$c/out")"
+fi
+
+# The draft gains cx-update, the release notice CX reads: the tag and each line under the notes' Changes
+# heading, signed by the release key under the cx-update namespace, which a SHA256SUMS signature can't stand in for.
+c=$(plant notice "")
+printf 'Intro.\n\n- not a change\n\n## Changes since v9.9.8\n\n- Shadows soften at dusk (#12)\n- The chat window remembers its size (#13)\n' > "$c/notes"
+if run "$c" "$tmp/code"; then
+  want=$(printf 'cx-update 1\nversion %s\nchange Shadows soften at dusk (#12)\nchange The chat window remembers its size (#13)' "$tag")
+  [ "$(cat "$c/draft/cx-update" 2> /dev/null)" = "$want" ] ||
+    fail "notice: cx-update reads [$(paste -sd'|' "$c/draft/cx-update" 2> /dev/null)]"
+  ssh-keygen -Y verify -f "$c/tree/packaging/allowed_signers" -I cx-releases -n cx-update \
+    -s "$c/draft/cx-update.sig" < "$c/draft/cx-update" > /dev/null 2>&1 ||
+    fail "notice: cx-update.sig does not sign cx-update under the cx-update namespace"
+else
+  fail "notice: sign.sh failed -- $(tail -3 "$c/out")"
 fi
 
 # A mistyped code stops the run with the draft unpublished and nothing uploaded.

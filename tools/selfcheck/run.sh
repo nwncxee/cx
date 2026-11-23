@@ -63,6 +63,7 @@ if [ ! -f "$native/libfunchook.so" ]; then
 fi
 shim cxatlas libcxatlas.a
 shim cxthunk libcxthunk.a
+shim cxsig libcxsig.a
 shim cxaudio libcxaudio.a
 # FSR's objects are compiled with their symbols hidden, its C API too: that one file is rebuilt visible and linked
 # beside the rest, whose symbols only it calls.

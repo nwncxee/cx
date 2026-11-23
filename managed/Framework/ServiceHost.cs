@@ -20,9 +20,7 @@ public static class ServiceHost
         // Which build produced the lines below. build.sh already stamps this from `git describe`, and a log
         // that does not say it is a log you cannot act on: half a debugging round trip is spent establishing
         // whether the run even contains the fix being discussed.
-        log.Info("NWNCX:EE build " + (Assembly.GetExecutingAssembly()
-                     .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
-                     .InformationalVersion ?? "unknown"));
+        log.Info(CX.Services.Update.UpdateNotice.BuildLine(Product.Version, Settings.Peek(CX.Services.Update.UpdateKnobs.FoundKey)));
         log.Info($"host: GC server={System.Runtime.GCSettings.IsServerGC} latency={System.Runtime.GCSettings.LatencyMode} cpus={Environment.ProcessorCount}");
         // the one rot gate, and the whole extender is behind it -- both platforms, ahead of DISCOVERY
         // rather than ahead of Initialize, because constructing a service runs its type initializer and a

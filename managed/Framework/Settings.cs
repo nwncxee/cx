@@ -56,6 +56,17 @@ public static class Settings
     /// <summary>Drop <paramref name="key"/> from the loaded table: a self-check takes back what it fed <see cref="Read"/>.</summary>
     internal static void Forget(string key) => _values.Remove(key);
 
+    /// <summary>One key straight from the file, before <see cref="Load"/>: what the host's first line reads.</summary>
+    public static string? Peek(string key)
+    {
+        string? found = null;
+        ConfigFile.ForEachPair(ConfigFile.ReadTextNow(FileName, null, out _), (k, v) =>
+        {
+            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) found = v;
+        });
+        return found;
+    }
+
     /// <summary>The value as loaded, or null when unset. The knob registry's bind: a <see cref="Knob{T}"/>
     /// parses this itself.</summary>
     public static string? Raw(string key) => _values.TryGetValue(key, out string? v) ? v : null;
