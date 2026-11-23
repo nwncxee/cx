@@ -297,10 +297,14 @@ public sealed unsafe partial class ChatService
     /// The arbiter routes here first via the keyboard-owner path when <see cref="WantsKey"/> is set.</summary>
     private static bool OnChatKey(uint key, int mods)
     {
-        if (!WantsKey) return false;
+        if (!TakesKey(key, IsTyping, _settings)) return false;
         RouteKey(key, mods);
         return true;
     }
+
+    /// <summary>Whether chat's window takes <paramref name="key"/>: while the player types, or while a field of the
+    /// gear panel <paramref name="settings"/> is edited.</summary>
+    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings) => typing || settings.Editing;
 
     /// <summary>Dispatch a control/nav key to the edit line while the box owns the keyboard.</summary>
     public static void RouteKey(uint key, int mods)
