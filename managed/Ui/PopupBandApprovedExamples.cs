@@ -15,36 +15,24 @@ namespace CX.Ui;
 /// states, and the pixel rows worked by hand from a 400 x 300 chat window at 100,500 (28 px strip and rows, at 772).</summary>
 internal static class PopupBandApprovedExamples
 {
-    private const int LeftButton = 1;
+    /// <summary>Q then E for the game's quickbar and Examine panels.</summary>
+    private const string Panels = "QE";
 
-    /// <summary>Appends Q then E for the game's panels, N for NUI, O then M for the overlay and its cursor, and whatever
-    /// each CX window appends on its layer.</summary>
-    private readonly struct LetterSink(StringBuilder drawn) : IGuiFrameSink
-    {
-        public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
-        public bool Panels() { drawn.Append("QE"); return true; }
-        public bool Nui() { drawn.Append('N'); return true; }
-        public bool Overlays() { drawn.Append("OM"); return true; }
-    }
+    /// <summary>O then M for the overlay scene and its cursor.</summary>
+    private const string Overlays = "OM";
 
-    /// <summary>The Alloy-off frame's letters: each run of CX layers as its windows append, N for NUI.</summary>
-    private readonly struct NkLetterSink(StringBuilder drawn) : INkFrameSink
-    {
-        public void Windows(UiLayer from, UiLayer to) { for (UiLayer l = from; l <= to; l++) UiHost.DrawFrame(l); }
-        public void Nui() => drawn.Append('N');
-    }
-
-    /// <summary>One Alloy frame of the windows <paramref name="setup"/> makes, as letters.</summary>
+    /// <summary>One frame of the windows <paramref name="setup"/> makes, as letters; <paramref name="alloy"/> false draws
+    /// the Alloy-off order.</summary>
     private static string Frame(Action<StringBuilder> setup, bool alloy = true)
     {
         var drawn = new StringBuilder();
+        string f = "";
         UiHost.Alone(() =>
         {
             setup(drawn);
-            if (alloy) GuiFrame.Draw(new LetterSink(drawn), true);
-            else NkFrame.Draw(new NkLetterSink(drawn));
+            f = alloy ? FrameLetters.Alloy(drawn, Panels, Overlays) : FrameLetters.Gl(drawn, Panels, Overlays);
         });
-        return drawn.ToString();
+        return f;
     }
 
     /// <summary>True when <paramref name="top"/> and <paramref name="under"/> both draw and <paramref name="top"/> draws later.</summary>
@@ -75,9 +63,11 @@ internal static class PopupBandApprovedExamples
         return w;
     }
 
-    /// <summary>A press as the input pump routes it with no NUI under the pointer: the pass ahead of NUI, then the rest.</summary>
-    private static bool Press(int x, int y)
-        => UiHost.DispatchMouseButton(true, LeftButton, x, y, captureOnly: true) || UiHost.DispatchMouseButton(true, LeftButton, x, y);
+    /// <summary>A left press the input pump routes with <paramref name="nui"/> saying whether a NUI window is under it;
+    /// true when CX took it.</summary>
+    private static bool Press(int x, int y, bool nui = false)
+        => UiInputService.RoutePress(UiInputService.SdlButtonLeft, x, y, new UiInputService.PointerUnder(nui, false, false))
+           == UiInputService.PointerOutcome.Taken;
 
     internal static void SelfCheck(ExtenderLog log)
     {
@@ -101,7 +91,7 @@ internal static class PopupBandApprovedExamples
             UiHost.Alone(() =>
             {
                 ChatWin(new StringBuilder(), m);
-                aheadOfNui = UiHost.DispatchMouseButton(true, LeftButton, 105, 720, captureOnly: true);
+                aheadOfNui = Press(105, 720, nui: true);
             });
             check.Expect(aheadOfNui, "E7 the press on the Shout row is taken ahead of NUI, so the NUI button under it does not fire");
             check.Expect(m.SendChannel == Channel.Shout, $"E7 chat switches to Shout, the row pressed (sends on {m.SendChannel})");
@@ -176,7 +166,7 @@ internal static class PopupBandApprovedExamples
                 v.DrawContent = () => drawn.Append('v');
                 v.HitTestOverride = (x, y) => x >= 150f && x < 450f && y >= 240f && y < 500f;
                 v.OnMouseButton = (_, _, _, _) => invReacted = true;
-                GuiFrame.Draw(new LetterSink(drawn), true);
+                FrameLetters.Alloy(drawn, Panels, Overlays);
                 took = Press(210, 280);
             });
             string f = drawn.ToString();

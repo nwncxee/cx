@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Chat;
+using CX.Services.Chat.Core;
 using CX.Services.Nameplate;
 
 namespace CX.Ui;
@@ -12,7 +14,7 @@ namespace CX.Ui;
 /// its panels before nuklear's flush and its overlay scenes after it (<c>CGuiMan::UpdateAndRender</c>).</summary>
 internal static unsafe class ClickOrderApprovedExamples
 {
-    private const byte Left = 1;  // not-an-offset: SDL_BUTTON_LEFT
+    private const byte Left = UiInputService.SdlButtonLeft;
     private const uint KeyA = 97;  // not-an-offset: SDL key code
 
     /// <summary>The CX inventory stands at (100,100)-(300,300); a NUI window over (200,200)-(400,400); the character
@@ -20,17 +22,11 @@ internal static unsafe class ClickOrderApprovedExamples
     /// inside the inventory alone.</summary>
     private const int Overlap = 250, Bare = 150;
 
-    /// <summary>A letter per thing drawn: S for the character sheet (a panel), N for NUI, O then M for the overlay scene
-    /// and the cursor, and whatever each CX window appends.</summary>
-    private readonly struct Letters(StringBuilder drawn) : IGuiFrameSink, INkFrameSink
-    {
-        public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
-        public bool Panels() { drawn.Append('S'); return true; }
-        public bool Nui() { drawn.Append('N'); return true; }
-        public bool Overlays() { drawn.Append("OM"); return true; }
-        public void Windows(UiLayer from, UiLayer to) { for (UiLayer l = from; l <= to; l++) UiHost.DrawFrame(l); }
-        void INkFrameSink.Nui() => drawn.Append('N');
-    }
+    /// <summary>The character sheet's letter, the one game panel these frames draw.</summary>
+    private const string Sheet = "S";
+
+    /// <summary>O then M for the overlay scene and the cursor.</summary>
+    private const string Cursor = "OM";
 
     /// <summary>A stand-in for the CX inventory window with its flags: not focusable, capturing the pointer, taking every
     /// press (i) and wheel notch (w) inside its rect, and drawing c.</summary>
@@ -43,23 +39,11 @@ internal static unsafe class ClickOrderApprovedExamples
         DrawContent = () => drawn.Append('c'),
     };
 
-    /// <summary>The frame with Alloy on: <see cref="GuiFrame.Draw{T}"/> over the registered windows.</summary>
-    private static string AlloyFrame(StringBuilder drawn)
-    {
-        drawn.Clear();
-        GuiFrame.Draw(new Letters(drawn), true);
-        return drawn.ToString();
-    }
+    /// <summary>The frame with Alloy on, the overlays drawn as <paramref name="overlays"/>.</summary>
+    private static string AlloyFrame(StringBuilder drawn, string overlays = Cursor) => FrameLetters.Alloy(drawn, Sheet, overlays);
 
-    /// <summary>The frame with Alloy off: the engine's panels, the GL path at nuklear's flush, then the engine's overlay scenes.</summary>
-    private static string GlFrame(StringBuilder drawn)
-    {
-        drawn.Clear();
-        drawn.Append('S');
-        NkFrame.Draw(new Letters(drawn));
-        drawn.Append("OM");
-        return drawn.ToString();
-    }
+    /// <summary>The frame with Alloy off, the overlays drawn as <paramref name="overlays"/>.</summary>
+    private static string GlFrame(StringBuilder drawn, string overlays = Cursor) => FrameLetters.Gl(drawn, Sheet, overlays);
 
     internal static void SelfCheck(ExtenderLog log)
     {
@@ -105,13 +89,13 @@ internal static unsafe class ClickOrderApprovedExamples
         // Given Alloy switched off
         // When the CX inventory, a NUI window and the stock character sheet overlap
         // Then they draw and take clicks in the same order as with Alloy on
-        string alloy = AlloyFrame(drawn), gl = GlFrame(drawn);
+        string alloy = AlloyFrame(drawn, ""), gl = GlFrame(drawn, "");
         asked.Clear();
         var top = UiInputService.RoutePress(Left, Overlap, Overlap, new UiInputService.PointerUnder(true, true, false));
         string askedTop = asked.ToString();
         asked.Clear();
         var mid = UiInputService.RoutePress(Left, Bare, Bare, new UiInputService.PointerUnder(false, true, false));
-        check.Expect(alloy == "ScNOM" && gl == "ScNOM",
+        check.Expect(alloy == "ScN" && gl == "ScN",
             $"E4 the sheet, the inventory and NUI draw bottom to top on both paths: Alloy '{alloy}', GL '{gl}'");
         check.Expect(top == UiInputService.PointerOutcome.Engine && askedTop == "" && mid == UiInputService.PointerOutcome.Taken && asked.ToString() == "i",
             $"E4 NUI takes the triple overlap and the inventory the sheet's: {top} asked '{askedTop}', {mid} asked '{asked}'");
@@ -127,9 +111,16 @@ internal static unsafe class ClickOrderApprovedExamples
         // Given the CX inventory and a NUI window open, with the software cursor
         // When the player moves the cursor over either one
         // Then the cursor draws over it
-        check.Expect(alloy.EndsWith('M') && alloy.IndexOf('M') > alloy.IndexOf('c') && alloy.IndexOf('M') > alloy.IndexOf('N'),
-            $"E5 the cursor draws last, over the inventory and NUI: '{alloy}'");
+        string alloyCursor = AlloyFrame(drawn), glCursor = GlFrame(drawn);
+        check.Expect(CursorLast(alloyCursor) && CursorLast(glCursor),
+            $"E5 the cursor draws last, over the inventory and NUI, on both paths: Alloy '{alloyCursor}', GL '{glCursor}'");
     }
+
+    /// <summary>True when the cursor draws last and both the inventory and NUI draw before it.</summary>
+    private static bool CursorLast(string f)
+        => f.EndsWith('M') && f.IndexOf('c', StringComparison.Ordinal) >= 0 && f.IndexOf('N', StringComparison.Ordinal) >= 0
+           && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('c', StringComparison.Ordinal)
+           && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('N', StringComparison.Ordinal);
 
     /// <summary>A nameplate under the character sheet, on both render paths.</summary>
     private static void Plates(Checker check, StringBuilder drawn)
@@ -144,26 +135,32 @@ internal static unsafe class ClickOrderApprovedExamples
             $"E26 the nameplate draws under the character sheet on both paths: Alloy '{alloy}', GL '{gl}'");
     }
 
-    /// <summary>A stand-in chat window that takes focus on hover and keys while it holds focus, as a focusable CX window does.</summary>
+    /// <summary>The chatbox's own window over a fixture layout of one chat window at the inventory's rect, a module up.</summary>
     private static void HoverFocus(Checker check)
     {
-        bool saved = UiHost.HoverToFocus;
-        var line = new StringBuilder();
-        Window? chat = null;
-        chat = new Window(100, 100, 200, 200) { OnKey = (key, _) => { if (UiHost.Focused != chat) return false; line.Append((char)key); return true; } };
+        bool saved = UiHost.HoverToFocus, inGame = GameGate.InGame, typing = ChatService.IsTyping;
+        ChatLayout? was = ChatService.UseLayout(new ChatLayout(ChatExamplesKit.Window(100, 100, 200, 200)));
         try
         {
+            GameGate.InGame = true;
+            Window chat = ChatService.NewWindow();
             UiHost.HoverToFocus = true;
 
             // Given hover-to-focus switched on and a NUI window from the server over part of the CX chat window
             // When the player moves the pointer onto the overlap and types
             // Then the chat window does not take focus and the keys do not go into its input line
-            UiInputService.HoverMoved(Overlap, Overlap, true);
-            UiHost.DispatchKey(KeyA, 0);
-            check.Expect(UiHost.Focused != chat && line.Length == 0,
-                $"E25 hovering where NUI covers the chat window leaves it unfocused: focused {UiHost.Focused == chat}, its line '{line}'");
+            UiInputService.HoverMoved(Overlap, Overlap, new UiInputService.PointerUnder(true, false, false));
+            bool keyed = UiHost.DispatchKey(KeyA, 0);
+            check.Expect(UiHost.HitTest(Overlap, Overlap) == chat && UiHost.Focused != chat && !keyed && !ChatService.IsTyping,
+                $"E25 hovering where NUI covers the chat window leaves it unfocused: focused {UiHost.Focused == chat}, key taken {keyed}, typing {ChatService.IsTyping}");
         }
-        finally { UiHost.HoverToFocus = saved; }
+        finally
+        {
+            UiHost.HoverToFocus = saved;
+            ChatService.IsTyping = typing;
+            GameGate.InGame = inGame;
+            ChatService.UseLayout(was);
+        }
     }
 
     /// <summary>The Windows press path, where nuklear's hover call is absent: a NUI window list built here at hand-written bounds.</summary>
@@ -185,11 +182,8 @@ internal static unsafe class ClickOrderApprovedExamples
             bool over = UiInputService.NuiOver((IntPtr)ctx, null, Overlap, Overlap);
             asked.Clear();
             var e27 = UiInputService.RoutePress(Left, Overlap, Overlap, new UiInputService.PointerUnder(over, false, false));
-            string gl = GlFrame(drawn);
             check.Expect(over && e27 == UiInputService.PointerOutcome.Engine && asked.ToString() == "",
                 $"E27 with no hover call NUI's window list takes the press over the inventory: NUI over {over}, outcome {e27}, inventory asked '{asked}'");
-            check.Expect(gl.IndexOf('N') > gl.IndexOf('c') && gl.IndexOf('c') >= 0,
-                $"E27 NUI draws over the inventory with Alloy off: '{gl}'");
         }
         finally { NativeMemory.Free(ctx); NativeMemory.Free(win); }
     }

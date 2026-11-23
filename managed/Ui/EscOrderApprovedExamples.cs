@@ -37,13 +37,9 @@ internal static class EscOrderApprovedExamples
         public string Seen => string.Join(", ", Acts);
     }
 
-    /// <summary>One Esc press in the live order: the pump swallow (only without a keyboard owner), then dispatch.
-    /// True when a CX window took it, so the engine never sees it and its menu cannot open.</summary>
-    private static bool Press()
-    {
-        if (!UiHost.AnyKeyboardOwner && UiHost.DispatchKeyPumpSwallow(Esc, 0)) return true;
-        return UiHost.DispatchKey(Esc, 0);
-    }
+    /// <summary>One Esc press in the live order, the pump's step then the key-down hook's, no NUI edit box focused.
+    /// True when CX took it, so the engine never sees it and its menu cannot open.</summary>
+    private static bool Press() => UiInputService.PumpKeyDown(Esc, 0) || UiInputService.RouteKeyDown(Esc, 0, nuiEdit: false);
 
     internal static void SelfCheck(ExtenderLog log)
     {
@@ -66,7 +62,7 @@ internal static class EscOrderApprovedExamples
         UiHost.Alone(() =>
         {
             var inv = new Inventory(open: false);
-            _ = new Window(0, 0, 0, 0) { Focusable = false, OnKey = (k, m) => ChatService.TakesKey(k, false, new SettingsWindow()) };
+            _ = ChatService.NewWindow();
             bool taken = Press();
             check.Expect(!taken && inv.Acts.Count == 0, $"E18 with nothing open Esc reaches the engine: taken={taken} acts=[{inv.Seen}]");
         });
@@ -98,21 +94,24 @@ internal static class EscOrderApprovedExamples
         // Given the player typing in the CX chat input with the inventory open
         // When the player presses Esc
         // Then the chat input closes and the inventory stays open
-        UiHost.Alone(() =>
         {
-            var inv = new Inventory(open: true);
-            bool typing = true;
-            var chat = new Window(0, 0, 0, 0) { Focusable = false, WantsKeyboard = true };
-            chat.OnKey = (k, m) =>
+            bool typing = ChatService.IsTyping;
+            ChatLayout? was = ChatService.UseLayout(new ChatLayout(ChatExamplesKit.Window(100, 100)));
+            try
             {
-                if (!ChatService.TakesKey(k, typing, new SettingsWindow())) return false;
-                if (k == Esc) { typing = false; chat.WantsKeyboard = false; }
-                return true;
-            };
-            bool taken = Press();
-            check.Expect(taken && !typing && inv.Inv.Open && inv.Acts.Count == 0,
-              $"E22 Esc while typing closes the chat input and leaves the inventory open: taken={taken} typing={typing} open={inv.Inv.Open} acts=[{inv.Seen}]");
-        });
+                UiHost.Alone(() =>
+                {
+                    var inv = new Inventory(open: true);
+                    Window chat = ChatService.NewWindow();
+                    chat.WantsKeyboard = true;
+                    ChatService.IsTyping = true;
+                    bool taken = Press();
+                    check.Expect(taken && !ChatService.IsTyping && inv.Inv.Open && inv.Acts.Count == 0,
+                      $"E22 Esc while typing closes the chat input and leaves the inventory open: taken={taken} typing={ChatService.IsTyping} open={inv.Inv.Open} acts=[{inv.Seen}]");
+                });
+            }
+            finally { ChatService.IsTyping = typing; ChatService.UseLayout(was); }
+        }
 
         // Given a chest open in the CX inventory's loot pane
         // When the player presses Esc

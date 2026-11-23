@@ -19,19 +19,27 @@ internal static class AboveNuiApprovedExamples
     /// <summary>The setting's name inside its group, and inside a chat window's <c>w&lt;N&gt;.</c> keys.</summary>
     private const string Setting = "abovenui";
 
-    /// <summary>The chat gear row's label, as the ticket names the setting.</summary>
-    private const string RowLabel = "Draw above NUI";
-
     /// <summary>SDL's Escape and the digit 5, the keys the examples press.</summary>
     private const uint KeyEscape = 0x1B, KeyFive = 0x35;   // not-an-offset: SDLK_ESCAPE, SDLK_5
 
-    /// <summary>A letter per CX window drawn on its layer, and N where NUI draws.</summary>
-    private readonly struct Sink(StringBuilder drawn) : IGuiFrameSink
+    /// <summary>A setting's knob, the player's value of it and its line in the loaded table, taken before an example
+    /// changes any of them so <see cref="Restore"/> can put back exactly that.</summary>
+    private readonly struct Held(string key, Knob? knob, string? stored, string? raw)
     {
-        public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
-        public bool Panels() => true;
-        public bool Nui() { drawn.Append('N'); return true; }
-        public bool Overlays() => true;
+        internal Knob? Knob => knob;
+
+        internal static Held Of(string key)
+        {
+            Knob? k = KnobGroup.Find(key);
+            return new Held(key, k, k?.FormatStored(), Settings.Raw(key));
+        }
+
+        internal void Restore()
+        {
+            if (stored != null) knob?.Parse(stored);
+            if (raw != null) Settings.Read(key + "=" + raw + "\n");
+            else Settings.Forget(key);
+        }
     }
 
     [SelfCheckSuite(SuitePhase.AfterServices)]
@@ -53,26 +61,31 @@ internal static class AboveNuiApprovedExamples
     private static bool Under(string f, char c)
         => f.IndexOf(c, StringComparison.Ordinal) >= 0 && f.IndexOf(c, StringComparison.Ordinal) < f.IndexOf('N', StringComparison.Ordinal);
 
-    /// <summary>The window a press at the point lands on in the pass that runs before NUI is offered it, or null.</summary>
+    /// <summary>The window a left press at the point lands on when the input pump routes it with a NUI window under
+    /// the pointer, or null when the press goes to NUI.</summary>
     private static Window? TakenBeforeNui(int x, int y)
     {
         Window? hit = UiHost.HitTest(x, y), took = null;
         if (hit == null) return null;
         Func<bool, int, int, int, bool>? was = hit.OnMouseButton;
-        hit.OnMouseButton = (_, _, _, _) => { took = hit; return true; };
-        UiHost.DispatchMouseButton(true, 1, x, y, captureOnly: true);
-        UiHost.DispatchMouseButton(false, 1, x, y, captureOnly: true);
-        hit.OnMouseButton = was;
+        hit.OnMouseButton = (down, _, _, _) => { if (down) took = hit; return true; };
+        try
+        {
+            UiInputService.RoutePress(UiInputService.SdlButtonLeft, x, y, new UiInputService.PointerUnder(true, false, false));
+            UiHost.DispatchMouseButton(false, UiInputService.SdlButtonLeft, x, y);
+        }
+        finally { hit.OnMouseButton = was; }
         return took;
     }
 
-    /// <summary>The knob <paramref name="key"/> names, set to <paramref name="value"/>; null when nothing declares it.</summary>
-    private static Knob? Set(Checker check, string key, string value, string example)
+    /// <summary>The setting <paramref name="key"/> held for the example and set to <paramref name="value"/>; its knob is
+    /// null when nothing declares it.</summary>
+    private static Held Set(Checker check, string key, string value, string example)
     {
-        Knob? k = KnobGroup.Find(key);
-        check.Expect(k != null, $"{example} a setting {key} is declared");
-        k?.Parse(value);
-        return k;
+        Held h = Held.Of(key);
+        check.Expect(h.Knob != null, $"{example} a setting {key} is declared");
+        h.Knob?.Parse(value);
+        return h;
     }
 
     /// <summary>Write <paramref name="k"/> to the file, put it back to its default, and bind it again from what the
@@ -95,7 +108,8 @@ internal static class AboveNuiApprovedExamples
         return null;
     }
 
-    /// <summary>Press the chat gear's Draw above NUI row for <paramref name="win"/>; false when the panel has none.</summary>
+    /// <summary>Press the chat gear's toggle for <paramref name="win"/> whose press saves the window's
+    /// <see cref="Setting"/> as 1, pressing each other toggle back off; false when the panel has none.</summary>
     private static bool SwitchOn(ChatLayout layout, ChatWindow win)
     {
         var s = new SettingsWindow();
@@ -103,10 +117,26 @@ internal static class AboveNuiApprovedExamples
         s.OpenAt(win, 1280, 800, 20f, face, face, 0, layout.Windows);
         int at = Array.IndexOf(layout.Windows, win);
         if (at > 0) PickWindow(s, layout.Windows[0], at);
-        KnobPanel.Row? row = s.Rows.Find(r => r.Text == RowLabel);
-        if (row != null) PressRow(s, win, row);
+        bool on = false;
+        for (int i = 0; i < s.Rows.Count && !on; i++)
+        {
+            if (s.Rows[i].Act == SetAct.None || s.Rows[i].Ctl != KnobKind.Toggle) continue;
+            PressRow(s, win, s.Rows[i]);
+            on = SavedSetting(win) == "1";
+            if (!on) PressRow(s, win, s.Rows[i]);
+        }
         s.Reset();
-        return row != null;
+        return on;
+    }
+
+    /// <summary>The value <paramref name="win"/>'s saved chat config gives <see cref="Setting"/>, or null when it has none.</summary>
+    private static string? SavedSetting(ChatWindow win)
+    {
+        var c = new ChatConfig();
+        c.Windows.Add(WindowConfig.Capture(win));
+        foreach (var kv in c.Pairs())
+            if (string.Equals(kv.Key, ChatKey(0), StringComparison.OrdinalIgnoreCase)) return kv.Value;
+        return null;
     }
 
     /// <summary>Run <paramref name="body"/> with <paramref name="layout"/> as the chatbox's and a module up, the chat
@@ -120,21 +150,11 @@ internal static class AboveNuiApprovedExamples
         finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
     }
 
-    /// <summary>The frame being drawn, which every lettered window and NUI's N append to.</summary>
-    private static readonly StringBuilder _letters = new();
+    /// <summary><paramref name="w"/> draws <paramref name="letter"/> into <paramref name="letters"/> in place of its content.</summary>
+    private static void Letter(StringBuilder letters, Window w, char letter) => w.DrawContent = () => letters.Append(letter);
 
-    /// <summary><paramref name="w"/> draws <paramref name="letter"/> in place of its content.</summary>
-    private static void Letter(Window w, char letter) => w.DrawContent = () => _letters.Append(letter);
-
-    /// <summary>One frame's letters, bottom to top.</summary>
-    private static string Drawn()
-    {
-        _letters.Clear();
-        GuiFrame.Draw(new Sink(_letters), true);
-        string f = _letters.ToString();
-        _letters.Clear();
-        return f;
-    }
+    /// <summary>One frame's letters into <paramref name="letters"/>, bottom to top: each window's, and N for NUI.</summary>
+    private static string Drawn(StringBuilder letters) => FrameLetters.Alloy(letters, "", "");
 
     private static void ChatExamples(Checker check)
     {
@@ -145,7 +165,7 @@ internal static class AboveNuiApprovedExamples
             ChatWindow main = Window(100, 100);
             var layout = new ChatLayout(main);
             bool row = SwitchOn(layout, main);
-            check.Expect(row, $"E12 the chat window's settings offer {RowLabel}");
+            check.Expect(row, $"E12 the chat window's settings offer a toggle that saves its {Setting}=1");
             WithChat(layout, () =>
             {
                 Window? w = UiHost.HitTest(300, 250);
@@ -176,7 +196,7 @@ internal static class AboveNuiApprovedExamples
             var layout = new ChatLayout(main);
             ChatWindow second = layout.AddWindow(Window(600, 0))!;
             bool row = SwitchOn(layout, second);
-            check.Expect(row, $"E14 the second chat window's settings offer {RowLabel}");
+            check.Expect(row, $"E14 the second chat window's settings offer a toggle that saves its {Setting}=1");
             WithChat(layout, () =>
             {
                 Window? a = UiHost.HitTest(200, 150), b = UiHost.HitTest(800, 150);
@@ -195,7 +215,7 @@ internal static class AboveNuiApprovedExamples
             var layout = new ChatLayout(main);
             ChatWindow second = layout.AddWindow(Window(600, 0))!;
             bool row = SwitchOn(layout, second);
-            check.Expect(row, $"E35 the second chat window's settings offer {RowLabel}");
+            check.Expect(row, $"E35 the second chat window's settings offer a toggle that saves its {Setting}=1");
             var saved = new ChatConfig();
             saved.Windows.Add(WindowConfig.Capture(main));
             saved.Windows.Add(WindowConfig.Capture(second));
@@ -224,7 +244,7 @@ internal static class AboveNuiApprovedExamples
             ChatWindow main = Window(100, 100);
             var layout = new ChatLayout(main);
             bool row = SwitchOn(layout, main);
-            check.Expect(row, $"E37 the chat window's settings offer {RowLabel}");
+            check.Expect(row, $"E37 the chat window's settings offer a toggle that saves its {Setting}=1");
             check.Expect(!ChatService.HiddenAt(main, nuiCovers: true),
                          "E37 a NUI window over a chat window drawn above NUI leaves its line seen, so Enter opens it and typing stays open");
         }
@@ -233,8 +253,7 @@ internal static class AboveNuiApprovedExamples
         // When the chat channel dropdown opens over the inventory
         // Then the dropdown draws over the inventory
         {
-            string key = KeyOf(InventoryKnobs.G);
-            Knob? k = Set(check, key, "1", "E16");
+            Held h = Set(check, KeyOf(InventoryKnobs.G), "1", "E16");
             try
             {
                 ChatWindow main = Window(100, 400);
@@ -251,28 +270,33 @@ internal static class AboveNuiApprovedExamples
                     check.Expect(top != null && top != inv, $"E16 the dropdown, not the inventory, is under the pointer (layer {top?.Layer})");
                     if (top != null)
                     {
-                        Letter(inv, 'i');
-                        Letter(top, 'd');
-                        string f = Drawn();
+                        var letters = new StringBuilder();
+                        Letter(letters, inv, 'i');
+                        Letter(letters, top, 'd');
+                        string f = Drawn(letters);
                         check.Expect(f.IndexOf('d', StringComparison.Ordinal) > f.IndexOf('i', StringComparison.Ordinal),
                                      $"E16 the dropdown draws after the inventory: {f}");
                     }
                 });
             }
-            finally { k?.Reset(); }
+            finally { h.Restore(); }
         }
     }
 
     /// <summary>Put <paramref name="pairs"/> in the chat bag, compose the file, and read back the bag's keys through the
-    /// one read path; the bag and the loaded table are put back after.</summary>
+    /// one read path; the bag and the loaded table's lines for it are put back after, as they were.</summary>
     private static List<KeyValuePair<string, string>> RestartChat(List<KeyValuePair<string, string>> pairs)
     {
         KnobBag bag = ChatKnobs.Windows;
         KeyValuePair<string, string>[] before = bag.Pairs;
+        var loaded = new List<KeyValuePair<string, string>>();
+        foreach (var kv in Settings.Pairs)
+            if (bag.Owns(kv.Key)) loaded.Add(kv);
         var read = new List<string>();
         var back = new List<KeyValuePair<string, string>>();
         try
         {
+            foreach (var kv in loaded) Settings.Forget(kv.Key);
             bag.Replace(pairs);
             var text = new StringBuilder();
             foreach (string l in KnobFile.Compose().Split('\n'))
@@ -288,6 +312,9 @@ internal static class AboveNuiApprovedExamples
         finally
         {
             foreach (string key in read) Settings.Forget(key);
+            var text = new StringBuilder();
+            foreach (var kv in loaded) text.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
+            Settings.Read(text.ToString());
             bag.Replace(before);
         }
         return back;
@@ -301,10 +328,10 @@ internal static class AboveNuiApprovedExamples
         // When the player quits and starts the game again
         // Then the inventory still draws above NUI
         {
-            Knob? k = Set(check, key, "1", "E15");
+            Held h = Set(check, key, "1", "E15");
             try
             {
-                bool written = k != null && Restart(k);
+                bool written = h.Knob != null && Restart(h.Knob);
                 check.Expect(written, $"E15 {key} is written to cx.cfg");
                 UiHost.Alone(() =>
                 {
@@ -312,14 +339,14 @@ internal static class AboveNuiApprovedExamples
                     check.Expect(inv.Layer == UiLayer.AboveNui, $"E15 after a restart the inventory draws above NUI (layer {inv.Layer})");
                 });
             }
-            finally { k?.Reset(); Settings.Forget(key); }
+            finally { h.Restore(); }
         }
 
         // Given Draw above NUI switched on for the CX inventory, drawn over a NUI window from the server
         // When the player presses Esc
         // Then the inventory closes and the NUI window stays open
         {
-            Knob? k = Set(check, key, "1", "E33");
+            Held h = Set(check, key, "1", "E33");
             try
             {
                 UiHost.Alone(() =>
@@ -332,14 +359,14 @@ internal static class AboveNuiApprovedExamples
                     check.Expect(reached && consumed, "E33 Esc reaches the inventory and is kept from the engine, so NUI does not see it");
                 });
             }
-            finally { k?.Reset(); }
+            finally { h.Restore(); }
         }
 
         // Given Draw above NUI switched on for the CX inventory
         // When the player presses the gold button
         // Then the gold prompt draws over the inventory and takes the typed amount
         {
-            Knob? k = Set(check, key, "1", "E34");
+            Held h = Set(check, key, "1", "E34");
             try
             {
                 UiHost.Alone(() =>
@@ -351,9 +378,10 @@ internal static class AboveNuiApprovedExamples
                     Window? keyed = null;
                     inv.OnKey = (_, _) => { keyed ??= inv; return true; };
                     gold.OnKey = (_, _) => { keyed ??= gold; return true; };
-                    Letter(inv, 'i');
-                    Letter(gold, 'g');
-                    string f = Drawn();
+                    var letters = new StringBuilder();
+                    Letter(letters, inv, 'i');
+                    Letter(letters, gold, 'g');
+                    string f = Drawn(letters);
                     check.Expect(inv.Layer == UiLayer.AboveNui, $"E34 the inventory draws above NUI (layer {inv.Layer})");
                     check.Expect(f.IndexOf('g', StringComparison.Ordinal) > f.IndexOf('i', StringComparison.Ordinal),
                                  $"E34 the gold prompt draws over the inventory: {f}");
@@ -363,14 +391,15 @@ internal static class AboveNuiApprovedExamples
                     check.Expect(keyed == gold, "E34 the typed amount goes to the gold prompt");
                 });
             }
-            finally { k?.Reset(); }
+            finally { h.Restore(); }
         }
 
         // Given the CX inventory under a NUI window
         // When the player switches Draw above NUI on, and later off again
         // Then the inventory moves over the NUI window at once, and back under it at once, with no restart
         {
-            Knob? k = KnobGroup.Find(key);
+            Held h = Held.Of(key);
+            Knob? k = h.Knob;
             check.Expect(k != null, $"E38 a setting {key} is declared");
             try
             {
@@ -378,18 +407,19 @@ internal static class AboveNuiApprovedExamples
                 {
                     Window inv = InventoryService.NewWindow();
                     inv.HitTestOverride = (px, py) => px >= 100 && px < 500 && py >= 100 && py < 500;
-                    Letter(inv, 'i');
-                    string before = Drawn();
+                    var letters = new StringBuilder();
+                    Letter(letters, inv, 'i');
+                    string before = Drawn(letters);
                     check.Expect(Under(before, 'i'), $"E38 the inventory starts under NUI: {before}");
                     k?.Parse("1");
-                    string on = Drawn();
+                    string on = Drawn(letters);
                     check.Expect(Over(on, 'i') && TakenBeforeNui(300, 300) == inv, $"E38 switched on, it draws over NUI and takes the press at once: {on}");
                     k?.Parse("0");
-                    string off = Drawn();
+                    string off = Drawn(letters);
                     check.Expect(Under(off, 'i') && TakenBeforeNui(300, 300) == null, $"E38 switched off, it goes back under at once: {off}");
                 });
             }
-            finally { k?.Reset(); }
+            finally { h.Restore(); }
         }
     }
 
@@ -404,19 +434,20 @@ internal static class AboveNuiApprovedExamples
 
     private static void Each(Checker check, string key, string what, Func<Window> make)
     {
-        Knob? k = Set(check, key, "1", "E36");
+        Held h = Set(check, key, "1", "E36");
         try
         {
             UiHost.Alone(() =>
             {
                 Window w = make();
                 w.HitTestOverride = (px, py) => px >= 100 && px < 500 && py >= 100 && py < 500;
-                Letter(w, 'w');
-                string f = Drawn();
+                var letters = new StringBuilder();
+                Letter(letters, w, 'w');
+                string f = Drawn(letters);
                 check.Expect(Over(f, 'w'), $"E36 {what} draws over NUI: {f}");
                 check.Expect(TakenBeforeNui(300, 300) == w, $"E36 {what} takes a press where it overlaps NUI");
             });
         }
-        finally { k?.Reset(); }
+        finally { h.Restore(); }
     }
 }
