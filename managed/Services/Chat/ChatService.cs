@@ -54,6 +54,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         FontRegistryApprovedExamples.SelfCheck(log);
         EditBuffer.SelfCheck(log);     // the input line's editing contract (off-device)
         ChatCommands.SelfCheck(log);   // slash-command grammar
+        InboundChannel.SelfCheck(log); // the flag a DM-channel line is filed under
         TypingSignal.SelfCheck(log);   // chat-bar focus/unfocus latch (off-device)
         Snippets.SelfCheck(log);       // chat shortcut rows
         NameCompleter.SelfCheck(log);  // Tab name completion
@@ -72,6 +73,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         }
         if (!SymbolMap.Require(log, "ChatService", RequiredSymbols)) return;   // whole or nothing
         InitMessageCore(log, hooks);   // the inbound tap
+        InitServerChat(log, hooks);    // the chat minor the tap files a DM-channel line by
         InitRender(log, hooks);        // own SwapBuffers -> draw the window (bakes the atlas)
         InitSuppression(log, hooks);   // neutralize vanilla chat rendering
         InitEditControl(log, hooks);   // the keyboard side
@@ -162,6 +164,10 @@ public sealed unsafe partial class ChatService : IExtenderService
 #endif
         try
         {
+            uint engineChannel = channel;
+            channel = InboundChannel.Filed(channel, _serverChat.Minor);
+            if (channel != engineChannel)
+                _log?.Info($"[chat] dm-channel ingest: minor=0x{_serverChat.Minor:x} ch=0x{engineChannel:x}->0x{channel:x} text={raw}");
             string portraitRef = hasPortrait != 0 ? ResRef(portrait) : "";
             // Outbound Tell echoes: the server sends back a plain tell with speaker = self and no recipient
             // anywhere in it (nwserver SendServerToPlayerChatMessage case 4), so the name comes from what we sent.

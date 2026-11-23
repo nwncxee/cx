@@ -44,7 +44,10 @@ public sealed unsafe class NameplateService : IExtenderService
     private static PlaceableShowFeedbackBubbleTextFn _origPlaceablePlate;
     private static ItemShowFeedbackBubbleTextFn _origItemPlate;
     private static SetPopUpBubbleTextFn _origBubbleText;
-    private static HandleServerToPlayerChatFn _origChat;
+    private static HandleServerToPlayerChatFn* _origChat;
+
+    /// <summary>Above the chat window's latch; both only read the byte, so the order is free.</summary>
+    private const int ChatLatchPriority = 20;
 
     /// <summary>Nesting depth of a <c>ShowFeedbackBubbleText</c> in flight on this thread. The bubble-text
     /// sink is shared: non-zero means the string arriving there is the plate's own, not chat.</summary>
@@ -96,7 +99,7 @@ public sealed unsafe class NameplateService : IExtenderService
         _origCreaturePlate = hooks.InstallCreatureShowFeedbackBubbleText(&OnCreaturePlate);
         _origPlaceablePlate = hooks.InstallPlaceableShowFeedbackBubbleText(&OnPlaceablePlate);
         _origItemPlate = hooks.InstallItemShowFeedbackBubbleText(&OnItemPlate);
-        _origChat = hooks.InstallHandleServerToPlayerChat(&OnServerChat);
+        _origChat = hooks.ChainHandleServerToPlayerChat(&OnServerChat, ChatLatchPriority);
 
         if (!BandWords.Install(hooks)) log.Info("NameplateService: a TLK hook did not install -- band captions may lag a server's TLK change");
 
@@ -211,7 +214,7 @@ public sealed unsafe class NameplateService : IExtenderService
     {
         int prev = _channel;
         _channel = channel;
-        if (_origChat != null) _origChat(self, channel);
+        if (_origChat != null) (*_origChat)(self, channel);
         _channel = prev;
     }
 
