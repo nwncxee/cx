@@ -11,6 +11,18 @@ internal static partial class DbSelfCheck
     private static readonly Func<string, ModelDef?> ProbeResolve = _ => null;
     private static readonly Action<DbId, int, string> ProbeReference = (_, _, _) => { };
 
+    /// <summary>The two part-tree hooks <see cref="Reset"/> replaces, saved by each check that calls it.</summary>
+    private readonly record struct TreeHooks(Func<string, ModelDef?> Resolve, Action<DbId, int, string>? Reference)
+    {
+        internal static TreeHooks Save() => new(PartTree.ResolveModel, PartTree.OnReference);
+
+        internal void Restore()
+        {
+            PartTree.ResolveModel = Resolve;
+            PartTree.OnReference = Reference;
+        }
+    }
+
     /// <summary>Runs every part-tree self-check, then checks none of them left a hook of its own installed.</summary>
     internal static bool Suite(ExtenderLog log)
     {
