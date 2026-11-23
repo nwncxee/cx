@@ -275,6 +275,7 @@ public static unsafe partial class DbAnim
         // frame -- once by the walk and once as somebody's attach dependency -- advances once.
         if (_animAt[i] == _frame) { _skipped++; return true; }
         MovedGust(i);
+        MovedMist(i);
         if (Idle(i)) { _idle++; return true; }
         _animAt[i] = _frame;
         _objects++;
@@ -365,6 +366,10 @@ public static unsafe partial class DbAnim
         CX.Alloy.AlloyWind.AddGust(now, GustRadius, d.Length(), SceneDb.ObjSeamWind[i]);
         _gusts++;
     }
+
+    /// <summary>A creature that moved since its last step parts the ground mist, wind-enabled or not.
+    /// Hot, once per member per frame. ponytail: a seam; parts nothing yet.</summary>
+    internal static void MovedMist(int i) { }
 
     /// <summary>The radius <c>Gob::Animate</c>'s gust call site passes.</summary>
     private const float GustRadius = 1f;

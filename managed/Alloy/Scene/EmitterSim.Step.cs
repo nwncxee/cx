@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using CX.Alloy.Db;
+using CX.Alloy.Mdl;
 using CX.Engine;
 using CX.Framework;
 
@@ -14,6 +15,25 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe partial class EmitterSim
 {
+    /// <summary>One stepped emitter of the walk: the ground mist's when the fog takes it, which leaves its sprites
+    /// unborn, and its own particles' otherwise.</summary>
+    private static void StepOne(ref Slot slot, ref Emitter e, float dt)
+    {
+        if (Mist(slot.Part, in e)) return;
+        Advance(ref slot, ref e, IntPtr.Zero, dt);
+    }
+
+    /// <summary>Does the fog take this emitter as ground mist this frame? Asked by its model's resref and its
+    /// node's name, at its world position, reaching its view radius.</summary>
+    private static bool Mist(int part, in Emitter e)
+    {
+        if ((uint)part >= (uint)SceneDb.PartModel.Length) return false;
+        ModelDef? m = SceneDb.PartModel[part];
+        int n = SceneDb.PartNode[part];
+        if (m == null || (uint)n >= (uint)m.Nodes.Length) return false;
+        return MistEmitters.Take(m.Name, m.Nodes[n].Name, e.WorldPos, e.ViewRadius);
+    }
+
     /// <summary>Step one non-chunk emitter: the inherit basis, then its mode, then its mover.</summary>
     private static void Advance(ref Slot slot, ref Emitter e, IntPtr scene, float dt)
     {
@@ -210,7 +230,7 @@ internal static unsafe partial class EmitterSim
             if (n > 0 && e.M.ModeClock < 1f)
             {
                 float gust = e.WindStrength;
-                if (gust != 0f) Gust(in e, scene, gust, e.WindFalloff);
+                if (gust != 0f) { Gust(in e, scene, gust, e.WindFalloff); GroundMist.Blast(e.M.Pos, gust); }
                 n = Room(ref slot, n);
                 for (int i = 0; i < n; i++) Spawn(ref slot, ref e, dt, 1f);
             }

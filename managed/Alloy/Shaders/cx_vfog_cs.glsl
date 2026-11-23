@@ -81,6 +81,13 @@ float CxVfHaze(vec3 world)
     return h;
 }
 
+/// The ground mist's extinction at height `z` over a column whose floor is `floorZ` and whose mist is `depth`
+/// metres deep. ponytail: a seam; no mist yet.
+float CxMistDensity(float depth, float floorZ, float z)
+{
+    return 0.0;
+}
+
 #define CX_VFRAIN_HAZE 1
 #include "cx_vfrain.glsl"
 
