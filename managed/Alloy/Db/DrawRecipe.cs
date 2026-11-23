@@ -813,7 +813,7 @@ internal static partial class DrawRecipe
     }
 
     /// <summary>The share of the table <see cref="MakeRoom"/> keeps free, and of the texture slots: a sixteenth.</summary>
-    private const int RoomShare = 16;
+    internal const int RoomShare = 16;
     /// <summary>Idle models one frame evicts at most to make room: each eviction walks the table in <see cref="Forget"/>.</summary>
     private const int RoomPerFrame = 16;
 

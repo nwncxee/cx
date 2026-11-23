@@ -444,11 +444,14 @@ internal static unsafe partial class TexRegistry
         _maskLanded.Landed = true;
     }
 
+    /// <summary>Slots no texture has taken yet: what <see cref="SlotsShort"/> answers from without walking the table.</summary>
+    internal static int NeverUsed => MaxSlots - System.Threading.Volatile.Read(ref _high);
+
     /// <summary>True when fewer than <paramref name="want"/> slots could take a new name: free, never used, or idle.
     /// Walks the table only once the slots never used run short. Game thread.</summary>
     internal static bool SlotsShort(int want)
     {
-        if (MaxSlots - System.Threading.Volatile.Read(ref _high) >= want) return false;
+        if (NeverUsed >= want) return false;
         lock (_lock)
         {
             int open = MaxSlots - _high;

@@ -10,7 +10,7 @@ internal static partial class DbSelfCheck
     /// headroom, the area edge's trims through the model cache's pass, a table twice the old size, and texture slots.</summary>
     internal static bool RecipeTableRoomSelfCheck(ExtenderLog log)
         => EvictionSuite(log, "DbSelfCheck.RecipeTableRoom.SelfCheck", RoomE4, RoomCapHolds, RoomOneFrame, RoomEdgeBytes,
-                         RoomEdgeByPass, RoomTwiceOld, RoomTexSlots);
+                         RoomEdgeByPass, RoomTwiceOld, RoomTexSlots, RoomTexShare);
 
     // E4 Given a session whose recipes fill less than a quarter of the recipe table, with its model memory under budget
     // When the player changes area
@@ -187,5 +187,42 @@ internal static partial class DbSelfCheck
             check.Expect(white == 0, $"a new model drew {white} of {part.Nodes.Length - 1} node(s) white after idle models' recipes filled the texture table");
         }
         finally { EndEviction([.. TexturesOf(idle, nodes), .. TexturesOf(fresh, 4)]); }
+    }
+
+    /// <summary>A frame with an eighth of the texture slots open evicts no idle model, and one with under a sixteenth
+    /// open evicts one. Oracle: idle models of 32 textures each, drawn until the open slots fall past each mark.</summary>
+    private static void RoomTexShare(Checker check)
+    {
+        const int nodes = 32;
+        RecipeFloor();
+        var src = new ResidencySource();
+        string[] idle = Models(src, "cx_rtsh_m", TexRegistry.MaxSlots / nodes, nodes);
+        ModelCache.SetSource(src);
+        try
+        {
+            int next = DrawIdleUntil(idle, 0, TexRegistry.MaxSlots * 2 / DrawRecipe.RoomShare);
+            long evicted = ModelCache.Evictions;
+            DrawRecipe.Pump();
+            check.Expect(ModelCache.Evictions == evicted,
+                         $"a frame with an eighth of the texture slots open evicted {ModelCache.Evictions - evicted} idle model(s)");
+            DrawIdleUntil(idle, next, TexRegistry.MaxSlots / DrawRecipe.RoomShare / 2);
+            DrawRecipe.Pump();
+            check.Expect(ModelCache.Evictions > evicted, "a frame with a thirty-second of the texture slots open evicted no idle model");
+        }
+        finally { EndEviction(TexturesOf(idle, nodes)); }
+    }
+
+    /// <summary>Draws and lets go of the models from <paramref name="from"/> on until fewer than <paramref name="open"/>
+    /// texture slots are open; the index of the next model not drawn.</summary>
+    private static int DrawIdleUntil(string[] idle, int from, int open)
+    {
+        int i = from;
+        for (; i < idle.Length && !TexRegistry.SlotsShort(open); i++)
+        {
+            ModelDef m = ModelCache.Acquire(idle[i])!;
+            Draws(m);
+            ModelCache.Release(m);
+        }
+        return i;
     }
 }

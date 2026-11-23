@@ -66,6 +66,10 @@ for clause in 'RECIPES SPILLED 3' 'models evicted for recipes 2' 'RECIPES EVICTE
 done
 printf '%s\n%s\n' '[cx] dbfeed: recipe fault keys: TABLE OVERFLOW|models dropped for room' 'dbfeed: frames 240 models dropped for room 5 TABLE OVERFLOW 2' > "$f"
 expect "renamed keys are read from the session's own log" "$(recipe_fault_lines "$f")" "TABLE OVERFLOW 2,models dropped for room 5"
+printf '%s\n%s\n%s\n' "$keys" "$keys" 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a log that booted twice still names a fault" "$(recipe_fault_lines "$f")" "RECIPES SPILLED 3"
+printf '%s\n%s\n%s\n' "$keys" 'dbfeed: frames 120 RECIPES SPILLED 3' 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a count two frame lines repeat is named once" "$(recipe_fault_lines "$f")" "RECIPES SPILLED 3"
 echo 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
 expect "a frame line with no key line is a fault, not a pass" "$(recipe_fault_lines "$f")" "no recipe fault keys in cx.log"
 echo '[cx] Alloy stood down: no Vulkan device' > "$f"

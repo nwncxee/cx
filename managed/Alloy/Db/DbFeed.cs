@@ -251,6 +251,7 @@ public static partial class DbFeed
     {
         ResetForSelfCheck();
         NoRecipe = 0; RetryOverflow = 0; Recycled = 0; BadRange = 0; LeakedJoins = 0;
+        StaticFolds = 0; StaticFoldBits = Dirty.None; StaticParts = 0; StaticPartBits = Dirty.None;
         DrawRecipe.SessionBegins();
         DbAnim.SessionBegins();
     }

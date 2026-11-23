@@ -46,6 +46,7 @@ internal static partial class DbSelfCheck
         long? hadBudget = ModelCache.BudgetOverride;
         Action<ModelDef>? hadEvict = ModelCache.Evicting;
         TexBudgetInputs hadInputs = TexBudget.Inputs;
+        int texMark = TexRegistry.Watermark;
         PartTree.Log = null;
         MeshArena.Log = null;
         ModelCache.SetSource(null);
@@ -66,6 +67,7 @@ internal static partial class DbSelfCheck
             PartTree.ResetForCheck();
             MeshArena.ResetForCheck();
             MeshArena.Log = savedArenaLog;
+            check.Expect(TexRegistry.RewindTo(texMark), "the examples' textures still hold slots past the session's never-used mark");
         }
         log.Info(check.Ok ? $"{name}: passed" : $"{name}: FAILED");
         return check.Ok;

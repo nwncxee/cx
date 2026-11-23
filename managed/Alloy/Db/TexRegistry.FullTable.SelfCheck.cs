@@ -6,6 +6,33 @@ namespace CX.Alloy.Db;
 
 internal static unsafe partial class TexRegistry
 {
+    /// <summary>The first slot no texture has taken yet, for a check to hand back with <see cref="RewindTo"/>.</summary>
+    internal static int Watermark => System.Threading.Volatile.Read(ref _high);
+
+    /// <summary>Hands back every slot from <paramref name="high"/> up as never used, so a check that filled the table
+    /// leaves the session the slots <see cref="SlotsShort"/> answers from without a walk. False, and nothing changed,
+    /// while any of those slots still holds a texture.</summary>
+    internal static bool RewindTo(int high)
+    {
+        lock (_lock)
+        {
+            if (high < 1 || high > _high) return false;
+            for (int i = high; i < _high; i++)
+                if (_state[i] != TexState.Free) return false;
+            int head = -1, tail = -1;
+            for (int k = _freeHead; k >= 0; k = _freeNext[k])
+            {
+                if (k >= high) continue;
+                if (tail < 0) head = k; else _freeNext[tail] = k;
+                tail = k;
+            }
+            if (tail >= 0) _freeNext[tail] = -1;
+            _freeHead = head;
+            _high = high;
+            return true;
+        }
+    }
+
     /// <summary>Found test: a table whose every free slot is taken by idle textures gives a new texture the least
     /// recently used idle slot instead of the white stand-in. Oracle: hand-landed 1 MiB textures, released in order.</summary>
     internal static bool FullTableSelfCheck(ExtenderLog log)
@@ -16,6 +43,7 @@ internal static unsafe partial class TexRegistry
         var ids = new List<TexId>();
         TexId fresh = default;
         long hadFull = _full;
+        int mark = Watermark;
         try
         {
             TexBudget.BeginPeriod(new TexBudgetInputs(1 << 20, 5169 * ResidencyMiB, 0));
@@ -42,8 +70,49 @@ internal static unsafe partial class TexRegistry
             foreach (string n in names) Forget(n);
             _full = hadFull;
             TexBudget.BeginPeriod(had);
+            check.Expect(RewindTo(mark), "the full table's textures still hold slots past the session's never-used mark");
         }
         log.Info(check.Ok ? "TexRegistry.FullTableSelfCheck: passed" : "TexRegistry.FullTableSelfCheck: FAILED");
+        return check.Ok;
+    }
+
+    /// <summary>Found test: a full table of held textures is short of one open slot, and one released texture is
+    /// enough for one and short of two. Oracle: hand-landed textures the check holds, one released.</summary>
+    internal static bool SlotsShortSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "TexRegistry.SlotsShortSelfCheck");
+        TexBudgetInputs had = TexBudget.Inputs;
+        var names = new List<string>();
+        var ids = new List<TexId>();
+        long hadFull = _full;
+        int mark = Watermark;
+        bool lastHeld = false;
+        try
+        {
+            TexBudget.BeginPeriod(new TexBudgetInputs(1 << 20, 5169 * ResidencyMiB, 0));
+            while (_freeHead >= 0 || _high < MaxSlots || _idleHead >= 0)
+            {
+                string n = $"cx_tshort_{names.Count}";
+                names.Add(n);
+                ids.Add(Held(n, 1, 0xF2000000u + (uint)names.Count));
+            }
+            lastHeld = true;
+            check.Expect(SlotsShort(1), $"a table of {names.Count} held textures with no slot open is not short of one");
+            Release(ids[^1]);
+            lastHeld = false;
+            check.Expect(!SlotsShort(1) && SlotsShort(2),
+                         $"one released texture in a full table: short of one {SlotsShort(1)}, short of two {SlotsShort(2)}");
+        }
+        catch (Exception e) { check.Expect(false, $"threw -- {e}"); }
+        finally
+        {
+            for (int k = 0; k < ids.Count - (lastHeld ? 0 : 1); k++) Release(ids[k]);
+            foreach (string n in names) Forget(n);
+            _full = hadFull;
+            TexBudget.BeginPeriod(had);
+            check.Expect(RewindTo(mark), "the held textures still hold slots past the session's never-used mark");
+        }
+        log.Info(check.Ok ? "TexRegistry.SlotsShortSelfCheck: passed" : "TexRegistry.SlotsShortSelfCheck: FAILED");
         return check.Ok;
     }
 }
