@@ -12,6 +12,25 @@ internal static partial class DbSelfCheck
         => EvictionSuite(log, "DbSelfCheck.RecipeTableRoom.SelfCheck", RoomE4, RoomCapHolds, RoomOneFrame, RoomEdgeBytes,
                          RoomEdgeByPass, RoomTwiceOld, RoomTexSlots);
 
+    /// <summary>The eviction suites, run so the frame line's recipe counts read the same before and after: a live
+    /// session runs them at boot, and must never report their spills, retirements or evictions as its own.</summary>
+    internal static bool EvictionSuitesSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "DbSelfCheck.EvictionSuites.SelfCheck");
+        string before = RecipeCounts();
+        bool suites = ModelEvictionApprovedExamplesSelfCheck(log) & RecipeTableApprovedExamplesSelfCheck(log)
+                    & RecipeTableRoomSelfCheck(log);
+        string after = RecipeCounts();
+        check.Expect(after == before, $"the frame line's recipe counts moved: {before} -> {after}");
+        log.Info(check.Ok ? "DbSelfCheck.EvictionSuites.SelfCheck: passed" : "DbSelfCheck.EvictionSuites.SelfCheck: FAILED");
+        return suites && check.Ok;
+    }
+
+    private static string RecipeCounts()
+        => $"spilled {DrawRecipe.Spilled} evicted {DrawRecipe.RoomEvicted} retired {DrawRecipe.Retired} "
+         + $"box-grown {DrawRecipe.BoxGrown} twin {DrawRecipe.TwinRefused} reclassified {DrawRecipe.Reclassified} "
+         + $"in-use {DrawRecipe.RetiredInUse} twice {DrawRecipe.DoubleRetire}";
+
     // E4 Given a session whose recipes fill less than a quarter of the recipe table, with its model memory under budget
     // When the player changes area
     // Then no model is evicted, and an area visited before comes back without loading its models again

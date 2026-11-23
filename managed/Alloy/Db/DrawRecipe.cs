@@ -129,11 +129,10 @@ internal static partial class DrawRecipe
         public readonly byte[] FaceTerms = new byte[Max];
 
         public SlotState() { System.Array.Fill(ContentRow, -1); }
-        public int RetiredInUse, DoubleRetire;
+        /// <summary>The frame line's recipe counts.</summary>
+        public Tally Counts = new() { BoxGrownFirst = "" };
         /// <summary>A self-check's smaller table (<see cref="CapOverride"/>), or null for <see cref="Max"/>.</summary>
         public int? CapOverride;
-        /// <summary>Models evicted this period to make room in the table, beside the memory and texture budgets'.</summary>
-        public int RoomEvicted;
         /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> saw.</summary>
         public int MtrSerial, MtrSeen;
         /// <summary>Interns and reclassifications of a CONTENT recipe (<see cref="ContentSerial"/>).</summary>
@@ -141,6 +140,18 @@ internal static partial class DrawRecipe
         public CX.Framework.ExtenderLog? Log;
     }
     private static SlotState _own = new();
+
+    /// <summary>The frame line's recipe counts, one value so a self-check that drives the table gives them back whole.</summary>
+    internal struct Tally
+    {
+        public int Spilled, TwinRefused, BoxGrown, Retired, Reclassified, RetiredInUse, DoubleRetire;
+        /// <summary>Models evicted this period to make room in the table, beside the memory and texture budgets'.</summary>
+        public int RoomEvicted;
+        public string BoxGrownFirst;
+    }
+
+    /// <summary>The frame line's recipe counts; set only by a self-check giving back what it found.</summary>
+    internal static Tally Counts { get => _own.Counts; set => _own.Counts = value; }
 
     /// <summary>The log the ownership refusals are said on. Set by the feed.</summary>
     internal static CX.Framework.ExtenderLog? Log { get => _own.Log; set => _own.Log = value; }
@@ -215,10 +226,10 @@ internal static partial class DrawRecipe
     private static int Take()
     {
         int r;
-        if (Count >= Cap) { Spilled++; return -1; }
+        if (Count >= Cap) { _own.Counts.Spilled++; return -1; }
         if (_own.Free.Count > 0) r = _own.Free.Pop();
         else if (_n < Max) r = _n++;
-        else { Spilled++; return -1; }
+        else { _own.Counts.Spilled++; return -1; }
         _own.Held[r] = true; _own.Orphan[r] = false; _own.Gen[r]++;
         return r;
     }
@@ -242,7 +253,7 @@ internal static partial class DrawRecipe
     /// quarantine. Refused, and counted, for a slot that is not held.</summary>
     private static void Retire(int r)
     {
-        if (!_own.Held[r]) { _own.DoubleRetire++; return; }
+        if (!_own.Held[r]) { _own.Counts.DoubleRetire++; return; }
         _own.Held[r] = false; _own.Orphan[r] = false;
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
@@ -250,7 +261,7 @@ internal static partial class DrawRecipe
         _model[r] = null; _mesh[r] = null;
         _rangeQueued[r] = false;
         _own.Retiring.Add(r);
-        Retired++;
+        _own.Counts.Retired++;
     }
 
     /// <summary>Give back what recipe <paramref name="r"/>'s material holds: its content row and its texture references.</summary>
@@ -325,9 +336,9 @@ internal static partial class DrawRecipe
     }
 
     /// <summary>A retire refused because the slot was not held: it would have reached the free list twice.</summary>
-    internal static int DoubleRetire => _own.DoubleRetire;
+    internal static int DoubleRetire => _own.Counts.DoubleRetire;
     /// <summary>Recipes whose model was evicted while a part still named them: kept until that part lets go.</summary>
-    internal static int RetiredInUse { get => _own.RetiredInUse; set => _own.RetiredInUse = value; }
+    internal static int RetiredInUse { get => _own.Counts.RetiredInUse; set => _own.Counts.RetiredInUse = value; }
 
     /// <summary>How many recipes actually have a resolved diffuse, and how many are drawing the white stand-in.
     /// "Most surfaces are untextured" is a question about these two numbers and nothing else.</summary>
@@ -345,13 +356,13 @@ internal static partial class DrawRecipe
         return (named, resolved, standIn);
     }
     /// <summary>Recipes refused for want of a table slot. Loud, counted, never a quiet hole.</summary>
-    internal static int Spilled { get; private set; }
+    internal static int Spilled => _own.Counts.Spilled;
     /// <summary>Nodes not drawn because a later coincident twin covers them (<see cref="TwinShadowed"/>).</summary>
-    internal static int TwinRefused { get; private set; }
+    internal static int TwinRefused => _own.Counts.TwinRefused;
     /// <summary>Recipes whose file-stated box did not hold their own vertices, and the first one's model:node.
     /// The cull sphere and the area index's box are this box, so an unfixed one culls a visible mesh.</summary>
-    internal static int BoxGrown { get; private set; }
-    internal static string BoxGrownFirst { get; private set; } = "";
+    internal static int BoxGrown => _own.Counts.BoxGrown;
+    internal static string BoxGrownFirst => _own.Counts.BoxGrownFirst;
 
     /// <summary>Siblings past this many are not compared.</summary>
     private const int TwinMaxFanOut = 32;
@@ -453,7 +464,7 @@ internal static partial class DrawRecipe
             if (planned != null) mesh = planned;
         }
         if (mesh == null || !mesh.Render || mesh.Indices.Length == 0) return -1;
-        if (TwinShadowed(model, node)) { TwinRefused++; return -1; }
+        if (TwinShadowed(model, node)) { _own.Counts.TwinRefused++; return -1; }
         r = Take();
         if (r < 0) return -1;
         _byNode[(model, plan ? ~node : node)] = r;
@@ -583,7 +594,7 @@ internal static partial class DrawRecipe
             TxiWords(r, additive, mesh.TransparencyHint > 0);
             if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
             if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst) continue;
-            if (_cls[r] != wasCls) Reclassified++;
+            if (_cls[r] != wasCls) _own.Counts.Reclassified++;
             // ...and a content recipe whose state moved names pipeline keys the prewarm has not seen
             if (ShaderFeatures.IsContent(_feat[r])) System.Threading.Interlocked.Increment(ref _own.ContentSerial);
             moved++;
@@ -636,7 +647,7 @@ internal static partial class DrawRecipe
     internal static void MaterialLanded() => System.Threading.Interlocked.Increment(ref _own.MtrSerial);
 
     /// <summary>Recipes whose class moved once their diffuse's coverage was known.</summary>
-    internal static int Reclassified { get; private set; }
+    internal static int Reclassified => _own.Counts.Reclassified;
 
     /// <summary>The water census: how many recipes are classified water, how many have a diffuse whose
     /// <c>.txi</c> names a bumpy-shiny map, and whether the engine's own gate on that route is live. "The
@@ -666,7 +677,7 @@ internal static partial class DrawRecipe
         foreach (Vector3 v in mesh.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
         if (lo != flo || hi != fhi)
         {
-            if (BoxGrown++ == 0) BoxGrownFirst = $"{_model[r]?.Name}:{nd.Name} {flo}..{fhi} -> {lo}..{hi}";
+            if (_own.Counts.BoxGrown++ == 0) _own.Counts.BoxGrownFirst = $"{_model[r]?.Name}:{nd.Name} {flo}..{fhi} -> {lo}..{hi}";
         }
         _centre[r] = (lo + hi) * 0.5f;
         Vector3 ex = hi - lo;
@@ -792,7 +803,7 @@ internal static partial class DrawRecipe
             if (_own.Users[r] > 0)
             {
                 _own.Orphan[r] = true;
-                if (_own.RetiredInUse++ < 8)
+                if (_own.Counts.RetiredInUse++ < 8)
                     Log?.Always($"DrawRecipe: model '{model.Name}' was evicted while {_own.Users[r]} part(s) still draw "
                               + $"node {_node[r]} -- the recipe is kept until they let go (a model reference was dropped too early)");
                 continue;
@@ -820,7 +831,7 @@ internal static partial class DrawRecipe
     private static bool EvictForRoom()
     {
         if (!ModelCache.EvictLeastRecent()) return false;
-        _own.RoomEvicted++;
+        _own.Counts.RoomEvicted++;
         return true;
     }
 
@@ -839,21 +850,13 @@ internal static partial class DrawRecipe
     }
 
     /// <summary>Models evicted this period to make room in the table.</summary>
-    internal static int RoomEvicted => _own.RoomEvicted;
+    internal static int RoomEvicted => _own.Counts.RoomEvicted;
 
     /// <summary>Start a new frame-line period.</summary>
-    internal static void ResetPeriod() => _own.RoomEvicted = 0;
-
-    /// <summary>Put the frame line's recipe counts back to what a self-check found, so a live session never reports
-    /// the self-check's spills and evictions as its own.</summary>
-    internal static void RestoreCountsForCheck(int spilled, int roomEvicted)
-    {
-        Spilled = spilled;
-        _own.RoomEvicted = roomEvicted;
-    }
+    internal static void ResetPeriod() => _own.Counts.RoomEvicted = 0;
 
     /// <summary>Recipes retired with their model.</summary>
-    internal static int Retired { get; private set; }
+    internal static int Retired => _own.Counts.Retired;
 
     /// <summary>Bytes of the textures that only recipes of idle cached models hold: a texture a held model also draws,
     /// and one no recipe holds, count nothing. A retired recipe has no model, and an orphan's model has left the cache.</summary>
