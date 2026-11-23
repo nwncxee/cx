@@ -322,7 +322,7 @@ tooltip asks *Should CX tell you about updates?*, and CX makes no request. On Ye
 `cx-update` and `cx-update.sig` from the latest release once a session, off the game thread, and
 takes the notice only when one of its built-in keys (`packaging/allowed_signers`) signed it under
 the `cx-update` namespace and its version is past the running build's. A newer release the player
-neither muted nor opened About for raises the badge (*An update is available!*); a press on the
+neither muted nor opened About for raises the badge (*An update is available: v0.14.0*); a press on the
 gear opens General » About, and viewing it takes the badge down until a newer release. The badge
 never draws in play. cx.log's first line and the crash report name a newer release a session found.
 

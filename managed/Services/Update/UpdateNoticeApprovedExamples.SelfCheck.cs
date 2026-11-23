@@ -85,7 +85,7 @@ internal static class UpdateNoticeApprovedExamples
         gear = new GearAttention();
         n = Launch(k, new Source("next.txt"), ear, gear);
         n.Check();
-        check.Expect(gear.BadgeShown(atMainMenu: true) && gear.Tip == UpdateNotice.NewTip, $"E12 the update badge shows ({gear.Tip})");
+        check.Expect(gear.BadgeShown(atMainMenu: true) && gear.Tip == UpdateNotice.NewTip(n.Notice?.Version ?? ""), $"E12 the update badge shows ({gear.Tip})");
 
         // Given a correctly signed release notice naming a version older than the running one
         // When the player reaches the main menu

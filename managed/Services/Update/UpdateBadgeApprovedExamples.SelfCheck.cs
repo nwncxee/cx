@@ -37,12 +37,12 @@ internal static class UpdateBadgeApprovedExamples
 
         // Given the player answered Yes and a newer signed release is out
         // When the player reaches the main menu
-        // Then the badge shows with the tooltip "An update is available!"
+        // Then the badge shows with the tooltip "An update is available: v0.14.0"
         k = Knobs("cx-upd-e3");
         k.Consent.Set(UpdateKnobs.Yes);
         gear = new GearAttention();
         Launch(k, new Source("v0140.txt"), ear, gear).Check();
-        check.Expect(gear.BadgeShown(atMainMenu: true) && gear.Tip == "An update is available!", $"E3 the badge says an update is available ({gear.Tip})");
+        check.Expect(gear.BadgeShown(atMainMenu: true) && gear.Tip == "An update is available: v0.14.0", $"E3 the badge names the newer release ({gear.Tip})");
 
         // Given the player answered Yes and already runs the newest release
         // When the player reaches the main menu

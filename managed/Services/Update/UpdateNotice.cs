@@ -7,8 +7,11 @@ namespace CX.Services.Update;
 /// badge for a newer signed release the player has neither opened About for nor muted.</summary>
 internal sealed class UpdateNotice
 {
-    /// <summary>The gear's tooltips: the unanswered question, and a newer release.</summary>
-    public const string AskTip = "Should CX tell you about updates?", NewTip = "An update is available!";
+    /// <summary>The gear's tooltip while the question is unanswered.</summary>
+    public const string AskTip = "Should CX tell you about updates?";
+
+    /// <summary>The gear's tooltip for a newer release, naming it.</summary>
+    public static string NewTip(string version) => "An update is available: " + version;
 
     /// <summary>The notice and its signature, beside each release's assets.</summary>
     public const string ManifestUrl = Product.Url + "/latest/download/cx-update", SignatureUrl = ManifestUrl + ".sig";
@@ -55,7 +58,7 @@ internal sealed class UpdateNotice
         if (_k.Found.V != m.Version) _k.Found.Set(m.Version);
         if (!Beyond(m.Version, _k.Muted.V)) return;
         Notice = m;
-        if (Beyond(m.Version, _k.Seen.V)) _gear.Raise(this, NewTip, _k.Group);
+        if (Beyond(m.Version, _k.Seen.V)) _gear.Raise(this, NewTip(m.Version), _k.Group);
     }
 
     /// <summary>The player answered the question: an unanswered one asks on the gear, any answer takes it down.</summary>
