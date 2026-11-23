@@ -246,7 +246,7 @@ public static partial class DbFeed
     }
 
     /// <summary>After the boot self-checks: every count the period lines report starts from zero, so the session's
-    /// lines carry no suite's spills, evictions, retirements or leaks.</summary>
+    /// lines carry no suite's spills, evictions, retirements or leaks, and no once-per-cause line a suite already said.</summary>
     internal static void SessionBegins()
     {
         ResetForSelfCheck();
@@ -254,5 +254,6 @@ public static partial class DbFeed
         StaticFolds = 0; StaticFoldBits = Dirty.None; StaticParts = 0; StaticPartBits = Dirty.None;
         DrawRecipe.SessionBegins();
         DbAnim.SessionBegins();
+        TexRegistry.SessionBegins();
     }
 }

@@ -166,7 +166,7 @@ internal static partial class DbSelfCheck
         var src = new ResidencySource();
         string[] idle = Models(src, "cx_rts_m", (TexRegistry.MaxSlots + 2048) / nodes, nodes);
         string[] fresh = Models(src, "cx_rts_new", 1, 4);
-        TexRegistry.QuietForCheck([.. TexturesOf(idle, nodes), .. TexturesOf(fresh, 4)]);
+        using TexRegistry.Quieted quiet = TexRegistry.Quiet();
         ModelCache.SetSource(src);
         try
         {
@@ -198,7 +198,7 @@ internal static partial class DbSelfCheck
         RecipeFloor();
         var src = new ResidencySource();
         string[] idle = Models(src, "cx_rtsh_m", TexRegistry.MaxSlots / nodes, nodes);
-        TexRegistry.QuietForCheck(TexturesOf(idle, nodes));
+        using TexRegistry.Quieted quiet = TexRegistry.Quiet();
         ModelCache.SetSource(src);
         try
         {

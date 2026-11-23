@@ -72,7 +72,7 @@ internal static unsafe partial class TexRegistry
     /// failure line is claimed first.</summary>
     private static TexId Held(string resref, long mib, uint name)
     {
-        LoudOnce($"tex:{resref}");
+        if (_log != null) LoadFailedOnce(resref);
         TexId id = Acquire(resref);
         Land(id, name, mib * ResidencyMiB);
         return id;

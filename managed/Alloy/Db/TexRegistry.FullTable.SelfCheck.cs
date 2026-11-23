@@ -9,6 +9,9 @@ internal static unsafe partial class TexRegistry
     /// <summary>The first slot no texture has taken yet, for a check to hand back with <see cref="RewindTo"/>.</summary>
     internal static int Watermark => System.Threading.Volatile.Read(ref _high);
 
+    /// <summary>How many once-per-cause lines the registry has said this session.</summary>
+    internal static int LoudKeys { get { lock (_loudOnce) return _loudOnce.Count; } }
+
     /// <summary>Hands back every slot from <paramref name="high"/> up as never used, so a check that filled the table
     /// leaves the session the slots <see cref="SlotsShort"/> answers from without a walk. False, and nothing changed,
     /// while any of those slots still holds a texture.</summary>
@@ -33,11 +36,19 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>Claims each name's one "did not load" line, so a fixture of thousands of textures that cannot load
-    /// does not fill one launch's log past its rotation.</summary>
-    internal static void QuietForCheck(string[] resrefs)
+    /// <summary>The registry's log off until disposed: a fixture of thousands of textures writes none of its lines
+    /// to the player's log and claims none of their once-per-name keys.</summary>
+    internal static Quieted Quiet()
     {
-        foreach (string r in resrefs) LoudOnce($"tex:{r}");
+        var q = new Quieted(_log);
+        _log = null;
+        return q;
+    }
+
+    /// <summary>Hands the registry back the log <see cref="Quiet"/> took.</summary>
+    internal readonly struct Quieted(ExtenderLog? had) : IDisposable
+    {
+        public void Dispose() => _log = had;
     }
 
     /// <summary>Found test: a table whose every free slot is taken by idle textures gives a new texture the least
@@ -51,6 +62,7 @@ internal static unsafe partial class TexRegistry
         TexId fresh = default;
         long hadFull = _full;
         int mark = Watermark;
+        using Quieted quiet = Quiet();
         try
         {
             TexBudget.BeginPeriod(new TexBudgetInputs(1 << 20, 5169 * ResidencyMiB, 0));
@@ -62,7 +74,6 @@ internal static unsafe partial class TexRegistry
                 ids.Add(id);
                 Release(id);
             }
-            LoudOnce("tex:cx_tfull_new");
             fresh = Acquire("cx_tfull_new");
             check.Expect(Valid(fresh) && _full == hadFull,
                          $"a full table of {names.Count} idle textures refused a new one ({_full - hadFull} refused)");
@@ -93,6 +104,7 @@ internal static unsafe partial class TexRegistry
         var ids = new List<TexId>();
         long hadFull = _full;
         int mark = Watermark;
+        using Quieted quiet = Quiet();
         bool lastHeld = false;
         try
         {

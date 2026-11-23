@@ -280,7 +280,7 @@ internal static unsafe partial class TexRegistry
         Expect(SceneDb.Parts.DirtyCount == 2, "a dependent was recorded on a RESIDENT slot (the list must be closed)");
 
         SceneDb.Parts.TakeDirty();
-        LoudOnce($"tex:{ResrefOf(c)}");   // ...and the deliberate failure below
+        LoadFailedOnce(ResrefOf(c));   // ...and the deliberate failure below
         Fail(c.Index, "the self-check says so");
         Expect(StateOf(c) == TexState.Failed, "a failed load is not in the Failed state");
         Expect(!TryResident(c, out _, out _), "a failed load answers resident");

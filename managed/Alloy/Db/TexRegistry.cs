@@ -792,6 +792,15 @@ internal static unsafe partial class TexRegistry
         lock (_loudOnce) return _loudOnce.Add(cause);
     }
 
+    /// <summary>Is this the first "did not load" line for <paramref name="resref"/> this session?</summary>
+    private static bool LoadFailedOnce(string resref) => LoudOnce($"tex:{resref}");
+
+    /// <summary>The session says each cause once more, whatever a boot self-check already said.</summary>
+    internal static void SessionBegins()
+    {
+        lock (_loudOnce) _loudOnce.Clear();
+    }
+
     /// <summary>The <c>[alloy]</c> period line.</summary>
     internal static string Note()
         => $"texreg: {_live} textures ({_residentBytes / (1 << 20)} MiB held, {_idleBytes / (1 << 20)} MiB idle"

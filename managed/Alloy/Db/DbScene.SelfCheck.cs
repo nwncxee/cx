@@ -59,6 +59,8 @@ internal static unsafe class DbSceneSelfCheck
         check.Expect(DbAnim.SessionCountsClear, "no suite's skin count, printed or not, outlives the session edge");
         check.Expect(TexRegistry.NeverUsed >= TexRegistry.MaxSlots / DrawRecipe.RoomShare,
                      $"no suite spends the texture slots a session has never used ({TexRegistry.NeverUsed} of {TexRegistry.MaxSlots} left)");
+        check.Expect(TexRegistry.LoudKeys == 0,
+                     $"no suite keeps a once-per-cause texture line from the session ({TexRegistry.LoudKeys} claimed)");
     }
 
     /// <summary>Feed-line clauses that report a count of something that went wrong or went away.</summary>
