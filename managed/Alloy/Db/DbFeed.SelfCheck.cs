@@ -495,9 +495,8 @@ public static unsafe partial class DbFeed
         DrawRecipe.Forget(b);
         DrawRecipe.Forget(c);
 
-        // the fixture's own eviction-in-use is on purpose: kept off the log and the period line
+        // the fixture's own eviction-in-use is on purpose: kept off the log
         var log = DrawRecipe.Log;
-        DrawRecipe.Tally counts = DrawRecipe.Counts;
         DrawRecipe.Log = null;
         ModelDef d = OneMeshModel("cx_selfcheck_rd"), e = OneMeshModel("cx_selfcheck_re"), f = OneMeshModel("cx_selfcheck_rf");
         DbId h = SceneDb.Parts.Alloc();
@@ -514,7 +513,6 @@ public static unsafe partial class DbFeed
         SceneDb.Parts.Free(h);
         DrawRecipe.Forget(e); DrawRecipe.Forget(f);
         DrawRecipe.Log = log;
-        DrawRecipe.Counts = counts;
 
         ModelDef g = OneMeshModel("cx_selfcheck_rg"), k = OneMeshModel("cx_selfcheck_rk");
         int range = MeshArena.AcquireDynamic(g.Nodes[1].Mesh!, 0x5E1F_C4EC_0000_0001UL);

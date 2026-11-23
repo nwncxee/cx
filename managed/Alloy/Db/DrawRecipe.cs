@@ -142,7 +142,7 @@ internal static partial class DrawRecipe
     private static SlotState _own = new();
 
     /// <summary>The frame line's recipe counts, one value so a self-check that drives the table gives them back whole.</summary>
-    internal struct Tally
+    internal record struct Tally
     {
         public int Spilled, TwinRefused, BoxGrown, Retired, Reclassified, RetiredInUse, DoubleRetire;
         /// <summary>Models evicted this period to make room in the table, beside the memory and texture budgets'.</summary>
