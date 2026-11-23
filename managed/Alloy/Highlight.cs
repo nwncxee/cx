@@ -214,8 +214,8 @@ internal static unsafe partial class Highlight
     private const float MaskOffsetFactor = -1f, MaskOffsetUnits = -2f;
 
     /// <summary>The root's highlight colour at full coverage, over <see cref="DepthVs"/> -- the vertex
-    /// stage is reused verbatim so the mask's biased LEQUAL test sits against exactly the positions the
-    /// colour pass wrote depth from.</summary>
+    /// stage is reused verbatim, a wash pulled as the colour pass pulls it, so the mask's biased LEQUAL test
+    /// sits against exactly the positions the colour pass wrote depth from.</summary>
     internal static string HighlightMaskFs => ShaderSource.Get("cx_hilitemask_f.glsl");
 
     /// <summary>The composite: fill where the mask has coverage (its bilinear edge antialiases the rim, and

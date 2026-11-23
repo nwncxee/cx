@@ -183,7 +183,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Which attachment set a pipeline draws into.</summary>
     private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth, Cover }
 
-    /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
+    /// <summary>The eight per-batch values, in <c>VkGlsl.Push</c>'s order; <see cref="Pull"/> is a wash batch's
+    /// <see cref="WorldDepth.Pull"/> and zero for every other.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct VkBatchPush
     {
@@ -192,6 +193,7 @@ public sealed unsafe partial class AlloyRenderer
         public int SsaoOn;
         public float AoDirect;
         public int Decal, Solid, OitGob;
+        public float Pull;
     }
 
     /// <summary>The slots <see cref="Issue.UploadDraws"/> moved, handed over before it clears them.

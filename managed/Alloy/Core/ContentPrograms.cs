@@ -351,12 +351,16 @@ internal static unsafe class ContentPrograms
     /// <summary>The twins the pair's facts call for, beside its forward program: the deferred one unless it must draw forward
     /// (<see cref="ContentStage.Result.ForwardOnly"/>), and the depth and caster ones when its parts' depth is its own.</summary>
     private static List<(string What, string Vs, string Fs, int Slot)> Twins(Stage s)
+        => Twins(s.VsSrc!, s.FsSrc!, s.ForwardOnly, s.Cuts || s.Moves);
+
+    /// <summary>The twins of forward texts <paramref name="vs"/>/<paramref name="fs"/>, by slot: 1 deferred, 2 depth,
+    /// 3 caster, 4 layered caster; the last three only when the pair's depth is its own.</summary>
+    internal static List<(string What, string Vs, string Fs, int Slot)> Twins(string vs, string fs, bool forwardOnly, bool ownDepth)
     {
         var list = new List<(string, string, string, int)>();
-        string vs = s.VsSrc!, fs = s.FsSrc!;
-        if (!s.ForwardOnly && LitDeferred(fs))
+        if (!forwardOnly && LitDeferred(fs))
             list.Add(("deferred twin", vs, CX.Alloy.Programs.WithDeferred(fs), 1));
-        if (!s.Cuts && !s.Moves) return list;
+        if (!ownDepth) return list;
         string depthFs = ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1");
         list.Add(("depth twin", vs, depthFs, 2));
         string castFs = ShaderStages.WithDefine(depthFs, "CX_CAST 1");

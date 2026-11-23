@@ -136,16 +136,26 @@ internal static class VkPrograms
     {
         if (GlText(id, log) is not { } t)
             return new VkProgramText { Error = "its vertex stage does not put last frame's blade back (an override without the sway's velocity arm)" };
-        return WorldDepth.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units);
+        return WorldDepth.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units, pull: Pulled(id));
     }
+
+    /// <summary>Does program <paramref name="id"/> draw wash batches, and so take <see cref="WorldDepth.Pull"/>? The
+    /// colour phase's programs and the highlight mask, which tests against their depth; the prepass pushes no pull.</summary>
+    internal static bool Pulled(Id id) => id is Id.Fullbright or Id.Lit or Id.LitDeferred or Id.HighlightMask;
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
     /// its GL program compiled (library swaps, then the hosted splice); null when that variant is not built on GL.</summary>
     internal static VkProgramText? ContentText(int feat, ContentVariant v, int nativeVs, int nativeFs, ExtenderLog? log)
     {
         if (ContentPrograms.Texts(feat, v) is not { } t) return null;
-        string what = $"VkPrograms content {feat} {v}";
-        string vs = Final(ShaderTexts.Lib(t.Vs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(t.Fs, log, what), log, what, true);
+        return ContentTranslate(t.Vs, t.Fs, v, nativeVs, nativeFs, $"VkPrograms content {feat} {v}", log);
+    }
+
+    /// <summary>A content pair's <paramref name="v"/> texts, as <see cref="ContentPrograms"/> spliced them, through the
+    /// library swaps and the hosted splice and translated for Vulkan: a caster twin keeps GL's depth, the rest are pulled.</summary>
+    private static VkProgramText ContentTranslate(string rawVs, string rawFs, ContentVariant v, int nativeVs, int nativeFs, string what, ExtenderLog? log)
+    {
+        string vs = Final(ShaderTexts.Lib(rawVs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(rawFs, log, what), log, what, true);
         if (StageResources.VkUnits(Units, vs + "\n" + fs, nativeVs, nativeFs, StageResources.DrawImgUnits, out string why) is not { } units)
         {
             StageResources.Fail(nativeVs, why, log);
@@ -153,8 +163,13 @@ internal static class VkPrograms
             return new VkProgramText { Error = why };
         }
         // a caster twin draws into a shadow map, which keeps GL's window depth
-        return v is ContentVariant.Caster or ContentVariant.CasterLayer ? VkGlsl.Translate(vs, fs, units) : WorldDepth.Translate(vs, fs, units);
+        return !Pulled(v) ? VkGlsl.Translate(vs, fs, units)
+             : WorldDepth.Translate(vs, fs, units, pull: Pulled(v));
     }
+
+    /// <summary>Does a content pair's <paramref name="v"/> program draw wash batches? Every variant but the casters, as
+    /// <see cref="Pulled(Id)"/> says for Alloy's own: the depth twin draws the highlight mask too.</summary>
+    internal static bool Pulled(ContentVariant v) => v is not (ContentVariant.Caster or ContentVariant.CasterLayer);
 
     /// <summary>The hosted sky's NATIVE program for content stage <paramref name="resref"/> on native stage
     /// <paramref name="stage"/>, its stage images given bindings of their own; null when the text is not in the chain.</summary>
@@ -222,9 +237,13 @@ internal static class VkPrograms
             "texUnit1 sits on unit 3 and texUnit3 on unit 5");
     }
 
+    /// <summary>The programs whose vertex stage takes the wash's pull, written out from the spec: those that draw a
+    /// wash's colour, and the highlight mask that tests against its depth.</summary>
+    private static readonly Id[] PulledIds = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.HighlightMask];
+
     /// <summary>Every program here, translated and compiled for Vulkan 1.3, its loose block reflected. Oracles:
-    /// shaderc's verdict on each stage; the push block's offsets against the hand-written 0, 4 .. 24 its seven
-    /// four-byte members take; the compiled block against the translator's member list, two artifacts.</summary>
+    /// shaderc's verdict on each stage; the push block's offsets against the hand-written 0, 4 .. 28 its eight
+    /// four-byte members take; the compiled block against the translator's member list; <see cref="PulledIds"/>.</summary>
     [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static void SelfCheck(ExtenderLog log)
     {
@@ -240,6 +259,9 @@ internal static class VkPrograms
             VkProgramText t = Text(id, log);
             var spirv = new Dictionary<ShaderKind, byte[]>();
             if (!VkGlsl.Compiles(check, $"VkPrograms {id}", t, spirv)) continue;
+            bool pulled = Array.IndexOf(PulledIds, id) >= 0;
+            check.Expect(t.Vs.Contains("cxPullMain();", StringComparison.Ordinal) == pulled,
+                $"{id}'s vertex stage {(pulled ? "is" : "is not")} pulled toward the eye");
             counts.Add($"{id} {t.Loose.Count}");
             if (t.Loose.Count > 0)
             {
@@ -253,11 +275,11 @@ internal static class VkPrograms
             }
             if (VkSpirv.Push(spirv[ShaderKind.VertexShader], Array.ConvertAll(VkGlsl.Push, p => p.Name)) is { } push)
             {
-                int[] want = [0, 4, 8, 12, 16, 20, 24];
+                int[] want = [0, 4, 8, 12, 16, 20, 24, 28];
                 bool at = push.Members.Count == want.Length;
                 for (int i = 0; at && i < want.Length; i++)
                     at = push.Members.TryGetValue(VkGlsl.Push[i].Name, out var m) && m.Offset == want[i] && m.Size == 4;
-                check.Expect(at && push.Bytes == 32, $"{id}'s push block sits at 0, 4 .. 24, four bytes each, 32 in all");
+                check.Expect(at && push.Bytes == 32, $"{id}'s push block sits at 0, 4 .. 28, four bytes each, 32 in all");
             }
             else if (id < Id.Grass) check.Expect(false, $"{id}'s vertex stage declares the push block");
             // every set-0 binding a compiled stage decorates is one the host binds: a missing one is an unwritten
@@ -271,7 +293,37 @@ internal static class VkPrograms
                     check.Expect(!(a.Set == b.Set && a.Binding == b.Binding && a.Kind == b.Kind && a.Type != b.Type),
                         $"{id}: {a.Name} ({a.Type}) and {b.Name} ({b.Type}) share binding {a.Binding} with different types");
         }
+        ContentVariants(check, log);
         log.Info(check.Ok ? $"VkPrograms.SelfCheck: passed -- loose members {string.Join(", ", counts)}" : "VkPrograms.SelfCheck: FAILED");
+    }
+
+    /// <summary>A content pair with both halves its own, spliced from the lit pair as the pair build splices it, compiles
+    /// in all five variants, and every vertex stage but the casters' is pulled. Oracles: shaderc; the table written here.</summary>
+    private static void ContentVariants(Checker check, ExtenderLog log)
+    {
+        (string litVs, string litFs) = LitPair(log);
+        string? vs = ContentPrograms.WithRegion(litVs, ContentPrograms.VsLib, VanillaShader.ContentVsMark, "cx_fixvs", "cx_fixture", ContentPrograms.VsStub);
+        string? fs = ContentPrograms.WithRegion(litFs, ContentPrograms.FsLib, VanillaShader.ContentMark, "cx_fixture", "cx_fixvs", ContentPrograms.RegionStub);
+        check.Expect(vs != null && fs != null, "the lit pair carries both content regions");
+        if (vs == null || fs == null) return;
+        vs = ShaderStages.AfterVersion(vs, AlloyRenderer.BindlessPrologue);
+        var variants = new List<(ContentVariant V, bool Pulled, string Vs, string Fs)> { (ContentVariant.Forward, true, vs, fs) };
+        foreach (var (_, tv, tf, slot) in ContentPrograms.Twins(vs, fs, forwardOnly: false, ownDepth: true))
+            variants.Add(slot switch
+            {
+                1 => (ContentVariant.Deferred, true, tv, tf),
+                2 => (ContentVariant.Depth, true, tv, tf),
+                3 => (ContentVariant.Caster, false, tv, tf),
+                _ => (ContentVariant.CasterLayer, false, tv, tf),
+            });
+        check.Expect(variants.Count == 5, $"a pair with its own depth has a forward program and four twins, not {variants.Count}");
+        foreach ((ContentVariant v, bool pulled, string cvs, string cfs) in variants)
+        {
+            VkProgramText t = ContentTranslate(cvs, cfs, v, -1, -1, $"VkPrograms content fixture {v}", log);
+            if (!VkGlsl.Compiles(check, $"VkPrograms content fixture {v}", t)) continue;
+            check.Expect(t.Vs.Contains("cxPullMain();", StringComparison.Ordinal) == pulled,
+                $"the content {v} vertex stage {(pulled ? "is" : "is not")} pulled toward the eye");
+        }
     }
 
     /// <summary>SPIR-V's OpDecorate and its DescriptorSet and Binding decorations, from the specification's tables.</summary>

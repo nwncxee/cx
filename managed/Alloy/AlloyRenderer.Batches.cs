@@ -958,8 +958,7 @@ public sealed unsafe partial class AlloyRenderer
         row.Mode = db ? EngineTokens.TRIANGLES : _primTable[_oPrim[i]];
         row.NoCull = _oNoCull[i];
         row.Src = (byte)_oSrc[i]; row.Dst = (byte)_oDst[i]; row.Wash = (byte)_oWash[i];
-        // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
-        // wash's polygon offset, in any class
+        // one multidraw cannot vary its class, blend pair or a wash's pull (one push value per batch) inside it
         row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // The OIT object id is one uniform per batch, so it is a key term and a tag on the batch.
         row.GobKey = OitPass.Dedupes && cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(i), _oDecal[i] != 0, _oWash[i])

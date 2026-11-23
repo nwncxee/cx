@@ -59,7 +59,17 @@ internal static partial class WorldDepth
         return m;
     }
 
-    /// <summary>A world program's two stages for Vulkan: its clip z comes off a folded matrix, so it passes through.</summary>
-    internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> units)
-        => VkGlsl.Translate(vs, fs, units, glDepth: false);
+    /// <summary>The fraction of its distance a wash is drawn nearer the eye: 2^-16, so a sheet 1 cm under a surface
+    /// stays behind it to 655 m at any pitch, while one lying on the surface wins by at least 128 float steps.</summary>
+    internal const float EyePull = 1f / 65536f;
+
+    /// <summary>What a pulled stage adds to its folded clip z so its depth is the point's at <see cref="EyePull"/> nearer
+    /// the eye: M43 (1/s - 1), s = 1 - <see cref="EyePull"/>. Zero for an orthographic pass (no planes).</summary>
+    internal static float Pull(float near, float far)
+        => near > 0f && far > near ? Decode(near, far).A * (EyePull / (1f - EyePull)) : 0f;
+
+    /// <summary>A world program's two stages for Vulkan: its clip z comes off a folded matrix, so it passes through;
+    /// <paramref name="pull"/> adds the batch's <see cref="Pull"/> to it.</summary>
+    internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> units, bool pull = false)
+        => VkGlsl.Translate(vs, fs, units, glDepth: false, pull: pull);
 }
