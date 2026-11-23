@@ -181,6 +181,7 @@ internal static class PopupBandApprovedExamples
                 s.HitTestOverride = (x, y) => (x >= 100f && x < 300f && y >= 100f && y < 230f) || drop.Contains(x, y);
                 s.OnMouseButton = (down, _, x, y) => down && drop.MouseDown(x, y, out _);
                 Window v = InventoryService.NewWindow();
+                v.RaiseAboveNui = static () => true;
                 v.DrawContent = () => drawn.Append('v');
                 v.HitTestOverride = (x, y) => x >= 150f && x < 450f && y >= 240f && y < 500f;
                 v.OnMouseButton = (_, _, _, _) => invReacted = true;

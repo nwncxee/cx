@@ -90,8 +90,6 @@ public struct CascadeStyle
     };
 }
 
-/// <summary>One open list of the cascade: its rows, its viewport (<see cref="List"/> is the rect), the hovered
-/// row, the parent row it hangs off (-1 at the root), and when it first drew (-1 until then).</summary>
 /// <summary>An owner's draw calls for a <see cref="CascadeMenu"/>: its skin pass opened, then one batch and the icons
 /// that go over it painted.</summary>
 public interface ICascadeSink
@@ -100,6 +98,8 @@ public interface ICascadeSink
     void Paint(VertexBatch b, ReadOnlySpan<IconQuad> icons);
 }
 
+/// <summary>One open list of the cascade: its rows, its viewport (<see cref="List"/> is the rect), the hovered
+/// row, the parent row it hangs off (-1 at the root), and when it first drew (-1 until then).</summary>
 public sealed class CascadeLevel
 {
     public long OpenedMs = -1;

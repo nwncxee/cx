@@ -45,10 +45,11 @@ public sealed unsafe class KnobPanelService : IExtenderService
         log.Info("KnobPanelService: settings panel registered (/settings opens it)");
     }
 
-    /// <summary>The window the settings panel draws in, registered with the UI host on creation. Its hit-test and popup
-    /// answer read <paramref name="panel"/>; its draw and input are the service's own panel's.</summary>
+    /// <summary>The window the settings panel draws in, registered with the UI host on creation, always above NUI. Its
+    /// hit-test and popup answer read <paramref name="panel"/>; its draw and input are the service's own panel's.</summary>
     internal static Window NewWindow(KnobPanel panel) => new(0, 0, 0, 0)
     {
+        Layer = UiLayer.AboveNui,
         Focusable = false,
         DrawContent = Draw,
         OnMouseButton = OnMouseButton,
