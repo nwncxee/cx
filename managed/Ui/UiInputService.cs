@@ -218,6 +218,7 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary><see cref="PumpKeyDown(uint, int)"/> with what an Esc finds read through <paramref name="under"/>.</summary>
     internal static bool PumpKeyDown<T>(uint key, int mods, in T under) where T : struct, IEscUnder
     {
+        if (key == SdlEscape && StockFirst(under)) return false;
         if (key == SdlEscape && CX.Services.NuiItems.ItemDragService.Dragging)
         {
             CX.Services.NuiItems.ItemDragService.OnCancel();
@@ -232,7 +233,26 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary><see cref="RouteKeyDown(uint, int, bool)"/> with what an Esc finds read through <paramref name="under"/>.</summary>
     internal static bool RouteKeyDown<T>(uint key, int mods, bool nuiEdit, in T under) where T : struct, IEscUnder
-        => !nuiEdit && (UiHost.DispatchKey(key, mods) || CX.Alloy.Db.EditSelect.OnKey(key, mods));
+    {
+        if (nuiEdit) return false;
+        if (key == SdlEscape && StockFirst(under)) return false;
+        if (key == SdlEscape && !UiHost.AnyKeyboardOwner && EscClosesNui(under.Nuklear)) return true;
+        return UiHost.DispatchKey(key, mods) || CX.Alloy.Db.EditSelect.OnKey(key, mods);
+    }
+
+    /// <summary>Esc is the engine's while a stock modal panel is up or a cutscene plays: the stock client answers it there.</summary>
+    private static bool StockFirst<T>(in T under) where T : struct, IEscUnder => under.StockModal || under.Cutscene;
+
+    /// <summary>Esc closes the server NUI window drawn over the topmost CX window Esc would close, when that window
+    /// draws under NUI. True when one closed; the CX window is left open.</summary>
+    private static bool EscClosesNui(IntPtr nuklear)
+    {
+        Window? top = null;
+        (float X, float Y, float W, float H) area = default;
+        foreach (Window w in UiHost.Windows)
+            if ((top == null || w.Order > top.Order) && w.EscArea?.Invoke() is { } a) { top = w; area = a; }
+        return top != null && top.Band < UiLayer.AboveNui && EscNui.CloseOver(nuklear, area.X, area.Y, area.W, area.H) != IntPtr.Zero;
+    }
 
     /// <summary>What an Esc press finds on the engine's side: a stock modal panel up, a cutscene playing, and the
     /// nuklear context whose NUI windows may draw over CX's. Each is read when asked.</summary>
