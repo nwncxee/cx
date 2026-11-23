@@ -16,6 +16,7 @@ both=(
   build-win-native.sh
   packaging/licenses.sh
   packaging/README-win.txt
+  packaging/allowed_signers
   LICENSE
   .gitmodules
   .github/workflows/ci.yml

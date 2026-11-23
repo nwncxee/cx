@@ -19,6 +19,7 @@ row tools/ffx/prepare.sh true true
 row tools/deps.json true true
 row tools/analyzers/EngineGl.cs true true
 row packaging/README-win.txt true true
+row packaging/allowed_signers true true
 row LICENSE true true
 row .github/workflows/ci.yml true true
 row tools/ci-changes.sh true true
