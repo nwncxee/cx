@@ -17,6 +17,13 @@ public enum UiLayer
     Popup,
 }
 
+/// <summary>The extent of <see cref="UiLayer"/>, said once for every table sized by layer.</summary>
+internal static class UiLayers
+{
+    /// <summary>How many layers there are: one past the topmost.</summary>
+    public const int Count = (int)UiLayer.Popup + 1;
+}
+
 /// <summary>A first-class UI window: rect, z-order, focus/keyboard state, capability flags, and the cursor regions
 /// under it. Constructing one registers it with <see cref="UiHost"/> -- there is no discovery interface. The
 /// framework owns the chrome (hit-test, cursor, focus) and routes captured input to the content delegates; the
@@ -48,6 +55,12 @@ public sealed class Window
     /// <summary>The player's Draw above NUI setting for this window, read every frame so a change moves it at once.
     /// Null for a window with no such setting.</summary>
     public Func<bool>? RaiseAboveNui;
+
+    /// <summary>The label every window's Draw above NUI setting shows.</summary>
+    public const string AboveNuiLabel = "Draw above NUI";
+
+    /// <summary>The help text of a window's Draw above NUI setting.</summary>
+    public const string AboveNuiHelp = "Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it.";
 
     /// <summary>The distance in <see cref="Order"/> between one layer and the next. Far past any z the counter reaches.</summary>
     private const int LayerBias = 1 << 28;

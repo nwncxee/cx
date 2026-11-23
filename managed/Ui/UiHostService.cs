@@ -50,7 +50,7 @@ public sealed unsafe class UiHostService : IExtenderService
         _nkSlot = hooks.ChainNkSdlRender(&OnNkRender, 20);
         log.Info(_nkSlot != null
             ? "UiHostService: window roll-call straddles NUI (chained on nk_sdl_render)"
-            : "UiHostService: nk_sdl_render unavailable -- both window layers stay at the present (above NUI)");
+            : "UiHostService: nk_sdl_render unavailable -- every layer draws at the present (above NUI)");
         _viewSlot = hooks.ChainCameraRenderScene(&OnRenderScene, ViewChainPriority);
         log.Info(_viewSlot != null
             ? "UiHostService: world-anchored windows draw on the world view, under the game's panels"
@@ -216,8 +216,8 @@ public sealed unsafe class UiHostService : IExtenderService
     private const uint GlArrayBuffer = 0x8892;  // not-an-offset: a GL enum
 
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
-    /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
-    /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
+    /// itself happens earlier, on the world view and at <see cref="OnNkRender"/>; it falls back to here, every
+    /// layer over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
     [UnmanagedCallersOnly]
     private static void OnSwap(IntPtr window)
     {
@@ -251,8 +251,8 @@ public sealed unsafe class UiHostService : IExtenderService
         FrameRegistry.Global.Run(FramePhase.PostPresent);
     }
 
-    /// <summary>The window roll-call's draw site with Alloy off: the below-NUI layer, resync, the rest of the chain
-    /// and nuklear's own flush, then the above-NUI layer. Hot, and on the same thread as the present.</summary>
+    /// <summary>The window roll-call's draw site with Alloy off: the below-NUI layer (and the world-anchored one when no
+    /// world view drew it), the rest of the chain and nuklear's flush, then the above-NUI and popup layers. Hot.</summary>
     [UnmanagedCallersOnly]
     private static void OnNkRender(float aa)
     {
@@ -290,12 +290,20 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
     /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
-    private static readonly UiDrawList[] _layers = { new(), new(), new(), new() };
+    private static readonly UiDrawList[] _layers = NewLayers();
+
+    /// <summary>One empty draw list per layer.</summary>
+    private static UiDrawList[] NewLayers()
+    {
+        var lists = new UiDrawList[UiLayers.Count];
+        for (int i = 0; i < lists.Length; i++) lists[i] = new UiDrawList();
+        return lists;
+    }
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
 
-    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing nothing: Alloy's GUI pass
+    /// <summary>Record CX's own 2D windows for the frame Alloy draws, every layer, issuing nothing: Alloy's GUI pass
     /// replays them into its own frame. Game thread.</summary>
     internal static void RecordWindowsForDbFrame()
     {
@@ -306,8 +314,8 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>The engine-context draw with Alloy off: record layers <paramref name="from"/> to <paramref name="to"/>,
     /// replaying each at once, then hand the GL state back -- our raw GL desyncs GLRender's shadow cache and what
-    /// renders next is NUI. The engine has drawn its panels by now, so here an under-GUI window is over them.</summary>
-    private static void DrawWindows(UiLayer from = UiLayer.UnderGui, UiLayer to = UiLayer.Popup)
+    /// renders next is NUI, or the engine's panels when the world view calls it for the world-anchored windows.</summary>
+    private static void DrawWindows(UiLayer from, UiLayer to = UiLayer.Popup)
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         for (UiLayer layer = from; layer <= to; layer++)

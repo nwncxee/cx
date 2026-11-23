@@ -304,9 +304,9 @@ public static partial class UiHost
                 lo.HitTestOverride = null;
 
                 // Focus mode: hover-to-focus focuses on motion only when enabled; click-to-focus is the default.
-                check.Expect(HoverFocusAt(5, 5) == null, "click-to-focus (default): hover does not focus");
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: false) == null, "click-to-focus (default): hover does not focus");
                 HoverToFocus = true;
-                check.Expect(HoverFocusAt(5, 5) == upper && Focused == upper, "hover-to-focus: the topmost focusable window under the pointer takes focus");
+                check.Expect(HoverFocusAt(5, 5, nuiCovers: false) == upper && Focused == upper, "hover-to-focus: the topmost focusable window under the pointer takes focus");
                 SetFocused(null);
                 check.Expect(HoverFocusAt(5, 5, nuiCovers: true) == null && Focused == null,
                     "hover-to-focus: a NUI window over the pointer keeps a CX window under NUI from taking focus");

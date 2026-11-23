@@ -162,7 +162,7 @@ public static partial class UiHost
     /// focusable window under the point as the pointer moves over it. No-op (returns null) in click-to-focus
     /// mode; empty space never releases focus on hover (only a click does), and a window under NUI is skipped
     /// where <paramref name="nuiCovers"/> says a NUI window covers the point.</summary>
-    public static Window? HoverFocusAt(float px, float py, bool nuiCovers = false)
+    public static Window? HoverFocusAt(float px, float py, bool nuiCovers)
     {
         if (!HoverToFocus) return null;
         var w = HitTestFocusable(px, py);
@@ -368,7 +368,7 @@ public static partial class UiHost
     }
 
     /// <summary>Every layer, bottom to top.</summary>
-    internal static readonly UiLayer[] Layers = [UiLayer.UnderGui, UiLayer.BelowNui, UiLayer.AboveNui, UiLayer.Popup];
+    internal static readonly UiLayer[] Layers = Enum.GetValues<UiLayer>();
 
     /// <summary>The per-frame draw roll-call over every layer, bottom to top, for a site that cannot draw between
     /// the vanilla GUI and NUI; one that can calls <see cref="DrawFrame(UiLayer)"/> at each layer's place.</summary>

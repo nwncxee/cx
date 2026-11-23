@@ -45,8 +45,8 @@ public sealed unsafe class KnobPanelService : IExtenderService
         log.Info("KnobPanelService: settings panel registered (/settings opens it)");
     }
 
-    /// <summary>The window <paramref name="panel"/> draws in, registered with the UI host on creation; the service passes
-    /// its own panel and the self-checks one of their own.</summary>
+    /// <summary>The window the settings panel draws in, registered with the UI host on creation. Its hit-test and popup
+    /// answer read <paramref name="panel"/>; its draw and input are the service's own panel's.</summary>
     internal static Window NewWindow(KnobPanel panel) => new(0, 0, 0, 0)
     {
         Focusable = false,
@@ -56,7 +56,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
         OnMouseWheel = OnMouseWheel,
         OnKey = OnKey,
         OnText = OnText,
-        HitTestOverride = (px, py) => _panel.Open && Visible && _panel.Contains(px, py),
+        HitTestOverride = (px, py) => panel.Open && Visible && panel.Contains(px, py),
         PopupOpen = () => panel.PopupOpen,
     };
 

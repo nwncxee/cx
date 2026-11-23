@@ -31,7 +31,7 @@ internal static class DialogKnobs
                              help: "The window grows with the text up to this height, then scrolls. The resize grip sets it too.");
         Justify = G.Toggle("justify", "Justify text", false, help: "Stretch lines to the window width. Off is ragged right.",
                            changed: DialogService.Relayout);
-        AboveNui = G.Toggle("abovenui", "Draw above NUI", false, help: "Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it.");
+        AboveNui = G.Toggle("abovenui", CX.Ui.Window.AboveNuiLabel, false, help: CX.Ui.Window.AboveNuiHelp);
         Anim = G.Toggle("anim", "Animations", true, help: "Text fades in and out between nodes. Off, it snaps.");
         FadeIn = G.Slider("fadein", "Fade in", 0, 500, 10, 180, "ms", Tier.Advanced);
         FadeOut = G.Slider("fadeout", "Fade out", 0, 500, 10, 140, "ms", Tier.Advanced);

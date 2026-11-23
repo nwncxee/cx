@@ -159,8 +159,8 @@ public sealed partial class SettingsWindow
                   "No moving, resizing or tab dragging on this window.");
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
-        AddToggle(rows, SetAct.AboveNui, "Draw above NUI", win.AboveNui, 0,
-                  "Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it.");
+        AddToggle(rows, SetAct.AboveNui, CX.Ui.Window.AboveNuiLabel, win.AboveNui, 0,
+                  CX.Ui.Window.AboveNuiHelp);
         if (win.Closeable)
             AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
                       "The window becomes non-interactable. Warning: after this is toggled, the only way to reach this window's settings is to choose the dropdown at the top.");

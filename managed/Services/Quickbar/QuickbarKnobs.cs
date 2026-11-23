@@ -59,7 +59,7 @@ internal static class QuickbarKnobs
         GapY = G.Slider("gapy", "Spacing down", 0f, 24f, 1f, QuickbarLayout.GapPx, "px", Tier.Advanced, changed: QuickbarService.Relayout,
                         help: "Space between two stacked rows of buttons, before Size scales it.");
         Labels = G.Toggle("labels", "Show key labels", true, help: "Each button's key in its corner.");
-        AboveNui = G.Toggle("abovenui", "Draw above NUI", false, help: "The CX quickbar draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers the CX quickbar.");
+        AboveNui = G.Toggle("abovenui", CX.Ui.Window.AboveNuiLabel, false, help: "The CX quickbar draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers the CX quickbar.");
         Text = new TextStyle(G, "the CX quickbar", sized: false, outline: 1, changed: QuickbarService.Relayout);
         G.Section("CX quickbar keys");
         Keys = new Knob<string>[QuickbarLayout.Sets];
