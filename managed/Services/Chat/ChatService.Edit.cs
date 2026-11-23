@@ -193,7 +193,10 @@ public sealed unsafe partial class ChatService
     }
 
     /// <summary>True when a NUI window covers the box's centre, so the line would be typed unseen.</summary>
-    internal static bool Hidden(ChatWindow w) => UiInputService.NuiCovers(w.X + w.W * 0.5f, w.Y + w.H * 0.5f);
+    internal static bool Hidden(ChatWindow w) => HiddenAt(w, UiInputService.NuiCovers(w.X + w.W * 0.5f, w.Y + w.H * 0.5f));
+
+    /// <summary>Whether <paramref name="w"/>'s typed line would be unseen, given whether a NUI window covers its centre.</summary>
+    internal static bool HiddenAt(ChatWindow w, bool nuiCovers) => nuiCovers;
 
     /// <summary>
     /// Release the keyboard. <paramref name="submit"/> recalls the line into history; either way the

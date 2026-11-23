@@ -38,20 +38,24 @@ public sealed unsafe partial class ChatService
         // input through the window's delegates. The chatbox owns many sub-windows internally (ChatLayout), so it
         // stays one framework Window with a hit-test override (its UI extends outside any single rect -- channel
         // lists) and self-manages focus; WantsKeyboard is driven via KeyboardMode -> RequestKeyboard.
-        _uiWindow = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            DrawContent = OnFrame,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnChatKey,
-            OnText = InsertUtf8,
-            HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
-        };
+        _uiWindow = NewWindow();
         UiHost.AddChordConsumer(new SlashChord());   // "/" opens a command line
         log.Info("ChatService: registered as a framework Window (content-draw + routed input), \"/\" opens a command line");
     }
+
+    /// <summary>The framework Window whose content is the whole chatbox: its draw, routed input and the hit-test over
+    /// every chat surface.</summary>
+    internal static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        DrawContent = OnFrame,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnChatKey,
+        OnText = InsertUtf8,
+        HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
+    };
 
     private static Window? _uiWindow;
     private static bool _booted;                  // first-frame viewport relayout done

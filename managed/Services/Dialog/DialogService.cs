@@ -23,6 +23,19 @@ public sealed unsafe partial class DialogService : IExtenderService
 {
     private static ExtenderLog? _log;
 
+    /// <summary>The rect-less framework Window the conversation draws in, whose input delegates are its modal handlers.</summary>
+    internal static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = HandleKey,
+        HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
+    };
+
     private const string EndDialogLabel = "[End Dialog]";
 
     // ---- captured content (written cold in the hooks, read cold in Rebuild) ----
@@ -129,17 +142,7 @@ public sealed unsafe partial class DialogService : IExtenderService
         // (SuppressChords, kept in sync with _visible) so reply digits / ESC / Ctrl+C never leak to gameplay or a
         // hotkey. z is assigned on register, and discovery is name-sorted (Chat < Dialog), so Dialog registers
         // second and paints over chat + is hit-tested before it.
-        _window = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = HandleKey,
-            HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
-        };
+        _window = NewWindow();
 
         TextRig.Rebaked += Rebuild;   // any re-bake moved every UV: the open window re-lays out on the new sheet (cold, the baking thread)
 

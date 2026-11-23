@@ -122,7 +122,17 @@ public sealed unsafe partial class QuickbarService
         RadialIcons.Init(log);
         KeysChanged();
         UiHost.AddChordConsumer(new Chords());
-        _cx.Window = new Window(0, 0, 0, 0)
+        _cx.Window = NewWindow();
+        FrameRegistry.Global.Register(FramePhase.Start, 51, BuildModels, "Quickbar.models", log);
+        _cx.Armed = true;
+        log.Info($"QuickbarService: CX quickbar armed ({(QuickbarKnobs.Cx ? "drawing the quickbar" : "off -- quickbar.replace")})");
+    }
+
+    /// <summary>The framework Window the CX bar draws in, sent to the back of its band: a HUD element every other CX
+    /// window, and what it drags, paints over.</summary>
+    internal static Window NewWindow()
+    {
+        var w = new Window(0, 0, 0, 0)
         {
             Focusable = false,
             CapturesPointer = true,
@@ -133,10 +143,8 @@ public sealed unsafe partial class QuickbarService
             OnKey = BindKey,
             HitTestOverride = (px, py) => CxShowing && _cx.Layout.Contains(px, py),
         };
-        UiHost.SendToBack(_cx.Window);   // a HUD element: every other CX window, and what it drags, paints over it
-        FrameRegistry.Global.Register(FramePhase.Start, 51, BuildModels, "Quickbar.models", log);
-        _cx.Armed = true;
-        log.Info($"QuickbarService: CX quickbar armed ({(QuickbarKnobs.Cx ? "drawing the quickbar" : "off -- quickbar.replace")})");
+        UiHost.SendToBack(w);
+        return w;
     }
 
     // ---- the engine hit-test's view ----

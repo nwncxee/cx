@@ -64,23 +64,26 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
         _inv.HoverItem = InventoryNative.PriceInStore;
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
-        _window = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
-            OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
-            OnMouseWheel = dy => !Native.ModalPanelUp() && Input(_inv.MouseWheel(dy)),
-            OnKey = (key, mods) => !Native.ModalPanelUp() && Input(_inv.Key(key, mods)),
-            OnText = p => { _inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
-            HitTestOverride = (px, py) => _inv.Contains(px, py) && !Native.ModalPanelUp(),
-        };
+        _window = NewWindow();
         InitGold();
         FrameRegistry.Global.Register(FramePhase.Start, 50, BuildModels, "Inventory.models", log);
         _ready = true;
         log.Info($"InventoryService: armed ({(InventoryKnobs.Enabled.V ? "replacing the stock panel" : "off -- inventory.enabled")})");
     }
+
+    /// <summary>The framework Window the inventory draws in: its routed input, withheld while an engine modal is up.</summary>
+    internal static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+        OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
+        OnMouseWheel = dy => !Native.ModalPanelUp() && Input(_inv.MouseWheel(dy)),
+        OnKey = (key, mods) => !Native.ModalPanelUp() && Input(_inv.Key(key, mods)),
+        OnText = p => { _inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
+        HitTestOverride = (px, py) => _inv.Contains(px, py) && !Native.ModalPanelUp(),
+    };
 
     /// <summary>Knob hooks: a size / pages / search change re-lays out on the next frame.</summary>
     internal static void Relayout() => _layoutDirty = true;

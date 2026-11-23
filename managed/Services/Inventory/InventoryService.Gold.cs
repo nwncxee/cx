@@ -24,18 +24,21 @@ public sealed unsafe partial class InventoryService
     private static void InitGold()
     {
         _gold.Confirm = n => { _carry = n; _carryText = n.ToString("N0", CultureInfo.CurrentCulture) + " gp"; SyncGoldModal(); };
-        _goldWin = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = DrawGold,
-            OnMouseButton = GoldMouseButton,
-            OnMouseMotion = (x, y) => _gold.Open ? _gold.MouseMove(x, y) : false,
-            OnMouseWheel = dy => _gold.Open && _gold.MouseWheel(dy),
-            OnKey = GoldKey,
-            HitTestOverride = (px, py) => _gold.Contains(px, py),
-        };
+        _goldWin = NewGoldWindow();
     }
+
+    /// <summary>The framework Window the gold prompt draws in, made after the inventory's so it paints over it.</summary>
+    internal static Window NewGoldWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = DrawGold,
+        OnMouseButton = GoldMouseButton,
+        OnMouseMotion = (x, y) => _gold.Open ? _gold.MouseMove(x, y) : false,
+        OnMouseWheel = dy => _gold.Open && _gold.MouseWheel(dy),
+        OnKey = GoldKey,
+        HitTestOverride = (px, py) => _gold.Contains(px, py),
+    };
 
     /// <summary>The gold window withholds chords (and wins presses ahead of the engine GUI) exactly while the prompt is up
     /// or gold is on the cursor.</summary>

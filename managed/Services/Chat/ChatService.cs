@@ -224,6 +224,9 @@ public sealed unsafe partial class ChatService : IExtenderService
     /// <summary>The focused chat window (owns keyboard + input strip). Falls back to Main.</summary>
     private static ChatWindow? _focused => _layout?.Focused;
 
+    /// <summary>Swap the layout the hit-test and input read, handing back the one it replaces: a self-check's fixture seam.</summary>
+    internal static ChatLayout? UseLayout(ChatLayout? layout) { ChatLayout? was = _layout; _layout = layout; return was; }
+
     /// <summary>The chat settings window (opened from the gear icon). Edits
     /// <see cref="ChatWindow.Toggles"/>; holds no option state of its own.</summary>
     private static readonly SettingsWindow _settings = new();
