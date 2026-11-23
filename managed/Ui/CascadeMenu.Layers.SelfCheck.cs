@@ -62,10 +62,13 @@ internal static class CascadeMenuLayersSelfCheck
             CascadeLevel lv = m.Level(i);
             Paint p = rec.Paints[i];
             whole = p.X0 >= lv.X - 1f && p.Y0 >= lv.Y - 1f && p.X1 <= lv.X + lv.W + 1f && p.Y1 <= lv.Y + lv.H + 1f
-              && p.Icons.Length == 1 && p.Icons[0].Resref == (i == 0 ? "ir_a" : i == 1 ? "ir_c" : "ir_d");
+              && p.Icons.Length == (i == 0 ? 2 : 1) && p.Icons[0].Resref == (i == 0 ? "ir_a" : i == 1 ? "ir_c" : "ir_d");
         }
         check.Expect(overlap, $"the deepest level is clamped over the root: grand x {m.Level(2).X}, root right {m.Level(0).X + m.Level(0).W}");
-        check.Expect(whole, $"each level is painted whole, root first: {rec.Paints.Count} paints, {rec.Begins} skin passes");
+        var seen = new System.Text.StringBuilder();
+        for (int i = 0; i < rec.Paints.Count && i < m.Depth; i++)
+            seen.Append($" [{rec.Paints[i].X0},{rec.Paints[i].Y0}..{rec.Paints[i].X1},{rec.Paints[i].Y1} icons {rec.Paints[i].Icons.Length} in {m.Level(i).X},{m.Level(i).Y} {m.Level(i).W}x{m.Level(i).H}]");
+        check.Expect(whole, $"each level is painted whole, root first: {rec.Paints.Count} paints, {rec.Begins} skin passes;{seen}");
 
         if (check.Ok) log.Info("CascadeMenu.Layers.SelfCheck: passed");
     }

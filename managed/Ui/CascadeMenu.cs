@@ -553,17 +553,24 @@ public sealed partial class CascadeMenu
         DrawGhost(b, atlas, baseDrop, in st);
     }
 
-    /// <summary>Paint the menu through <paramref name="sink"/>, the owner's draw calls. Zero-alloc.</summary>
+    /// <summary>Paint the menu through <paramref name="sink"/>, the owner's draw calls, one level at a time, deepest
+    /// last: each paint holds one whole level, so a deeper level hides what it overlaps. Zero-alloc.</summary>
     public void Render<TSink>(ref TSink sink, VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st, Skin? skin = null)
         where TSink : struct, ICascadeSink
     {
+        _iconN = 0;
         if (!Open) return;
         float halo = b.Outline;
-        b.Reset(atlas.SolidU, atlas.SolidV);
-        b.Outline = halo;
-        sink.Begin();
-        Draw(b, atlas, baseDrop, in st, skin);
-        sink.Paint(b, Icons);
+        for (int i = Drill ? Depth - 1 : 0; i < Depth; i++)
+        {
+            b.Reset(atlas.SolidU, atlas.SolidV);
+            b.Outline = halo;
+            int from = _iconN;
+            sink.Begin();
+            DrawLevel(i, b, atlas, baseDrop, in st, skin);
+            if (i == Depth - 1) DrawGhost(b, atlas, baseDrop, in st);
+            sink.Paint(b, _icons.AsSpan(from, _iconN - from));
+        }
     }
 
     /// <summary>One open level: body, frame, the owning-row and hover fills, icons noted for the owner, labels, counts,

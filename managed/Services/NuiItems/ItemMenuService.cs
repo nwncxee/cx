@@ -88,10 +88,20 @@ internal static class ItemMenuService
         VertexBatch b = _s.Batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
         _s.Style = Look(Environment.TickCount64, m.Look);
-        Menu.Draw(b, atlas, atlas.Ascent, in _s.Style);
-        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
-        foreach (IconQuad q in Menu.Icons)
-            if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
+        var paint = new LevelPainter();
+        Menu.Render(ref paint, b, atlas, atlas.Ascent, in _s.Style);
+    }
+
+    /// <summary>One cascade level onto the screen: its fills and text, then its icons.</summary>
+    private readonly struct LevelPainter : ICascadeSink
+    {
+        public void Begin() { }
+        public void Paint(VertexBatch b, ReadOnlySpan<IconQuad> icons)
+        {
+            TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
+            foreach (IconQuad q in icons)
+                if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
+        }
     }
 
     /// <summary>The menu's look at <paramref name="nowMs"/>: it stands in for the server's NUI Item menu, so it takes the stock NUI
