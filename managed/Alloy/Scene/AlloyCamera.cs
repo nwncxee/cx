@@ -44,7 +44,9 @@ internal static unsafe class AlloyCamera
     internal const int ModeProjection = 0, ModeView = 1;
 
     private static ExtenderLog? _log;
-    private static CameraRenderSceneFn _orig;
+    private static CameraRenderSceneFn* _orig;
+    /// <summary>Inside the UI's world-view tail, so each view is measured and latched around the engine's own draw.</summary>
+    private const int ChainPriority = 10;
     private static int* _screenW, _screenH, _glViewport;
     private static byte* _stacks;
     private static CameraUpscaleViewportFn _upscale;
@@ -110,7 +112,7 @@ internal static unsafe class AlloyCamera
     {
         _log = log;
         if (!EngineLayout.Require(log, "AlloyCamera", "Camera", "Scene")) return;
-        _orig = hooks.InstallCameraRenderScene(&OnRenderScene);
+        _orig = hooks.ChainCameraRenderScene(&OnRenderScene, ChainPriority);
         if (_orig == null)
         {
             // CX-45: not a quiet fallback. Without the hook Alloy has no camera of its own, and the one thing
@@ -134,7 +136,7 @@ internal static unsafe class AlloyCamera
     {
         AlloyView savedView = _activeView;
         Measure(cam);
-        _orig(cam);
+        (*_orig)(cam);
         _activeView = savedView;
     }
 

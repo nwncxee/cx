@@ -28,30 +28,34 @@ internal static class GuiFrame
            && sink.Overlays();
 }
 
-/// <summary>What draws one step of the Alloy-off frame, whose 2D the engine draws around nuklear's flush.</summary>
+/// <summary>What draws one step of the Alloy-off frame, whose 2D the engine draws around CX's two draw sites.</summary>
 internal interface INkFrameSink
 {
-    /// <summary>The game's panels, which the engine draws before nuklear's flush.</summary>
-    void Panels();
     /// <summary>CX's own windows on the layers <paramref name="from"/> to <paramref name="to"/>, drawn at once.</summary>
     void Windows(UiLayer from, UiLayer to);
     /// <summary>The rest of nuklear's chain and its own flush: every NUI window.</summary>
     void Nui();
-    /// <summary>The engine's overlay scenes and its cursor, which it draws after nuklear's flush.</summary>
-    void Overlays();
 }
 
-/// <summary>The Alloy-off frame's 2D order, said once: the game's panels, CX's layers up to below-NUI, NUI, above-NUI,
-/// then the overlay scenes.</summary>
+/// <summary>The Alloy-off frame's 2D order, said once. The engine draws the world view, its panels, nuklear's flush,
+/// then its overlay scenes; CX's world-anchored windows go on the world, the rest around NUI.</summary>
 internal static class NkFrame
 {
-    /// <summary>Walk <paramref name="sink"/> through the Alloy-off order.</summary>
-    internal static void Draw<T>(in T sink) where T : struct, INkFrameSink
+    /// <summary>The world view's tail: the world-anchored windows, under every panel. Only the frame's first world
+    /// view draws them; <paramref name="drawn"/> says so to the flush.</summary>
+    internal static void World<T>(in T sink, ref bool drawn) where T : struct, INkFrameSink
     {
-        sink.Panels();
-        sink.Windows(UiLayer.UnderGui, UiLayer.BelowNui);
+        if (drawn) return;
+        drawn = true;
+        sink.Windows(UiLayer.UnderGui, UiLayer.UnderGui);
+    }
+
+    /// <summary>Nuklear's flush: the world-anchored windows when no world view drew them (a menu), then CX's layers
+    /// below NUI, NUI, and the layer over it.</summary>
+    internal static void Flush<T>(in T sink, bool worldDrawn) where T : struct, INkFrameSink
+    {
+        sink.Windows(worldDrawn ? UiLayer.BelowNui : UiLayer.UnderGui, UiLayer.BelowNui);
         sink.Nui();
         sink.Windows(UiLayer.AboveNui, UiLayer.AboveNui);
-        sink.Overlays();
     }
 }
