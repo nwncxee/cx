@@ -386,6 +386,7 @@ public static unsafe partial class DbFeed
         SceneDb.PartReveal[p] = 1f;
         // A dead light's latch would hand its animated multiplier (0 at the end of a fade) to the next light here.
         SceneDb.PartLitAnim[p] = 0;
+        SceneDb.PartDetonate[p] = 0;
     }
 
     /// <summary>Seed an object's feed columns. Same contract as <see cref="InitPart"/>.</summary>

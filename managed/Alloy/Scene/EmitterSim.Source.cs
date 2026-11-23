@@ -190,7 +190,7 @@ internal static unsafe partial class EmitterSim
         e.BoltDelay = Ch1(rest, b, ChLightningDelay);
         e.BoltRadius = Ch1(rest, b, ChLightningRadius);
         e.ZigZag = Ch1(rest, b, ChLightningScale);
-        e.Detonate = Ch1(rest, b, ChDetonate) != 0f;
+        e.Detonate = Ch1(rest, b, ChDetonate) != 0f || SceneDb.PartDetonate[part] != 0;
 
         Matrix4x4 w = SceneDb.PartWorld[part];
         e.WorldPos = new Vector3(w.M41, w.M42, w.M43);

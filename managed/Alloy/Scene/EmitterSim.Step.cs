@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 
@@ -216,6 +217,7 @@ internal static unsafe partial class EmitterSim
         }
         e.M.ModeClock = latch;
         e.Detonate = false;
+        if ((uint)e.Part < (uint)SceneDb.MaxParts) SceneDb.PartDetonate[e.Part] = 0;
     }
 
     /// <summary>A detonation's point-source gust. There is no engine Scene to reach the

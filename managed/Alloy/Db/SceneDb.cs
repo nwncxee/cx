@@ -485,6 +485,9 @@ public static partial class SceneDb
     /// Null for every other part kind. It is the p2p edge: <c>SetEmitterTarget</c> @0x4aa7d0 takes the first
     /// reference CHILD of an emitter part and makes its object that emitter's target.</summary>
     public static readonly DbId[] PartRefObj = new DbId[MaxParts];
+    /// <summary>An Explosion emitter's burst REQUEST, the byte <c>Detonate</c> @0x4aa770 sets on the emitter it
+    /// was registered for: set by a "Detonate" event at its object, cleared by its next explosion step.</summary>
+    public static readonly byte[] PartDetonate = new byte[MaxParts];
 
     // ---- scenes ----
     /// <summary>A scene with a tile grid is a world scene; one without is a GUI panel's (the engine's <c>Scene+0x188</c> test).</summary>
