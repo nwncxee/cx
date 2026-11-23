@@ -33,6 +33,13 @@ internal static unsafe partial class TexRegistry
         }
     }
 
+    /// <summary>Claims each name's one "did not load" line, so a fixture of thousands of textures that cannot load
+    /// does not fill one launch's log past its rotation.</summary>
+    internal static void QuietForCheck(string[] resrefs)
+    {
+        foreach (string r in resrefs) LoudOnce($"tex:{r}");
+    }
+
     /// <summary>Found test: a table whose every free slot is taken by idle textures gives a new texture the least
     /// recently used idle slot instead of the white stand-in. Oracle: hand-landed 1 MiB textures, released in order.</summary>
     internal static bool FullTableSelfCheck(ExtenderLog log)
