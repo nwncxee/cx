@@ -47,7 +47,10 @@ public static unsafe partial class DbAnim
         DbId body = Subject(Chain(), scene, out int first);
         DbId piece = Subject(Graft(), scene, out int pieceFirst);
         DbId fx = Subject(Chain(), scene, out _);
+        DbId loose = Subject(Chain(), scene, out _);
         check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
+        SceneDb.ObjAttachTo[loose.Index] = body;
+        SceneDb.SetAttachPart(loose.Index, -1);
         SceneDb.ObjAttachTo[piece.Index] = body;
         SceneDb.SetAttachPart(piece.Index, first + 2);
         SceneDb.ObjSeamFlags[piece.Index] |= (uint)SeamFlag.Composed;
@@ -59,6 +62,8 @@ public static unsafe partial class DbAnim
                      "a rider on an appended piece's node keeps that node when the creature's tree changes");
         check.Expect(SceneDb.ObjAttachPart[piece.Index] == first + 2,
                      "...and the piece keeps the anchor it was appended at");
+        check.Expect(SceneDb.ObjAttachPart[loose.Index] == -1,
+                     "...and a rider attached with no part and no node name stays off every part");
         SceneDb.ObjAttachPart[fx.Index] = first + 1;
         TreeChanged(body);
         check.Expect(SceneDb.ObjAttachPart[fx.Index] == pieceFirst + 2,
@@ -75,10 +80,12 @@ public static unsafe partial class DbAnim
 
         SceneDb.ObjAttachTo[fx.Index] = default;
         SceneDb.SetAttachPart(fx.Index, -1);
+        SceneDb.ObjAttachTo[loose.Index] = default;
         SceneDb.ObjSeamFlags[piece.Index] &= ~(uint)SeamFlag.Composed;
         SceneDb.ObjAttachTo[piece.Index] = default;
         SceneDb.SetAttachPart(piece.Index, -1);
         SceneDb.PieceDropAll(body);
+        Drop(loose);
         Drop(fx);
         Drop(piece);
         Drop(body);
