@@ -844,6 +844,14 @@ internal static partial class DrawRecipe
     /// <summary>Start a new frame-line period.</summary>
     internal static void ResetPeriod() => _own.RoomEvicted = 0;
 
+    /// <summary>Put the frame line's recipe counts back to what a self-check found, so a live session never reports
+    /// the self-check's spills and evictions as its own.</summary>
+    internal static void RestoreCountsForCheck(int spilled, int roomEvicted)
+    {
+        Spilled = spilled;
+        _own.RoomEvicted = roomEvicted;
+    }
+
     /// <summary>Recipes retired with their model.</summary>
     internal static int Retired { get; private set; }
 
