@@ -53,13 +53,14 @@ internal static class PopupBandApprovedExamples
     }
 
     /// <summary>The chatbox's own window over <paramref name="m"/>: c for the box and l for its channel list, drawn where the
-    /// chatbox draws it, and the model's hit-test and press.</summary>
+    /// chatbox draws it, and the model's hit-test, press and open list.</summary>
     private static Window ChatWin(StringBuilder drawn, ChatWindow m)
     {
         Window w = ChatService.NewWindow();
         w.DrawContent = () => { drawn.Append('c'); if (m.ChannelListOpen) drawn.Append('l'); };
         w.HitTestOverride = m.HitTestFull;
         w.OnMouseButton = (down, _, x, y) => down && m.MouseDown(x, y);
+        w.PopupOpen = () => m.ChannelListOpen;
         return w;
     }
 
@@ -162,6 +163,7 @@ internal static class PopupBandApprovedExamples
                 s.DrawContent = () => { drawn.Append('s'); if (drop.Open) drawn.Append('d'); };
                 s.HitTestOverride = (x, y) => (x >= 100f && x < 300f && y >= 100f && y < 230f) || drop.Contains(x, y);
                 s.OnMouseButton = (down, _, x, y) => down && drop.MouseDown(x, y, out _);
+                s.PopupOpen = () => drop.Open;
                 Window v = InventoryService.NewWindow();
                 v.DrawContent = () => drawn.Append('v');
                 v.HitTestOverride = (x, y) => x >= 150f && x < 450f && y >= 240f && y < 500f;
