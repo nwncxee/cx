@@ -22,8 +22,8 @@ internal static class AboveNuiApprovedExamples
     /// <summary>The stand-in window's square, (100, 100) to (500, 500), which the examples' NUI window overlaps.</summary>
     private static bool InSquare(float px, float py) => px >= 100 && px < 500 && py >= 100 && py < 500;
 
-    /// <summary>SDL's Escape and the digit 5, the keys the examples press.</summary>
-    private const uint KeyEscape = 0x1B, KeyFive = 0x35;   // not-an-offset: SDLK_ESCAPE, SDLK_5
+    /// <summary>SDL's digit 5, the key the examples press.</summary>
+    private const uint KeyFive = 0x35;   // not-an-offset: SDLK_5
 
     /// <summary>A setting's knob, the player's value of it and its line in the loaded table, taken before an example
     /// changes any of them so <see cref="Restore"/> can put back exactly that.</summary>
@@ -352,14 +352,23 @@ internal static class AboveNuiApprovedExamples
             Held h = Set(check, key, "1", "E33");
             try
             {
+                using var nk = new CX.Services.Nui.NuiScratch();
                 UiHost.Alone(() =>
                 {
-                    Window inv = InventoryService.NewWindow();
-                    bool reached = false;
-                    inv.OnKey = (pressed, _) => reached = pressed == KeyEscape;
-                    bool consumed = UiHost.DispatchKey(KeyEscape, 0);
+                    var model = new InventoryWindow();
+                    model.Act = a => { if (a.Kind == InvActKind.Close) model.Hide(); };
+                    model.Layout(1f, false, true, 4000, 4000);
+                    model.X = 100; model.Y = 100;
+                    model.Show();
+                    Window inv = InventoryService.NewWindow(model);
+                    IntPtr ctx = EscOrderApprovedExamples.NuiContext(nk);
+                    IntPtr nui = EscOrderApprovedExamples.NuiWindow(nk, ctx, EscOrderApprovedExamples.Json + "quest",
+                                                                    EscOrderApprovedExamples.Closable, 150, 150, 200, 150);
+                    bool taken = EscOrderApprovedExamples.Press(ctx);
+                    uint flags = EscOrderApprovedExamples.Flags(nui);
                     check.Expect(inv.Layer == UiLayer.AboveNui, $"E33 the inventory draws above NUI (layer {inv.Layer})");
-                    check.Expect(reached && consumed, "E33 Esc reaches the inventory and is kept from the engine, so NUI does not see it");
+                    check.Expect(taken && !model.Open && flags == EscOrderApprovedExamples.Closable,
+                      $"E33 Esc closes the inventory drawn over the NUI window and leaves the NUI window open: taken={taken} open={model.Open} nui=0x{flags:x}");
                 });
             }
             finally { h.Restore(); }
