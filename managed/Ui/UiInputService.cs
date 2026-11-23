@@ -212,7 +212,8 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     /// <summary>The pump's key-down step, ahead of <c>CExoInput::AddEvent</c> queueing the scancode keybind: Esc drops a
-    /// carried item, then a modal window swallows its key while no keyboard owner is typing. True when the key stops here.</summary>
+    /// carried item, then closes a server NUI window over a CX one, then a modal window swallows its key while no
+    /// keyboard owner is typing. True when the key stops here.</summary>
     internal static bool PumpKeyDown(uint key, int mods) => PumpKeyDown(key, mods, new LiveEsc());
 
     /// <summary><see cref="PumpKeyDown(uint, int)"/> with what an Esc finds read through <paramref name="under"/>.</summary>
@@ -224,6 +225,7 @@ public sealed unsafe class UiInputService : IExtenderService
             CX.Services.NuiItems.ItemDragService.OnCancel();
             return true;
         }
+        if (key == SdlEscape && !UiHost.AnyKeyboardOwner && !under.NuiEdit && EscClosesNui(under.Nuklear)) return true;
         return !UiHost.AnyKeyboardOwner && UiHost.DispatchKeyPumpSwallow(key, mods);
     }
 
@@ -236,7 +238,6 @@ public sealed unsafe class UiInputService : IExtenderService
     {
         if (nuiEdit) return false;
         if (key == SdlEscape && StockFirst(under)) return false;
-        if (key == SdlEscape && !UiHost.AnyKeyboardOwner && EscClosesNui(under.Nuklear)) return true;
         return UiHost.DispatchKey(key, mods) || CX.Alloy.Db.EditSelect.OnKey(key, mods);
     }
 
@@ -254,17 +255,18 @@ public sealed unsafe class UiInputService : IExtenderService
         return top != null && top.Band < UiLayer.AboveNui && EscNui.CloseOver(nuklear, area.X, area.Y, area.W, area.H) != IntPtr.Zero;
     }
 
-    /// <summary>What an Esc press finds on the engine's side: a stock modal panel up, a cutscene playing, and the
-    /// nuklear context whose NUI windows may draw over CX's. Each is read when asked.</summary>
+    /// <summary>What an Esc press finds on the engine's side: a stock modal panel up, a cutscene playing, a NUI edit
+    /// box holding the keyboard, and the nuklear context whose NUI windows may draw over CX's. Each is read when asked.</summary>
     internal interface IEscUnder
     {
         bool StockModal { get; }
         bool Cutscene { get; }
         IntPtr Nuklear { get; }
+        bool NuiEdit { get; }
     }
 
     /// <summary>The engine's answers, settled in advance.</summary>
-    internal readonly record struct EscUnder(bool StockModal, bool Cutscene, IntPtr Nuklear) : IEscUnder;
+    internal readonly record struct EscUnder(bool StockModal, bool Cutscene, IntPtr Nuklear, bool NuiEdit = false) : IEscUnder;
 
     /// <summary>The engine's answers, read from the live client.</summary>
     private readonly struct LiveEsc : IEscUnder
@@ -279,6 +281,7 @@ public sealed unsafe class UiInputService : IExtenderService
             }
         }
         public IntPtr Nuklear => _nuklearGlobal != IntPtr.Zero ? *(IntPtr*)_nuklearGlobal : IntPtr.Zero;
+        public bool NuiEdit => NuiEditFocused();
     }
 
     /// <summary>What the engine's probes find under the pointer at a press, a wheel notch or a motion: a NUI window, a

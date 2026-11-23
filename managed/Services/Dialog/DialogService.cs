@@ -35,6 +35,7 @@ public sealed unsafe partial class DialogService : IExtenderService
         OnMouseWheel = OnMouseWheel,
         OnKey = HandleKey,
         HitTestOverride = (px, py) => MouseOverUi((int)px, (int)py),
+        EscArea = static () => SnapRectOut(out var r) ? r : null,
     };
 
     private const string EndDialogLabel = "[End Dialog]";
