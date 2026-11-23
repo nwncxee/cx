@@ -69,7 +69,7 @@ fi
 echo ">> skipping the symbol check (no nwmain.exe here; build-win.sh runs it on the dev box)" >&2
 
 echo ">> building cx_managed.dll (NativeAOT win-x64, MSVC link)..."
-CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
+CX_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
 if ! dotnet publish managed/cx_managed.csproj -c Release -r win-x64 -o build/win \
      -p:InformationalVersion="$CX_VERSION" > build-managed-win.log 2>&1; then
   echo ">> managed win build FAILED:"; grep -E "error" build-managed-win.log | head -20; exit 1

@@ -114,12 +114,11 @@ CX writes `cx.log` every time the game runs. Play until the problem happens agai
 
 ## Build from source
 
-On Linux, `nix develop` gives you the pinned toolchain from `flake.nix`, the same one CI uses:
+On Linux with Nix, `./build.sh` enters the pinned toolchain from `flake.nix` by itself, the same one CI uses:
 
 ```sh
 git clone --recursive https://github.com/nwncxee/cx.git
 cd cx
-nix develop
 ./build.sh       # -> cx-linux-x64/ and its zip
 ./run-demo.sh    # boots the framework without the game
 ```
