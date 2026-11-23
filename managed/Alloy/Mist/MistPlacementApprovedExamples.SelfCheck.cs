@@ -185,10 +185,10 @@ internal static class MistPlacementApprovedExamples
         VolumetricFog.Enabled.V = false;
         Fogged(Flat(), Vector3.Zero);
         int sprites = Emit(StockFog, "AuroraEmitter01", new Vector3(3f, 0f, 0.5f));
-        bool dry = GroundMist.Shows(false), wet = GroundMist.Shows(true);
+        bool shows = GroundMist.Shows();
         VolumetricFog.Enabled.V = true;
         check.Expect(sprites > 0, $"E10 with Volumetric fog off silm_fog_50_lo's emitter holds {sprites} live sprites (want some)");
-        check.Expect(!dry && !wet, $"E10 with Volumetric fog off mist shows dry {dry}, in rain {wet} (want neither)");
+        check.Expect(!shows, $"E10 with Volumetric fog off mist shows {shows} (want not)");
     }
 
     /// <summary>The frames a turned-off placeable is stepped for: half a second, enough for its birth rate to
@@ -205,8 +205,8 @@ internal static class MistPlacementApprovedExamples
         int[,] live = EmitterSim.MistEmit(StockFog, new[] { "AuroraEmitter01" }, new[] { new Vector3(3f, 0f, 0.5f) },
             Frames + Resume, f =>
             {
-                if (f == Frames) { showedOn = GroundMist.Shows(false); VolumetricFog.Enabled.V = false; }
-                if (f == Frames + 1) showedOff = GroundMist.Shows(false);
+                if (f == Frames) { showedOn = GroundMist.Shows(); VolumetricFog.Enabled.V = false; }
+                if (f == Frames + 1) showedOff = GroundMist.Shows();
             });
         VolumetricFog.Enabled.V = true;
         int on = live[0, Frames - 1], off = live[0, Frames + Resume - 1];

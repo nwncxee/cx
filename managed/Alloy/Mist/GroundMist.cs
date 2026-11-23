@@ -150,7 +150,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         if (s.Sources >= MaxSources) return;
-        s.Source[s.Sources++] = new Vector4(at, Math.Clamp(reach, MinReach, MaxReach));
+        s.Source[s.Sources++] = new MistSource(at, Math.Clamp(reach, MinReach, MaxReach));
     }
 
     /// <summary>Into each floored column of the disc of <paramref name="radius"/> around <paramref name="at"/>, whose floor
@@ -181,8 +181,8 @@ internal static partial class GroundMist
         Array.Fill(s.Target, s.AreaLevel);
         for (int i = 0; i < sources; i++)
         {
-            Vector4 src = s.Source[i];
-            Disc(s, new Vector3(src.X, src.Y, src.Z), src.W, s.Target, SourceDepth, false);
+            MistSource src = s.Source[i];
+            Disc(s, src.At, src.Reach, s.Target, SourceDepth, false);
         }
         float up = 1f - MathF.Exp(-dt / RiseTau), down = 1f - MathF.Exp(-dt / SettleTau);
         bool moved = false;
@@ -283,12 +283,15 @@ internal static partial class GroundMist
         return c < 0 ? float.NaN : s.Floor[c];
     }
 
-    /// <summary>Does the fog volume draw mist this frame, with or without rain?</summary>
-    internal static bool Shows(bool raining) => VolumetricFog.Enabled.V && _s.Any;
+    /// <summary>Does the fog volume draw mist this frame?</summary>
+    internal static bool Shows() => VolumetricFog.Enabled.V && _s.Any;
 
     /// <summary>The area edge: the old area's mist and walkmesh go with it.</summary>
     internal static void AreaEdge() => _s = new GroundMistState();
 }
+
+/// <summary>One frame's mist emitter: where it stands and the radius of the disc it fills.</summary>
+internal readonly record struct MistSource(Vector3 At, float Reach);
 
 /// <summary>Everything the ground mist field holds for one area: its floor faces, the columns around the player and
 /// this frame's emitters.</summary>
@@ -321,8 +324,8 @@ internal sealed class GroundMistState
     public float AreaLevel;
     public bool Stepped, Any;
 
-    /// <summary>This frame's emitters: position and disc radius each.</summary>
-    public Vector4[] Source = new Vector4[GroundMist.MaxSources];
+    /// <summary>This frame's emitters.</summary>
+    public MistSource[] Source = new MistSource[GroundMist.MaxSources];
     public int Sources;
 
     /// <summary>One floor face, the list grown as an area's walkmesh comes in.</summary>

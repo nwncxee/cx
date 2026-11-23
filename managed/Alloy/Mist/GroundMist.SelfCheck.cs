@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using CX.Alloy.Db;
 using CX.Alloy.Mdl;
 using CX.Framework;
 using static CX.Alloy.MistFixture;
@@ -28,6 +29,7 @@ internal static class GroundMistSelfCheck
             Spread(check);
             Walls(check);
             Uploads(check);
+            Live(check);
         }
         finally
         {
@@ -98,8 +100,25 @@ internal static class GroundMistSelfCheck
             $"5 s of a 3 m emitter on an island its size lays {centre:F4} m at its centre and {rim:F4} at its rim (want 0.918 both)");
         for (int n = 0; n < 60; n++) GroundMist.Step(10f, Vector2.Zero);
         float left = GroundMist.At(0.5f, 0.5f);
-        bool shows = GroundMist.Shows(false);
+        bool shows = GroundMist.Shows();
         check.Expect(left == 0f && !shows, $"600 s after the emitter stops the centre holds {left} m, mist shows {shows} (want none)");
+    }
+
+    /// <summary>The live frame: an area's first frame keeps what came in before it, a second call in one frame
+    /// changes nothing, and a new scene starts the field over.</summary>
+    private static void Live(Checker check)
+    {
+        DbId a = DbId.Make(4000, 7), b = DbId.Make(4001, 7);
+        Lay(Flat(), Vector3.Zero, false, 0f);
+        GroundMist.Source(new Vector3(0.5f, 0.5f, 0f), 3f);
+        GroundMist.Frame(a, 1, Vector3.Zero, false, 0f, 1f, Vector2.Zero);
+        float first = GroundMist.At(0.5f, 0.5f);
+        GroundMist.Frame(a, 1, Vector3.Zero, false, 0f, 1f, Vector2.Zero);
+        float again = GroundMist.At(0.5f, 0.5f);
+        GroundMist.Frame(b, 2, Vector3.Zero, false, 0f, 1f, Vector2.Zero);
+        float other = GroundMist.FloorAt(0.5f, 0.5f);
+        check.Expect(first > 0f && again == first && float.IsNaN(other),
+            $"the live frame lays {first:F4} m from a source queued before it, {again:F4} m on a second call that frame, and the next scene floors at {other} (want some, the same, then none)");
     }
 
     /// <summary>A new area keeps none of the old one's walkmesh.</summary>

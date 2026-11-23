@@ -16,7 +16,11 @@ internal static partial class GroundMist
     internal static void Frame(DbId scene, int frame, Vector3 feet, bool fogOn, float fogAmount, float dt, Vector2 wind)
     {
         GroundMistState s = _s;
-        if (s.Scene != scene.Value) { AreaEdge(); s = _s; s.Scene = scene.Value; }
+        if (s.Scene != scene.Value)
+        {
+            if (s.Scene != 0) { AreaEdge(); s = _s; }
+            s.Scene = scene.Value;
+        }
         if (s.Seq == frame) return;
         s.Seq = frame;
         int high = SceneDb.Parts.High;
@@ -38,7 +42,7 @@ internal static partial class GroundMist
     internal static int Pack(ref int gen, Span<byte> into)
     {
         GroundMistState s = _s;
-        bool shows = Shows(false) && s.Laid;
+        bool shows = Shows() && s.Laid;
         int now = shows ? s.Gen : -1;
         if (now == gen) return 0;
         gen = now;
@@ -51,5 +55,5 @@ internal static partial class GroundMist
     }
 
     /// <summary>The bytes of the field's head, and of the whole field as <see cref="Pack"/> writes it.</summary>
-    internal const int Head = 16, PackedBytes = Head + Side * Side * 8;
+    internal const int Head = sizeof(float) * 4, PackedBytes = Head + Side * Side * sizeof(float) * 2;
 }
