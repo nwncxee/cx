@@ -82,6 +82,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         CapturesPointer = true,
         RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = Draw,
+        DrawOver = DrawTip,
         OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
         OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(inv.MouseMove(x, y)),
         OnMouseWheel = dy => !Native.ModalPanelUp() && Input(inv.MouseWheel(dy)),
@@ -370,6 +371,17 @@ public sealed unsafe partial class InventoryService : IExtenderService
         TextRig.DrawBatch(_lootOver.AsSpan(), _lootOver.VertexCount, clip: true, cx: lx, cy: ly, cw: lw, ch: lh);
         TextRig.DrawBatch(_over.AsSpan(), _over.VertexCount);
         if (_inv.DragIcon(out InvIcon d)) RadialIcons.Draw((IntPtr)d.Oid, d.X, d.Y, d.W, d.H, d.Alpha, d.CellsW, d.CellsH);
+    }
+
+    /// <summary>Over every window and NUI: the item tooltip, which must not stay in the inventory's own band.</summary>
+    private static void DrawTip()
+    {
+        if (!_inv.Open || !GameGate.InGame || _text == null || _small == null || Native.ModalPanelUp()) return;
+        VertexBatch b = _inv.TipBatch ??= new VertexBatch(_text.SolidU, _text.SolidV);
+        b.Reset(_text.SolidU, _text.SolidV);
+        b.Outline = Halo;
+        _inv.DrawTip(b, _small);
+        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
     }
 
     /// <summary>The <c>inventory.outline</c> halo radius at the window's text size.</summary>

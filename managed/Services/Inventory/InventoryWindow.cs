@@ -124,6 +124,8 @@ internal sealed partial class InventoryWindow
     private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
     private long _lastClickAt;
     private readonly Tooltip _tip = new();
+    /// <summary>The service's batch for <see cref="DrawTip"/>, kept across frames.</summary>
+    internal VertexBatch? TipBatch;
     private readonly HashSet<uint> _dim = new();
     private int _dimEpoch = -1, _dimLootEpoch = -1;
     private string _dimFor = "";

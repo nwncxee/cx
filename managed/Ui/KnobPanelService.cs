@@ -57,7 +57,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
         OnKey = OnKey,
         OnText = OnText,
         HitTestOverride = (px, py) => panel.Open && Visible && panel.Contains(px, py),
-        PopupOpen = () => panel.Drop.Open,
+        PopupOpen = () => panel.Drop.Open || panel.Tip.Alpha > 0f,
     };
 
     /// <summary>Open the panel: bake its faces, centre it in the last presented viewport, take the keyboard, and show

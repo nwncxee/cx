@@ -324,6 +324,28 @@ internal sealed partial class InventoryWindow
             w.SetPage(0);
             m.Restart(0); Array.Fill(m.Fresh, true);
 
+            // Given the pointer resting on an item until its tooltip shows
+            // When the window emits its frame, then its tooltip
+            // Then the tooltip is in a batch of its own and none of it is in the window's over batch
+            {
+                Func<long> tipClock = Tooltip.Clock;
+                long t = 1_000_000;
+                Tooltip.Clock = () => t;
+                try
+                {
+                    w.MouseMove(Cx(0), Cy(0));
+                    so.Clear(); w.Emit(su, so, sgu, sgo, slu, slo, null, sa, sa, sicons);
+                    int bare = so.VertexCount;
+                    t += Stopwatch.Frequency * 5;
+                    so.Clear(); w.Emit(su, so, sgu, sgo, slu, slo, null, sa, sa, sicons);
+                    var tip = new VertexBatch(0f, 0f);
+                    w.DrawTip(tip, sa);
+                    check.Expect(so.VertexCount == bare && tip.VertexCount > 0,
+                        $"a shown item tooltip draws in its own batch, not the window's: over {bare} -> {so.VertexCount}, tip {tip.VertexCount}");
+                }
+                finally { Tooltip.Clock = tipClock; w.MouseMove(5000f, 5000f); }
+            }
+
             acts.Clear();
             check.Expect(w.Key(0x1B) && acts.Count == 1 && acts[0].Kind == InvActKind.Close, "Esc closes");   // not-an-offset: SDLK_ESCAPE
 

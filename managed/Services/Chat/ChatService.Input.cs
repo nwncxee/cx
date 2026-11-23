@@ -388,12 +388,12 @@ public sealed unsafe partial class ChatService
         return i;
     }
 
-    /// <summary>True while a chat list on <paramref name="above"/>'s side of NUI is open: a window's channel list, or a
-    /// dropdown of the chat settings panel.</summary>
+    /// <summary>True while a chat popup on <paramref name="above"/>'s side of NUI is up: a window's channel list, or a
+    /// dropdown or tooltip of the chat settings panel.</summary>
     private static bool PopupOpen(bool above)
     {
         if (_layout == null || !GameGate.InGame) return false;
-        if (_settings.Panel.Drop.Open && SettingsAbove() == above) return true;
+        if ((_settings.Panel.Drop.Open || _settings.Panel.Tip.Alpha > 0f) && SettingsAbove() == above) return true;
         ChatWindow[] wins = _layout.Windows;
         for (int i = 0; i < wins.Length; i++)
             if (wins[i].ChannelListOpen && wins[i].AboveNui == above) return true;
