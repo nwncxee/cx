@@ -36,6 +36,19 @@ internal static partial class GroundMist
     /// <summary>Below this depth a column holds no mist.</summary>
     private const float Trace = 1e-4f;
 
+    /// <summary>How fast mist evens out over flat ground: the share of a depth difference one metre of depth sends a second.</summary>
+    private const float FlowRate = 1f;
+
+    /// <summary>How much harder a drop in the floor drives mist than the same difference in its depth: it runs off
+    /// slopes and creeps on the flat, so a pool keeps its place while a hillside drains.</summary>
+    private const float SlopeGain = 30f;
+
+    /// <summary>The most of a height difference one flow step moves across one edge; past a quarter the step rings.</summary>
+    private const float MaxShare = 0.24f;
+
+    /// <summary>The highest floor step mist crosses between neighbouring columns: a deck's edge is a drop, not a slope.</summary>
+    private const float MaxStep = 1f;
+
     /// <summary>How many emitters one frame may feed; the rest that frame add nothing.</summary>
     internal const int MaxSources = 64;
 
@@ -172,19 +185,74 @@ internal static partial class GroundMist
             Disc(s, new Vector3(src.X, src.Y, src.Z), src.W, s.Target, SourceDepth, false);
         }
         float up = 1f - MathF.Exp(-dt / RiseTau), down = 1f - MathF.Exp(-dt / SettleTau);
-        bool any = false, moved = false;
+        bool moved = false;
         for (int c = 0; c < s.Depth.Length; c++)
         {
-            if (float.IsNaN(s.Floor[c])) { s.Depth[c] = 0f; continue; }
             float d = s.Depth[c], t = s.Target[c];
-            d += (t - d) * (d < t ? up : down);
-            if (d < Trace) d = 0f;
-            moved |= d != s.Depth[c];
-            s.Depth[c] = d;
-            any |= d > 0f;
+            float e = float.IsNaN(s.Floor[c]) ? 0f : d + (t - d) * (d < t ? up : down);
+            if (e < Trace) e = 0f;
+            moved |= e != d;
+            s.Depth[c] = e;
+        }
+        moved |= Flow(s, dt);
+        bool any = false;
+        for (int c = 0; c < s.Depth.Length; c++)
+        {
+            if (s.Depth[c] < Trace) s.Depth[c] = 0f;
+            any |= s.Depth[c] > 0f;
         }
         s.Any = any;
         if (moved) s.Gen++;
+    }
+
+    /// <summary>One step of mist running downhill: each column sends each linked neighbour it stands above a share of the
+    /// difference, by its depth, every share scaled back so no column sends more than it holds. Mass is kept; true if any moved.</summary>
+    private static bool Flow(GroundMistState s, float dt)
+    {
+        bool sent = false;
+        float[] depth = s.Depth, scale = s.Spare, next = s.Target;
+        float rate = FlowRate * dt;
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+            {
+                int c = y * Side + x;
+                float d = depth[c];
+                if (d <= 0f) continue;
+                float send = Send(s, c, x - 1, y, rate) + Send(s, c, x + 1, y, rate) + Send(s, c, x, y - 1, rate) + Send(s, c, x, y + 1, rate);
+                scale[c] = send > d ? d / send : 1f;
+                sent |= send > 0f;
+                next[c] = d - MathF.Min(send, d);
+            }
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+            {
+                int c = y * Side + x;
+                if (depth[c] <= 0f) next[c] = 0f;
+                next[c] += Take(s, c, x - 1, y, rate) + Take(s, c, x + 1, y, rate) + Take(s, c, x, y - 1, rate) + Take(s, c, x, y + 1, rate);
+            }
+        (s.Depth, s.Target) = (next, depth);
+        return sent;
+    }
+
+    /// <summary>The share column <paramref name="c"/> would send to its neighbour at (<paramref name="x"/>, <paramref name="y"/>):
+    /// none past the field, to a column with no floor, across a step higher than <see cref="MaxStep"/>, or uphill.</summary>
+    private static float Send(GroundMistState s, int c, int x, int y, float rate)
+    {
+        if ((uint)x >= Side || (uint)y >= Side) return 0f;
+        int to = y * Side + x;
+        float from = s.Floor[c], onto = s.Floor[to];
+        if (MathF.Abs(from - onto) > MaxStep) return 0f;
+        float drop = SlopeGain * (from - onto) + s.Depth[c] - s.Depth[to];
+        return drop > 0f ? MathF.Min(rate * s.Depth[c], MaxShare) * drop : 0f;
+    }
+
+    /// <summary>What column <paramref name="c"/> takes from its neighbour at (<paramref name="x"/>, <paramref name="y"/>): that
+    /// neighbour's share toward it, scaled as the neighbour's own sending was.</summary>
+    private static float Take(GroundMistState s, int c, int x, int y, float rate)
+    {
+        if ((uint)x >= Side || (uint)y >= Side) return 0f;
+        int from = y * Side + x;
+        return s.Depth[from] > 0f ? Send(s, from, c % Side, c / Side, rate) * s.Spare[from] : 0f;
     }
 
     /// <summary>A detonation at <paramref name="at"/> that blows the mist out of <paramref name="radius"/>.</summary>

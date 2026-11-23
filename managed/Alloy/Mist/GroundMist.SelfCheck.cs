@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using CX.Alloy.Mdl;
@@ -23,6 +24,10 @@ internal static class GroundMistSelfCheck
             Rise(check);
             NewArea(check);
             Frozen(check);
+            Kept(check);
+            Spread(check);
+            Walls(check);
+            Uploads(check);
         }
         finally
         {
@@ -72,19 +77,25 @@ internal static class GroundMistSelfCheck
         check.Expect(inside == 0f && float.IsNaN(outside), $"a triangle floors (2.5, 2.5) at {inside} and (8.5, 8.5) past its long edge at {outside} (want 0, then none)");
     }
 
-    /// <summary>An emitter fed for 5 s fills its disc to 1 - e^-2.5 of a metre and nothing past it; fed no more, it settles to nothing.</summary>
+    /// <summary>A disc lays mist within its radius only; an emitter fed 5 s on an island its size fills it to 1 - e^-2.5 m, then settles to nothing.</summary>
     private static void Rise(Checker check)
     {
         Lay(Flat(), Vector3.Zero, false, 0f);
+        GroundMist.Place(Vector3.Zero, 3f, 1f);
+        float laid = GroundMist.At(0.5f, 0.5f), past = GroundMist.At(6.5f, 0.5f), corner = GroundMist.At(2.5f, 2.5f);
+        check.Expect(laid == 1f && past == 0f && corner == 0f,
+            $"a 3 m disc lays {laid} m at its centre, {past} m 6 m off, {corner} m 3.5 m off on the diagonal (want 1, then none)");
+
+        Lay(Ground(20f, 1f, (_, _) => 0f, (x, y) => x * x + y * y <= 9f ? Stone : Nonwalk), Vector3.Zero, false, 0f);
         for (int n = 0; n < 300; n++)
         {
             GroundMist.AreaFog(false, 0f);
             GroundMist.Source(new Vector3(0f, 0f, 0.5f), 3f);
             GroundMist.Step(Frame, Vector2.Zero);
         }
-        float centre = GroundMist.At(0.5f, 0.5f), past = GroundMist.At(6.5f, 0.5f), corner = GroundMist.At(2.5f, 2.5f);
-        check.Expect(centre > 0.9f && centre < 0.93f && past == 0f && corner == 0f,
-            $"5 s of a 3 m emitter lays {centre:F4} m at its centre, {past:F4} m 6 m off, {corner:F4} m 3.5 m off on the diagonal (want 0.918, then none)");
+        float centre = GroundMist.At(0.5f, 0.5f), rim = GroundMist.At(2.5f, 1.5f);
+        check.Expect(centre > 0.9f && centre < 0.93f && rim > 0.9f && rim < 0.93f,
+            $"5 s of a 3 m emitter on an island its size lays {centre:F4} m at its centre and {rim:F4} at its rim (want 0.918 both)");
         for (int n = 0; n < 60; n++) GroundMist.Step(10f, Vector2.Zero);
         float left = GroundMist.At(0.5f, 0.5f);
         bool shows = GroundMist.Shows(false);
@@ -113,5 +124,65 @@ internal static class GroundMistSelfCheck
         VolumetricFog.Enabled.V = true;
         float held = GroundMist.At(0.5f, 0.5f);
         check.Expect(held == 1f, $"a second with Volumetric fog off leaves {held} m of a 1 m disc (want it all)");
+    }
+    /// <summary>Running down a slope moves mist and makes none: each frame the field holds e^(-dt/20) of the last, as settling alone would leave.</summary>
+    private static void Kept(Checker check)
+    {
+        Lay(MistPoolApprovedExamples.SlopeGround(), new Vector3(10f, 0f, -2f), false, 0f);
+        GroundMist.Place(new Vector3(2f, 0f, 0f), 3f, 1f);
+        float before = Mass(-80f, -80f, 80f, 80f);
+        Run(0.5f, Vector2.Zero);
+        GroundMist.Step(2f, Vector2.Zero);
+        float after = Mass(-80f, -80f, 80f, 80f), want = before * MathF.Exp(-2.5f / 20f);
+        check.Expect(MathF.Abs(after - want) <= want * 0.005f, $"2.5 s of mist running downhill leaves {after:F4} m^3 of {before:F4} (want {want:F4}, settling alone)");
+    }
+
+    /// <summary>One 2 s frame spreads a disc's edge without turning it over: the depth still falls from its centre outward.</summary>
+    private static void Spread(Checker check)
+    {
+        Lay(Flat(), Vector3.Zero, false, 0f);
+        GroundMist.Place(Vector3.Zero, 3f, 1f);
+        GroundMist.Step(2f, Vector2.Zero);
+        float worst = 0f, last = GroundMist.At(0.5f, 0.5f);
+        for (float x = 1.5f; x < 8f; x += 1f)
+        {
+            float d = GroundMist.At(x, 0.5f);
+            worst = MathF.Max(worst, d - last);
+            last = d;
+        }
+        check.Expect(worst <= 0f, $"a 2 s frame leaves a column {worst:F4} m deeper than the one inside it (want none deeper)");
+    }
+
+    /// <summary>A wall's columns hold no mist under area fog, the frame after it falls.</summary>
+    private static void Walls(Checker check)
+    {
+        Lay(Ground(20f, 1f, (_, _) => 0f, (x, _) => x >= 4f && x < 6f ? Nonwalk : Stone), Vector3.Zero, true, AreaAmount);
+        GroundMist.Step(Frame, Vector2.Zero);
+        float wall = GroundMist.At(4.5f, 0.5f), ground = GroundMist.At(0.5f, 0.5f);
+        check.Expect(wall == 0f && ground > 0f, $"under area fog a wall column holds {wall} m and the ground {ground} (want none on the wall)");
+    }
+
+    /// <summary>The field goes up on a frame where a column moved, by settling or by running downhill, and not on one where none did.</summary>
+    private static void Uploads(Checker check)
+    {
+        var into = new byte[GroundMist.PackedBytes];
+        Lay(MistPoolApprovedExamples.SlopeGround(), new Vector3(10f, 0f, -2f), true, AreaAmount);
+        bool runs = Moves(into);
+        Lay(Flat(), Vector3.Zero, true, AreaAmount);
+        bool still = Moves(into);
+        Lay(Ground(20f, 1f, (_, _) => 0f, (x, y) => x >= 0f && x < 1f && y >= 0f && y < 1f ? Stone : Nonwalk), Vector3.Zero, false, 0f);
+        GroundMist.Place(new Vector3(0.5f, 0.5f, 0f), 1f, 1f);
+        bool settles = Moves(into);
+        check.Expect(runs && !still && settles,
+            $"a frame uploads the field: area fog running down a slope {runs}, lying still on the flat {still}, settling on a one-metre island {settles} (want true, false, true)");
+    }
+
+    /// <summary>Whether one frame's step makes the field go up again.</summary>
+    private static bool Moves(byte[] into)
+    {
+        int gen = int.MinValue;
+        GroundMist.Pack(ref gen, into);
+        GroundMist.Step(Frame, Vector2.Zero);
+        return GroundMist.Pack(ref gen, into) > 0;
     }
 }
