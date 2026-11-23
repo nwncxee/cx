@@ -349,6 +349,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // whole Alloy path down.
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
+        log.Info(Db.DrawRecipe.FaultKeysLine);
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
@@ -522,6 +523,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Weather.ResetPeriod();
         Particles.ResetPeriod();
         EmitterSim.ResetPeriod();
+        DrawRecipe.ResetPeriod();
         Counters._skipNoLight = Counters._skipIdentity = Counters._skipNoMdl = Counters._skipTex = Counters._skipRange = Counters._skipVao = 0; Counters._skipLod = 0;
         Counters._skipForeignScene = 0;
         ResetChasePeriod();

@@ -15,7 +15,7 @@ internal static unsafe partial class TexRegistry
     {
         bool ok = PltCheck(log) & PaletteCheck(log) & RegistryCheck(log) & PltColors.SelfCheck(log)
                 & TexCoverageOf.SelfCheck(log) & MipChainApprovedExamples.SelfCheck(log) & SkyProfileApprovedExamplesSelfCheck(log) & UploadApprovedExamplesSelfCheck(log) & UploadHoldsTodaySelfCheck(log) & SkyProfileHoldsTodaySelfCheck(log) & DataTextureSelfCheck(log) & MipChain.SelfCheck(log) & TxiCheck(log) & TxiSelfCheck(new Checker(log, "TexRegistry.TxiSelfCheck"))
-                & ArturoSelfCheck(new Checker(log, "TexRegistry.ArturoSelfCheck")) & ResidencyApprovedExamplesSelfCheck(log);
+                & ArturoSelfCheck(new Checker(log, "TexRegistry.ArturoSelfCheck")) & ResidencyApprovedExamplesSelfCheck(log) & FullTableSelfCheck(log) & SlotsShortSelfCheck(log);
         log.Info(ok ? "TexRegistry.SelfCheck: passed" : "TexRegistry.SelfCheck: FAILED");
         return ok;
     }
@@ -280,7 +280,7 @@ internal static unsafe partial class TexRegistry
         Expect(SceneDb.Parts.DirtyCount == 2, "a dependent was recorded on a RESIDENT slot (the list must be closed)");
 
         SceneDb.Parts.TakeDirty();
-        LoudOnce($"tex:{ResrefOf(c)}");   // ...and the deliberate failure below
+        LoadFailedOnce(ResrefOf(c));   // ...and the deliberate failure below
         Fail(c.Index, "the self-check says so");
         Expect(StateOf(c) == TexState.Failed, "a failed load is not in the Failed state");
         Expect(!TryResident(c, out _, out _), "a failed load answers resident");

@@ -447,7 +447,7 @@ internal static class RenderPasses
             Name = "modelcache",
             Attach = l => { ModelFeed.Attach(l); ModelVerify.Attach(l); MtrFeed.Attach(l); },
             SelfCheck = l => { CX.Alloy.Mdl.ModelCache.SelfCheck(l); CX.Alloy.Mdl.ModelCache.IdleModelsSelfCheck(l); CX.Alloy.Mdl.ModelCache.IdleModelsFoundSelfCheck(l); },
-            Revoke = CX.Alloy.Mdl.ModelCache.AreaEdge,
+            Revoke = CX.Alloy.Db.DrawRecipe.AreaEdge,
             Stats = f => Join(Join(CX.Alloy.Mdl.ModelCache.Stats(f), ModelFeed.Note()), MtrFeed.Stats()),
         }, log);
 

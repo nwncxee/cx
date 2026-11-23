@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using CX.Framework;
 
@@ -24,6 +25,7 @@ internal static unsafe class DbSceneSelfCheck
         Names(check);
         WorldScene(check);
         Order(check);
+        SuiteCountLines(check);
         PingPong(check, log);
         // The suite must give every slot back. Asserted rather than assumed: a leaked fixture record shows up
         // live as a scene that exists and draws nothing, and the period line's live figure is then a number
@@ -44,13 +46,55 @@ internal static unsafe class DbSceneSelfCheck
     }
 
     /// <summary>After every suite and before the hooks commit: nothing the game made can be live yet, so a live scene or
-    /// object is a fixture still in the tables, which frame walks and world-scene lookups read as the game's. Oracle: the
-    /// empty table the engine has not touched.</summary>
+    /// object is a fixture still in the tables, and a count on a period line is a suite's. Oracle: the empty table the
+    /// engine has not touched, and the clause words a reader of the period lines sees.</summary>
     internal static void NoFixtureOutlived(ExtenderLog log)
     {
         var check = new Checker(log, "DbScene.SelfCheck");
         check.Expect(SceneDb.Scenes.Live == 0, $"no fixture scene outlives its suite ({SceneDb.Scenes.Live} live)");
         check.Expect(SceneDb.Objects.Live == 0, $"no fixture object outlives its suite ({SceneDb.Objects.Live} live)");
+        string feed = DbFeed.Stats(), skin = DbAnim.SkinPeriod();
+        string? left = SuiteCount(feed, skin);
+        check.Expect(left == null, $"no suite's {left} count is on the session's period lines: \"{feed}\", \"{skin}\"");
+        check.Expect(DbAnim.SessionCountsClear, "no suite's skin count, printed or not, outlives the session edge");
+        check.Expect(TexRegistry.NeverUsed >= TexRegistry.MaxSlots / DrawRecipe.RoomShare,
+                     $"no suite spends the texture slots a session has never used ({TexRegistry.NeverUsed} of {TexRegistry.MaxSlots} left)");
+        check.Expect(TexRegistry.LoudKeys == 0,
+                     $"no suite keeps a once-per-cause texture line from the session ({TexRegistry.LoudKeys} claimed)");
+    }
+
+    /// <summary>Feed-line clauses that report a count of something that went wrong or went away.</summary>
+    private static readonly string[] CountClauses =
+    [
+        DrawRecipe.SpilledKey, DrawRecipe.EvictedKey, DrawRecipe.InUseKey, DrawRecipe.TwiceKey, "twin-shadowed", "box-grown",
+        "retired", "reclassified", "NO-MODEL", "RETRY OVERFLOW", "BAD RANGES", "re-init releases", "recycled",
+    ];
+
+    /// <summary>The first count on the period lines, or null: a clause with a count after it on the feed line, a static
+    /// record or object restaged, or a skin line past its empty form.</summary>
+    internal static string? SuiteCount(string feed, string skin)
+    {
+        foreach (string clause in CountClauses)
+            if (Regex.IsMatch(feed, $@"\b{Regex.Escape(clause)} \d")) return clause;
+        if (Regex.IsMatch(feed, @"\((\d*[1-9]\d* records|\d+ records, \d*[1-9]\d* objects)")) return "static-restage";
+        return skin == "0 palette(s)" ? null : "skin";
+    }
+
+    /// <summary>The period-line reader names each count a suite could leave and passes a clean line. Oracle: hand-written
+    /// lines in the feed's and the skin line's words.</summary>
+    private static void SuiteCountLines(Checker check)
+    {
+        const string clean = "dbfeed: frames 0 recipes 0 water 0 recipe(s) (0 declared, 2 slot(s) reclassified) static-restage 0/frame (0 records, 0 objects)";
+        const string idle = "0 palette(s)";
+        check.Expect(SuiteCount(clean, idle) == null, $"a clean session's lines read as a suite's {SuiteCount(clean, idle)} count");
+        check.Expect(SuiteCount(clean.Replace("recipes 0", "recipes 0 RECIPES SPILLED 3"), idle) == DrawRecipe.SpilledKey,
+                     "a spill count on the feed line is not named");
+        check.Expect(SuiteCount(clean.Replace("(0 records, 0 objects)", "(8 records, 5 objects, Material)"), idle) == "static-restage",
+                     "a static restage on the feed line is not named");
+        check.Expect(SuiteCount(clean.Replace("(0 records, 0 objects)", "(0 records, 10 objects)"), idle) == "static-restage",
+                     "a static object restage on the feed line is not named");
+        check.Expect(SuiteCount(clean, "0 palette(s), stitched 3 creature(s)/12 vertex(es)") == "skin",
+                     "a stitch count on the skin line is not named");
     }
 
     /// <summary>A world flag on a scene the game holds no facade for is a fixture, never the world, and the lowest slot

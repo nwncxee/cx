@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The live harness's offline examples: typed text keeps its shifted characters, a stage built before the
-# harness or the runtime changed is refused by name, and a crash report written during shutdown gets its own
-# ungraded line. None of them starts a client.
+# harness or the runtime changed is refused by name, a crash report written during shutdown gets its own
+# ungraded line, and a recipe fault on the frame line is named. None of them starts a client.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
@@ -53,4 +53,25 @@ expect "no shutdown crash, no line" "$(shutdown_crash_line 0 0 /c)" ""
 expect "a shutdown crash is named, ungraded" "$(shutdown_crash_line 0 1 /c)" "shutdown crash  1 written after grading, not graded"
 expect "only the new ones count" "$(shutdown_crash_line 2 3 /c)" "shutdown crash  1 written after grading, not graded"
 expect "a count that is not a number prints no line" "$(shutdown_crash_line '' 3 /c 2>&1)" ""
+# Given a ladder session's frame lines
+# When the harness grades the recipe table
+# Then each fault clause the frame line prints is named, and a clean frame line names none
+f="$t/cx.log"
+keys='[cx] dbfeed: recipe fault keys: RECIPES SPILLED|models evicted for recipes|RECIPES EVICTED IN USE|RECIPES RETIRED TWICE'
+printf '%s\n%s\n' "$keys" 'dbfeed: frames 120 recipes 900 retired 69 box-grown 67' > "$f"
+expect "a clean frame line names no fault" "$(recipe_fault_lines "$f")" ""
+for clause in 'RECIPES SPILLED 3' 'models evicted for recipes 2' 'RECIPES EVICTED IN USE 14' 'RECIPES RETIRED TWICE 1'; do
+    printf '%s\n%s\n' "$keys" "dbfeed: frames 240 recipes 900 $clause retired 69" > "$f"
+    expect "the frame line's $clause is named" "$(recipe_fault_lines "$f")" "$clause"
+done
+printf '%s\n%s\n' '[cx] dbfeed: recipe fault keys: TABLE OVERFLOW|models dropped for room' 'dbfeed: frames 240 models dropped for room 5 TABLE OVERFLOW 2' > "$f"
+expect "renamed keys are read from the session's own log" "$(recipe_fault_lines "$f")" "TABLE OVERFLOW 2,models dropped for room 5"
+printf '%s\n%s\n%s\n' "$keys" "$keys" 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a log that booted twice still names a fault" "$(recipe_fault_lines "$f")" "RECIPES SPILLED 3"
+printf '%s\n%s\n%s\n' "$keys" 'dbfeed: frames 120 RECIPES SPILLED 3' 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a count two frame lines repeat is named once" "$(recipe_fault_lines "$f")" "RECIPES SPILLED 3"
+echo 'dbfeed: frames 240 RECIPES SPILLED 3' > "$f"
+expect "a frame line with no key line is a fault, not a pass" "$(recipe_fault_lines "$f")" "no recipe fault keys in cx.log"
+echo '[cx] Alloy stood down: no Vulkan device' > "$f"
+expect "a session with no frame line names no fault" "$(recipe_fault_lines "$f")" ""
 exit $fail

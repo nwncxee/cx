@@ -824,8 +824,8 @@ internal static unsafe partial class TexRegistry
             if (_state[i] == TexState.Idle) Retire(i);
             else _state[i] = TexState.Failed;
         }
-        if (LoudOnce($"tex:{name}"))
-            _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
+        if (_log is { } log && LoadFailedOnce(name))
+            log.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
                 + (retry ? "Until it loads when asked for again, a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"
                          : "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"));
     }

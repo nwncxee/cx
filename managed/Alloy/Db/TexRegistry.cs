@@ -310,13 +310,14 @@ internal static unsafe partial class TexRegistry
                 return TexId.Make(hit, _gen[hit] & 0xFFF);
             }
             int i;
+            if (_freeHead < 0 && _high >= MaxSlots && _idleHead >= 0) Retire(_idleHead);
             if (_freeHead >= 0) { i = _freeHead; _freeHead = _freeNext[i]; }
             else if (_high < MaxSlots) i = _high++;
             else
             {
                 _full++;
                 if (LoudOnce("slots"))
-                    _log?.Always($"TexRegistry: the {MaxSlots}-slot table is FULL -- \"{resref}\" draws the white "
+                    _log?.Always($"TexRegistry: the {MaxSlots}-slot table is FULL of textures in use -- \"{resref}\" draws the white "
                         + "stand-in. Every texture past this one does too until something is evicted");
                 return default;
             }
@@ -441,6 +442,23 @@ internal static unsafe partial class TexRegistry
         if (!_maskWatch[i]) return;
         _maskWatch[i] = false;
         _maskLanded.Landed = true;
+    }
+
+    /// <summary>Slots no texture has taken yet: what <see cref="SlotsShort"/> answers from without walking the table.</summary>
+    internal static int NeverUsed => MaxSlots - System.Threading.Volatile.Read(ref _high);
+
+    /// <summary>True when fewer than <paramref name="want"/> slots could take a new name: free, never used, or idle.
+    /// Walks the table only once the slots never used run short. Game thread.</summary>
+    internal static bool SlotsShort(int want)
+    {
+        if (NeverUsed >= want) return false;
+        lock (_lock)
+        {
+            int open = MaxSlots - _high;
+            for (int i = 1; i < _high && open < want; i++)
+                if (_refs[i] == 0) open++;
+            return open < want;
+        }
     }
 
     /// <summary>The names <see cref="ApplyResets"/> took this tick, handed on once the registry's lock is let go.</summary>
@@ -772,6 +790,15 @@ internal static unsafe partial class TexRegistry
     private static bool LoudOnce(string cause)
     {
         lock (_loudOnce) return _loudOnce.Add(cause);
+    }
+
+    /// <summary>Is this the first "did not load" line for <paramref name="resref"/> this session?</summary>
+    private static bool LoadFailedOnce(string resref) => LoudOnce($"tex:{resref}");
+
+    /// <summary>The session says each cause once more, whatever a boot self-check already said.</summary>
+    internal static void SessionBegins()
+    {
+        lock (_loudOnce) _loudOnce.Clear();
     }
 
     /// <summary>The <c>[alloy]</c> period line.</summary>

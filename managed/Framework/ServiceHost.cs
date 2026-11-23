@@ -85,6 +85,7 @@ public static class ServiceHost
         // ADR 0025: after every Initialize, so the walk covers every group declared this session -- a User
         // row without help, a layout knob that is not a dropdown, a Restart knob whose Boot moved, all fail here.
         SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.AfterServices), log);
+        CX.Alloy.Db.DbFeed.SessionBegins();
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the

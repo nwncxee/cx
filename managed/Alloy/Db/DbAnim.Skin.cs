@@ -273,6 +273,19 @@ public static unsafe partial class DbAnim
         return skin != null && Palette(part, skin, ref *dst);
     }
 
+    /// <summary>The session's skin line starts from no palettes, refusals, lost bones or stitches.</summary>
+    internal static void SessionBegins()
+    {
+        _skinned = 0; _skinNoBind = 0; _skinNoSlot = 0; _skinNoSlotSaid = false;
+        _named.Palettes = 0; _named.Lost = 0; _named.Said = 0;
+        _stitch.Creatures = 0; _stitch.Vertices = 0; _stitch.Refused = 0; _stitch.Said = 0;
+    }
+
+    /// <summary>True when every count <see cref="SessionBegins"/> zeroes is zero, the ones the skin line leaves out too.</summary>
+    internal static bool SessionCountsClear =>
+        _skinned == 0 && _skinNoBind == 0 && _skinNoSlot == 0 && !_skinNoSlotSaid && _named.Palettes == 0 && _named.Lost == 0
+        && _named.Said == 0 && _stitch.Creatures == 0 && _stitch.Vertices == 0 && _stitch.Refused == 0 && _stitch.Said == 0;
+
     /// <summary>The skin layer's period numbers.</summary>
     internal static string SkinPeriod()
         => $"{_skinned} palette(s)"
