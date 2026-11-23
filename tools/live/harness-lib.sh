@@ -3,7 +3,9 @@
 # Refuse a stage built before tools/live or the runtime sources changed: the old runtime and the new harness
 # disagree (where cx.log goes, what a marker says) and the run reports a hang instead of the rebuild. A
 # commit since the stamp, or an uncommitted or untracked source file newer than the stamp, makes it stale; after
-# a dirty build any source file newer than the stamp does, since a revert also leaves the stage behind.
+# a dirty build any source file newer than the stamp does, since a revert also leaves the stage behind. A stamped
+# code fingerprint equal to the tree's (tools/codehash.py) settles it first: the stage is this tree's build, as
+# where.sh calls it CURRENT, whatever commit the stamp names.
 STAGE_SOURCES=(managed native build.sh tools/live packaging)
 stage_stale() {
     local stage=$1 root=$2 from newer
@@ -11,6 +13,10 @@ stage_stale() {
     if [ -z "$from" ]; then
         echo "run-live: staged build in $stage carries no BUILT_FROM stamp: run ./build.sh"; return 1
     fi
+    local code
+    code=$(sed -n 's/^code //p' "$stage/BUILT_FROM")
+    [ -n "$code" ] && [ -f "$root/tools/codehash.py" ] \
+        && [ "$code" = "$(python3 "$root/tools/codehash.py" "$root" 2>/dev/null)" ] && return 0
     if ! git -C "$root" cat-file -e "$from^{commit}" 2>/dev/null \
         || ! git -C "$root" diff --quiet "$from" HEAD -- "${STAGE_SOURCES[@]}"; then
         echo "run-live: staged build ${from:0:8} is older than tools/live or the runtime sources ($(git -C "$root" rev-parse --short=8 HEAD)): run ./build.sh"
