@@ -12,10 +12,9 @@ namespace CX.Alloy.Db;
 /// its <see cref="ModelDef"/>, so its index is safe to hold across frames and threads with no identity test.</summary>
 internal static partial class DrawRecipe
 {
-    /// <summary>Distinct recipes held at once. A heavy persistent-world area measured ~1,300 distinct drawn nodes across
-    /// its tileset and its creatures; a session that visits many areas accumulates, so this is sized for the
-    /// session rather than the area and the models' own release is what retires entries.</summary>
-    internal const int Max = 1 << 14;
+    /// <summary>Distinct recipes held at once: a long session's worth of areas, about 26 MiB of CPU columns. A full
+    /// table evicts idle models to make room (<see cref="MakeRoom"/>), so only what the area draws can fill it.</summary>
+    internal const int Max = 1 << 16;
 
     /// <summary>Texture slots a recipe names: diffuse, the seven map slots (five maps, flow, AO), then the
     /// four PALETTE slots. The palette four are held but never BOUND -- the lit stage spends texture units
@@ -131,6 +130,10 @@ internal static partial class DrawRecipe
 
         public SlotState() { System.Array.Fill(ContentRow, -1); }
         public int RetiredInUse, DoubleRetire;
+        /// <summary>A self-check's smaller table (<see cref="CapOverride"/>), or null for <see cref="Max"/>.</summary>
+        public int? CapOverride;
+        /// <summary>Models evicted this period to make room in the table, beside the memory and texture budgets'.</summary>
+        public int RoomEvicted;
         /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> saw.</summary>
         public int MtrSerial, MtrSeen;
         /// <summary>Interns and reclassifications of a CONTENT recipe (<see cref="ContentSerial"/>).</summary>
@@ -202,10 +205,17 @@ internal static partial class DrawRecipe
     /// <summary>Recipes in use: the slots ever handed out, less the retired ones waiting or free.</summary>
     internal static int Count => _n - _own.Free.Count - _own.Retiring.Count - _own.Cooling.Count;
 
+    /// <summary>Recipes the table holds at once: <see cref="Max"/>, or a self-check's smaller
+    /// <see cref="CapOverride"/>.</summary>
+    internal static int Cap => _own.CapOverride ?? Max;
+    /// <summary>A smaller table for the self-checks ONLY, so an example can fill it off-device.</summary>
+    internal static int? CapOverride { get => _own.CapOverride; set => _own.CapOverride = value; }
+
     /// <summary>A slot for a new recipe: a retired one past its quarantine, else a fresh one; -1 when full.</summary>
     private static int Take()
     {
         int r;
+        if (Count >= Cap) { Spilled++; return -1; }
         if (_own.Free.Count > 0) r = _own.Free.Pop();
         else if (_n < Max) r = _n++;
         else { Spilled++; return -1; }
@@ -461,6 +471,7 @@ internal static partial class DrawRecipe
         _own.Cooling.Clear();
         _own.Cooling.AddRange(_own.Retiring);
         _own.Retiring.Clear();
+        MakeRoom();
         int landed = 0;
         // R1-7: the ranges that were NOT resident, drained. The whole-table walk this replaces re-asked the
         // arena for every recipe every frame, inside the frame's own dirty fold.
@@ -789,6 +800,48 @@ internal static partial class DrawRecipe
             Retire(r);
         }
     }
+
+    /// <summary>The share of the table <see cref="MakeRoom"/> keeps free: a sixteenth, 4,096 recipes of <see cref="Max"/>.</summary>
+    private const int RoomShare = 16;
+    /// <summary>Idle models one frame evicts at most to make room: each eviction walks the table in <see cref="Forget"/>.</summary>
+    private const int RoomPerFrame = 16;
+
+    /// <summary>Evict idle models, least recently used first, until a sixteenth of the table is free (at least one
+    /// slot), at most <see cref="RoomPerFrame"/> a frame. A model an area draws is never idle. Game thread.</summary>
+    private static void MakeRoom()
+    {
+        int want = Math.Max(1, Cap / RoomShare);
+        for (int k = 0; k < RoomPerFrame && Cap - Count < want; k++)
+            if (!EvictForRoom()) return;
+    }
+
+    /// <summary>Evict the least recently used idle model and count it against the table; false when none is idle.</summary>
+    private static bool EvictForRoom()
+    {
+        if (!ModelCache.EvictLeastRecent()) return false;
+        _own.RoomEvicted++;
+        return true;
+    }
+
+    /// <summary>The share of the table the area change leaves in use at most: a quarter.</summary>
+    private const int AreaKeepShare = 4;
+
+    /// <summary>The frame line's key for the models evicted to make room in the table.</summary>
+    internal const string EvictedKey = "models evicted for recipes";
+
+    /// <summary>The area change: the model cache's own edge, then idle models evicted, least recently used first,
+    /// until at most a quarter of the table is in use. Runs behind the loading screen.</summary>
+    internal static void AreaEdge()
+    {
+        ModelCache.AreaEdge();
+        while (Count > Cap / AreaKeepShare && EvictForRoom()) { }
+    }
+
+    /// <summary>Models evicted this period to make room in the table.</summary>
+    internal static int RoomEvicted => _own.RoomEvicted;
+
+    /// <summary>Start a new frame-line period.</summary>
+    internal static void ResetPeriod() => _own.RoomEvicted = 0;
 
     /// <summary>Recipes retired with their model.</summary>
     internal static int Retired { get; private set; }

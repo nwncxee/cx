@@ -52,7 +52,7 @@ texture release  the same eviction, one hop further: DrawRecipe.Forget -> TexReg
                        then VkTextures.Forget -> VkBackend.Destroy, deferred past the frames in flight
 world edge       AlloyRenderer.EndFrame: module unload / part table wiped / the render device gone
                      -> AlloyRenderer.RevokeAll -> PassRegistry.Global.Revoke()
-                     -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
+                     -> TileBuild.Revoke, PartTreeLive.Revoke, DrawRecipe.AreaEdge
 context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
                      -> MeshArena.ContextLost, TexRegistry.ContextLost,
                         PltPalettes/PltColors.ContextLost, DbFeed.ContextLost
@@ -67,13 +67,12 @@ idle LRU → `TexRegistry.Tick`'s `EvictPastBudget` → `Retire` → `_graveyard
 its model will look in the wrong place; and the first hop of that chain is **not wired** (see the gaps).
 
 **The fifth is the world edge, which the ADR says the contract deletes.** It does not, in DB mode: the
-`PassRegistry` Revoke walk is still driven from `AlloyRenderer.EndFrame`, which is a `FramePhase.PostPresent`
-participant and runs in every mode. What it no longer has is the **area** trigger —
-`AlloyRenderer.TakeAreaEdge` is called from `OnRenderSinglePass`, a hook the seam does not install, so in DB
-mode the walk fires on a module unload, a context loss and a part-table wipe and never on an area change.
-Three DB tables are wired to it: `TileBuild.Revoke` ("the world edge: an area change drops every placement"),
-`ModelCache.AreaEdge` (the census line plus the read-ahead references) and `PartTreeLive.Revoke`. In DB mode
-none of them sees an area change.
+`PassRegistry` Revoke walk runs from `AlloyRenderer.EndFrame` on a module unload, a context loss and a
+part-table wipe, and from `AlloyRenderer.AreaEdge` on an area change, which `DbScene.Destroy` calls when the
+world scene is destroyed, after `TileBuild.SceneRevoke` has let go of that scene's tiles and before its other
+objects are swept. Three DB tables are wired to it: `TileBuild.Revoke` ("the world edge: an area change drops
+every placement"), `DrawRecipe.AreaEdge` (the model cache's census line, read-ahead references and byte trim,
+then the recipe trim to a quarter of the table) and `PartTreeLive.Revoke`.
 
 ## Why a handle replaces a death notice
 
@@ -283,7 +282,7 @@ One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, 
 | Dynamic (dangly/animmesh) ranges and their native vertex buffers | `DbAnim.TakeRange` → `MeshArena.AcquireDynamic` with a per-part splitmix key so nothing dedups onto it, plus `DbAnim.DynTake`'s `NativeMemory.Alloc` (cap `MaxDynParts` 2048, refused loudly past it) | `DbAnim.DanglyForget(obj)` from `DbAnim.OnRetire` — the object-destroy edge: free both native buffers, `MeshArena.Release` the range, swap-remove from `_dynList`. The private recipe row is only retired by `DrawRecipe.Forget` | with the arena |
 | The dynamic patch queue | `MeshArena.WriteDynamic` (game thread, under `_gate`: patches positions in the mirror and recomputes the cull bounds so the sphere follows the pose) | `MeshArena.DynUpload` inside `Pump` — one buffer upload per dirty range, under the same lock. `_dynDirty` is a fixed 4096; overflow is counted and named as "a frozen cloak" | not cleared by `ContextLost` — frozen, inert |
 | The part index space (`PartTree._free` — 17 size-class free lists, `_cursor`, `_cap`) | `PartTree.Alloc(n)`, rounded up to a power of two; refused past `SceneDb.MaxParts` | `PartTree.Release(first)` from `PartTree.Free(obj)`, which also `MeshArena.Release`s and `DropPlacement`s every part first. No compaction, at most 2× waste (an explicit `ponytail:`) | none |
-| Draw recipes (`DrawRecipe`, max 16384), the stable half of a draw | `DrawRecipe.Intern(model, node)` → `Fill`, which takes one `MeshArena` reference and up to eight `TexRegistry` references | `DrawRecipe.Forget(ModelDef)` releases the range and each slot's `TexId` — **but its only producer, `DrawRecipe.Attach`, is never called** (see the gaps). Slots are never reused: `_n` only increments, and `Spilled` is the ceiling | the recipe is CPU state; the names it points at are the registry's |
+| Draw recipes (`DrawRecipe`, max 65536), the stable half of a draw | `DrawRecipe.Intern(model, node)` → `Fill`, which takes one `MeshArena` reference and up to eight `TexRegistry` references | `DrawRecipe.Forget(ModelDef)`, wired by `DrawRecipe.Attach` to the model's eviction, retires each slot no part draws: its range and `TexId`s are released and the slot waits two `Pump`s (`Retiring`, `Cooling`) before it is reused. Room is made by evicting idle models, least recently used first: each `Pump` while under a sixteenth of the table is free (`MakeRoom`, at most 16 a frame), and `DrawRecipe.AreaEdge` down to a quarter in use. `Spilled` counts a part refused while no model is idle | the recipe is CPU state; the names it points at are the registry's |
 | Placement / resident-mesh census (`ModelCache.Census`) | `NotePlacement` from `PartTree.Write`, `CombinePlan`, `MergeInto`; `NoteResidentMeshes(+1)` in `InsertModel` | `DropPlacement` from `PartTree.Free` and the two merge paths; `(−1)` in `Evict`. An unmatched drop is `_strayDrops` plus a named line | none |
 | `MtrDef._cache` (parsed `.mtr`s, negative results memoised) | `MtrDef.Resolve`, under `lock (_cache)` | `MtrDef.Forget` — **no live caller**. Unbounded in distinct material names | none |
 | Animation bindings and resolution memos (`ModelCache.Anim`) | `Resolve`, `Bind`, `Children`, lazily | `ModelCache.Forget(ModelDef)` from `Evict`; `ClearBindings` from `Clear` | none |

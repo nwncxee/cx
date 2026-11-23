@@ -522,6 +522,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Weather.ResetPeriod();
         Particles.ResetPeriod();
         EmitterSim.ResetPeriod();
+        DrawRecipe.ResetPeriod();
         Counters._skipNoLight = Counters._skipIdentity = Counters._skipNoMdl = Counters._skipTex = Counters._skipRange = Counters._skipVao = 0; Counters._skipLod = 0;
         Counters._skipForeignScene = 0;
         ResetChasePeriod();
