@@ -92,6 +92,14 @@ public struct CascadeStyle
 
 /// <summary>One open list of the cascade: its rows, its viewport (<see cref="List"/> is the rect), the hovered
 /// row, the parent row it hangs off (-1 at the root), and when it first drew (-1 until then).</summary>
+/// <summary>An owner's draw calls for a <see cref="CascadeMenu"/>: its skin pass opened, then one batch and the icons
+/// that go over it painted.</summary>
+public interface ICascadeSink
+{
+    void Begin();
+    void Paint(VertexBatch b, ReadOnlySpan<IconQuad> icons);
+}
+
 public sealed class CascadeLevel
 {
     public long OpenedMs = -1;
@@ -541,11 +549,31 @@ public sealed partial class CascadeMenu
     {
         _iconN = 0;
         if (!Open) return;
+        for (int i = Drill ? Depth - 1 : 0; i < Depth; i++) DrawLevel(i, b, atlas, baseDrop, in st, skin);
+        DrawGhost(b, atlas, baseDrop, in st);
+    }
+
+    /// <summary>Paint the menu through <paramref name="sink"/>, the owner's draw calls. Zero-alloc.</summary>
+    public void Render<TSink>(ref TSink sink, VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st, Skin? skin = null)
+        where TSink : struct, ICascadeSink
+    {
+        if (!Open) return;
+        float halo = b.Outline;
+        b.Reset(atlas.SolidU, atlas.SolidV);
+        b.Outline = halo;
+        sink.Begin();
+        Draw(b, atlas, baseDrop, in st, skin);
+        sink.Paint(b, Icons);
+    }
+
+    /// <summary>One open level: body, frame, the owning-row and hover fills, icons noted for the owner, labels, counts,
+    /// submenu marks and the scrollbar.</summary>
+    private void DrawLevel(int i, VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st, Skin? skin)
+    {
         var bg = st.Bg; var active = st.Hover; var frame = st.Frame;
         uint textRgb = st.TextRgb;
         float tr = ((textRgb >> 16) & 0xFF) / 255f, tg = ((textRgb >> 8) & 0xFF) / 255f, tb = (textRgb & 0xFF) / 255f;
         float vpad = (ItemH - atlas.LineHeight) / 2f, inset = IconInset, pad = Pad;
-        for (int i = Drill ? Depth - 1 : 0; i < Depth; i++)
         {
             var lv = _lv[i];
             if (lv.OpenedMs < 0) lv.OpenedMs = st.NowMs;
@@ -616,6 +644,12 @@ public sealed partial class CascadeMenu
             b.ClearClip();
             lv.List.Draw(b, active, skin);
         }
+    }
+
+    /// <summary>The dragged row's label under the pointer, over every level.</summary>
+    private void DrawGhost(VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st)
+    {
+        uint textRgb = st.TextRgb;
         if (RowDrag && _pressLevel < Depth && (uint)_pressRow < (uint)_lv[_pressLevel].Items.Length)
         {
             string? ghost = _lv[_pressLevel].Items[_pressRow].Label;
