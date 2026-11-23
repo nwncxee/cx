@@ -333,7 +333,7 @@ public sealed unsafe partial class ChatService
         }
         if (!IsTyping && _settings.Open)
         {
-            if (key == KeyEsc) { _settings.Reset(); Rebuild(); }
+            if (key == KeyEsc) { if (_settings.Panel.Drop.Open) _settings.Panel.Drop.Close(); else _settings.Reset(); Rebuild(); }
             return;
         }
         bool shift = (mods & KmodShift) != 0;
