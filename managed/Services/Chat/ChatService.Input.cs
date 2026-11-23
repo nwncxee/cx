@@ -393,7 +393,7 @@ public sealed unsafe partial class ChatService
     private static bool PopupOpen(bool above)
     {
         if (_layout == null || !GameGate.InGame) return false;
-        if (_settings.Panel.PopupOpen && SettingsAbove() == above) return true;
+        if (_settings.Panel.Drop.Open && SettingsAbove() == above) return true;
         ChatWindow[] wins = _layout.Windows;
         for (int i = 0; i < wins.Length; i++)
             if (wins[i].ChannelListOpen && wins[i].AboveNui == above) return true;

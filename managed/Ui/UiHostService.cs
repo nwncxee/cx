@@ -287,15 +287,7 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
     /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
-    private static readonly UiDrawList[] _layers = NewLayers();
-
-    /// <summary>One empty draw list per layer.</summary>
-    private static UiDrawList[] NewLayers()
-    {
-        var lists = new UiDrawList[UiLayers.Count];
-        for (int i = 0; i < lists.Length; i++) lists[i] = new UiDrawList();
-        return lists;
-    }
+    private static readonly UiDrawList[] _layers = Array.ConvertAll(UiHost.Layers, _ => new UiDrawList());
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];

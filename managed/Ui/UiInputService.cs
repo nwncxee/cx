@@ -252,7 +252,7 @@ public sealed unsafe class UiInputService : IExtenderService
         (float X, float Y, float W, float H) area = default;
         foreach (Window w in UiHost.Windows)
             if ((top == null || w.Order > top.Order) && w.EscArea?.Invoke() is { } a) { top = w; area = a; }
-        return top != null && top.Band < UiLayer.AboveNui && EscNui.CloseOver(nuklear, area.X, area.Y, area.W, area.H) != IntPtr.Zero;
+        return top != null && top.Band < UiLayer.AboveNui && EscNui.CloseOver(nuklear, area.X, area.Y, area.W, area.H);
     }
 
     /// <summary>What an Esc press finds on the engine's side: a stock modal panel up, a cutscene playing, a NUI edit
@@ -338,8 +338,7 @@ public sealed unsafe class UiInputService : IExtenderService
     internal static PointerOutcome RouteWheel<T>(int dy, float x, float y, in T under) where T : struct, IPointerUnder
     {
         if (UiHost.DispatchMouseWheel(dy, captureOnly: true, x, y)) return PointerOutcome.Taken;
-        if (under.Nui && CX.Services.Nui.NuiModelView.OnWheel(dy)) return PointerOutcome.Taken;
-        if (under.Nui) return PointerOutcome.Engine;
+        if (under.Nui) return CX.Services.Nui.NuiModelView.OnWheel(dy) ? PointerOutcome.Taken : PointerOutcome.Engine;
         if (under.Gui && !under.MenuOurs) return UiHost.OfferWheelOverGui(dy, x, y) ? PointerOutcome.Taken : PointerOutcome.Engine;
         return UiHost.DispatchMouseWheel(dy) ? PointerOutcome.Taken : PointerOutcome.Unclaimed;
     }

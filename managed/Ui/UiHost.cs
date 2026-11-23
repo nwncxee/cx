@@ -132,7 +132,7 @@ public static partial class UiHost
     /// <summary>Offer a wheel notch over the engine GUI to the CX window drawn over it at the pointer alone, as
     /// <see cref="OfferOverGui"/> offers a press: one that declines it, or no such window, leaves it to the engine.</summary>
     public static bool OfferWheelOverGui(int dy, float x, float y)
-        => OverGuiAt(x, y) && HitTest(x, y) is Window w && new WheelOffer(dy).Offer(w);
+        => HitTest(x, y) is { Layer: not UiLayer.UnderGui, CapturesPointer: true } w && new WheelOffer(dy).Offer(w);
 
     /// <summary>Topmost FOCUSABLE window under the point: non-focusable windows are skipped for focus, so a
     /// click passes through an overlay to the focusable window beneath it.</summary>
@@ -166,8 +166,8 @@ public static partial class UiHost
     {
         if (!HoverToFocus) return null;
         var w = HitTestFocusable(px, py);
-        if (w != null && nuiCovers && w.Band < UiLayer.AboveNui) return null;
-        if (w != null) Focus(w);
+        if (w == null || (nuiCovers && w.Band < UiLayer.AboveNui)) return null;
+        Focus(w);
         return w;
     }
 

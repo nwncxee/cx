@@ -19,17 +19,17 @@ internal static class EscNui
     private static ReadOnlySpan<byte> JsonPrefix => "JsonWindow::"u8;
 
     /// <summary>Closes the topmost shown, closable server NUI window in <paramref name="ctx"/> whose bounds overlap the
-    /// rect, and returns it; zero when none does. The window nuklear is inside a begin for is never touched.</summary>
-    internal static IntPtr CloseOver(IntPtr ctx, float x, float y, float w, float h)
+    /// rect; true when one closed. The window nuklear is inside a begin for is never touched.</summary>
+    internal static bool CloseOver(IntPtr ctx, float x, float y, float w, float h)
     {
-        if (ctx == IntPtr.Zero) return IntPtr.Zero;
+        if (ctx == IntPtr.Zero) return false;
         var c = new NkContext(ctx);
         IntPtr current = c.Current, top = IntPtr.Zero;
         int seen = 0;
         for (var win = new NkWindow(c.WindowBegin); !win.IsNull && seen < MaxWindows; win = new NkWindow(win.Next), seen++)
             if (win.Ptr != current && Closes(win) && Overlaps(win.Bounds, x, y, w, h)) top = win.Ptr;
         if (top != IntPtr.Zero) new NkWindow(top).Flags |= Hidden | Closed;
-        return top;
+        return top != IntPtr.Zero;
     }
 
     /// <summary>A shown server NUI window whose close button the player could press.</summary>

@@ -17,13 +17,6 @@ public enum UiLayer
     Popup,
 }
 
-/// <summary>The extent of <see cref="UiLayer"/>, said once for every table sized by layer.</summary>
-internal static class UiLayers
-{
-    /// <summary>How many layers there are: one past the topmost.</summary>
-    public const int Count = (int)UiLayer.Popup + 1;
-}
-
 /// <summary>A first-class UI window: rect, z-order, focus/keyboard state, capability flags, and the cursor regions
 /// under it. Constructing one registers it with <see cref="UiHost"/> -- there is no discovery interface. The
 /// framework owns the chrome (hit-test, cursor, focus) and routes captured input to the content delegates; the
