@@ -192,8 +192,8 @@ All four are cold or warm (input/message paths), never per-frame render hooks.
 
 One `Window`, `Focusable = false`, on `UiLayer.UnderGui`: plates and bubbles are anchored to the
 world, so the game's own panels (the quickbar, an Examine window), every other CX window and NUI
-all cover them. In a session Vulkan refused, the engine has drawn its panels before CX draws
-anything, and a plate is over them there.
+all cover them. In a session Vulkan refused, CX draws them right after the engine's world view
+(`Camera::RenderScene`), before the engine draws its panels, so the panels cover them there too.
 
 Entries are keyed on **object id**, sourced only from the hooks. Each frame:
 
