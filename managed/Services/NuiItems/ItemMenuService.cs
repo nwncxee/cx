@@ -53,21 +53,24 @@ internal static class ItemMenuService
     {
         _s.Log = log;
         ItemMenuPolicy.Init();
-        _s.Window = new Window(0, 0, 0, 0)
-        {
-            Layer = UiLayer.AboveNui,
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnKey,
-            HitTestOverride = (px, py) => Menu.Open && Menu.Contains(px, py),
-        };
+        _s.Window = NewWindow();
         Capabilities.Register("menu", 1, static () => On);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
     }
+
+    /// <summary>The menu's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
+    internal static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Layer = UiLayer.AboveNui,
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnKey,
+        HitTestOverride = (px, py) => Menu.Open && Menu.Contains(px, py),
+    };
 
     /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it as the server's
     /// own NUI menu looks: the NUI skin's font, the server's colours and row height, no frame art and no fade.</summary>

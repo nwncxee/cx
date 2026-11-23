@@ -58,6 +58,7 @@ public sealed unsafe partial class ChatService
     };
 
     private static Window? _uiWindow;
+
     private static bool _booted;                  // first-frame viewport relayout done
     private static int _swapTid;                  // managed thread id of the frame-present thread (probe)
     private static bool _wasInModule;             // last frame's GameGate.InModule, for the module-unload edge

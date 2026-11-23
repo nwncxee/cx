@@ -116,20 +116,8 @@ public sealed unsafe partial class QuickbarService
         fixed (byte* p = utf8) return EngineFn.SdlGetKeyFromName(p);
     }
 
-    private static void InitCx(ExtenderLog log, HookService hooks)
-    {
-        if (!QuickbarNative.Attach(log, hooks)) return;
-        RadialIcons.Init(log);
-        KeysChanged();
-        UiHost.AddChordConsumer(new Chords());
-        _cx.Window = NewWindow();
-        FrameRegistry.Global.Register(FramePhase.Start, 51, BuildModels, "Quickbar.models", log);
-        _cx.Armed = true;
-        log.Info($"QuickbarService: CX quickbar armed ({(QuickbarKnobs.Cx ? "drawing the quickbar" : "off -- quickbar.replace")})");
-    }
-
-    /// <summary>The framework Window the CX bar draws in, sent to the back of its band: a HUD element every other CX
-    /// window, and what it drags, paints over.</summary>
+    /// <summary>The CX quickbar's window, registered at the back of the UI host on creation; the self-checks build one
+    /// of their own.</summary>
     internal static Window NewWindow()
     {
         var w = new Window(0, 0, 0, 0)
@@ -143,8 +131,20 @@ public sealed unsafe partial class QuickbarService
             OnKey = BindKey,
             HitTestOverride = (px, py) => CxShowing && _cx.Layout.Contains(px, py),
         };
-        UiHost.SendToBack(w);
+        UiHost.SendToBack(w);   // a HUD element: every other CX window, and what it drags, paints over it
         return w;
+    }
+
+    private static void InitCx(ExtenderLog log, HookService hooks)
+    {
+        if (!QuickbarNative.Attach(log, hooks)) return;
+        RadialIcons.Init(log);
+        KeysChanged();
+        UiHost.AddChordConsumer(new Chords());
+        _cx.Window = NewWindow();
+        FrameRegistry.Global.Register(FramePhase.Start, 51, BuildModels, "Quickbar.models", log);
+        _cx.Armed = true;
+        log.Info($"QuickbarService: CX quickbar armed ({(QuickbarKnobs.Cx ? "drawing the quickbar" : "off -- quickbar.replace")})");
     }
 
     // ---- the engine hit-test's view ----

@@ -129,7 +129,7 @@ public sealed unsafe partial class RadialService : IExtenderService
     }
 
     /// <summary>The cascade's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
-    private static Window NewWindow() => new(0, 0, 0, 0)
+    internal static Window NewWindow() => new(0, 0, 0, 0)
     {
         Focusable = false,
         CapturesPointer = true,
