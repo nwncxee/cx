@@ -152,7 +152,7 @@ public sealed unsafe partial class QuickbarService
 
     /// <summary>The engine button under SDL point (<paramref name="x"/>, <paramref name="y"/>) when the CX bar is the topmost
     /// thing there, else -1: a NUI window, another CX window over the bar or an engine modal keeps the point.</summary>
-    internal static int SlotAt(int x, int y) => SlotAt(x, y, UiInputService.NuiCovers(x, y));
+    internal static int SlotAt(int x, int y) => _cx.Layout.Contains(x, y) ? SlotAt(x, y, UiInputService.NuiCovers(x, y)) : -1;
 
     /// <summary><see cref="SlotAt(int, int)"/> where <paramref name="nuiCovers"/> says whether a NUI window covers the point.</summary>
     internal static int SlotAt(int x, int y, bool nuiCovers)

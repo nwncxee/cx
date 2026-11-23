@@ -12,9 +12,6 @@ internal static class EscNui
     /// and closed (<c>nk_window_is_hidden</c>, <c>nk_window_is_closed</c>; <c>nk_window_close</c> sets both), minimized.</summary>
     private const uint Closable = 0x8, Hidden = 0x4000, Closed = 0x8000, Minimized = 0x10000;  // not-an-offset: nuklear window flags
 
-    /// <summary>The most windows one walk visits, so a list that rings cannot hold the pump.</summary>
-    private const int MaxWindows = 256;
-
     /// <summary>The prefix the client's JSON window constructor gives a server NUI window's name.</summary>
     private static ReadOnlySpan<byte> JsonPrefix => "JsonWindow::"u8;
 
@@ -25,11 +22,29 @@ internal static class EscNui
         if (ctx == IntPtr.Zero) return false;
         var c = new NkContext(ctx);
         IntPtr current = c.Current, top = IntPtr.Zero;
-        int seen = 0;
-        for (var win = new NkWindow(c.WindowBegin); !win.IsNull && seen < MaxWindows; win = new NkWindow(win.Next), seen++)
+        var walk = new RingGuard(c.WindowBegin);
+        for (var win = new NkWindow(c.WindowBegin); !win.IsNull; win = new NkWindow(win.Next))
+        {
             if (win.Ptr != current && Closes(win) && Overlaps(win.Bounds, x, y, w, h)) top = win.Ptr;
+            if (walk.Rings(win.Next)) break;
+        }
         if (top != IntPtr.Zero) new NkWindow(top).Flags |= Hidden | Closed;
         return top != IntPtr.Zero;
+    }
+
+    /// <summary>A walk of nuklear's window list that stops when the list rings, however long it is: a pointer that
+    /// moves at half the walk's pace (Floyd's check) meets the next window only on a ring.</summary>
+    internal struct RingGuard(IntPtr begin)
+    {
+        private IntPtr _slow = begin;
+        private int _step;
+
+        /// <summary>True when <paramref name="next"/>, the window after the one just visited, closes a ring.</summary>
+        internal bool Rings(IntPtr next)
+        {
+            if ((++_step & 1) == 0) _slow = new NkWindow(_slow).Next;
+            return next != IntPtr.Zero && next == _slow;
+        }
     }
 
     /// <summary>A shown server NUI window whose close button the player could press.</summary>

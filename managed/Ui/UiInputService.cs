@@ -479,11 +479,16 @@ public sealed unsafe class UiInputService : IExtenderService
     internal static bool NuiCoversIn(IntPtr ctx, float x, float y)
     {
         if (ctx == IntPtr.Zero) return false;
-        for (var w = new NkWindow(new NkContext(ctx).WindowBegin); !w.IsNull; w = new NkWindow(w.Next))
+        IntPtr begin = new NkContext(ctx).WindowBegin;
+        var walk = new EscNui.RingGuard(begin);
+        for (var w = new NkWindow(begin); !w.IsNull; w = new NkWindow(w.Next))
         {
-            if ((w.Flags & (NkWinHiddenClosed | NkWinMinimized)) != 0) continue;
-            Span<float> b = w.Bounds;
-            if (x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3]) return true;
+            if ((w.Flags & (NkWinHiddenClosed | NkWinMinimized)) == 0)
+            {
+                Span<float> b = w.Bounds;
+                if (x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3]) return true;
+            }
+            if (walk.Rings(w.Next)) return false;
         }
         return false;
     }
