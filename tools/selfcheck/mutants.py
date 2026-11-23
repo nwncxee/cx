@@ -20,7 +20,8 @@ a switch -- an expression in `(on ? new : old)`, a statement (text ending in `;`
 and that copy is compiled once, without the analyzers, with tools/selfcheck/run.sh --overlay. The switch class exists
 only in that copy and reads which mutant is on from a file beside the build it is loaded from, so each worker's
 hard-linked copy of the build boots its own mutant, and a staged build carries no switch and reads no setting.
-The unmutated run goes first and must pass, and writes down which unit (a registered suite, or one service's
+The unmutated run goes first and must pass; one that fails is booted once more, and a pass then goes on with the
+first boot's FAIL lines named, so a flaky check does not stop the run. It writes down which unit (a registered suite, or one service's
 Initialize) was running each time a mutant's site ran. Then each mutant is booted in turn on just those units; a
 site that never ran boots every unit, and so does one whose units fail unmutated on their
 own. A site that ran outside every unit runs in every boot. A mutant that survives its filtered boot is booted again with every unit, and that boot's verdict is the one
@@ -31,8 +32,9 @@ Prints one line per mutant: `killed <name> <the first FAIL line>`, with every ot
 `also <line>`, `SURVIVED <name>`, or `UNTESTED <name>` when a mutant survives and no unit ran its site, with the
 suites that SKIPPED on this host. Exit 0 when every mutant was
 killed, 1 when one survived or went untested, 2 when the list is refused or the unmutated tree fails. Run it inside nix develop, and
-under cap.sh on a shared machine. A mutant whose boot runs past 1.5 times the unmutated one plus 3 seconds is
-killed by the timeout. Linux-only, like the rest of the developer tooling.
+under cap.sh on a shared machine. A mutant whose boot runs past 1.5 times the unmutated one plus 3 seconds is booted
+again with four times that bound, and is killed by a hang only when it runs past that too; one that finishes is judged
+by that boot. Linux-only, like the rest of the developer tooling.
 """
 import os
 import re
@@ -60,6 +62,8 @@ OUTSIDE = '(host)'
 COMPILE_TIMEOUT = 1200
 BOOTING = '>> booting the self-checks'
 OUTPUT_CAP = 64 << 20  # a boot that prints past this many bytes is stopped, so a flood never reaches the runner's memory
+CAPPED = 'MB and was stopped'
+HANG_FACTOR = 4  # a boot stopped at its bound is booted again with this many times it; a second stop is a hang
 POLL = 0.1  # the stop fires this early, so a poll's lag never carries a boot past its deadline
 BIN = os.path.join('bin', 'Release', 'net10.0', 'linux-x64')
 JOBS = max(1, min(3, (os.cpu_count() or 2) // 2))
@@ -501,19 +505,59 @@ def untested(m, skips):
     return True
 
 
+def fail_lines(output):
+    """The FAIL and init-threw lines of a boot, without their log prefix."""
+    return [re.sub(r'^.*?\[cx\] ', '', l) for l in output.splitlines()
+            if re.search(r'SelfCheck.*FAIL|init threw', l) and not l.startswith('>>')]
+
+
+def patient(name, boot, timeout):
+    """Boots with ``timeout`` (boot(timeout) -> (exit, output, seconds)); a boot stopped there, not for its output, is
+    booted again with HANG_FACTOR times it, so a slow machine is told from a hang. Returns (exit, output)."""
+    rc, output, took = boot(timeout)
+    if rc != 124 or CAPPED in output:
+        return rc, output
+    print(f'>> {name}: stopped at {timeout:.1f}s; booting it again with {HANG_FACTOR * timeout:.1f}s to tell a hang '
+          f'from a slow boot', flush=True)
+    rc, output, took = boot(HANG_FACTOR * timeout)
+    if rc != 124:
+        print(f'>> {name}: finished in {took:.1f}s on its second boot: slow, not hung', flush=True)
+    return rc, output
+
+
+def steady(rc, output, took, boot):
+    """The unmutated run's verdict: one that fails is booted once more (boot() -> (exit, output, seconds)), so a check
+    that fails some boots and not others is named rather than stopping the run. Returns (exit, seconds)."""
+    if rc == 0:
+        return rc, took
+    first = fail_lines(output) or output.strip().splitlines()[-1:]
+    print('>> the unmutated run failed; booting it once more to tell a flaky check from a broken tree', flush=True)
+    rc, again, took = boot()
+    if rc != 0:
+        print('!! the unmutated tree fails its self-checks on two boots, so no mutant can be judged:', file=sys.stderr)
+        for line in fail_lines(again) or again.strip().splitlines()[-20:]:
+            print(f'   {line}', file=sys.stderr)
+        return rc, took
+    print('>> the unmutated run passed on its second boot; the first failed on: ' + '; '.join(first), flush=True)
+    return rc, took
+
+
 def verdict(m, rc, output):
     if '>> FAIL: the managed build failed' in output:
         print(f'ERROR    {m.name:<20} the mutated file does not compile', flush=True)
         return False
-    fails = [l for l in output.splitlines() if re.search(r'SelfCheck.*FAIL|init threw', l) and not l.startswith('>>')]
+    fails = fail_lines(output)
+    if rc == 124 and CAPPED in output:
+        print(f'killed   {m.name:<20} by its output: the boot printed past {OUTPUT_CAP >> 20} MB', flush=True)
+        return True
     if rc == 124:
-        print(f'killed   {m.name:<20} by a timeout: the self-checks never finished', flush=True)
+        print(f'killed   {m.name:<20} by a hang: it outran {HANG_FACTOR} times the unmutated bound too', flush=True)
         return True
     if rc == 1:
         line = fails[0] if fails else output.strip().splitlines()[-1]
-        print(f'killed   {m.name:<20} {re.sub(r"^.*?\[cx\] ", "", line)}', flush=True)
+        print(f'killed   {m.name:<20} {line if fails else re.sub(r"^.*?\[cx\] ", "", line)}', flush=True)
         for more in fails[1:]:
-            print(f'           also {re.sub(r"^.*?\[cx\] ", "", more)}', flush=True)
+            print(f'           also {more}', flush=True)
         return True
     if rc == 0:
         print(f'SURVIVED {m.name}', flush=True)
@@ -589,9 +633,8 @@ def main(argv):
                 m.alone = True
                 print(f'>> {m.name}: its file does not compile switched, so it is compiled on its own', flush=True)
             switched = [m for m in switched if not m.alone]
+        rc, took = steady(rc, output, took, lambda: run(work, out, False, 0, COMPILE_TIMEOUT))
         if rc != 0:
-            print('!! the unmutated tree fails its self-checks, so no mutant can be judged:', file=sys.stderr)
-            print(output, file=sys.stderr)
             return 2
         print(f'>> 1 compile for {len(switched)} switched mutant(s); the unmutated run passes', flush=True)
         timeout = 1.5 * took + 3
@@ -619,9 +662,11 @@ def main(argv):
             names = ', '.join(sorted(only)) if only is not None else 'every suite'
             print(f'>> {m.name}: booting {len(units) if only is None else len(only)} of {len(units)} suites: {names}',
                   flush=True)
-            rc, output, took = run(work, mine, False, m.k, timeout, only)
-            print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
-            return rc, output
+            def boot(t):
+                rc, output, took = run(work, mine, False, m.k, t, only)
+                print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
+                return rc, output, took
+            return patient(m.name, boot, timeout)
 
         def unmutated(mine, only):
             """True when the units ``only`` names pass with no mutant on."""
@@ -667,8 +712,11 @@ def main(argv):
         for m in [m for m in mutants if m.alone]:
             overlay(work, [m], False)
             alone = os.path.join(work, 'alone-' + str(m.k))
-            rc, output, took = run(work, alone, True, 0, timeout)
-            print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
+            def boot(t, alone=alone, m=m):
+                rc, output, took = run(work, alone, t is timeout, 0, t)
+                print(f'>> {m.name}: {"stopped after" if rc == 124 else "booted in"} {took:.1f}s', flush=True)
+                return rc, output, took
+            rc, output = patient(m.name, boot, timeout)
             keep(m.name, alone)
             survived += not verdict(m, rc, output)
         return 1 if survived else 0
