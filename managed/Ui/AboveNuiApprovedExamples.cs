@@ -149,7 +149,7 @@ internal static class AboveNuiApprovedExamples
         bool inGame = GameGate.InGame;
         ChatLayout? was = ChatService.UseLayout(layout);
         GameGate.InGame = true;
-        try { UiHost.Alone(() => { _ = ChatService.NewWindow(); body(); }); }
+        try { UiHost.Alone(() => { _ = ChatService.NewSurfaces(); body(); }); }
         finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
     }
 

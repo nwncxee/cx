@@ -144,7 +144,7 @@ internal static unsafe class ClickOrderApprovedExamples
         try
         {
             GameGate.InGame = true;
-            Window chat = ChatService.NewWindow();
+            Window chat = ChatService.NewSurfaces().Below;
             UiHost.HoverToFocus = true;
 
             // Given hover-to-focus switched on and a NUI window from the server over part of the CX chat window

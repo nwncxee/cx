@@ -111,7 +111,7 @@ internal static class EscOrderApprovedExamples
         UiHost.Alone(() =>
         {
             var inv = new Inventory(open: false);
-            _ = ChatService.NewWindow();
+            _ = ChatService.NewSurfaces();
             bool taken = Press();
             check.Expect(!taken && inv.Acts.Count == 0, $"E18 with nothing open Esc reaches the engine: taken={taken} acts=[{inv.Seen}]");
         });
@@ -130,7 +130,7 @@ internal static class EscOrderApprovedExamples
                 UiHost.Alone(() =>
                 {
                     var inv = new Inventory(open: false);
-                    _ = ChatService.NewWindow();
+                    _ = ChatService.NewSurfaces();
                     _ = DialogService.NewWindow();
                     IntPtr ctx = NuiContext(nk);
                     IntPtr nui = NuiWindow(nk, ctx, Json + "board", Closable, 150, 150, 200, 150);
@@ -166,7 +166,7 @@ internal static class EscOrderApprovedExamples
                 UiHost.Alone(() =>
                 {
                     var inv = new Inventory(open: true);
-                    Window chat = ChatService.NewWindow();
+                    Window chat = ChatService.NewSurfaces().Below;
                     chat.WantsKeyboard = true;
                     ChatService.IsTyping = true;
                     bool taken = Press();
@@ -204,7 +204,7 @@ internal static class EscOrderApprovedExamples
                 ChatService.IsTyping = false;
                 UiHost.Alone(() =>
                 {
-                    _ = ChatService.NewWindow();
+                    _ = ChatService.NewSurfaces();
                     bool gear = UiHost.DispatchMouseButton(true, 1, (int)(win.X + win.W - 2), (int)(win.Y + 2));
                     bool first = Press(), second = Press();
                     check.Expect(gear && first && !second && layout.Count == 1 && layout.Windows[0] == win,

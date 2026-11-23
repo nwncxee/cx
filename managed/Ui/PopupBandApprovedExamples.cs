@@ -62,7 +62,7 @@ internal static class PopupBandApprovedExamples
     {
         ChatService.UseLayout(new ChatLayout(m));
         GameGate.InGame = true;
-        Window w = ChatService.NewWindow();
+        Window w = ChatService.NewSurfaces().Below;
         w.DrawContent = () => { drawn.Append('c'); if (m.ChannelListOpen) drawn.Append('l'); };
         w.HitTestOverride = m.HitTestFull;
         w.OnMouseButton = (down, _, x, y) => down && m.MouseDown(x, y);
