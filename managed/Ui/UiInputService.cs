@@ -278,12 +278,13 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     /// <summary>The wheel decision the pump makes at SDL's pointer: CX windows ahead of the GUI yield, a NUI model view,
-    /// NUI or a stock GUI object beneath, then CX's windows.</summary>
+    /// NUI, a CX window drawn over a stock GUI object then that object, then CX's windows.</summary>
     internal static PointerOutcome RouteWheel<T>(int dy, float x, float y, in T under) where T : struct, IPointerUnder
     {
         if (UiHost.DispatchMouseWheel(dy, captureOnly: true, x, y)) return PointerOutcome.Taken;
         if (under.Nui && CX.Services.Nui.NuiModelView.OnWheel(dy)) return PointerOutcome.Taken;
-        if (under.Nui || (under.Gui && !under.MenuOurs)) return PointerOutcome.Engine;
+        if (under.Nui) return PointerOutcome.Engine;
+        if (under.Gui && !under.MenuOurs) return UiHost.OfferWheelOverGui(dy, x, y) ? PointerOutcome.Taken : PointerOutcome.Engine;
         return UiHost.DispatchMouseWheel(dy) ? PointerOutcome.Taken : PointerOutcome.Unclaimed;
     }
 

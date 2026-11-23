@@ -129,6 +129,11 @@ public static partial class UiHost
     public static bool OfferOverGui(bool down, int button, int x, int y)
         => HitTest(x, y) is Window w && new ButtonOffer(down, button, x, y).Offer(w);
 
+    /// <summary>Offer a wheel notch over the engine GUI to the CX window drawn over it at the pointer alone, as
+    /// <see cref="OfferOverGui"/> offers a press: one that declines it, or no such window, leaves it to the engine.</summary>
+    public static bool OfferWheelOverGui(int dy, float x, float y)
+        => OverGuiAt(x, y) && HitTest(x, y) is Window w && new WheelOffer(dy).Offer(w);
+
     /// <summary>Topmost FOCUSABLE window under the point: non-focusable windows are skipped for focus, so a
     /// click passes through an overlay to the focusable window beneath it.</summary>
     public static Window? HitTestFocusable(float px, float py)

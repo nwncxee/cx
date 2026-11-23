@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using CX.Framework;
 
 namespace CX.Ui;
@@ -89,6 +90,20 @@ public static partial class UiHost
         var only = new Window(200, 200, 50, 50) { Layer = UiLayer.UnderGui, CapturesPointer = true };
         created.Add(only);
         check.Expect(!OverGuiAt(210, 210), "an under-GUI window is drawn beneath the engine GUI, so it takes nothing from it");
+        var rolled = new StringBuilder();
+        only.OnMouseWheel = _ => { rolled.Append('o'); return true; };
+        var wheely = new Window(300, 300, 10, 10) { OnMouseWheel = _ => { rolled.Append('w'); return true; } };
+        created.Add(wheely);
+        var gui = new UiInputService.PointerUnder(false, true, false);
+        check.Expect(UiInputService.RouteWheel(1, 210, 210, gui) == UiInputService.PointerOutcome.Engine && rolled.Length == 0,
+            $"a wheel notch over a stock panel with an under-GUI window beneath it is the panel's: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 150, 150, gui) == UiInputService.PointerOutcome.Engine && rolled.Length == 0,
+            $"a wheel notch over a stock panel no CX window covers is the panel's, though a window elsewhere takes any: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 305, 305, new UiInputService.PointerUnder(true, false, false)) == UiInputService.PointerOutcome.Engine
+                     && rolled.Length == 0, $"a wheel notch over NUI is NUI's, though the CX window beneath takes any: asked '{rolled}'");
+        check.Expect(UiInputService.RouteWheel(1, 305, 305, new UiInputService.PointerUnder(false, true, true)) == UiInputService.PointerOutcome.Taken
+                     && rolled.ToString() == "w", $"a wheel notch over the menu where the gear surface hands the point to a CX window is that window's: asked '{rolled}'");
+        Unregister(wheely); created.Remove(wheely);
         Unregister(only); created.Remove(only);
         foreach (Window w in new[] { a, up, c, g }) { Unregister(w); created.Remove(w); }
     }
