@@ -35,6 +35,8 @@ public sealed partial class KnobGroup
     /// <summary>The line the settings panel shows atop the group's rows, written for a player ("Approved on this
     /// server: …"). Null for almost every group; a group with no rows and no panel status has no submenu.</summary>
     public Func<string>? PanelStatus;
+    /// <summary>Runs each time the settings panel lays out this group's rows: the player is looking at them.</summary>
+    public Action? Viewed;
     /// <summary>Panel sort key across every group: submenus appear in the order of their lowest-ordered group,
     /// and a shared submenu's groups in this order (ties: declaration order).</summary>
     public int Order { get; }

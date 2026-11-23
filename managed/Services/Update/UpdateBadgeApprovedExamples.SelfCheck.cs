@@ -103,12 +103,17 @@ internal static class UpdateBadgeApprovedExamples
         // Then the badge shows again, naming v0.15.0
         gear = new GearAttention();
         Launch(k, new Source("v0150.txt"), ear, gear).Check();
+        bool back = gear.BadgeShown(atMainMenu: true);
         p._subs = [new KnobPanel.SubMenu(k.Group)]; p.Sub = 0; p.LayoutRows();
-        check.Expect(gear.BadgeShown(atMainMenu: true) && Shown(p).Contains("v0.15.0", StringComparison.Ordinal), $"E8 the badge is back for v0.15.0 ({gear.Tip}; {Shown(p)})");
+        check.Expect(back && Shown(p).Contains("v0.15.0", StringComparison.Ordinal), $"E8 the badge is back for v0.15.0, and About names it ({back}; {Shown(p)})");
 
         // Given the player is in an area, in play
         // When an update is available
         // Then no badge shows anywhere, and it shows at the next main-menu visit
+        k = Knobs("cx-upd-e9");
+        k.Consent.Set(UpdateKnobs.Yes);
+        gear = new GearAttention();
+        Launch(k, new Source("v0140.txt"), ear, gear).Check();
         check.Expect(!gear.BadgeShown(atMainMenu: false), "E9 no badge in play");
         check.Expect(gear.BadgeShown(atMainMenu: true), "E9 the badge shows back at the main menu");
 

@@ -14,6 +14,7 @@ public sealed unsafe class CrashReport : IExtenderService
     /// <summary>What the dialog and the report file lead with.</summary>
     internal static string Banner =>
         $"NWN:EE crashed while {Product.Name} {Product.Version} was loaded.\n"
+        + Update.UpdateNotice.CrashLine(Product.Version, Settings.Raw(Update.UpdateKnobs.FoundKey))
         + $"{Product.Name} is an unofficial, third-party client extender. It is not made, supported or endorsed by Beamdog, "
         + "and Beamdog is not responsible for crashes that happen while it is installed.\n\n"
         + $"Please report this crash to {Product.Name}, not to Beamdog:\n  {Product.Issues}\n\n"

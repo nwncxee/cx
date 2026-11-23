@@ -26,6 +26,47 @@ internal static class UpdateNoticeSelfCheck
         check.Expect(UpdateNotice.Newer("v1.0.0", "v0.99.99") && !UpdateNotice.Newer("v0.99.99", "v1.0.0"), "the major part comes first");
         check.Expect(!UpdateNotice.Newer("v9.9.9", "unknown"), "a running build with no version is told nothing");
 
+        check.Expect(UpdateNotice.BuildLine("v0.14.0", "v0.14.0") == "NWNCX:EE build v0.14.0" && UpdateNotice.BuildLine("v0.14.0", null) == "NWNCX:EE build v0.14.0",
+                     "the first line names no release the running build has caught up with");
+        check.Expect(UpdateNotice.CrashLine("v0.13.2", "v0.14.0") == $"A newer release, v0.14.0, is out: {Product.Url}\n"
+                     && UpdateNotice.CrashLine("v0.14.0", "v0.14.0") == "" && UpdateNotice.CrashLine("v0.14.0", null) == "",
+                     $"the crash report names a newer release, and only a newer one ({UpdateNotice.CrashLine("v0.13.2", "v0.14.0")})");
+
+        var face = new GlyphAtlas { LineHeight = 19, Ascent = 15, SpaceAdvance = 5f };
+        for (int cp = 0x20; cp < 0x2200; cp++) face.SetTestGlyph(cp, cp == ' ' ? 5f : 8f);
+        var p = new KnobPanel();
+        p.OpenAt(1920f, 1080f, KnobPanel.FacePx, face, face);
+        string About(KnobGroup g)
+        {
+            p._subs = [new KnobPanel.SubMenu(g)]; p.Sub = 0; p.LayoutRows();
+            return string.Join(" | ", p.Rows.Select(r => r.Text + " " + string.Join(" ", r.Help ?? [])));
+        }
+
+        k = Knobs("cx-upd-mutenow");
+        k.Consent.Set(UpdateKnobs.Yes);
+        gear = new GearAttention();
+        Launch(k, new Source("v0140.txt"), new ExtenderLog { Tap = _ => { } }, gear).Check();
+        k.Mute.Press();
+        check.Expect(!gear.BadgeShown(true), $"muting takes the badge down in the same launch ({gear.Tip})");
+        string muted = About(k.Group);
+        check.Expect(!muted.Contains("v0.14.0", StringComparison.Ordinal), $"muting takes the release out of About in the same launch ({muted})");
+        check.Expect(!muted.Contains("Copy download link", StringComparison.Ordinal) && !muted.Contains("Don't tell me", StringComparison.Ordinal),
+                     $"with no release to tell about, About shows neither button ({muted})");
+
+        k = Knobs("cx-upd-lines");
+        k.Consent.Set(UpdateKnobs.Yes);
+        Launch(k, new Source("v0140.txt"), new ExtenderLog { Tap = _ => { } }, new GearAttention()).Check();
+        About(k.Group);
+        string[] help = p.Rows.FirstOrDefault(r => r.Text == "Copy download link")?.Help ?? [];
+        check.Expect(help.Contains("v0.14.0 is out.") && help.Contains("Shadows soften at dusk.") && help.Contains("The chat window remembers its size."),
+                     $"each changelog line starts its own line ({string.Join(" / ", help)})");
+
+        p.Category = Array.IndexOf(KnobPanel.KnobCategories, "Graphics");
+        p.Show(General.About);
+        check.Expect(KnobPanel.KnobCategories[p.Category] == "General" && p._subs[p.Sub].Name == "About",
+                     $"the gear opens About from a panel left on Graphics ({KnobPanel.KnobCategories[p.Category]} » {p._subs[p.Sub].Name})");
+        p.Close();
+
         log.Info(check.Ok ? "UpdateNotice.SelfCheck: passed" : "UpdateNotice.SelfCheck: FAILED");
         return check.Ok;
     }

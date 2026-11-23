@@ -53,6 +53,22 @@ for py in knob-effect knob-spec-rows; do
   [ $? = 124 ] && fail "$py.py never finished on an unterminated /* comment"
 done
 
+# A class that declares its rows on a KnobGroup it is handed takes the group each Declare(<group>) site passes.
+mkdir -p "$t/param/managed" "$t/param/docs/spec"
+cat > "$t/param/managed/A.cs" << 'EOF2'
+static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
+sealed class Notes { private Notes(KnobGroup g) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g) => new(g); }
+sealed class Wire { void Init() { Notes.Declare(General.About); } }
+EOF2
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+row() {
+  { printf '| key | label |\n|---|---|\n%s\n' "$1"; for i in $(seq 100); do echo "| f$i.k | K |"; done; } > "$t/param/docs/spec/unified-settings.md"
+  CX_ROOT="$t/param" python3 -I tools/gates/knob-spec-rows.py 2>&1
+}
+out=$(row '| about.ping | Ping |'); [ -z "$out" ] || fail "knob-spec-rows refused about.ping, declared through Notes.Declare(General.About) -- $out"
+out=$(row '| about.other | Other |')
+grep -q "about.ping is declared" <<< "$out" || fail "knob-spec-rows did not name about.ping, declared with no row -- $out"
+
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
 lines '# Given a' '# When b' && fail "approved-lines passed a script with no Then"

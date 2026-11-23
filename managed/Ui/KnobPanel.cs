@@ -429,7 +429,7 @@ public sealed partial class KnobPanel
                 st.Slot = slot;
                 if (ReferenceEquals(off, hidden)) st.K = hidden;
             }
-            string status = g.PanelStatus?.Invoke() ?? "";
+            g.Viewed?.Invoke(); string status = g.PanelStatus?.Invoke() ?? "";
             _statusText += status + ShowSig(g) + "\u0001";
             bool userRows = false;
             foreach (Knob k in g.Knobs) if (k.Tier == Tier.User) { userRows = true; break; }
@@ -548,7 +548,7 @@ public sealed partial class KnobPanel
 
     private void AddKnobRow(List<Row> rows, ref float y, Knob k, bool master, bool adv, int slot = 0)
     {
-        var r = new Row { Kind = RowKind.Knob, K = k, Ctl = k.Kind, Text = k.Label, Top = y, Master = master, Adv = adv, Slot = slot };
+        var r = new Row { Kind = RowKind.Knob, K = k, Ctl = k.Kind, Text = k.Caption?.Invoke() ?? k.Label, Top = y, Master = master, Adv = adv, Slot = slot };
         r.HasMark = adv && k.Help.Length > 0;
         r.Restart = k.Effect == Effect.Restart && k.Kind != KnobKind.Button && k.Kind != KnobKind.Link;
         r.CtlW = ControlW(r);
@@ -556,7 +556,7 @@ public sealed partial class KnobPanel
         float labelW = LabelW(r);
         if (k.Kind != KnobKind.Button) r.Label = Wrap(Body, k.Label, labelW);
         if (k is KnobLink link) r.Help = Wrap(Small, link.Url, labelW + r.ExtraW);
-        else r.Help = [.. (k.Unavailable ?? (!adv && k.Help.Length > 0 ? k.Help : null)) is { } h ? Wrap(Small, h, labelW + r.ExtraW) : [], .. k.Note?.Invoke() is { Length: > 0 } note ? Wrap(Small, note, labelW + r.ExtraW) : []];
+        else r.Help = [.. (k.Unavailable ?? (!adv && k.Help.Length > 0 ? k.Help : null)) is { } h ? Wrap(Small, h, labelW + r.ExtraW) : [], .. k.Note?.Invoke() is { Length: > 0 } note ? note.Split(Knob.NoteBreak).SelectMany(l => Wrap(Small, l, labelW + r.ExtraW)) : []];
         r.H = RowH(r, adv) + (master ? MasterTop + MasterBottom : 0f);
         r.Refresh();
         y += r.H;

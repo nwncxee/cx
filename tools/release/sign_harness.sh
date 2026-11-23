@@ -18,6 +18,7 @@ case "$1 $2" in
     case "$*" in
       *isDraft*) echo true ;;
       *assets*) (cd "$CASE/draft" && ls | LC_ALL=C sort | paste -sd' ') ;;
+      *body*) cat "$CASE/notes" 2> /dev/null ;;
     esac ;;
   "release download")
     shift 2; dir=""; while [ $# -gt 0 ]; do [ "$1" = -D ] && dir=$2; shift; done

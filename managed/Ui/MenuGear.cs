@@ -44,6 +44,35 @@ public sealed class MenuGear
 
     public bool Contains(float px, float py) => px >= X && px < X + W && py >= Y && py < Y + H;
 
+    /// <summary>The badge's side as a fraction of the gear's, and its centre on the gear's box, from the top-left.</summary>
+    public const float BadgeFrac = 0.36f, BadgeAtX = 0.84f, BadgeAtY = 0.16f;
+    /// <summary>The badge's disc: a warm red under a white mark.</summary>
+    public const float BadgeR = 0.82f, BadgeG = 0.22f, BadgeB = 0.16f;
+    /// <summary>The mark's height as a fraction of the badge's.</summary>
+    public const float MarkFrac = 0.62f;
+    /// <summary>The disc codepoint, an icon row every face carries.</summary>
+    public const int DiscCodepoint = 0x25CF;  // not-an-offset: a Unicode codepoint
+
+    /// <summary>The badge's box: a square on the gear's upper-right shoulder.</summary>
+    public (float X0, float Y0, float X1, float Y1) Badge
+    {
+        get
+        {
+            float h = W * BadgeFrac * 0.5f, cx = X + W * BadgeAtX, cy = Y + H * BadgeAtY;
+            return (cx - h, cy - h, cx + h, cy + h);
+        }
+    }
+
+    /// <summary>Emit the badge: <paramref name="disc"/> stretched over its box, <paramref name="mark"/> centred on it.</summary>
+    public void EmitBadge(VertexBatch b, in Glyph disc, in Glyph mark)
+    {
+        (float x0, float y0, float x1, float y1) = Badge;
+        b.Tex(x0, y0, x1, y1, disc.U0, disc.V0, disc.U1, disc.V1, BadgeR, BadgeG, BadgeB, 1f);
+        if (mark.H <= 0) return;
+        float h = (y1 - y0) * MarkFrac, w = h * mark.W / mark.H, cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
+        b.Tex(cx - w * 0.5f, cy - h * 0.5f, cx + w * 0.5f, cy + h * 0.5f, mark.U0, mark.V0, mark.U1, mark.V1, 1f, 1f, 1f, 1f);
+    }
+
     /// <summary>Advance the hover animation by <paramref name="dt"/> seconds: the spin rate and the brightness ease
     /// toward their hovered/idle targets, and the angle integrates the spin (it keeps its resting angle).</summary>
     public void Tick(float dt)
@@ -117,6 +146,14 @@ public sealed class MenuGear
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++) { b.Reset(0.5f, 0.5f); gear.Tick(1f / 60f); gear.Emit(b, g1); }
         check.Expect(GC.GetAllocatedBytesForCurrentThread() == before, "100 tick+emit rounds allocate nothing");
+
+        b.Reset(0.5f, 0.5f);
+        (float bx0, float by0, float bx1, float by1) = gear.Badge;
+        check.Expect(MathF.Abs(bx1 - bx0 - gear.W * BadgeFrac) < 0.01f && bx0 + bx1 > 2f * gear.X + gear.W && by0 + by1 < 2f * gear.Y + gear.H,
+                     $"the badge sits on the gear's upper-right ({bx0},{by0})-({bx1},{by1}) on ({gear.X},{gear.Y}) {gear.W}x{gear.H}");
+        gear.EmitBadge(b, g1, g1);
+        ReadOnlySpan<float> bv = b.AsSpan();
+        check.Expect(b.VertexCount == 12 && bv.Length > 1 && bv[0] == bx0 && bv[1] == by0, $"a disc filling the badge's box, then its mark ({b.VertexCount} vertices)");
 
         log.Info(check.Ok ? "MenuGear.SelfCheck OK" : "MenuGear.SelfCheck FAILED");
     }

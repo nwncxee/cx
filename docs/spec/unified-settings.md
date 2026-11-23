@@ -312,6 +312,19 @@ the one `CX.Framework.Product` const set that `HotkeyProtocol.AbuseContact` also
 | about.releases | Releases | Lk | `Product.Url` | U | — | — | link row: press copies the address |
 | about.copy | Copy my settings for a bug report | B | — | U | — | — | Copies every CX setting, and what CX found when it started, to the clipboard -- paste it into a bug report. |
 | about.savelog | Save my log for a bug report | B | — | U | — | — | Saves cx-report.log next to cx.log and copies its path. Attach cx-report.log to your report, not cx.log: CX keeps writing cx.log while the game runs, and Discord or the browser refuses a file that changes while it uploads. |
+| about.updates | Tell me about new CX releases | D | Not answered yet / Yes / No · Not answered yet | U | L | — | Once a session CX asks the CX releases page whether a newer release is out, and shows a badge on the main-menu gear. It never downloads or installs anything. |
+| about.updatecopy | Copy download link | B | — | U | — | — | Copies the CX releases page's address. Shown while a newer release stands; its note names the release and its changelog lines. |
+| about.updatemute1 | Don't tell me about vX.Y.Z | B | — | U | — | — | Hides the badge and this release until a newer one is out. Shown while a newer release stands; the label names it. |
+| about.updatefound / updateseen / updatemute | — | X | "" | H | L | — | the newest signed release found, the one About was last opened for, and the one muted |
+
+While **Tell me about new CX releases** is unanswered, the main-menu gear wears a badge whose
+tooltip asks *Should CX tell you about updates?*, and CX makes no request. On Yes, CX fetches
+`cx-update` and `cx-update.sig` from the latest release once a session, off the game thread, and
+takes the notice only when one of its built-in keys (`packaging/allowed_signers`) signed it under
+the `cx-update` namespace and its version is past the running build's. A newer release the player
+neither muted nor opened About for raises the badge (*An update is available!*); a press on the
+gear opens General » About, and viewing it takes the badge down until a newer release. The badge
+never draws in play. cx.log's first line and the crash report name a newer release a session found.
 
 The `knobs` group — the `/knobs` walk plus every `KnobSurface.Note` supplier (symbol rot,
 EngineLayout, font registry state, VRAM, camera feel, post-stack hosting) — has no row and no
@@ -1111,7 +1124,7 @@ Each step ships on its own and leaves the client working.
 
 ## 9. Not in this spec
 
-Search across categories (header slot reserved), the
-auto-update consent row (#31), chat's tab editor (#572), Path A-lite (#571), the hotkey
+Search across categories (header slot reserved), installing a release (CX only tells the player
+one is out), chat's tab editor (#572), Path A-lite (#571), the hotkey
 binding UI (#422, server-side), colour picker redesign, resizable panel / remembered geometry /
 per-row reset, migration of `cx-*.cfg`.

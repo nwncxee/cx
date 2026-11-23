@@ -44,6 +44,10 @@ public abstract class Knob
     /// <summary>A line the panel shows under the row's label while it returns text, on any tier; null says nothing.
     /// Read at each layout, so a note never changes the knob's value or what the file keeps.</summary>
     public Func<string?>? Note;
+    /// <summary>Where a <see cref="Note"/> breaks to a new line.</summary>
+    public const char NoteBreak = '\n';
+    /// <summary>The label the panel shows in place of <see cref="Label"/> while set, read at each layout.</summary>
+    public Func<string>? Caption;
     /// <summary>Placeholder an empty box shows: a List's add box. "" when none.</summary>
     public string Hint { get; init; } = "";
     /// <summary>Layout-affecting: only the Dropdown factory can set it, so the panel never has to re-lay

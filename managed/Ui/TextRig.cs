@@ -46,6 +46,7 @@ public static unsafe partial class TextRig
         (0x25AA, 0x25AA, "▪ pin", true),
         (0x25B8, 0x25B8, "▸ disclosure", true),
         (0x25BE, 0x25BE, "▾ arrow", true),
+        (0x25CF, 0x25CF, "● badge", true),
         (0x2699, 0x2699, "⚙ gear", true),
     };
 
