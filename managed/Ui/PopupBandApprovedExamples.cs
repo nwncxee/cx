@@ -10,7 +10,7 @@ using CX.Services.Radial;
 
 namespace CX.Ui;
 
-/// <summary>The popup band's approved examples (E6-E10, E28-E32): a frame's 2D order as letters, bottom to top, from the
+/// <summary>The popup band's approved examples (E6-E11, E28-E32): a frame's 2D order as letters, bottom to top, from the
 /// owners' own windows, and a press routed as the input pump routes it. Oracle: the letters and the order each example
 /// states, and the pixel rows worked by hand from a 400 x 300 chat window at 100,500 (28 px strip and rows, at 772).</summary>
 internal static class PopupBandApprovedExamples
@@ -20,6 +20,9 @@ internal static class PopupBandApprovedExamples
 
     /// <summary>O then M for the overlay scene and its cursor.</summary>
     private const string Overlays = "OM";
+
+    /// <summary>The SDL keycode Escape arrives as.</summary>
+    private const uint Esc = 0x1B;   // not-an-offset: SDL key/event code
 
     /// <summary>One frame of the windows <paramref name="setup"/> makes, as letters; <paramref name="alloy"/> false draws
     /// the Alloy-off order.</summary>
@@ -218,6 +221,28 @@ internal static class PopupBandApprovedExamples
                 q.DrawOver = () => d.Append('t');
             });
             check.Expect(Over(f, 'N', 'q') && Over(f, 't', 'N'), $"E32 the quickbar's tooltip draws over the NUI window above the bar: {f}");
+        }
+
+        // Given the chat channel dropdown open
+        // When the player presses Esc
+        // Then the dropdown closes, the chat window stays open and the game menu does not open
+        {
+            ChatWindow m = ChatModel(open: true);
+            bool was = m.ChannelListOpen, taken = false, typing = false;
+            bool typed = ChatService.IsTyping;
+            Alone(() =>
+            {
+                ChatWin(new StringBuilder(), m);
+                ChatService.IsTyping = true;
+                try
+                {
+                    taken = UiInputService.PumpKeyDown(Esc, 0) || UiInputService.RouteKeyDown(Esc, 0, nuiEdit: false);
+                    typing = ChatService.IsTyping;
+                }
+                finally { ChatService.IsTyping = typed; }
+            });
+            check.Expect(was && !m.ChannelListOpen && typing && taken,
+                $"E11 Esc closes the open channel list, chat keeps its line and the engine never sees Esc: was={was} open={m.ChannelListOpen} typing={typing} taken={taken}");
         }
 
         if (check.Ok) log.Info("PopupBandApprovedExamples.SelfCheck: passed");
