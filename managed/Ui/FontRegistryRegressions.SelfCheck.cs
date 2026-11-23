@@ -1,5 +1,6 @@
 using CX.Framework;
 using CX.Services.Chat;
+using CX.Services.NuiItems;
 using CX.Services.Chat.Core;
 using CX.Services.Panels;
 using static CX.Ui.FontRegistryApprovedExamples;
@@ -141,6 +142,21 @@ internal static class FontRegistryRegressions
             finally { FontRegistry.UseContent(wasContent); FontRegistry.UseCatalog(was); }
         });
 
+        Example(check, "R18 a family name the font pads with a space is listed without it", () =>
+        {
+            byte[] b = FontRegistryApprovedExamples.Fixture("DejaVuSans.ttf");
+            Padded(b, System.Text.Encoding.BigEndianUnicode);
+            Padded(b, System.Text.Encoding.ASCII);
+            FontCatalog game = FontCatalog.FromContent(new[] { ("fnt_pad", FontSource.Game, b) });
+            return game.Families.SequenceEqual(new[] { "DejaVu San" }) && game.GameFamilies.SequenceEqual(new[] { "DejaVu San" });
+        });
+
+        Example(check, "R19 a bif's font is the game's, a hak's, the module's and NWSync's the server's, any other loose", () =>
+            NuiSkinFontLoad.SourceOf(CX.Alloy.TexLoadRead.KindBif) == FontSource.Game
+            && NuiSkinFontLoad.SourceOf(CX.Alloy.TexLoadRead.KindErf) == FontSource.Server
+            && NuiSkinFontLoad.SourceOf(CX.Alloy.TexLoadRead.KindNwSync) == FontSource.Server
+            && NuiSkinFontLoad.SourceOf(CX.Alloy.TexLoadRead.KindLoose) == FontSource.Loose);
+
         Example(check, "R9 a cfg name shadows an installed family, and draws its own file at any weight", () =>
         {
             Settings.Read($"font.{DejaVu}={Path.Combine(dir, "DejaVuSans-ExtraLight.ttf")}\n");
@@ -153,5 +169,13 @@ internal static class FontRegistryRegressions
                 FontRegistry.UseCatalog(FontRegistry.UseCatalog(FontCatalog.Empty));
             }
         });
+    }
+
+    /// <summary>Rewrites every "DejaVu Sans" in <paramref name="font"/>, in <paramref name="enc"/>, as "DejaVu San " in place.</summary>
+    private static void Padded(byte[] font, System.Text.Encoding enc)
+    {
+        byte[] from = enc.GetBytes("DejaVu Sans"), to = enc.GetBytes("DejaVu San ");
+        for (int at = font.AsSpan().IndexOf(from); at >= 0; at = font.AsSpan().IndexOf(from))
+            to.CopyTo(font, at);
     }
 }
