@@ -444,6 +444,20 @@ internal static unsafe partial class TexRegistry
         _maskLanded.Landed = true;
     }
 
+    /// <summary>True when fewer than <paramref name="want"/> slots could take a new name: free, never used, or idle.
+    /// Walks the table only once the slots never used run short. Game thread.</summary>
+    internal static bool SlotsShort(int want)
+    {
+        if (MaxSlots - System.Threading.Volatile.Read(ref _high) >= want) return false;
+        lock (_lock)
+        {
+            int open = MaxSlots - _high;
+            for (int i = 1; i < _high && open < want; i++)
+                if (_refs[i] == 0) open++;
+            return open < want;
+        }
+    }
+
     /// <summary>The names <see cref="ApplyResets"/> took this tick, handed on once the registry's lock is let go.</summary>
     private static readonly HashSet<string> _resetApplied = new(StringComparer.OrdinalIgnoreCase);
 

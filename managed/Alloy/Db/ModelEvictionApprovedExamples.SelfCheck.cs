@@ -34,8 +34,13 @@ internal static partial class DbSelfCheck
     /// table and texture registry. Oracles: hand-built models whose textures are landed at fixed MiB, budgets
     /// typed here, and which models and textures each budget must keep.</summary>
     internal static bool ModelEvictionApprovedExamplesSelfCheck(ExtenderLog log)
+        => EvictionSuite(log, "DbSelfCheck.ModelEvictionApprovedExamples.SelfCheck", EvictE3, EvictE4, OverClears, EvictE5, EvictE9, EvictE10);
+
+    /// <summary>Run <paramref name="examples"/> through the real model cache, recipe table and texture registry, with
+    /// recipes retired by eviction and no byte budget, then give back every seam and table they borrowed.</summary>
+    private static bool EvictionSuite(ExtenderLog log, string name, params Action<Checker>[] examples)
     {
-        var check = new Checker(log, "DbSelfCheck.ModelEvictionApprovedExamples.SelfCheck");
+        var check = new Checker(log, name);
         ExtenderLog? savedTreeLog = PartTree.Log, savedArenaLog = MeshArena.Log;
         IModelSource? hadSource = ModelCache.Source;
         long? hadBudget = ModelCache.BudgetOverride;
@@ -46,18 +51,11 @@ internal static partial class DbSelfCheck
         ModelCache.SetSource(null);
         ModelCache.Evicting = DrawRecipe.Forget;
         ModelCache.BudgetOverride = long.MaxValue;
-        try
-        {
-            EvictE3(check);
-            EvictE4(check);
-            OverClears(check);
-            EvictE5(check);
-            EvictE9(check);
-            EvictE10(check);
-        }
+        try { foreach (Action<Checker> example in examples) example(check); }
         catch (Exception e) { check.Expect(false, $"threw -- {e}"); }
         finally
         {
+            DrawRecipe.CapOverride = null;
             ModelCache.SetSource(null);
             ModelCache.Evicting = hadEvict;
             ModelCache.BudgetOverride = hadBudget;
@@ -69,8 +67,7 @@ internal static partial class DbSelfCheck
             MeshArena.ResetForCheck();
             MeshArena.Log = savedArenaLog;
         }
-        log.Info(check.Ok ? "DbSelfCheck.ModelEvictionApprovedExamples.SelfCheck: passed"
-                          : "DbSelfCheck.ModelEvictionApprovedExamples.SelfCheck: FAILED");
+        log.Info(check.Ok ? $"{name}: passed" : $"{name}: FAILED");
         return check.Ok;
     }
 

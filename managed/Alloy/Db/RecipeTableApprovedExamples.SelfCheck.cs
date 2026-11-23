@@ -14,46 +14,7 @@ internal static partial class DbSelfCheck
     /// table capped small. Oracles: hand-built models of a known node count, the order they were released in, and
     /// the model cache's own eviction count.</summary>
     internal static bool RecipeTableApprovedExamplesSelfCheck(ExtenderLog log)
-    {
-        var check = new Checker(log, "DbSelfCheck.RecipeTableApprovedExamples.SelfCheck");
-        ExtenderLog? savedTreeLog = PartTree.Log, savedArenaLog = MeshArena.Log;
-        IModelSource? hadSource = ModelCache.Source;
-        long? hadBudget = ModelCache.BudgetOverride;
-        Action<ModelDef>? hadEvict = ModelCache.Evicting;
-        TexBudgetInputs hadInputs = TexBudget.Inputs;
-        PartTree.Log = null;
-        MeshArena.Log = null;
-        ModelCache.SetSource(null);
-        ModelCache.Evicting = DrawRecipe.Forget;
-        ModelCache.BudgetOverride = long.MaxValue;
-        try
-        {
-            RoomE1(check);
-            RoomE2(check);
-            RoomE3(check);
-            RoomE5(check);
-            RoomE6(check);
-            RoomE7(check);
-        }
-        catch (Exception e) { check.Expect(false, $"threw -- {e}"); }
-        finally
-        {
-            DrawRecipe.CapOverride = null;
-            ModelCache.SetSource(null);
-            ModelCache.Evicting = hadEvict;
-            ModelCache.BudgetOverride = hadBudget;
-            ModelCache.SetSource(hadSource);
-            TexBudget.BeginPeriod(hadInputs);
-            PartTree.Log = savedTreeLog;
-            Drain();
-            PartTree.ResetForCheck();
-            MeshArena.ResetForCheck();
-            MeshArena.Log = savedArenaLog;
-        }
-        log.Info(check.Ok ? "DbSelfCheck.RecipeTableApprovedExamples.SelfCheck: passed"
-                          : "DbSelfCheck.RecipeTableApprovedExamples.SelfCheck: FAILED");
-        return check.Ok;
-    }
+        => EvictionSuite(log, "DbSelfCheck.RecipeTableApprovedExamples.SelfCheck", RoomE1, RoomE2, RoomE3, RoomE5, RoomE6, RoomE7);
 
     /// <summary>File <paramref name="count"/> models named <paramref name="stem"/>0.. in <paramref name="src"/>, each
     /// with <paramref name="nodes"/> mesh nodes and a texture of its own per node.</summary>
@@ -111,9 +72,7 @@ internal static partial class DbSelfCheck
     /// <summary>Recipes in use once the cache is clear, which other checks of the run may have left.</summary>
     private static int RecipeFloor()
     {
-        ModelCache.SetSource(null);
-        DrawRecipe.Pump();
-        DrawRecipe.Pump();
+        EndEviction();
         return DrawRecipe.Count;
     }
 

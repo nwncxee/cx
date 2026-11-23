@@ -12,8 +12,8 @@ namespace CX.Alloy.Db;
 /// its <see cref="ModelDef"/>, so its index is safe to hold across frames and threads with no identity test.</summary>
 internal static partial class DrawRecipe
 {
-    /// <summary>Distinct recipes held at once: a long session's worth of areas, about 26 MiB of CPU columns. A full
-    /// table evicts idle models to make room (<see cref="MakeRoom"/>), so only what the area draws can fill it.</summary>
+    /// <summary>Distinct recipes held at once: a long session's worth of areas. A full table evicts idle models to
+    /// make room (<see cref="MakeRoom"/>), so only what the area draws can fill it.</summary>
     internal const int Max = 1 << 16;
 
     /// <summary>Texture slots a recipe names: diffuse, the seven map slots (five maps, flow, AO), then the
@@ -801,17 +801,18 @@ internal static partial class DrawRecipe
         }
     }
 
-    /// <summary>The share of the table <see cref="MakeRoom"/> keeps free: a sixteenth, 4,096 recipes of <see cref="Max"/>.</summary>
+    /// <summary>The share of the table <see cref="MakeRoom"/> keeps free, and of the texture slots: a sixteenth.</summary>
     private const int RoomShare = 16;
     /// <summary>Idle models one frame evicts at most to make room: each eviction walks the table in <see cref="Forget"/>.</summary>
     private const int RoomPerFrame = 16;
 
-    /// <summary>Evict idle models, least recently used first, until a sixteenth of the table is free (at least one
-    /// slot), at most <see cref="RoomPerFrame"/> a frame. A model an area draws is never idle. Game thread.</summary>
+    /// <summary>Evict idle models, least recently used first, until a sixteenth of the table and a sixteenth of the
+    /// texture slots are free (at least one recipe), at most <see cref="RoomPerFrame"/> a frame. A model an area draws
+    /// is never idle. Game thread.</summary>
     private static void MakeRoom()
     {
         int want = Math.Max(1, Cap / RoomShare);
-        for (int k = 0; k < RoomPerFrame && Cap - Count < want; k++)
+        for (int k = 0; k < RoomPerFrame && (Cap - Count < want || TexRegistry.SlotsShort(TexRegistry.MaxSlots / RoomShare)); k++)
             if (!EvictForRoom()) return;
     }
 

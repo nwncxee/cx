@@ -578,7 +578,7 @@ public static partial class ModelCache
         }
     }
 
-    /// <summary>Evict the least recently used idle model, for the texture budget; false when no model is idle.
+    /// <summary>Evict the least recently used idle model, for a budget or the recipe table; false when no model is idle.
     /// Game thread, like <see cref="Trim"/>: its textures are released through <see cref="Evicting"/>.</summary>
     internal static bool EvictLeastRecent()
     {

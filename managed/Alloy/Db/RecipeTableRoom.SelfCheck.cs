@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CX.Alloy.Mdl;
 using CX.Framework;
 
@@ -5,31 +6,11 @@ namespace CX.Alloy.Db;
 
 internal static partial class DbSelfCheck
 {
-    /// <summary>Regression tests of the recipe table's room: approved example E4, which held before the trim existed,
-    /// and the cap, the per-frame headroom and the area edge's byte trim the mutation pass found unpinned.</summary>
+    /// <summary>Regression and found tests of the recipe table's room: approved example E4, the cap, the per-frame
+    /// headroom, the area edge's trims through the model cache's pass, a table twice the old size, and texture slots.</summary>
     internal static bool RecipeTableRoomSelfCheck(ExtenderLog log)
-    {
-        var check = new Checker(log, "DbSelfCheck.RecipeTableRoom.SelfCheck");
-        IModelSource? hadSource = ModelCache.Source;
-        long? hadBudget = ModelCache.BudgetOverride;
-        System.Action<ModelDef>? hadEvict = ModelCache.Evicting;
-        ModelCache.SetSource(null);
-        ModelCache.Evicting = DrawRecipe.Forget;
-        ModelCache.BudgetOverride = long.MaxValue;
-        try { RoomE4(check); RoomCapHolds(check); RoomOneFrame(check); RoomEdgeBytes(check); }
-        catch (System.Exception e) { check.Expect(false, $"threw -- {e}"); }
-        finally
-        {
-            DrawRecipe.CapOverride = null;
-            ModelCache.SetSource(null);
-            ModelCache.Evicting = hadEvict;
-            ModelCache.BudgetOverride = hadBudget;
-            ModelCache.SetSource(hadSource);
-            Drain();
-        }
-        log.Info(check.Ok ? "DbSelfCheck.RecipeTableRoom.SelfCheck: passed" : "DbSelfCheck.RecipeTableRoom.SelfCheck: FAILED");
-        return check.Ok;
-    }
+        => EvictionSuite(log, "DbSelfCheck.RecipeTableRoom.SelfCheck", RoomE4, RoomCapHolds, RoomOneFrame, RoomEdgeBytes,
+                         RoomEdgeByPass, RoomTwiceOld, RoomTexSlots);
 
     // E4 Given a session whose recipes fill less than a quarter of the recipe table, with its model memory under budget
     // When the player changes area
@@ -118,5 +99,93 @@ internal static partial class DbSelfCheck
                          $"the area change evicted {ModelCache.Evictions - evicted} of {idle.Length} idle models over a zero byte budget");
         }
         finally { ModelCache.BudgetOverride = long.MaxValue; DrawRecipe.CapOverride = null; EndEviction(TexturesOf(idle, 4)); }
+    }
+
+    /// <summary>The model cache pass's area edge trims idle models down to a quarter of the table, and the frame
+    /// line counts each of those evictions as one for the recipe table.</summary>
+    private static void RoomEdgeByPass(Checker check)
+    {
+        int floor = RecipeFloor();
+        var src = new ResidencySource();
+        string[] idle = Models(src, "cx_rtp_m", 16, 4);
+        ModelCache.SetSource(src);
+        DrawRecipe.CapOverride = floor + 64;
+        try
+        {
+            HoldThenIdle(idle);
+            long evicted = ModelCache.Evictions;
+            int counted = DrawRecipe.RoomEvicted;
+            PassLifecycle? pass = PassRegistry.Global.Find("modelcache");
+            pass?.Revoke?.Invoke();
+            long gone = ModelCache.Evictions - evicted;
+            check.Expect(gone > 0 && DrawRecipe.Count <= (floor + 64) / 4,
+                         $"the model cache's area edge left {DrawRecipe.Count} of {floor + 64} recipes in use after {gone} eviction(s)");
+            check.Expect(DrawRecipe.RoomEvicted - counted == gone,
+                         $"the frame line counted {DrawRecipe.RoomEvicted - counted} of the area edge's {gone} evictions for the recipe table");
+        }
+        finally { DrawRecipe.CapOverride = null; EndEviction(TexturesOf(idle, 4)); }
+    }
+
+    /// <summary>A session holding twice the recipes the 16,384-slot table held keeps every idle model a frame later.</summary>
+    private static void RoomTwiceOld(Checker check)
+    {
+        int twice = 1 << 15;
+        RecipeFloor();
+        var src = new ResidencySource();
+        string[] idle = Models(src, "cx_rtw_m", 1, 1);
+        ModelCache.SetSource(src);
+        var held = new List<int>();
+        try
+        {
+            HoldThenIdle(idle);
+            while (DrawRecipe.Count < twice)
+            {
+                int r = DrawRecipe.FlagsForCheck(0);
+                if (r < 0) break;
+                held.Add(r);
+            }
+            long evicted = ModelCache.Evictions;
+            DrawRecipe.Pump();
+            check.Expect(DrawRecipe.Count >= twice && ModelCache.Evictions == evicted,
+                         $"a session at {DrawRecipe.Count} of {twice} recipes evicted {ModelCache.Evictions - evicted} idle model(s) in a frame");
+        }
+        finally
+        {
+            foreach (int r in held) DrawRecipe.ReleaseForCheck(r);
+            EndEviction(TexturesOf(idle, 1));
+        }
+    }
+
+    /// <summary>Idle models whose recipes hold textures past the texture table's slots are evicted, frame by frame,
+    /// so a new model still gets a slot for each of its textures.</summary>
+    private static void RoomTexSlots(Checker check)
+    {
+        const int nodes = 32;
+        const int batch = 16;
+        RecipeFloor();
+        var src = new ResidencySource();
+        string[] idle = Models(src, "cx_rts_m", (TexRegistry.MaxSlots + 2048) / nodes, nodes);
+        string[] fresh = Models(src, "cx_rts_new", 1, 4);
+        ModelCache.SetSource(src);
+        try
+        {
+            for (int i = 0; i < idle.Length; i++)
+            {
+                ModelDef m = ModelCache.Acquire(idle[i])!;
+                Draws(m);
+                ModelCache.Release(m);
+                if (i % batch == batch - 1) DrawRecipe.Pump();
+            }
+            DrawRecipe.Pump();
+            ModelDef part = ModelCache.Acquire(fresh[0])!;
+            int white = 0;
+            for (int n = 1; n < part.Nodes.Length; n++)
+            {
+                int r = DrawRecipe.Intern(part, n, plan: false);
+                if (r < 0 || DrawRecipe.Tex(r, 0).IsNull) white++;
+            }
+            check.Expect(white == 0, $"a new model drew {white} of {part.Nodes.Length - 1} node(s) white after idle models' recipes filled the texture table");
+        }
+        finally { EndEviction([.. TexturesOf(idle, nodes), .. TexturesOf(fresh, 4)]); }
     }
 }
