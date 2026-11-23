@@ -564,6 +564,16 @@ public sealed partial class KnobPanel
             finally { Tooltip.Clock = clock; }
         }
 
+        // Examples: none, because found work: a player adjusting settings lost the panel under a server's NUI window, with no setting to lift it
+        // Given the settings panel open, with no tooltip or dropdown showing
+        // When a server's NUI window is on screen
+        // Then the settings window draws and takes clicks above NUI
+        UiHost.Alone(() =>
+        {
+            Window w = KnobPanelService.NewWindow(new KnobPanel());
+            check.Expect(w.Band == UiLayer.AboveNui && !w.CoveredByNui(true), $"the settings window draws above NUI: {w.Band}");
+        });
+
         log.Info(check.Ok ? "KnobPanel.SelfCheck: passed" : "KnobPanel.SelfCheck: FAILED");
     }
 }
