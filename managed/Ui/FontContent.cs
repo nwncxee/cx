@@ -19,10 +19,10 @@ internal static class FontContent
         long key = CX.Alloy.NwSyncReader.ContentEdge * 2 + (GameGate.InModule ? 1 : 0);
         if (key == _scan.Key) return;
         _scan.Key = key;
-        var found = new List<(string, bool, byte[])>();
+        var found = new List<(string, FontSource, byte[])>();
         int left = 0;
         foreach (string resref in CX.Alloy.ResLocate.OfType(NuiSkinFontLoad.TtfResType))
-            if (NuiSkinFontLoad.Read(resref, NuiSkinFontLoad.TtfResType, out byte[]? b, out _, serverOnly: true)) found.Add((resref, true, b!));
+            if (NuiSkinFontLoad.Read(resref, NuiSkinFontLoad.TtfResType, out byte[]? b, out _, serverOnly: true)) found.Add((resref, FontSource.Server, b!));
             else left++;
         FontCatalog content = FontCatalog.FromContent(found);
         FontRegistry.UseContent(content);

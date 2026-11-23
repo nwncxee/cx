@@ -3,6 +3,10 @@ using System.Text;
 
 namespace CX.Ui;
 
+/// <summary>Where a font resource's winning copy lives: loose in <c>override/</c>, in the base game's own data, or in
+/// a hak, the module or NWSync.</summary>
+public enum FontSource { Loose, Game, Server }
+
 /// <summary>The fonts a scan found, grouped into families by typographic family name and width, and the face a
 /// family offers nearest a weight and a style.</summary>
 public sealed class FontCatalog
@@ -94,13 +98,13 @@ public sealed class FontCatalog
     }
 
     /// <summary>The fonts of the loaded module's content: each resource a hak, the module or NWSync supplies
-    /// (<c>Server</c>), read from its own bytes; a loose override file or the base game's own is left out.</summary>
-    public static FontCatalog FromContent(IEnumerable<(string ResRef, bool Server, byte[] Bytes)> resources)
+    /// (<see cref="FontSource.Server"/>), read from its own bytes; a loose override file or the base game's own is left out.</summary>
+    public static FontCatalog FromContent(IEnumerable<(string ResRef, FontSource Source, byte[] Bytes)> resources)
     {
         var faces = new List<Face>();
         var byFull = new Dictionary<string, Face>(StringComparer.OrdinalIgnoreCase);
-        foreach ((string resref, bool server, byte[] bytes) in resources)
-            if (server) Add(faces, byFull, resref + ".ttf", bytes, keep: true);
+        foreach ((string resref, FontSource source, byte[] bytes) in resources)
+            if (source == FontSource.Server) Add(faces, byFull, resref + ".ttf", bytes, keep: true);
         return new FontCatalog(faces, byFull);
     }
 

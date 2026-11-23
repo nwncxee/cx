@@ -132,7 +132,7 @@ internal static class FontRegistryRegressions
         Example(check, "R17 a hak's face draws the resource's own bytes, which no file on disk holds", () =>
         {
             FontCatalog was = FontRegistry.UseCatalog(FontCatalog.Empty);
-            FontCatalog wasContent = FontRegistry.UseContent(FontCatalog.FromContent(new[] { ("hakdv_b", true, FontRegistryApprovedExamples.Fixture("DejaVuSans-Bold.ttf")) }));
+            FontCatalog wasContent = FontRegistry.UseContent(FontCatalog.FromContent(new[] { ("hakdv_b", FontSource.Server, FontRegistryApprovedExamples.Fixture("DejaVuSans-Bold.ttf")) }));
             try
             {
                 string key = FontRegistry.FaceKey(DejaVu, 700, FontRegistry.StyleNormal);
