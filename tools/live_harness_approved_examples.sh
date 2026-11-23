@@ -41,6 +41,18 @@ expect "the refusal names the uncommitted file" "$(grep -c 'tools/live/new.sh' <
 rm "$t/tools/live/new.sh" "$t/cx-linux-x64/BUILT_FROM"
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "an unstamped stage is refused" "$?" 1
 
+# A stage that build.sh kept, or built from edits committed since, is the build of the tree when its stamped
+# code fingerprint is the tree's own, whatever commit the stamp names; a fingerprint that differs is refused.
+cp "$ROOT/tools/codehash.py" "$t/tools/" && echo cx-linux-x64/ > "$t/.gitignore"
+git -C "$t" add tools/codehash.py .gitignore && git -C "$t" commit -qm codehash
+built=$(git -C "$t" rev-parse HEAD); echo d > "$t/tools/live/run-live.sh"
+{ echo "$built"; echo dirty; echo "code $(python3 "$t/tools/codehash.py" "$t")"; } > "$t/cx-linux-x64/BUILT_FROM"
+git -C "$t" commit -qam "the edits the stage was built from"
+stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a dirty build whose edits were then committed runs" "$?" 0
+echo e > "$t/tools/live/run-live.sh"; git -C "$t" commit -qam "a change after the build"
+stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a stamped fingerprint the tree no longer has is refused" "$?" 1
+rm "$t/cx-linux-x64/BUILT_FROM"
+
 # The real script, not only its helper: a stage stamped with a commit this checkout lacks stops at exit 2,
 # however shallow the checkout.
 mkdir -p "$t/stage" && touch "$t/stage/libcx.so" "$t/stage/cx-launch"
