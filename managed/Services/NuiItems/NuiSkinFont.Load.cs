@@ -41,7 +41,7 @@ internal static unsafe class NuiSkinFontLoad
     {
         if (_s.Tried) return _s.Px;
         _s.Tried = true;
-        if (!Read(SkinResRef, TmlResType, out byte[]? skin, out string? why))
+        if (!Read(SkinResRef, TmlResType, out byte[]? skin, out string? why, out _))
         {
             log?.Always($"NuiSkinFont: the NUI skin could not be read ({why}) -- the item menu keeps the UI font");
             return 0f;
@@ -53,7 +53,7 @@ internal static unsafe class NuiSkinFontLoad
             log?.Always("NuiSkinFont: the NUI skin names no default font with a size -- the item menu keeps the UI font");
             return 0f;
         }
-        if (!Read(resref, TtfResType, out byte[]? ttf, out why))
+        if (!Read(resref, TtfResType, out byte[]? ttf, out why, out _))
         {
             log?.Always($"NuiSkinFont: the skin's default font {resref} could not be read ({why}) -- the item menu keeps the UI font");
             return 0f;
@@ -63,11 +63,21 @@ internal static unsafe class NuiSkinFontLoad
         return px;
     }
 
-    /// <summary>One resource's bytes, from the file that holds it or from the NWSync store; with <paramref name="serverOnly"/>,
-    /// only when its winning copy is a hak's, the module's or NWSync's. Main thread.</summary>
-    internal static bool Read(string resref, ushort resType, out byte[]? bytes, out string? why, bool serverOnly = false)
+    /// <summary>Where a resource lives, by the kind of file its winning copy is in: a hak, the module and NWSync are the
+    /// server's, a key's bif the game's own, anything else loose.</summary>
+    internal static FontSource SourceOf(byte kind) => kind switch
+    {
+        KindErf or KindNwSync => FontSource.Server,
+        KindBif => FontSource.Game,
+        _ => FontSource.Loose,
+    };
+
+    /// <summary>One resource's bytes, from the file that holds it or from the NWSync store, and where its winning copy
+    /// lives. Main thread.</summary>
+    internal static bool Read(string resref, ushort resType, out byte[]? bytes, out string? why, out FontSource source)
     {
         bytes = null;
+        source = FontSource.Loose;
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) { why ??= "the resource manager is not attached"; return false; }
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
         TexRegistry.ResRef(resref, name);
@@ -78,7 +88,7 @@ internal static unsafe class NuiSkinFontLoad
             if (!ResLocate.Find(p, resType, out IntPtr table, out IntPtr entry)) { why = "no such resource"; return false; }
             if (!ResLocate.Locate(table, entry, resId, out loc, out why, out ResLocate.Source src)) { why ??= $"the resource is {src}"; return false; }
         }
-        if (serverOnly && loc.Kind is not (KindErf or KindNwSync)) { why = "not a hak's, the module's or NWSync's"; return false; }
+        source = SourceOf(loc.Kind);
         if (loc.Kind != KindNwSync)
         {
             if (!_handles.Read(loc, out ReadOnlySpan<byte> raw, out why)) return false;

@@ -15,7 +15,7 @@ internal static partial class FontRegistryApprovedExamples
 
     /// <summary>Server content holding the named resrefs of <see cref="HakDejaVu"/>, each from a hak.</summary>
     private static FontCatalog Hak(params string[] resrefs)
-        => FontCatalog.FromContent(HakDejaVu.Where(h => resrefs.Contains(h.ResRef)).Select(h => (h.ResRef, true, Fixture(h.Fixture))).ToArray());
+        => FontCatalog.FromContent(HakDejaVu.Where(h => resrefs.Contains(h.ResRef)).Select(h => (h.ResRef, FontSource.Server, Fixture(h.Fixture))).ToArray());
 
     /// <summary>Runs <paramref name="body"/> with <paramref name="installed"/> as the machine's fonts and <paramref name="content"/>
     /// as the loaded module's, putting both back after.</summary>
@@ -71,14 +71,17 @@ internal static partial class FontRegistryApprovedExamples
                 && Drawn(PanelFonts.RunFace(r[0], out _)) == "hakdv_b.ttf#0@700"
                 && Drawn(FontRegistry.UiRunFace(0, FontRegistry.StyleItalic, false, out bool slant)) == "hakdv_b.ttf#0@700" && !slant)));
 
-        // E56 Given a .ttf loose in override/, and the base game's own .ttf files When the module has loaded Then neither is
-        // offered in any Typeface list; only a hak's, the module's and NWSync's fonts are
-        Example(check, "E56 only server content is listed", () =>
+        // E56 Given a .ttf loose in override/
+        // When the module has loaded
+        // Then it is not offered in any Typeface list; the base game's own fonts, a hak's, the module's and NWSync's are
+        Example(check, "E56 a loose override font is not listed", () =>
         {
-            FontCatalog loose = FontCatalog.FromContent(new[] { ("ovrdv", false, Fixture("DejaVuSans.ttf")), ("basedv", false, Fixture("DejaVuSans-Bold.ttf")) });
-            FontCatalog mixed = FontCatalog.FromContent(new[] { ("ovrdv", false, Fixture("DejaVuSans.ttf")), ("hakdv_b", true, Fixture("DejaVuSans-Bold.ttf")) });
+            FontCatalog loose = FontCatalog.FromContent(new[] { ("ovrdv", FontSource.Loose, Fixture("DejaVuSans.ttf")) });
+            FontCatalog game = FontCatalog.FromContent(new[] { ("ovrdv", FontSource.Loose, Fixture("DejaVuSans.ttf")), ("basedv", FontSource.Game, Fixture("DejaVuSans-Bold.ttf")) });
+            FontCatalog mixed = FontCatalog.FromContent(new[] { ("ovrdv", FontSource.Loose, Fixture("DejaVuSans.ttf")), ("hakdv_b", FontSource.Server, Fixture("DejaVuSans-Bold.ttf")) });
             return loose.Families.Length == 0
                 && WithFonts(noto, loose, () => !UiKnobs.Typeface.Choices.Contains(DejaVu))
+                && WithFonts(noto, game, () => UiKnobs.Typeface.Choices.Contains(DejaVu) && Drawn(FontRegistry.FaceKey(DejaVu, 400, FontRegistry.StyleNormal)) == "basedv.ttf#0@700")
                 && WithFonts(noto, mixed, () => Drawn(FontRegistry.FaceKey(DejaVu, 400, FontRegistry.StyleNormal)) == "hakdv_b.ttf#0@700");
         });
 

@@ -37,6 +37,7 @@ internal static partial class FontRegistryApprovedExamples
                 Scan(check, dir);
                 BuiltIn(check, dir);
                 Content(check, dir);
+                Stock(check, dir);
                 FontRegistryRegressions.SelfCheck(check, dir);
                 return true;
             });
