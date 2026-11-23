@@ -160,6 +160,41 @@ internal static class ChatWindowRegressions
             check.Expect(!onMain && onOwn, "E36 Main's gear has no click-through row; Window 2's own page has it");
         }
 
+        // Given the gear panel open and no field being edited
+        // When the player presses a key other than Esc
+        // Then chat leaves it to the game
+        {
+            var gear = new SettingsWindow();
+            gear.OpenAt(Window(0, 0), 1280, 800);
+            check.Expect(gear.Open && !ChatService.TakesKey((uint)'a', false, gear),
+                "with the gear panel open and no field edited, a letter key falls through to the game");
+        }
+
+        // Given a chat window under NUI with its channel list open, and the chatbox's two surfaces
+        // When the frame asks each surface for its band
+        // Then the surface under NUI moves into the popup band and the surface over NUI stays where it is
+        {
+            bool inGame = GameGate.InGame;
+            ChatLayout? was = ChatService.UseLayout(null);
+            try
+            {
+                UiHost.Alone(() =>
+                {
+                    var m = new ChatWindow(100f, 500f, 400f, 300f, new[] { new Tab("Local", 0x00D) }) { FooterVisible = true };
+                    m.ClampSendChannel();
+                    m.MouseDown(105f, 777f);
+                    ChatService.UseLayout(new ChatLayout(m));
+                    GameGate.InGame = true;
+                    CX.Ui.Window below = ChatService.NewWindow();
+                    CX.Ui.Window? above = null;
+                    foreach (CX.Ui.Window w in UiHost.Windows) if (w != below) above = w;
+                    check.Expect(m.ChannelListOpen && below.Band == UiLayer.Popup && above is { Band: UiLayer.AboveNui },
+                        $"a list open under NUI lifts only the chatbox's under-NUI surface: below {below.Band}, above {above?.Band}");
+                });
+            }
+            finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
+        }
+
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");
     }
 }

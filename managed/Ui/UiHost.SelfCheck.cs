@@ -310,6 +310,8 @@ public static partial class UiHost
                 SetFocused(null);
                 check.Expect(HoverFocusAt(5, 5, nuiCovers: true) == null && Focused == null,
                     "hover-to-focus: a NUI window over the pointer keeps a CX window under NUI from taking focus");
+                UiInputService.HoverMoved(5, 5, new UiInputService.PointerUnder(true, false, false));
+                check.Expect(Focused == null, "hover-to-focus: the input pump passes NUI's cover, so the window under NUI stays unfocused");
                 upper.Layer = UiLayer.AboveNui;
                 check.Expect(HoverFocusAt(5, 5, nuiCovers: true) == upper && Focused == upper,
                     "hover-to-focus: a CX window above NUI takes focus over the NUI window under it");

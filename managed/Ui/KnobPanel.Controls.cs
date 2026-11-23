@@ -10,7 +10,7 @@ public sealed partial class KnobPanel
     public readonly Dropdown Drop = new();
 
     /// <summary>True while the panel is open with its dropdown list showing, which draws in the popup band.</summary>
-    public bool PopupOpen => Open && Drop.Open;
+    public bool PopupOpen => Drop.Open;
 
     /// <summary>The off-default dot: a small filled square centred on (<paramref name="cx"/>, <paramref name="cy"/>),
     /// drawn on a row whose value left its default and on a submenu holding one.</summary>
