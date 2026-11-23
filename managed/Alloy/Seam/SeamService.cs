@@ -203,6 +203,7 @@ public sealed unsafe class SeamService : IExtenderService
         Add(PartShell.AfterDeath, "Part::GetWorld on a retired shell");
         Add(ObjectSlots.DegenerateBounds, "object(s) whose measured box the game cannot divide by");
         Add(StringSlots.UnresolvedAttach, "label attach(es) naming a part the target has not got");
+        Add(ObjectSlots.UnresolvedAttaches, "object attach(es) naming a part the target has not got");
         return sb.ToString();
     }
 

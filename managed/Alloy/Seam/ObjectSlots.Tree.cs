@@ -21,6 +21,8 @@ public sealed unsafe partial class ObjectSlots
         /// <summary>An amputation that found its piece and could not take it off the owned list -- the opposite
         /// diagnosis, counted apart because the piece is KEPT rather than missing.</summary>
         public long UnlinkRefusals;
+        /// <summary>An object attach naming a part its target has not got, refused as the engine refuses it.</summary>
+        public long UnresolvedAttaches;
         public readonly System.Collections.Generic.HashSet<string> SaidGateRefusal = new();
         public readonly System.Collections.Generic.HashSet<string> SaidAppendRefusal = new();
         public readonly System.Collections.Generic.HashSet<string> SaidUnmatched = new();
@@ -28,6 +30,9 @@ public sealed unsafe partial class ObjectSlots
     }
 
     private static readonly TreeState _tree = new();
+
+    /// <summary>Object attaches refused this session for naming a part the target has not got.</summary>
+    internal static long UnresolvedAttaches => _tree.UnresolvedAttaches;
 
     /// <summary><c>Gob::SetSubtreeEnabled(char const*, int)</c> @0x43c670 writes ONE byte, <c>Part+0x34</c>, on
     /// the named part -- not recursively. The name is about what that byte means to the draw: the engine's

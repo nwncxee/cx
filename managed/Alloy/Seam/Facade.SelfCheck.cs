@@ -13,7 +13,7 @@ namespace CX.Alloy.Seam;
 /// the measured slot order on BOTH OS layouts, the shell's layout against the engine's offsets, the <c>DbId</c>
 /// round trip through the header, pointer normalisation of a sub-object vptr, SafePointer back-reference
 /// nulling, the poison path and two-frame quarantine, and a setter leaving shell word and column agreeing.</summary>
-internal static unsafe class FacadeSelfCheck
+internal static unsafe partial class FacadeSelfCheck
 {
     /// <summary>The SafePointerList head at the start of a shell, laid out by hand from the build file's offsets
     /// (array +0x8, count +0x10, capacity +0x14): the oracle for the <c>Gob</c> view's own rows.</summary>
@@ -680,6 +680,7 @@ internal static unsafe class FacadeSelfCheck
         SceneEventInterleave(check);
         InheritOrder(check);
         TextRiderDeath(check);
+        UnresolvedAttachApprovedExamples(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);
