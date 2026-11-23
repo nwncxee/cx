@@ -25,6 +25,7 @@ public sealed unsafe class UiHostService : IExtenderService
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
         WorldLayerApprovedExamples.SelfCheck(log);   // plates and damage numbers under the game's panels (off-device)
         GuiFrameSelfCheck.SelfCheck(log);   // the frame's 2D order, CX windows against the game's panels (off-device)
+        ClickOrderApprovedExamples.SelfCheck(log);   // CX windows, panels and NUI take clicks in the order they draw (off-device)
         FrameZones.SelfCheck(log);   // frame-split instrument (off-device)
         ScrollColumn.SelfCheck(log);    // scroll column: offset, thumb, wheel, zero-alloc draw (off-device)
         Dropdown.SelfCheck(log);        // dropdown list: 27 entries, scroll, pick, outside press (off-device)
