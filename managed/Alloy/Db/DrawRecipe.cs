@@ -141,7 +141,7 @@ internal static partial class DrawRecipe
     }
     private static SlotState _own = new();
 
-    /// <summary>The frame line's recipe counts, one value so a self-check that drives the table gives them back whole.</summary>
+    /// <summary>The frame line's recipe counts, one value so the session edge zeroes them all at once.</summary>
     internal record struct Tally
     {
         public int Spilled, TwinRefused, BoxGrown, Retired, Reclassified, RetiredInUse, DoubleRetire;
@@ -150,8 +150,8 @@ internal static partial class DrawRecipe
         public string BoxGrownFirst;
     }
 
-    /// <summary>The frame line's recipe counts; set only to give back what a self-check moved.</summary>
-    internal static Tally Counts { get => _own.Counts; set => _own.Counts = value; }
+    /// <summary>The session's frame line starts from no recipe counts.</summary>
+    internal static void SessionBegins() => _own.Counts = new() { BoxGrownFirst = "" };
 
     /// <summary>The log the ownership refusals are said on. Set by the feed.</summary>
     internal static CX.Framework.ExtenderLog? Log { get => _own.Log; set => _own.Log = value; }

@@ -37,7 +37,9 @@ internal static partial class DbSelfCheck
             ok = Run(log);
             ok &= MaterialResetApprovedExamplesSelfCheck(log);
             ok &= MaterialResetHoldsTodaySelfCheck(log);
-            ok &= EvictionSuitesSelfCheck(log);
+            ok &= ModelEvictionApprovedExamplesSelfCheck(log);
+            ok &= RecipeTableApprovedExamplesSelfCheck(log);
+            ok &= RecipeTableRoomSelfCheck(log);
             check.Expect(PartTree.ResolveModel == ProbeResolve && PartTree.OnReference == ProbeReference,
                          "a part-tree self-check left its own reference hook or model resolver installed, so the live session instances no reference child");
         }

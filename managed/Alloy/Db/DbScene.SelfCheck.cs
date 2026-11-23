@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using CX.Framework;
 
@@ -44,13 +45,19 @@ internal static unsafe class DbSceneSelfCheck
     }
 
     /// <summary>After every suite and before the hooks commit: nothing the game made can be live yet, so a live scene or
-    /// object is a fixture still in the tables, which frame walks and world-scene lookups read as the game's. Oracle: the
-    /// empty table the engine has not touched.</summary>
+    /// object is a fixture still in the tables, and a count on a period line is a suite's. Oracle: the empty table the
+    /// engine has not touched, and the clause words a reader of the period lines sees.</summary>
     internal static void NoFixtureOutlived(ExtenderLog log)
     {
         var check = new Checker(log, "DbScene.SelfCheck");
         check.Expect(SceneDb.Scenes.Live == 0, $"no fixture scene outlives its suite ({SceneDb.Scenes.Live} live)");
         check.Expect(SceneDb.Objects.Live == 0, $"no fixture object outlives its suite ({SceneDb.Objects.Live} live)");
+        string feed = DbFeed.Stats(), skin = DbAnim.SkinPeriod();
+        foreach (string clause in new[] { DrawRecipe.SpilledKey, DrawRecipe.EvictedKey, DrawRecipe.InUseKey, DrawRecipe.TwiceKey,
+                                          "twin-shadowed", "box-grown", "retired", "reclassified", "NO-MODEL", "RETRY OVERFLOW",
+                                          "BAD RANGES", "re-init releases", "recycled" })
+            check.Expect(!Regex.IsMatch(feed, $@"\b{Regex.Escape(clause)} \d"), $"no suite's {clause} count is on the session's feed line: \"{feed}\"");
+        check.Expect(skin == "0 palette(s)", $"no suite's count is on the session's skin line: \"{skin}\"");
     }
 
     /// <summary>A world flag on a scene the game holds no facade for is a fixture, never the world, and the lowest slot

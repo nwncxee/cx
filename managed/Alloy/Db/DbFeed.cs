@@ -244,4 +244,14 @@ public static partial class DbFeed
         _viewN = 0; _viewRefused = 0; _frames = 0; _lastRecWrites = 0;
         _saidNoDraw = false;
     }
+
+    /// <summary>After the boot self-checks: every count the period lines report starts from zero, so the session's
+    /// lines carry no suite's spills, evictions, retirements or leaks.</summary>
+    internal static void SessionBegins()
+    {
+        ResetForSelfCheck();
+        NoRecipe = 0; RetryOverflow = 0; Recycled = 0; BadRange = 0; LeakedJoins = 0;
+        DrawRecipe.SessionBegins();
+        DbAnim.SessionBegins();
+    }
 }

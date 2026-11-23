@@ -46,7 +46,6 @@ internal static partial class DbSelfCheck
         long? hadBudget = ModelCache.BudgetOverride;
         Action<ModelDef>? hadEvict = ModelCache.Evicting;
         TexBudgetInputs hadInputs = TexBudget.Inputs;
-        DrawRecipe.Tally hadCounts = DrawRecipe.Counts;
         PartTree.Log = null;
         MeshArena.Log = null;
         ModelCache.SetSource(null);
@@ -67,7 +66,6 @@ internal static partial class DbSelfCheck
             PartTree.ResetForCheck();
             MeshArena.ResetForCheck();
             MeshArena.Log = savedArenaLog;
-            DrawRecipe.Counts = hadCounts;
         }
         log.Info(check.Ok ? $"{name}: passed" : $"{name}: FAILED");
         return check.Ok;
