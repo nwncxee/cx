@@ -82,16 +82,47 @@ public sealed unsafe partial class AlloyRenderer
             cl.ReadImages(read);
         }
         CommandList side = s.Side!;
-        side.Reset();
-        int arena0 = c.ArenaUsed;
-        side.SetViewport(0, 0, viewport[2], viewport[3]);
-        int cls = -1;
-        bool punched = false;
+        ReadOnlySpan<ColorAttachment> scene = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
+        // the additive meshes' pass opened the layer this frame when it ran
+        LoadOp glowOpen = c.GlowSeq == FrameSeq ? LoadOp.Load : LoadOp.Clear;
+        ReadOnlySpan<ColorAttachment> glow = [new(c.Glow, 0, 0, glowOpen, StoreOp.Store, default), VkReactiveAttach(c)];
+        for (int layer = 0; layer < 2; layer++)
+        {
+            bool additive = layer == 1;
+            side.Reset();
+            int arena0 = c.ArenaUsed;
+            side.SetViewport(0, 0, viewport[2], viewport[3]);
+            int drew = VkPartGroups(side, s, c, &v, &p, eye, lit, soft, viewport, near, far, groups, additive, out bool punched);
+            if (drew < 0) return false;
+            if (drew == 0) continue;
+            if (additive) c.GlowSeq = FrameSeq;
+            VkFlushPass(cl, side, arena0, new RenderPassDesc(additive ? glow : scene,
+                        new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)), writesDepth: punched);
+        }
+        s.DrewSeq = FrameSeq; s.DrewGroups = groups; s.DrewView = v; s.DrewProj = p; s.DrewEye = eye;
+        if (!s.Live)
+        {
+            s.Live = true;
+            log.Always($"AlloyRenderer: the Vulkan particle pass is LIVE -- {groups} group(s), {at} particle(s), blended groups "
+                     + "sorted back to front on the CPU" + (soft ? ", soft against the scene depth" : ""));
+        }
+        return true;
+    }
+
+    /// <summary>This frame's groups of one layer into <paramref name="side"/>: the additive class alone
+    /// (<paramref name="additive"/>), which draws into the glow layer, or every other class, which draws into the scene.
+    /// The count of groups drawn, or -1 when the arena is full; <paramref name="punched"/> says a group wrote depth.</summary>
+    private static int VkPartGroups(CommandList side, VkPartState s, VkColourState c, Matrix4x4* v, Matrix4x4* p, Vector3 eye,
+                                    bool lit, bool soft, int* viewport, float near, float far, int groups, bool additive,
+                                    out bool punched)
+    {
+        int cls = -1, drew = 0;
         bool? cull = null;
+        punched = false;
         for (int gi = 0; gi < groups; gi++)
         {
             Particles.VkGroup g = Particles.VkGroupAt(gi);
-            if (g.Parts == 0) continue;
+            if (g.Parts == 0 || Particles.VkInGlow(g.Cls) != additive) continue;
             PipelineId pipe = s.Pipes[g.Cls];
             if (pipe.IsNull) continue;
             if (g.Cls != cls)
@@ -106,24 +137,15 @@ public sealed unsafe partial class AlloyRenderer
                 side.SetRasterState(new RasterState(g.Cull ? CullMode.Back : CullMode.None));
             }
             bool groupLit = lit && cls == Particles.VkBlend;
-            int loose = VkPartBlock(s, &v, &p, eye, g, groupLit, soft, viewport, near, far);
+            int loose = VkPartBlock(s, v, p, eye, g, groupLit, soft, viewport, near, far);
             int pass = groupLit ? VkArenaPass() : -1;
-            if (loose < 0 || (groupLit && pass < 0)) return false;
+            if (loose < 0 || (groupLit && pass < 0)) return -1;
             VkPartBind(side, s, s.Prog!, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
             punched |= VkPartDepth(cls).Write;
+            drew++;
         }
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
-                    writesDepth: punched);
-        s.DrewSeq = FrameSeq; s.DrewGroups = groups; s.DrewView = v; s.DrewProj = p; s.DrewEye = eye;
-        if (!s.Live)
-        {
-            s.Live = true;
-            log.Always($"AlloyRenderer: the Vulkan particle pass is LIVE -- {groups} group(s), {at} particle(s), blended groups "
-                     + "sorted back to front on the CPU" + (soft ? ", soft against the scene depth" : ""));
-        }
-        return true;
+        return drew;
     }
 
     /// <summary>One group's loose block, as GL's pass sets its terms: the camera, the fog, the class's cut and blend
@@ -141,7 +163,7 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Set(s.Eye, [eye.X, eye.Y, eye.Z]);
             UploadFog(p.F);
             LooseBlock.Set(s.Cut, g.Cls == Particles.VkPunch ? Particles.VkPunchCut : Particles.VkNoCut);
-            LooseBlock.Set(s.Add, g.Cls == Particles.VkAdd ? 1 : 0);
+            LooseBlock.Set(s.Add, Particles.VkInGlow(g.Cls) ? 1 : 0);
             LooseBlock.Set(s.Lit, lit ? 1 : 0);
             LooseBlock.Set(s.Emis, g.Emissive);
             LooseBlock.Set(s.Viz, Particles.VizMode);
@@ -255,7 +277,7 @@ public sealed unsafe partial class AlloyRenderer
                 Depth = VkPartDepth(cls), Label = $"{PipeFeatures.Particles}class {cls}",
             };
             d.Targets.ColorCount = 2;
-            d.Targets.Colors[0] = Format.Rgba16F;
+            d.Targets.Colors[0] = Particles.VkInGlow(cls) ? Format.Rgba8 : Format.Rgba16F;
             d.Targets.Colors[1] = Format.R8;
             d.Targets.Depth = Format.D32F;
             d.Targets.Samples = 1;

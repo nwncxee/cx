@@ -105,6 +105,10 @@ public sealed unsafe partial class AlloyRenderer
         public ImageId React;
         /// <summary>The mask has been said to be live on this device.</summary>
         public bool ReactLive;
+        /// <summary>The additive class, meshes and particles, in display space, 8 bits a channel as the stock client's own target holds
+        /// them, which the resolve lays on after the encode; drawn in the frame <see cref="GlowSeq"/> names.</summary>
+        public ImageId Glow;
+        public int GlowSeq = -1;
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
@@ -181,7 +185,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 8;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth, Cover }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth, Cover, Glow }
 
     /// <summary>The eight per-batch values, in <c>VkGlsl.Push</c>'s order; <see cref="Pull"/> is a wash batch's
     /// <see cref="WorldDepth.Pull"/> and zero for every other.</summary>
@@ -225,6 +229,7 @@ public sealed unsafe partial class AlloyRenderer
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
             vk.Destroy(s.React);
+            vk.Destroy(s.Glow);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
             s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage | ImageUse.CopySrc);
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth", ImageUse.CopySrc);
@@ -234,12 +239,14 @@ public sealed unsafe partial class AlloyRenderer
             s.G3 = VkTarget(vk, Format.R8, w, h, "vk g-buffer standing water");
             // cleared once a frame outside any pass, which is a transfer
             s.React = VkTarget(vk, Format.R8, w, h, "vk reactive mask", ImageUse.CopyDst);
+            s.Glow = VkTarget(vk, Format.Rgba8, w, h, "vk glow layer");
+            s.GlowSeq = -1;
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
             s.Snapshot.Remade();
             if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull
-                || s.React.IsNull || s.DepthRead.IsNull)
+                || s.React.IsNull || s.Glow.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -338,7 +345,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
-        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.Decal;
+        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.LitGlow or VkPrograms.Id.Decal;
         VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, log);
         if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
         return p;
@@ -794,6 +801,7 @@ public sealed unsafe partial class AlloyRenderer
         if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        else if (targets == VkTargets.Glow) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba8; }
         else if (targets == VkTargets.Cover) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; d.AlphaToCoverage = true; }
         // the depth the blended class lays after the OIT resolve, inside the forward pass: its colour masked off
         else if (targets == VkTargets.ForwardDepth)

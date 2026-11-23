@@ -22,6 +22,7 @@ public sealed unsafe partial class AlloyRenderer
         (true, VkPrograms.Id.Lit or VkPrograms.Id.Fullbright, _) or (false, _, ContentVariant.Forward) =>
             LitSets,
         (true, VkPrograms.Id.LitDeferred, _) or (false, _, ContentVariant.Deferred) => GbufSets,
+        (true, VkPrograms.Id.FullbrightGlow or VkPrograms.Id.LitGlow, _) => GlowSets,
         (true, VkPrograms.Id.Depth or VkPrograms.Id.DepthKey, _) => PrepassSets,
         (false, _, ContentVariant.Depth) => ContentDepthSets,
         (true, VkPrograms.Id.DepthFeat, _) => FeatDepthSets,
@@ -37,7 +38,7 @@ public sealed unsafe partial class AlloyRenderer
         GbufSets = [VkTargets.Colour, VkTargets.ColourRefl], PrepassSets = [VkTargets.Prepass],
         ContentDepthSets = [VkTargets.Prepass, VkTargets.Mask],
         FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
-        VelocitySets = [VkTargets.Velocity];
+        VelocitySets = [VkTargets.Velocity], GlowSets = [VkTargets.Glow];
 
     /// <summary>Every pipeline the hold should leave built, under the hold: the materials' and the shadow casters' for
     /// any caster yet unseen, then the probe's, which stands down there, and CX's windows', which only the cover draws.

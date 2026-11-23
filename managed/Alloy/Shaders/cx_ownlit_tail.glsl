@@ -195,5 +195,8 @@
     // engine: lit, dissolved and fogged, in display space (CxHostPost converts both ways)
     outC = CxHostPost(outC);
 #endif
+#ifdef CX_GLOW_WRITE
+    outC.rgb = CxDisplay(outC.rgb);
+#endif
     frag = CxOitOut(outC);
 }

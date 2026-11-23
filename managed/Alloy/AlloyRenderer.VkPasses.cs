@@ -225,10 +225,10 @@ public sealed unsafe partial class AlloyRenderer
         // the record is the blended class's alone: every later lit bind uploads the gate off again
         s.LightRec = false;
         b.Prog = null;
-        // PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
-        // water the additive class closes the same pass; with it the pass ends so the copy can be recorded
+        // PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads; with water the pass
+        // ends so the copy can be recorded. A capture has no glow layer, so its additive class closes this pass
         bool water = _gWaterEnd > _gBlendEnd && !_capturing;
-        if (!water) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
+        if (_capturing) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
         var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear));
@@ -243,12 +243,24 @@ public sealed unsafe partial class AlloyRenderer
             b = new VkBound { Fmt = -1, Tex = -1 };
             VkPassStart(side, w, h);
             ok &= VkWaterIssue(side, ref b, _gBlendEnd, _gWaterEnd, vp, viewport, near, far, indirect);
-            ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
             if (!ok) return false;
             ReadOnlySpan<ImageId> snap = [_vkWater.Col, _vkWater.Dep];
             if (_vkWater.Ready) cl.ReadImages(snap);
             VkFlushPass(cl, side, arena0, in forward);
             VkWaterDone();
+            cl.EndLabel();
+        }
+        if (!_capturing && _gWaterEnd < groups)
+        {
+            cl.BeginLabel("glow"u8);
+            side.Reset();
+            arena0 = s.ArenaUsed;
+            b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, w, h);
+            if (!VkIssue(side, ref b, _gWaterEnd, groups, add with { Targets = VkTargets.Glow }, vp, viewport, near, far, indirect)) return false;
+            colors[0] = new ColorAttachment(s.Glow, 0, 0, LoadOp.Clear, StoreOp.Store, default);
+            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+            s.GlowSeq = FrameSeq;
             cl.EndLabel();
         }
 
@@ -510,8 +522,9 @@ public sealed unsafe partial class AlloyRenderer
             if (r.Interior && !split) continue;
             bool deferred = lit && r.Gbuf && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && (viz == 0 || viz == VizLightFrom)
                             && !_capturing && (g < _gOpaqueEnd || r.Interior);
+            // ponytail: a content pair's additive batch writes its linear colour into the glow layer; a glow variant of the pair is the upgrade
             VkProg p = (content ? VkContent(_gFeat[g], deferred ? ContentVariant.Deferred : ContentVariant.Forward) : null)
-                       ?? s.Progs[(int)(lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright)]!;
+                       ?? s.Progs[(int)VkPlainProgram(lit, deferred, r.Targets == VkTargets.Glow)]!;
             bool blend = AlloyClasses.Blends(cls) && !r.Interior;
             int blendKey = blend && r.Oit != VkOitPart.Accum ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];
@@ -533,6 +546,13 @@ public sealed unsafe partial class AlloyRenderer
             if (!r.Interior) Counters._drawsByClass[cls] += _gLen[g];
         }
         return true;
+    }
+
+    /// <summary>The colour program a batch with no content pair draws through: the glow layer's twin there.</summary>
+    private static VkPrograms.Id VkPlainProgram(bool lit, bool deferred, bool glow)
+    {
+        VkPrograms.Id id = lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright;
+        return glow ? VkPrograms.Glow(id) : id;
     }
 
     /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror.</summary>

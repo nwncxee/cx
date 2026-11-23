@@ -17,11 +17,19 @@ internal static class VkPrograms
     /// that pass down rather than failing the frame.</summary>
     internal enum Id
     {
-        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, SkyDome, Decal, Water, HighlightMask, Motion, Grass,
+        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, FullbrightGlow, LitGlow, SkyDome, Decal, Water, HighlightMask, Motion, Grass,
         GrassBlade, GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
     }
 
-    internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat, Id.SkyDome];
+    /// <summary>The define a glow-layer twin compiles under.</summary>
+    private const string GlowWrite = "CX_GLOW_WRITE 1";
+
+    internal static readonly Id[] All =
+        [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat, Id.FullbrightGlow, Id.LitGlow, Id.SkyDome];
+
+    /// <summary>The glow-layer twin of a colour program: the additive class draws through it into the 8-bit
+    /// display-space layer.</summary>
+    internal static Id Glow(Id id) => id == Id.Fullbright ? Id.FullbrightGlow : Id.LitGlow;
 
     /// <summary>The binding each sampler these stages declare without a <c>layout(binding)</c> takes -- the one
     /// table for them: a declaration it does not name is a translation error, not a silent unit 0.</summary>
@@ -78,7 +86,7 @@ internal static class VkPrograms
         string what = $"VkPrograms {id}";
         switch (id)
         {
-            case Id.Fullbright or Id.SkyDome:
+            case Id.Fullbright or Id.FullbrightGlow or Id.SkyDome:
             {
                 ShaderTexts.Pair(AlloyRenderer.ShdFullbrightVs, ShaderStages.Source(AlloyRenderer.ShdFullbrightVs),
                                 AlloyRenderer.ShdFullbrightFs, ShaderStages.Source(AlloyRenderer.ShdFullbrightFs),
@@ -86,14 +94,16 @@ internal static class VkPrograms
                 // The world's unlit class samples its diffuse by handle, so one multidraw spans every texture in
                 // it. The sky dome does not: its records live in the reserved block, which carries no handle row,
                 // so its own program keeps the bound declaration and takes the unit the pass binds.
-                if (id == Id.Fullbright) f = AlloyRenderer.BindlessFs(v, f);
+                if (id != Id.SkyDome) f = AlloyRenderer.BindlessFs(v, f);
+                if (id == Id.FullbrightGlow) f = ShaderStages.WithDefine(f, GlowWrite);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
-            case Id.Lit or Id.LitDeferred or Id.Decal:
+            case Id.Lit or Id.LitDeferred or Id.LitGlow or Id.Decal:
             {
                 (string v, string f) = LitTexts(log, what);
                 if (id == Id.LitDeferred) f = Programs.WithDeferred(f);
                 else if (id == Id.Decal) f = ShaderStages.WithDefine(f, "CX_DECAL_WRITE 1");
+                else if (id == Id.LitGlow) f = ShaderStages.WithDefine(f, GlowWrite);
                 return (Final(v, log, what, false), Final(f, log, what, false));
             }
             case Id.Water:
@@ -141,7 +151,7 @@ internal static class VkPrograms
 
     /// <summary>Does program <paramref name="id"/> draw wash batches, and so take <see cref="WorldDepth.Pull"/>? The
     /// colour phase's programs and the highlight mask, which tests against their depth; the prepass pushes no pull.</summary>
-    internal static bool Pulled(Id id) => id is Id.Fullbright or Id.Lit or Id.LitDeferred or Id.HighlightMask;
+    internal static bool Pulled(Id id) => id is Id.Fullbright or Id.Lit or Id.LitDeferred or Id.FullbrightGlow or Id.LitGlow or Id.HighlightMask;
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
     /// its GL program compiled (library swaps, then the hosted splice); null when that variant is not built on GL.</summary>
@@ -239,7 +249,7 @@ internal static class VkPrograms
 
     /// <summary>The programs whose vertex stage takes the wash's pull, written out from the spec: those that draw a
     /// wash's colour, and the highlight mask that tests against its depth.</summary>
-    private static readonly Id[] PulledIds = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.HighlightMask];
+    private static readonly Id[] PulledIds = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.FullbrightGlow, Id.LitGlow, Id.HighlightMask];
 
     /// <summary>Every program here, translated and compiled for Vulkan 1.3, its loose block reflected. Oracles:
     /// shaderc's verdict on each stage; the push block's offsets against the hand-written 0, 4 .. 28 its eight
@@ -254,11 +264,13 @@ internal static class VkPrograms
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
         if (!staged) { check.Skip("the staged shaderc did not load"); return; }
         var counts = new List<string>();
+        var frags = new Dictionary<Id, byte[]>();
         foreach (Id id in Enum.GetValues<Id>())
         {
             VkProgramText t = Text(id, log);
             var spirv = new Dictionary<ShaderKind, byte[]>();
             if (!VkGlsl.Compiles(check, $"VkPrograms {id}", t, spirv)) continue;
+            frags[id] = spirv[ShaderKind.FragmentShader];
             bool pulled = Array.IndexOf(PulledIds, id) >= 0;
             check.Expect(t.Vs.Contains("cxPullMain();", StringComparison.Ordinal) == pulled,
                 $"{id}'s vertex stage {(pulled ? "is" : "is not")} pulled toward the eye");
@@ -292,6 +304,14 @@ internal static class VkPrograms
                 foreach (VkOpaque b in t.Opaques)
                     check.Expect(!(a.Set == b.Set && a.Binding == b.Binding && a.Kind == b.Kind && a.Type != b.Type),
                         $"{id}: {a.Name} ({a.Type}) and {b.Name} ({b.Type}) share binding {a.Binding} with different types");
+        }
+        foreach (Id plain in (ReadOnlySpan<Id>)[Id.Fullbright, Id.Lit])
+        {
+            // Given a colour program and its glow-layer twin
+            // When both are compiled
+            // Then the twin's fragment stage differs: its colour goes out in display space, not linear
+            check.Expect(frags.TryGetValue(plain, out byte[]? a) && frags.TryGetValue(Glow(plain), out byte[]? g)
+                         && !a.AsSpan().SequenceEqual(g), $"{Glow(plain)} compiles to a fragment stage of its own, apart from {plain}'s");
         }
         ContentVariants(check, log);
         log.Info(check.Ok ? $"VkPrograms.SelfCheck: passed -- loose members {string.Join(", ", counts)}" : "VkPrograms.SelfCheck: FAILED");
