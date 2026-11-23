@@ -310,13 +310,14 @@ internal static unsafe partial class TexRegistry
                 return TexId.Make(hit, _gen[hit] & 0xFFF);
             }
             int i;
+            if (_freeHead < 0 && _high >= MaxSlots && _idleHead >= 0) Retire(_idleHead);
             if (_freeHead >= 0) { i = _freeHead; _freeHead = _freeNext[i]; }
             else if (_high < MaxSlots) i = _high++;
             else
             {
                 _full++;
                 if (LoudOnce("slots"))
-                    _log?.Always($"TexRegistry: the {MaxSlots}-slot table is FULL -- \"{resref}\" draws the white "
+                    _log?.Always($"TexRegistry: the {MaxSlots}-slot table is FULL of textures in use -- \"{resref}\" draws the white "
                         + "stand-in. Every texture past this one does too until something is evicted");
                 return default;
             }
