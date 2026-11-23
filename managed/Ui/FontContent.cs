@@ -5,8 +5,9 @@ using CX.Services.NuiItems;
 
 namespace CX.Ui;
 
-/// <summary>The engine half of the fonts a hak, the module or NWSync supply: every <c>.ttf</c> resource of that content,
-/// read again whenever it changes and handed to <see cref="FontRegistry.UseContent"/>. Main thread, outside any resman hook.</summary>
+/// <summary>The engine half of the fonts the game's own data, a hak, the module or NWSync supply: every <c>.ttf</c>
+/// resource, read again whenever the content changes and handed to <see cref="FontRegistry.UseContent"/>. Main thread,
+/// outside any resman hook.</summary>
 internal static class FontContent
 {
     private sealed class ScanState { public long Key = long.MinValue; }
@@ -22,11 +23,11 @@ internal static class FontContent
         var found = new List<(string, FontSource, byte[])>();
         int left = 0;
         foreach (string resref in CX.Alloy.ResLocate.OfType(NuiSkinFontLoad.TtfResType))
-            if (NuiSkinFontLoad.Read(resref, NuiSkinFontLoad.TtfResType, out byte[]? b, out _, serverOnly: true)) found.Add((resref, FontSource.Server, b!));
+            if (NuiSkinFontLoad.Read(resref, NuiSkinFontLoad.TtfResType, out byte[]? b, out _, out FontSource source)) found.Add((resref, source, b!));
             else left++;
         FontCatalog content = FontCatalog.FromContent(found);
         FontRegistry.UseContent(content);
-        KnobGroup.Log?.Info($"FontContent: {found.Count} .ttf from a hak, the module or NWSync ({left} other left out); families: {string.Join(", ", content.Families)}");
+        KnobGroup.Log?.Info($"FontContent: {found.Count} .ttf read ({left} unreadable); game's: {string.Join(", ", content.GameFamilies)}; families: {string.Join(", ", content.Families)}");
         UiHostService.ApplyTypeface();
         TextRig.Refont();
     }

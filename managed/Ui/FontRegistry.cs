@@ -65,8 +65,8 @@ public static class FontRegistry
     /// <summary>Every declared name, default first.</summary>
     public static IEnumerable<Entry> All { get { lock (_entries) return _entries.Values.OrderBy(e => e.Name != DefaultName).ThenBy(e => e.Name).ToArray(); } }
 
-    /// <summary>The <c>ui.typeface</c> choices: <c>default</c>, then every cfg-declared name and every installed family,
-    /// sorted; a cfg name shadows an installed one of the same name. Built once, before the knob binds.</summary>
+    /// <summary>The <c>ui.typeface</c> choices: <c>default</c>, then the base game's own families, sorted, then every other
+    /// cfg-declared name and family, sorted; a cfg name shadows a family of the same name. Rebuilt whenever the fonts change.</summary>
     public static string[] Names
     {
         get
@@ -79,11 +79,10 @@ public static class FontRegistry
                 if (n.Length > 0 && !n.Equals(DefaultName, StringComparison.OrdinalIgnoreCase) && !n.Equals(EmbeddedName, StringComparison.OrdinalIgnoreCase)
                     && Resolve(path) != null) set.Add(n);   // a declared file that is not there is no choice
             }
-            foreach (string n in Catalog().Families) set.Add(n);
-            var names = new string[set.Count + 1];
-            names[0] = DefaultName;
-            set.CopyTo(names, 1);
-            return _names = names;
+            FontCatalog fonts = Catalog();
+            foreach (string n in fonts.Families) set.Add(n);
+            string[] game = fonts.GameFamilies.Where(set.Remove).ToArray();
+            return _names = game.Prepend(DefaultName).Concat(set).ToArray();
         }
     }
 

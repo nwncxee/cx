@@ -216,7 +216,9 @@ A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending
 
 Every `.ttf` a hak, the module or NWSync supplies joins the client's Typeface lists while that content is loaded,
 listed under the family name its own name table gives (never its resref), beside the fonts installed on the machine.
-A loose file in `override/` and the base game's own fonts are not listed. A family you ship in several files (a
+The base game's own `.ttf` fonts (Neverwinter Nights EE Default, NWN_Main_Text, JetBrains Mono and the rest) are
+listed too, at the top of every list under `default`; a family your content ships under one of their names replaces
+the game's files and keeps that place. A loose file in `override/` is not listed. A family you ship in several files (a
 regular, a bold, an italic) takes the weight and style rows the way an installed family does, by the nearest weight;
 a family of one file draws that file as it is, whatever weight or style is asked. Your family wins over an installed
 one of the same name.

@@ -34,8 +34,9 @@ public sealed class FontCatalog
     private readonly Dictionary<string, List<Face>> _families = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Face> _byFullName;
 
-    private FontCatalog(List<Face> faces, Dictionary<string, Face> byFullName)
+    private FontCatalog(List<Face> faces, Dictionary<string, Face> byFullName, string[]? gameFamilies = null)
     {
+        GameFamilies = gameFamilies ?? Array.Empty<string>();
         _faces = faces;
         foreach (Face f in faces)
         {
@@ -48,6 +49,9 @@ public sealed class FontCatalog
 
     /// <summary>Every family, sorted, each once.</summary>
     public string[] Families { get; }
+
+    /// <summary>The families the base game's own data supplies, sorted: the top of every Typeface list.</summary>
+    public string[] GameFamilies { get; }
 
     /// <summary>True when <paramref name="family"/> is a family of this catalog.</summary>
     public bool Holds(string family) => _families.ContainsKey(family);
@@ -97,15 +101,23 @@ public sealed class FontCatalog
             }
     }
 
-    /// <summary>The fonts of the loaded module's content: each resource a hak, the module or NWSync supplies
-    /// (<see cref="FontSource.Server"/>), read from its own bytes; a loose override file or the base game's own is left out.</summary>
+    /// <summary>The fonts of the game's own data and the loaded module's content, each read from its own bytes; a loose
+    /// override file is left out, and a family a hak, the module or NWSync supplies draws from that content alone.</summary>
     public static FontCatalog FromContent(IEnumerable<(string ResRef, FontSource Source, byte[] Bytes)> resources)
     {
-        var faces = new List<Face>();
+        var game = new List<Face>();
+        var server = new List<Face>();
         var byFull = new Dictionary<string, Face>(StringComparer.OrdinalIgnoreCase);
+        var gameFull = new Dictionary<string, Face>(StringComparer.OrdinalIgnoreCase);
         foreach ((string resref, FontSource source, byte[] bytes) in resources)
-            if (source == FontSource.Server) Add(faces, byFull, resref + ".ttf", bytes, keep: true);
-        return new FontCatalog(faces, byFull);
+            if (source == FontSource.Server) Add(server, byFull, resref + ".ttf", bytes, keep: true);
+            else if (source == FontSource.Game) Add(game, gameFull, resref + ".ttf", bytes, keep: true);
+        var served = new HashSet<string>(server.Select(f => f.Family), StringComparer.OrdinalIgnoreCase);
+        var faces = new List<Face>(server);
+        faces.AddRange(game.Where(f => !served.Contains(f.Family)));
+        foreach (var (name, f) in gameFull) byFull.TryAdd(name, f);
+        string[] gameFamilies = game.Select(f => f.Family).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        return new FontCatalog(faces, byFull, gameFamilies);
     }
 
     /// <summary>This catalog laid over <paramref name="under"/>: a family both hold is this one's alone.</summary>
@@ -115,7 +127,7 @@ public sealed class FontCatalog
         faces.AddRange(under._faces.Where(f => !_families.ContainsKey(f.Family)));
         var byFull = new Dictionary<string, Face>(_byFullName, StringComparer.OrdinalIgnoreCase);
         foreach (var (name, f) in under._byFullName) byFull.TryAdd(name, f);
-        return new FontCatalog(faces, byFull);
+        return new FontCatalog(faces, byFull, GameFamilies);
     }
 
     /// <summary>The family a font belongs to: its typographic family name (id 16, else 1), plus its width when the
