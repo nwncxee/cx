@@ -242,6 +242,7 @@ public sealed unsafe partial class ChatService
         else { ParkDraft(); Edit.Clear(); }
         _typingTab = null;
         IsTyping = false;
+        if (_layout != null) foreach (ChatWindow w in _layout.Windows) w.ChannelListOpen = false;
         // After the send, like vanilla's HandleEnter (ParseChatString, then the unfocus event). Cancel
         // paths (Esc, focus loss, a window losing its sendable channel) all funnel here too, so the
         // server never keeps a stuck "typing" state -- the same three cases vanilla covers.
@@ -350,6 +351,7 @@ public sealed unsafe partial class ChatService
                 Rebuild(); return;
             }
         }
+        if (key == KeyEsc && _focused is { ChannelListOpen: true } open) { open.ChannelListOpen = false; Rebuild(); return; }
         bool words = ctrl && ChatKnobs.DelWord.V;
         switch (key)
         {

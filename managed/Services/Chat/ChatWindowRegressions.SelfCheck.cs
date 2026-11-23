@@ -195,6 +195,32 @@ internal static class ChatWindowRegressions
             finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
         }
 
+        // Given a chat window typing with its channel list open
+        // When chat stops typing some other way than Esc on the list, such as a click away
+        // Then the list closes with it, so the window leaves the popup band
+        {
+            bool inGame = GameGate.InGame, typing = ChatService.IsTyping;
+            ChatLayout? was = ChatService.UseLayout(null);
+            try
+            {
+                UiHost.Alone(() =>
+                {
+                    var m = new ChatWindow(100f, 500f, 400f, 300f, new[] { new Tab("Local", 0x00D) }) { FooterVisible = true };
+                    m.ClampSendChannel();
+                    m.MouseDown(105f, 777f);
+                    ChatService.UseLayout(new ChatLayout(m));
+                    GameGate.InGame = true;
+                    CX.Ui.Window below = ChatService.NewWindow();
+                    ChatService.IsTyping = true;
+                    bool opened = m.ChannelListOpen;
+                    ChatService.CloseChat(false);
+                    check.Expect(opened && !m.ChannelListOpen && below.Band == UiLayer.BelowNui,
+                        $"closing chat closes its channel list: opened {opened}, open {m.ChannelListOpen}, band {below.Band}");
+                });
+            }
+            finally { ChatService.UseLayout(was); GameGate.InGame = inGame; ChatService.IsTyping = typing; }
+        }
+
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");
     }
 }
