@@ -121,9 +121,7 @@ public sealed unsafe class UiInputService : IExtenderService
         // Precedence: a window (keyboard owner or selective modal) eats it -> don't run the engine original.
         // Unless a NUI edit box has focus: NUI draws over us and runs its own SDL pump, so a key routed to our
         // keyboard owner as well would land in BOTH fields at once.
-        if (!NuiEditFocused() && UiHost.DispatchKey(key, mods)) return 0;
-        // Then a game edit box's selection keys (ui.textedit), ahead of the engine's own handling of the same key.
-        if (!NuiEditFocused() && CX.Alloy.Db.EditSelect.OnKey(key, mods)) return 0;
+        if (RouteKeyDown(key, mods, NuiEditFocused())) return 0;
         // Chord layer: only on the fresh press (auto-repeat gate), and only when the gate is clear.
         bool fresh = _keysDown.Add(key);
         if (fresh && ChordGateClear()) UiHost.FireChords(key, mods);
@@ -150,19 +148,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     if (WindowNotes.Of(((SdlEvent*)ev)->WindowKind) is { } note) _log?.Always($"window: {note}");
                     break;
                 case SdlKeyDown:
-                    // A carried item is what Escape abandons: the gesture eats the key so it cannot also open
-                    // the engine's menu behind the drop the player just called off.
-                    if (((SdlEvent*)ev)->SymU == SdlEscape && CX.Services.NuiItems.ItemDragService.Dragging)
-                    {
-                        CX.Services.NuiItems.ItemDragService.OnCancel();
-                        return 0;
-                    }
-                    // Swallow a modal window's key HERE, before CExoInput::AddEvent queues the scancode keybind
-                    // (it runs pre-HandleWMKeyDown with no modifier check). Only when no full owner is typing
-                    // (an owner suppresses keybinds via the keyboard-mode gate). Keyups still pass -> no stuck key.
-                    if (!UiHost.AnyKeyboardOwner
-                        && UiHost.DispatchKeyPumpSwallow(((SdlEvent*)ev)->SymU, RawMods()))
-                        return 0;
+                    if (PumpKeyDown(((SdlEvent*)ev)->SymU, RawMods())) return 0;
                     break;
                 case SdlKeyUp:
                     _keysDown.Remove(((SdlEvent*)ev)->SymU);
@@ -180,7 +166,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     CX.Services.NuiItems.ItemDragService.OnMotion(mx, my);   // a held press turns into a drag once the pointer travels
                     CX.Services.NuiItems.ItemMenuService.OnPointer(mx, my);   // a menu.open=pointer opens here
-                    if (UiHost.HoverToFocus) HoverMoved(mx, my, NuiHovered());
+                    if (UiHost.HoverToFocus) HoverMoved(mx, my, new AtPointer(GuiPressMask));
                     if (UiHost.DispatchMouseMotion(mx, my))
                     {
                         // Swallowing motion (a settings panel open, a drag in progress) starves nuklear's own
@@ -200,7 +186,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     bool ours = MenuWindowAt(mx, my);
                     if (KeyDiag)
                         _log?.Info($"[keydiag] mouse btn={btn} at ({mx},{my}) owner={UiHost.AnyKeyboardOwner} kbmode={KeyboardModeActive()} gui=0x{gui:x} ({GuiTag(gui)}) menuOurs={ours}");
-                    PointerOutcome press = RoutePress(btn, mx, my, new PointerUnder(NuiHovered(), gui != IntPtr.Zero, ours));
+                    PointerOutcome press = RoutePress(btn, mx, my, new PressUnder(gui != IntPtr.Zero, ours));
                     if (press == PointerOutcome.Taken) return 0;
                     if (press == PointerOutcome.Unclaimed && ChordGateClear()) UiHost.FireMouseChords(btn, RawMods());
                     break;
@@ -217,8 +203,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseWheel:
                 {
                     Pointer(out float x, out float y);
-                    var under = new PointerUnder(NuiHovered(), VanillaGuiAt(GuiWheelMask) != IntPtr.Zero, MenuWindowUnderPointer());
-                    if (RouteWheel(((SdlEvent*)ev)->WheelY, x, y, under) == PointerOutcome.Taken) return 0;
+                    if (RouteWheel(((SdlEvent*)ev)->WheelY, x, y, new AtPointer(GuiWheelMask)) == PointerOutcome.Taken) return 0;
                     break;
                 }
             }
@@ -226,16 +211,57 @@ public sealed unsafe class UiInputService : IExtenderService
         return _winMsg != null ? (*_winMsg)(ev) : 0;
     }
 
-    /// <summary>What the engine's probes find under the pointer at a press or a wheel notch: a NUI window, a stock GUI
-    /// object, and whether the gear surface's exemption hands the point to a CX window.</summary>
-    internal readonly record struct PointerUnder(bool Nui, bool Gui, bool MenuOurs);
+    /// <summary>The pump's key-down step, ahead of <c>CExoInput::AddEvent</c> queueing the scancode keybind: Esc drops a
+    /// carried item, then a modal window swallows its key while no keyboard owner is typing. True when the key stops here.</summary>
+    internal static bool PumpKeyDown(uint key, int mods)
+    {
+        if (key == SdlEscape && CX.Services.NuiItems.ItemDragService.Dragging)
+        {
+            CX.Services.NuiItems.ItemDragService.OnCancel();
+            return true;
+        }
+        return !UiHost.AnyKeyboardOwner && UiHost.DispatchKeyPumpSwallow(key, mods);
+    }
+
+    /// <summary>The key-down step at <c>HandleWMKeyDownMessage</c>: CX's windows, then a game edit box's selection keys,
+    /// none of it while a NUI edit box (<paramref name="nuiEdit"/>) has the key. True when CX took it from the engine.</summary>
+    internal static bool RouteKeyDown(uint key, int mods, bool nuiEdit)
+        => !nuiEdit && (UiHost.DispatchKey(key, mods) || CX.Alloy.Db.EditSelect.OnKey(key, mods));
+
+    /// <summary>What the engine's probes find under the pointer at a press, a wheel notch or a motion: a NUI window, a
+    /// stock GUI object, and whether the gear surface's exemption hands the point to a CX window. Each is read when asked.</summary>
+    internal interface IPointerUnder
+    {
+        bool Nui { get; }
+        bool Gui { get; }
+        bool MenuOurs { get; }
+    }
+
+    /// <summary>The probes' answers, settled in advance.</summary>
+    internal readonly record struct PointerUnder(bool Nui, bool Gui, bool MenuOurs) : IPointerUnder;
+
+    /// <summary>A press: the stock GUI and the gear exemption probed before the route, NUI asked only when the route reaches it.</summary>
+    private readonly struct PressUnder(bool gui, bool ours) : IPointerUnder
+    {
+        public bool Nui => NuiHovered();
+        public bool Gui => gui;
+        public bool MenuOurs => ours;
+    }
+
+    /// <summary>Every probe asked at SDL's pointer when the route reaches it, the stock GUI through <paramref name="mask"/>.</summary>
+    private readonly struct AtPointer(int mask) : IPointerUnder
+    {
+        public bool Nui => NuiHovered();
+        public bool Gui => VanillaGuiAt(mask) != IntPtr.Zero;
+        public bool MenuOurs => MenuWindowUnderPointer();
+    }
 
     /// <summary>Where a press or a wheel notch ended: taken on CX's side, left to the engine, or claimed by no one.</summary>
     internal enum PointerOutcome { Taken, Engine, Unclaimed }
 
     /// <summary>The press decision the pump makes: CX windows ahead of the GUI yield first, then NUI or a stock GUI object
     /// beneath, then CX's windows. A press left to the engine blurs CX's focus, since it is a click elsewhere.</summary>
-    internal static PointerOutcome RoutePress(byte btn, int mx, int my, in PointerUnder under)
+    internal static PointerOutcome RoutePress<T>(byte btn, int mx, int my, in T under) where T : struct, IPointerUnder
     {
         bool cxOver = UiHost.OverGuiAt(mx, my);
         if (UiHost.DispatchMouseButton(true, btn, mx, my, captureOnly: true)) return PointerOutcome.Taken;
@@ -253,7 +279,7 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary>The wheel decision the pump makes at SDL's pointer: CX windows ahead of the GUI yield, a NUI model view,
     /// NUI or a stock GUI object beneath, then CX's windows.</summary>
-    internal static PointerOutcome RouteWheel(int dy, float x, float y, in PointerUnder under)
+    internal static PointerOutcome RouteWheel<T>(int dy, float x, float y, in T under) where T : struct, IPointerUnder
     {
         if (UiHost.DispatchMouseWheel(dy, captureOnly: true, x, y)) return PointerOutcome.Taken;
         if (under.Nui && CX.Services.Nui.NuiModelView.OnWheel(dy)) return PointerOutcome.Taken;
@@ -261,8 +287,8 @@ public sealed unsafe class UiInputService : IExtenderService
         return UiHost.DispatchMouseWheel(dy) ? PointerOutcome.Taken : PointerOutcome.Unclaimed;
     }
 
-    /// <summary>The pointer moved with hover-to-focus on; <paramref name="nui"/> is whether a NUI window is under it.</summary>
-    internal static void HoverMoved(int mx, int my, bool nui) => UiHost.HoverFocusAt(mx, my);
+    /// <summary>The pointer moved with hover-to-focus on, over what <paramref name="under"/> finds there.</summary>
+    internal static void HoverMoved<T>(int mx, int my, in T under) where T : struct, IPointerUnder => UiHost.HoverFocusAt(mx, my);
 
     // ---- focus edges ----------------------------------------------------------------------------
     // self is CClientExoApp* -- cache it so the player resolver can walk to the live in-game GUI.
@@ -337,9 +363,10 @@ public sealed unsafe class UiInputService : IExtenderService
         return new string(new[] { (char)((t >> 24) & 0xff), (char)((t >> 16) & 0xff), (char)((t >> 8) & 0xff), (char)(t & 0xff) });
     }
 
-    /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
-    private const byte SdlButtonLeft = 1;  // not-an-offset: SDL_BUTTON_LEFT
+    /// <summary>The button SDL reports a left press as: the one a press over NUI hands NUI's own press handlers.</summary>
+    internal const byte SdlButtonLeft = 1;  // not-an-offset: SDL_BUTTON_LEFT
     private const uint SdlEscape = 0x1B;   // not-an-offset: SDL key code
+    /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
     private const int GuiPressMask = 1, GuiWheelMask = 8;
 
     /// <summary>Would the ENGINE's GUI take a press right now -- a NUI window under the pointer or a vanilla GUI

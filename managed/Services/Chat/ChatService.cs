@@ -26,7 +26,10 @@ public sealed unsafe partial class ChatService : IExtenderService
 
     /// <summary>The keyboard is wanted by chat typing OR an inline settings-field edit. HotkeyInputService
     /// routes keys/text into ChatService and suppresses gameplay hotkeys whenever this is true.</summary>
-    public static bool WantsKey => IsTyping || _settings.Editing;
+    public static bool WantsKey => Owns(IsTyping, _settings);
+
+    /// <summary>Chat owns the keyboard while the player types or a field of the gear panel <paramref name="settings"/> is edited.</summary>
+    private static bool Owns(bool typing, SettingsWindow settings) => typing || settings.Editing;
 
     /// <summary>The chat master, as it booted (<c>chat.enabled</c>, a Restart row -- ADR 0025). Off, the chatbox
     /// installs nothing: no tap, render, input capture or suppression, so the stock chat window runs untouched

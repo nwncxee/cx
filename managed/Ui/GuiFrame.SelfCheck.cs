@@ -10,16 +10,10 @@ namespace CX.Ui;
 /// before plates moved under the game's panels: plain regression tests, the examples E2 and E6 among them.</summary>
 internal static class GuiFrameSelfCheck
 {
-    /// <summary>Appends a letter per thing drawn: Q then E for the game's quickbar and its Examine window, the
-    /// order the engine lists those panels in, N for NUI, O then M for the game's overlay and its cursor, and
-    /// whatever each CX window on a layer appends.</summary>
-    private readonly struct LetterSink(StringBuilder drawn) : IGuiFrameSink
-    {
-        public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
-        public bool Panels() { drawn.Append("QE"); return true; }
-        public bool Nui() { drawn.Append('N'); return true; }
-        public bool Overlays() { drawn.Append("OM"); return true; }
-    }
+    /// <summary>Q then E for the game's quickbar and its Examine window, the order the engine lists those panels in.</summary>
+    private const string Panels = "QE";
+    /// <summary>O then M for the game's overlay and its cursor.</summary>
+    private const string Overlays = "OM";
 
     /// <summary>A frame with the two world-anchored windows the services make (p = nameplates and chat bubbles,
     /// d = damage numbers), a CX chat box (c) and a hover card over NUI (u), each drawing its letter.</summary>
@@ -33,7 +27,7 @@ internal static class GuiFrameSelfCheck
             p.DrawContent = () => drawn.Append('p');
             _ = new Window(0, 0, 100, 100) { DrawContent = () => drawn.Append('c') };
             _ = new Window(0, 0, 50, 50) { Layer = UiLayer.AboveNui, DrawContent = () => drawn.Append('u') };
-            GuiFrame.Draw(new LetterSink(drawn), true);
+            FrameLetters.Alloy(drawn, Panels, Overlays);
         });
         return drawn.ToString();
     }

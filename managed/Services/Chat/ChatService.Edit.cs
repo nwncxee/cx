@@ -305,9 +305,9 @@ public sealed unsafe partial class ChatService
         return true;
     }
 
-    /// <summary>Whether chat's window takes <paramref name="key"/>: while the player types, or while a field of the
-    /// gear panel <paramref name="settings"/> is edited.</summary>
-    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings) => typing || settings.Editing;
+    /// <summary>Whether chat's window takes <paramref name="key"/>: while chat owns the keyboard, as <see cref="WantsKey"/>
+    /// says with <paramref name="typing"/> and the gear panel <paramref name="settings"/>.</summary>
+    internal static bool TakesKey(uint key, bool typing, SettingsWindow settings) => Owns(typing, settings);
 
     /// <summary>Dispatch a control/nav key to the edit line while the box owns the keyboard.</summary>
     public static void RouteKey(uint key, int mods)

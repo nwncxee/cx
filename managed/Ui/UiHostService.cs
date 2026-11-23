@@ -257,8 +257,12 @@ public sealed unsafe class UiHostService : IExtenderService
     /// <summary>The Alloy-off frame's steps on the engine's context: CX's layers drawn at once, NUI the chain's rest.</summary>
     private readonly struct NkSink(float aa) : INkFrameSink
     {
+        /// <summary>Nothing: the engine drew its panels before it reached nuklear's flush.</summary>
+        public void Panels() { }
         public void Windows(UiLayer from, UiLayer to) => DrawWindows(from, to);
         public void Nui() => (*_nkSlot)(aa);
+        /// <summary>Nothing: the engine draws its overlay scenes after nuklear's flush returns.</summary>
+        public void Overlays() { }
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
