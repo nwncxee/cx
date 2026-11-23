@@ -72,18 +72,23 @@ public sealed unsafe partial class InventoryService : IExtenderService
     }
 
     /// <summary>The framework Window the inventory draws in: its routed input, withheld while an engine modal is up.</summary>
-    internal static Window NewWindow() => new(0, 0, 0, 0)
+    internal static Window NewWindow() => NewWindow(_inv);
+
+    /// <summary>The framework Window for the inventory model <paramref name="inv"/>; the service's own is
+    /// <see cref="NewWindow()"/>. Esc closes its rect while it is open.</summary>
+    internal static Window NewWindow(InventoryWindow inv) => new(0, 0, 0, 0)
     {
         Focusable = false,
         CapturesPointer = true,
         RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = Draw,
-        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
-        OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
-        OnMouseWheel = dy => !Native.ModalPanelUp() && Input(_inv.MouseWheel(dy)),
-        OnKey = (key, mods) => !Native.ModalPanelUp() && Input(_inv.Key(key, mods)),
-        OnText = p => { _inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
-        HitTestOverride = (px, py) => _inv.Contains(px, py) && !Native.ModalPanelUp(),
+        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+        OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(inv.MouseMove(x, y)),
+        OnMouseWheel = dy => !Native.ModalPanelUp() && Input(inv.MouseWheel(dy)),
+        OnKey = (key, mods) => !Native.ModalPanelUp() && Input(inv.Key(key, mods)),
+        OnText = p => { inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
+        HitTestOverride = (px, py) => inv.Contains(px, py) && !Native.ModalPanelUp(),
+        EscArea = () => inv.Open ? (inv.X, inv.Y, inv.W, inv.H) : null,
     };
 
     /// <summary>Knob hooks: a size / pages / search change re-lays out on the next frame.</summary>

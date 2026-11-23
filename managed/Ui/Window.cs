@@ -115,6 +115,10 @@ public sealed class Window
     /// thread by the cursor pick and on the input thread by focus routing.</summary>
     public Func<float, float, bool>? HitTestOverride;
 
+    /// <summary>The screen rect an Esc would close in this window, or null while Esc closes nothing here. A server NUI
+    /// window drawn over that rect from above is closed by Esc first. Null for a window Esc does not close.</summary>
+    public Func<(float X, float Y, float W, float H)?>? EscArea;
+
     /// <summary>Content-supplied cursor regions (absolute px). Mutated cold when content relayouts, read hot
     /// during cursor pick. Built-in grip/drag zones are derived from the rect, not stored here.</summary>
     public readonly List<HitRegion> Regions = new();

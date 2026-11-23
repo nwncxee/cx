@@ -213,7 +213,10 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary>The pump's key-down step, ahead of <c>CExoInput::AddEvent</c> queueing the scancode keybind: Esc drops a
     /// carried item, then a modal window swallows its key while no keyboard owner is typing. True when the key stops here.</summary>
-    internal static bool PumpKeyDown(uint key, int mods)
+    internal static bool PumpKeyDown(uint key, int mods) => PumpKeyDown(key, mods, new LiveEsc());
+
+    /// <summary><see cref="PumpKeyDown(uint, int)"/> with what an Esc finds read through <paramref name="under"/>.</summary>
+    internal static bool PumpKeyDown<T>(uint key, int mods, in T under) where T : struct, IEscUnder
     {
         if (key == SdlEscape && CX.Services.NuiItems.ItemDragService.Dragging)
         {
@@ -225,8 +228,38 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary>The key-down step at <c>HandleWMKeyDownMessage</c>: CX's windows, then a game edit box's selection keys,
     /// none of it while a NUI edit box (<paramref name="nuiEdit"/>) has the key. True when CX took it from the engine.</summary>
-    internal static bool RouteKeyDown(uint key, int mods, bool nuiEdit)
+    internal static bool RouteKeyDown(uint key, int mods, bool nuiEdit) => RouteKeyDown(key, mods, nuiEdit, new LiveEsc());
+
+    /// <summary><see cref="RouteKeyDown(uint, int, bool)"/> with what an Esc finds read through <paramref name="under"/>.</summary>
+    internal static bool RouteKeyDown<T>(uint key, int mods, bool nuiEdit, in T under) where T : struct, IEscUnder
         => !nuiEdit && (UiHost.DispatchKey(key, mods) || CX.Alloy.Db.EditSelect.OnKey(key, mods));
+
+    /// <summary>What an Esc press finds on the engine's side: a stock modal panel up, a cutscene playing, and the
+    /// nuklear context whose NUI windows may draw over CX's. Each is read when asked.</summary>
+    internal interface IEscUnder
+    {
+        bool StockModal { get; }
+        bool Cutscene { get; }
+        IntPtr Nuklear { get; }
+    }
+
+    /// <summary>The engine's answers, settled in advance.</summary>
+    internal readonly record struct EscUnder(bool StockModal, bool Cutscene, IntPtr Nuklear) : IEscUnder;
+
+    /// <summary>The engine's answers, read from the live client.</summary>
+    private readonly struct LiveEsc : IEscUnder
+    {
+        public bool StockModal => Native.ModalPanelUp();
+        public bool Cutscene
+        {
+            get
+            {
+                IntPtr app = CX.Services.Camera.CameraService.App();
+                return app != IntPtr.Zero && new CClientExoApp(app).Internal.CutsceneMode != 0;
+            }
+        }
+        public IntPtr Nuklear => _nuklearGlobal != IntPtr.Zero ? *(IntPtr*)_nuklearGlobal : IntPtr.Zero;
+    }
 
     /// <summary>What the engine's probes find under the pointer at a press, a wheel notch or a motion: a NUI window, a
     /// stock GUI object, and whether the gear surface's exemption hands the point to a CX window. Each is read when asked.</summary>
