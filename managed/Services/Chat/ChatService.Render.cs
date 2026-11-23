@@ -38,18 +38,21 @@ public sealed unsafe partial class ChatService
         // input through the window's delegates. The chatbox owns many sub-windows internally (ChatLayout), so it
         // stays one framework Window with a hit-test override (its UI extends outside any single rect -- channel
         // lists) and self-manages focus; WantsKeyboard is driven via KeyboardMode -> RequestKeyboard.
-        _uiWindow = NewWindow();
+        _uiWindow = NewSurfaces().Below;
         UiHost.AddChordConsumer(new SlashChord());   // "/" opens a command line
         log.Info("ChatService: registered as a framework Window (content-draw + routed input), \"/\" opens a command line");
     }
 
-    /// <summary>The two framework Windows the chatbox draws and takes input through: one above NUI for the chat
-    /// windows set to draw there, registered first, and the one under NUI for the rest, which is returned.</summary>
-    internal static Window NewWindow()
+    /// <summary>Registers the two framework Windows the chatbox draws and takes input through: the one above NUI for
+    /// the chat windows set to draw there, first, and the one under NUI for the rest.</summary>
+    internal static (Window Below, Window Above) NewSurfaces()
     {
-        _ = Surface(true);
-        return Surface(false);
+        Window above = Surface(true);
+        return (Surface(false), above);
     }
+
+    /// <summary>The surface under NUI of a fresh <see cref="NewSurfaces"/> pair.</summary>
+    internal static Window NewWindow() => NewSurfaces().Below;
 
     /// <summary>The framework Window for the chat windows on <paramref name="above"/>'s side of NUI: their draw, routed
     /// input, hit-test and open lists. The settings panel goes with the focused window's side.</summary>

@@ -185,11 +185,9 @@ internal static class ChatWindowRegressions
                     m.MouseDown(105f, 777f);
                     ChatService.UseLayout(new ChatLayout(m));
                     GameGate.InGame = true;
-                    CX.Ui.Window below = ChatService.NewWindow();
-                    CX.Ui.Window? above = null;
-                    foreach (CX.Ui.Window w in UiHost.Windows) if (w != below) above = w;
-                    check.Expect(m.ChannelListOpen && below.Band == UiLayer.Popup && above is { Band: UiLayer.AboveNui },
-                        $"a list open under NUI lifts only the chatbox's under-NUI surface: below {below.Band}, above {above?.Band}");
+                    (CX.Ui.Window below, CX.Ui.Window above) = ChatService.NewSurfaces();
+                    check.Expect(m.ChannelListOpen && below.Band == UiLayer.Popup && above.Band == UiLayer.AboveNui,
+                        $"a list open under NUI lifts only the chatbox's under-NUI surface: below {below.Band}, above {above.Band}");
                 });
             }
             finally { ChatService.UseLayout(was); GameGate.InGame = inGame; }
@@ -210,7 +208,7 @@ internal static class ChatWindowRegressions
                     m.MouseDown(105f, 777f);
                     ChatService.UseLayout(new ChatLayout(m));
                     GameGate.InGame = true;
-                    CX.Ui.Window below = ChatService.NewWindow();
+                    CX.Ui.Window below = ChatService.NewSurfaces().Below;
                     ChatService.IsTyping = true;
                     bool opened = m.ChannelListOpen;
                     ChatService.CloseChat(false);
