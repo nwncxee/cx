@@ -51,9 +51,6 @@ public sealed unsafe partial class ChatService
         return (Surface(false), above);
     }
 
-    /// <summary>The surface under NUI of a fresh <see cref="NewSurfaces"/> pair.</summary>
-    internal static Window NewWindow() => NewSurfaces().Below;
-
     /// <summary>The framework Window for the chat windows on <paramref name="above"/>'s side of NUI: their draw, routed
     /// input, hit-test and open lists. The settings panel goes with the focused window's side.</summary>
     private static Window Surface(bool above) => new(0, 0, 0, 0)
