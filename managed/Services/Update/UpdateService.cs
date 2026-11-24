@@ -34,6 +34,14 @@ public sealed class UpdateService : IExtenderService
         return new UpdateAbout(k, notice, ReleaseKeyRow.Declare(about, allowedSigners, copy));
     }
 
+    /// <summary>The OpenSSL libraries .NET's TLS accepts on Linux, newest first.</summary>
+    internal static readonly string[] SslNames = ["libssl.so.3", "libssl.so.1.1"];
+
+    /// <summary>The fetch the notice asks through: <paramref name="fetch"/>, or on a Linux machine where no
+    /// <see cref="SslNames"/> library loads, one that answers nothing, since .NET aborts the process there.</summary>
+    internal static Func<string, byte[]?> Source(bool linux, Func<string, bool> tryLoad, Func<string, byte[]?> fetch, ExtenderLog log)
+        => fetch;
+
     /// <summary>The release keys built into this extender: <c>packaging/allowed_signers</c>, embedded.</summary>
     private static string AllowedSigners()
     {
