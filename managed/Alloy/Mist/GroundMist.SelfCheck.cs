@@ -16,33 +16,21 @@ internal static partial class GroundMistSelfCheck
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistSelfCheck.SelfCheck");
-        bool on = VolumetricFog.Enabled.V;
-        string detail = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Enabled.V = true;
-            VolumetricFog.Quality.V = "medium";
-            Floors(check);
-            Triangle(check);
-            Rise(check);
-            NewArea(check);
-            Frozen(check);
-            Kept(check);
-            Spread(check);
-            Walls(check);
-            Uploads(check);
-            Live(check);
-            Wind(check);
-            Parting(check);
-            Blasts(check);
-            Edges(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Quality.V = detail;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        Floors(check);
+        Triangle(check);
+        Rise(check);
+        NewArea(check);
+        Frozen(check);
+        Kept(check);
+        Spread(check);
+        Walls(check);
+        Uploads(check);
+        Live(check);
+        Wind(check);
+        Parting(check);
+        Blasts(check);
+        Edges(check);
         log.Info(check.Ok ? "GroundMistSelfCheck.SelfCheck: passed" : "GroundMistSelfCheck.SelfCheck: FAILED");
         return check.Ok;
     }

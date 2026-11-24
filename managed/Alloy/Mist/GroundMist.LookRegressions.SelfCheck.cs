@@ -16,26 +16,18 @@ internal static unsafe class GroundMistLookRegressions
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistLookRegressions.SelfCheck");
-        bool on = VolumetricFog.Enabled.V, mist = VolumetricFog.Mist.V;
-        string quality = VolumetricFog.Quality.V;
+        using var switches = MistFixture.Switches.Force();
         bool night = FrameInputs.Night, interior = FrameInputs.Interior, blind = FrameInputs.Blind, hasDif = FrameInputs.HasAreaDiffuse;
         Vector3 dif = FrameInputs.AreaDiffuse;
         try
         {
-            VolumetricFog.Quality.V = "medium";
-            VolumetricFog.Enabled.V = true;
-            VolumetricFog.Mist.V = true;
             NoFogNoMist(check);
             NoMoonIndoors(check);
         }
         finally
         {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Mist.V = mist;
-            VolumetricFog.Quality.V = quality;
             FrameInputs.Night = night; FrameInputs.Interior = interior; FrameInputs.Blind = blind;
             FrameInputs.HasAreaDiffuse = hasDif; FrameInputs.AreaDiffuse = dif;
-            GroundMist.Reset();
         }
         log.Info(check.Ok ? "GroundMistLookRegressions.SelfCheck: passed" : "GroundMistLookRegressions.SelfCheck: FAILED");
         return check.Ok;

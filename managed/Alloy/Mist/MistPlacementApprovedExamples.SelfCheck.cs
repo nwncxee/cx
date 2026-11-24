@@ -17,31 +17,19 @@ internal static class MistPlacementApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPlacementApprovedExamples.SelfCheck");
-        bool on = VolumetricFog.Enabled.V;
-        string quality = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Quality.V = "medium";
-            VolumetricFog.Enabled.V = true;
-            StockPlaceable(check);
-            HighEmitter(check);
-            AreaFloor(check);
-            NoFog(check);
-            NightFog(check);
-            Campfire(check);
-            HakMark(check);
-            MarkedOnly(check);
-            AnyCase(check);
-            Off(check);
-            TurnedOff(check);
-            AreaChange(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Quality.V = quality;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        StockPlaceable(check);
+        HighEmitter(check);
+        AreaFloor(check);
+        NoFog(check);
+        NightFog(check);
+        Campfire(check);
+        HakMark(check);
+        MarkedOnly(check);
+        AnyCase(check);
+        Off(check);
+        TurnedOff(check);
+        AreaChange(check);
         log.Info(check.Ok ? "MistPlacementApprovedExamples.SelfCheck: passed" : "MistPlacementApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }

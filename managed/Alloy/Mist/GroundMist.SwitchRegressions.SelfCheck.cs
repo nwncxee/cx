@@ -22,26 +22,36 @@ internal static unsafe class GroundMistSwitchRegressions
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistSwitchRegressions.SelfCheck");
-        bool on = VolumetricFog.Enabled.V, mist = VolumetricFog.Mist.V;
-        string quality = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Quality.V = "medium";
-            OnLays(check);
-            FogOffWins(check);
-            HazeStays(check);
-            RowFollows(check);
-            ChoiceKept(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Mist.V = mist;
-            VolumetricFog.Quality.V = quality;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        OnLays(check);
+        FogOffWins(check);
+        HazeStays(check);
+        RowFollows(check);
+        ChoiceKept(check);
+        PlayerOff(check);
         log.Info(check.Ok ? "GroundMistSwitchRegressions.SelfCheck: passed" : "GroundMistSwitchRegressions.SelfCheck: FAILED");
         return check.Ok;
+    }
+
+    /// <summary>A mist suite booting in a client whose player turned fog and mist off at Low detail runs with both on at
+    /// Medium, and leaves the player's choice as it found it.</summary>
+    private static void PlayerOff(Checker check)
+    {
+        VolumetricFog.Enabled.V = false;
+        VolumetricFog.Mist.V = false;
+        VolumetricFog.Quality.V = "low";
+        bool on, mist;
+        string quality;
+        using (MistFixture.Switches.Force())
+        {
+            on = VolumetricFog.Enabled.V;
+            mist = VolumetricFog.Mist.V;
+            quality = VolumetricFog.Quality.V;
+        }
+        check.Expect(on && mist && quality == "medium",
+            $"a suite under the player's fog off, mist off and low detail runs with fog {on}, mist {mist}, {quality} (want on, on, medium)");
+        check.Expect(!VolumetricFog.Enabled.V && !VolumetricFog.Mist.V && VolumetricFog.Quality.V == "low",
+            $"after the suite the player's switches read fog {VolumetricFog.Enabled.V}, mist {VolumetricFog.Mist.V}, {VolumetricFog.Quality.V} (want off, off, low)");
     }
 
     /// <summary>Does the fog stage draw mist, read from a first upload as a fresh fog pass takes it?</summary>

@@ -23,28 +23,20 @@ internal static unsafe class MistLookApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistLookApprovedExamples.SelfCheck");
-        bool on = VolumetricFog.Enabled.V, mist = VolumetricFog.Mist.V;
-        string quality = VolumetricFog.Quality.V;
+        using var switches = MistFixture.Switches.Force();
         bool fogOn = FrameInputs.FogOn, night = FrameInputs.Night, interior = FrameInputs.Interior, blind = FrameInputs.Blind;
         bool hasDif = FrameInputs.HasAreaDiffuse;
         Vector3 fogCol = FrameInputs.FogColor, dif = FrameInputs.AreaDiffuse;
         try
         {
-            VolumetricFog.Quality.V = "medium";
-            VolumetricFog.Enabled.V = true;
-            VolumetricFog.Mist.V = true;
             Deeper(check);
             Moonlit(check);
             VisibleTrail(check);
         }
         finally
         {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Mist.V = mist;
-            VolumetricFog.Quality.V = quality;
             FrameInputs.FogOn = fogOn; FrameInputs.Night = night; FrameInputs.Interior = interior; FrameInputs.Blind = blind;
             FrameInputs.HasAreaDiffuse = hasDif; FrameInputs.FogColor = fogCol; FrameInputs.AreaDiffuse = dif;
-            GroundMist.Reset();
         }
         log.Info(check.Ok ? "MistLookApprovedExamples.SelfCheck: passed" : "MistLookApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

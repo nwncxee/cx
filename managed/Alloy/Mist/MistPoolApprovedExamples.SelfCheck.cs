@@ -13,25 +13,13 @@ internal static class MistPoolApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPoolApprovedExamples.SelfCheck");
-        bool on = VolumetricFog.Enabled.V;
-        string quality = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Quality.V = "medium";
-            VolumetricFog.Enabled.V = true;
-            Slope(check);
-            Wall(check);
-            Pond(check);
-            Bridge(check);
-            LongWalk(check);
-            AreaRoundTrip(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Quality.V = quality;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        Slope(check);
+        Wall(check);
+        Pond(check);
+        Bridge(check);
+        LongWalk(check);
+        AreaRoundTrip(check);
         log.Info(check.Ok ? "MistPoolApprovedExamples.SelfCheck: passed" : "MistPoolApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }

@@ -17,23 +17,11 @@ internal static class MistSwitchApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistSwitchApprovedExamples.SelfCheck");
-        bool on = VolumetricFog.Enabled.V, mist = VolumetricFog.Mist.V;
-        string quality = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Quality.V = "medium";
-            OffLaysNone(check);
-            OffAtOnce(check);
-            BackOn(check);
-            ModelsFallBack(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Mist.V = mist;
-            VolumetricFog.Quality.V = quality;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        OffLaysNone(check);
+        OffAtOnce(check);
+        BackOn(check);
+        ModelsFallBack(check);
         log.Info(check.Ok ? "MistSwitchApprovedExamples.SelfCheck: passed" : "MistSwitchApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }

@@ -127,4 +127,32 @@ internal static class MistFixture
             }
         return mass > 0f ? at / mass : Vector2.Zero;
     }
+
+    /// <summary>The fog switches a mist suite runs under, whatever the player's cx.cfg holds: Volumetric fog and Ground
+    /// mist on at Medium detail. Disposing it puts the player's back and clears the mist.</summary>
+    internal readonly struct Switches : IDisposable
+    {
+        private readonly bool _on, _mist;
+        private readonly string _quality;
+
+        private Switches(bool on, bool mist, string quality) { _on = on; _mist = mist; _quality = quality; }
+
+        /// <summary>Saves the player's switches and turns fog and mist on at Medium.</summary>
+        internal static Switches Force()
+        {
+            var was = new Switches(VolumetricFog.Enabled.V, VolumetricFog.Mist.V, VolumetricFog.Quality.V);
+            VolumetricFog.Enabled.V = true;
+            VolumetricFog.Quality.V = "medium";
+            return was;
+        }
+
+        /// <summary>Puts the player's switches back and clears the mist the suite laid.</summary>
+        public void Dispose()
+        {
+            VolumetricFog.Enabled.V = _on;
+            VolumetricFog.Mist.V = _mist;
+            VolumetricFog.Quality.V = _quality;
+            GroundMist.Reset();
+        }
+    }
 }

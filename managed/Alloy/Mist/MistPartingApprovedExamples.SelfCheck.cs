@@ -18,23 +18,11 @@ internal static class MistPartingApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPartingApprovedExamples.SelfCheck");
-        bool on = VolumetricFog.Enabled.V;
-        string quality = VolumetricFog.Quality.V;
-        try
-        {
-            VolumetricFog.Quality.V = "medium";
-            VolumetricFog.Enabled.V = true;
-            PlayerPath(check);
-            Creature(check, 10f, true, "E3");
-            Creature(check, -10f, false, "E4");
-            FarCreature(check);
-        }
-        finally
-        {
-            VolumetricFog.Enabled.V = on;
-            VolumetricFog.Quality.V = quality;
-            GroundMist.Reset();
-        }
+        using var switches = MistFixture.Switches.Force();
+        PlayerPath(check);
+        Creature(check, 10f, true, "E3");
+        Creature(check, -10f, false, "E4");
+        FarCreature(check);
         log.Info(check.Ok ? "MistPartingApprovedExamples.SelfCheck: passed" : "MistPartingApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
