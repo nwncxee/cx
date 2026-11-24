@@ -48,11 +48,16 @@ internal static partial class GroundMistSelfCheck
         int side = GroundMist.Side, ox = (int)head.X, oy = (int)head.Y;
         Span<Vector2> row = cells.Slice(-oy * side, side);
         Vector2 ground = row[-ox], wall = row[4 - ox];
+        int hidden;
+        float shows;
         VolumetricFog.Enabled.V = false;
-        GroundMist.Step(Frame, Vector2.Zero);
-        int hidden = GroundMist.Pack(ref gen, into);
-        float shows = MemoryMarshal.Read<Vector4>(into).W;
-        VolumetricFog.Enabled.V = true;
+        try
+        {
+            GroundMist.Step(Frame, Vector2.Zero);
+            hidden = GroundMist.Pack(ref gen, into);
+            shows = MemoryMarshal.Read<Vector4>(into).W;
+        }
+        finally { VolumetricFog.Enabled.V = true; }
         check.Expect(sent == GroundMist.PackedBytes && head == new Vector4(GroundMist.CornerFor(0f), GroundMist.CornerFor(0f), side, 1f)
                 && ground == new Vector2(0f, AreaAmount * 0.1f) && wall.X < -1e8f && wall.Y == 0f && hidden == GroundMist.Head && shows == 0f,
             $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with fog off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
@@ -61,6 +66,7 @@ internal static partial class GroundMistSelfCheck
     /// <summary>At the lowest fog detail the mist lies still: a walker and a blast leave it as it was.</summary>
     private static void LowDetail(Checker check)
     {
+        string quality = VolumetricFog.Quality.V;
         VolumetricFog.Quality.V = VolumetricFog.Levels[0];
         try
         {
@@ -73,7 +79,7 @@ internal static partial class GroundMistSelfCheck
             check.Expect(parted == floor && blasted == floor,
                 $"at the lowest detail a walker leaves {parted:F4} m and a blast {blasted:F4} m of the {floor:F4} m floor (want it untouched)");
         }
-        finally { VolumetricFog.Quality.V = "medium"; }
+        finally { VolumetricFog.Quality.V = quality; }
     }
 
     /// <summary>A creature seated in a recycled record parts nothing on its first step, wherever the record's last tenant stood.</summary>
