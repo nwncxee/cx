@@ -1,0 +1,5 @@
+cx-update 1
+version v0.14.0
+change Shadows soften at dusk.
+change The chat window remembers its size.
+sha256 340d600392818df2413382dc7d8325c360d83ea49a262d31760348484bbc10b5 cx-windows-x64-v0.14.0.zip

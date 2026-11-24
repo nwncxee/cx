@@ -314,7 +314,9 @@ the one `CX.Framework.Product` const set that `HotkeyProtocol.AbuseContact` also
 | about.savelog | Save my log for a bug report | B | — | U | — | — | Saves cx-report.log next to cx.log and copies its path. Attach cx-report.log to your report, not cx.log: CX keeps writing cx.log while the game runs, and Discord or the browser refuses a file that changes while it uploads. |
 | about.updates | Tell me about new CX releases | D | Not answered yet / Yes / No · Not answered yet | U | L | — | Once a session CX asks the CX releases page whether a newer release is out, and shows a badge on the main-menu gear. It never downloads or installs anything. |
 | about.updatecopy | Copy download link | B | — | U | — | — | Copies the CX releases page's address. Shown while a newer release stands; its note names the release and its changelog lines. |
+| about.updatesum | Copy checksum | B | — | U | — | — | Copies the SHA-256 of this release's zip for your OS. Shown while a newer release stands whose signed notice names that zip; the row shows the zip's name and checksum. |
 | about.updatemute1 | Don't tell me about vX.Y.Z | B | — | U | — | — | Hides the badge and this release until a newer one is out. Shown while a newer release stands; the label names it. |
+| about.releasekey | Copy release key | B | — | U | — | — | Copies the release key this install trusts, as an `allowed_signers` file for checking a download. Always shown; the row shows each key's fingerprint as `ssh-keygen` prints it. |
 | about.updatefound / updateseen / updatemute | — | X | "" | H | L | — | the newest signed release found, the one About was last opened for, and the one muted |
 
 While **Tell me about new CX releases** is unanswered, the main-menu gear wears a badge whose

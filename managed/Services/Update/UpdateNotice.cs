@@ -37,6 +37,9 @@ internal sealed class UpdateNotice
         k.Owner = this;
     }
 
+    /// <summary>The OS whose zip this install is, <c>linux</c> or <c>windows</c>: the checksum About shows is that zip's.</summary>
+    public string Os { get; init; } = "";
+
     /// <summary>The newer release this launch found, or null.</summary>
     public UpdateManifest? Notice { get; private set; }
 

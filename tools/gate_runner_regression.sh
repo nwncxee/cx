@@ -69,6 +69,17 @@ out=$(row '| about.ping | Ping |'); [ -z "$out" ] || fail "knob-spec-rows refuse
 out=$(row '| about.other | Other |')
 grep -q "about.ping is declared" <<< "$out" || fail "knob-spec-rows did not name about.ping, declared with no row -- $out"
 
+# A Declare that hands its group on to another class's Declare passes that class the group its own site names.
+cat > "$t/param/managed/A.cs" << 'EOF2'
+static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
+sealed class Notes { private Notes(KnobGroup g, string s) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g, string s) => new(g, s); }
+sealed class Wire { void Init() { Declare(General.About, "x"); } internal static Notes Declare(KnobGroup about, string s) => Notes.Declare(about, s); }
+static class Fen { static readonly KnobGroup g = KnobGroup.Declare("fen", "General", "Fen"); }
+EOF2
+printf 'class W { void T(KnobGroup g) { Wire.Declare(g, "y"); } }\n' > "$t/param/managed/W.SelfCheck.cs"
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+out=$(row '| about.ping | Ping |'); [ -z "$out" ] || fail "knob-spec-rows refused about.ping, declared through Wire.Declare(General.About, ...), with a self-check passing a g that names another group -- $out"
+
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
 lines '# Given a' '# When b' && fail "approved-lines passed a script with no Then"

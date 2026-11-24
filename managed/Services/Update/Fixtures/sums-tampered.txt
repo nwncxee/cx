@@ -1,0 +1,7 @@
+cx-update 1
+version v0.14.0
+change Shadows soften at dusk.
+change The chat window remembers its size.
+sha256 caf90169eefa5f807d577486b9f795ab86ae2983c5c20806cff959117e90af10 cx-linux-x64-v0.14.0.zip
+sha256 340d600392818df2413382dc7d8325c360d83ea49a262d31760348484bbc10b5 cx-windows-x64-v0.14.0.zip
+sha256 36f7cb3378553c5873cc54bca483155033ee15290acd9af10d58b96296f59a28 cx-moonglow-plugin-v0.14.0.zip
