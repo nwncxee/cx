@@ -3,12 +3,13 @@
 # them: they need the SDK the gates job does not carry, so build.sh runs this. build.sh calls it rather than
 # naming each script, because the approved-spec guard refuses a command whose script names an approved-examples
 # file in full -- which is why the patterns below stop short of the extension, and why this runner is runnable.
+# Of tools/live/, only a grader's regression runs here: it grades recorded lines, and the others start a client.
 cd "$(dirname "$0")/.."
 shopt -s nullglob
 rc=0
 tests=(tools/*_approved_examples* tools/gates/*_approved_examples* tools/analyzers/*_approved_examples*
   tools/release/*_approved_examples* tools/*_regression* tools/analyzers/*_regression*
-  tools/release/*_regression*)
+  tools/release/*_regression* tools/live/*_grade_regression*)
 # An empty list would report every example as passing, so it is a failure rather than a quiet success.
 [ ${#tests[@]} -gt 0 ] || { echo "!! no approved-examples scripts found" >&2; exit 1; }
 for t in "${tests[@]}"; do

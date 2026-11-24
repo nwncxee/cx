@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Regression for step_guard_grade.py, in seconds and with no client: four recorded runs (the grader's input lines
-# only) must grade as they did live, and copies of the branch run edited across one check's boundary must fail it.
-# branch is the shipped guard; no-refusal, personal-space and refuse-all are the guard with no refusal, at the
-# radius it had before CX-698, and refusing every step. Exit 0 when every run grades as expected, 1 otherwise.
+# Regression for step_guard_grade.py, in seconds and with no client: the runs recorded in step_guard_fixtures/ (the
+# grader's input lines only) must grade as they did live, and a copy of the branch run with one refusal or one offset
+# placed just inside a check's window must fail that check. branch is the shipped guard; no-refusal, personal-space
+# and refuse-all are the guard refusing nothing, testing at the player's personal-space radius, and refusing every step.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIX="$HERE/step_guard_fixtures"
@@ -14,21 +14,24 @@ expect() { # <run dir> <name> <verdicts>
 }
 edit() { # <name> <mark> <from s> <to s> refuse|shift: one more refusal from mark+from on, or the client 0.2 m off in the span
     mkdir -p "$t/$1" && cp "$FIX/branch/nwclientLog1.txt" "$t/$1/"
-    python3 -I - "$FIX/branch" "$t/$1" "$2" "$3" "$4" "$5" <<'PY'
-import re, sys
+    python3 -I - "$HERE" "$FIX/branch" "$t/$1" "$2" "$3" "$4" "$5" <<'PY' || fail=1
+import importlib.util, sys
 from pathlib import Path
-src, dst, mark, a, b, kind = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], float(sys.argv[4]), float(sys.argv[5]), sys.argv[6]
-hms = lambda h, m, s: int(h) * 3600 + int(m) * 60 + float(s)
-t0 = next(hms(*m.groups()) + 0.5 for m in (re.match(r"^\[\w+ \w+ +\d+ (\d+):(\d+):(\d+)\] CXSHOW: sg " + mark + " ", l)
-          for l in (src / "nwclientLog1.txt").read_text().splitlines()) if m)
+here, src, dst, prefix, a, b, kind = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], float(sys.argv[5]), float(sys.argv[6]), sys.argv[7]
+spec = importlib.util.spec_from_file_location("grade", Path(here) / "step_guard_grade.py")
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+marks, _, samples = g.read(src)
+t0, _ = g.mark(marks, prefix)
+lines = [l for l in (src / "cx.log").read_text().splitlines() if (m := g.CLI.match(l)) and g.AT.match(m[4])]
+if len(lines) != len(samples):
+    sys.exit(f"{len(lines)} sample lines for {len(samples)} samples")
 out = []
-for l in (src / "cx.log").read_text().splitlines():
-    m = re.match(r"^(\S*T(\d+):(\d+):([\d.]+)\S* \[cx\] StepGuard: at \()(-?[\d.]+)(,.*refused=)(\d+)$", l)
-    t = hms(m[2], m[3], m[4]) - t0
-    x, n = float(m[5]), int(m[7])
-    if kind == "refuse" and t >= a: n += 1
-    if kind == "shift" and a <= t <= b: x += 0.2
-    out.append(f"{m[1]}{x:.2f}{m[6]}{n}")
+for line, (t, x, y, n) in zip(lines, samples):
+    z = g.AT.match(g.CLI.match(line)[4])[3]
+    if kind == "refuse" and t >= t0 + a: n += 1
+    if kind == "shift" and t0 + a <= t <= t0 + b: x += 0.2
+    out.append(f"{line[:g.CLI.match(line).start(4)]}at ({x:.2f},{y:.2f},{z}) refused={n}")
 (dst / "cx.log").write_text("\n".join(out) + "\n")
 PY
 }
@@ -39,11 +42,11 @@ expect "$FIX/branch"         branch         "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_
 expect "$FIX/no-refusal"     no-refusal     "SG_E1=1 SG_E2=0 SG_E3=0 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
 expect "$FIX/personal-space" personal-space "SG_E1=0 SG_E2=1 SG_E3=0 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=0"
 expect "$FIX/refuse-all"     refuse-all     "SG_E1=0 SG_E2=1 SG_E3=0 SG_E4=0 SG_E5=0 SG_E6=0 SG_E7=0"
-# Given the branch run with one change that crosses one check's line
+# Given the branch run with one refusal or offset just inside one check's window
 # When the grader grades it
 # Then that check fails
-edit e1-last-trial "along3 jump" 10 0 refuse;  expect "$t/e1-last-trial" "E1 counts a refusal in the last trial"  "SG_E1=0 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
-edit e4-after-still "ram0 jump" 13 0 refuse;   expect "$t/e4-after-still" "E4 counts a refusal once still"        "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=1"
-edit e5-off "corner jump" 12 17 shift;         expect "$t/e5-off" "E5 holds the client to 0.1 m"                  "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=0 SG_E6=1 SG_E7=1"
-edit e6-refused "open jump" 5 0 refuse;        expect "$t/e6-refused" "E6 counts a refusal on the open move"      "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=0 SG_E7=1"
+edit e1 "along3 jump" 8.6 0 refuse; expect "$t/e1" "E1 counts a refusal at the start of the last trial's window" "SG_E1=0 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
+edit e4 "ram0 jump" 13 0 refuse;    expect "$t/e4" "E4 counts a refusal once still"                            "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=1"
+edit e5 "corner jump" 12 12.9 shift; expect "$t/e5" "E5 holds the client to the bound in the window's first second" "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=0 SG_E6=1 SG_E7=1"
+edit e6 "open jump" 1.1 0 refuse;   expect "$t/e6" "E6 counts a refusal at the start of the open move's window" "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=0 SG_E7=1"
 exit $fail
