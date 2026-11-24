@@ -32,6 +32,7 @@ internal static class GroundMistSelfCheck
             Live(check);
             Wind(check);
             Parting(check);
+            Blasts(check);
         }
         finally
         {
@@ -229,6 +230,41 @@ internal static class GroundMistSelfCheck
         DbScene.Leave(scene, obj);
         SceneDb.Objects.Free(obj);
         SceneDb.Scenes.Free(scene);
+    }
+
+    /// <summary>A blast clears its whole radius onto a 2 m rim past it and keeps the mass, onto no wall, and only under
+    /// Volumetric fog.</summary>
+    private static void Blasts(Checker check)
+    {
+        Fogged(Flat(), Vector3.Zero);
+        Run(1f, Vector2.Zero);
+        float floor = GroundMist.At(0.5f, 0.5f), mass = Mass(-10f, -10f, 10f, 10f);
+        VolumetricFog.Enabled.V = false;
+        GroundMist.Blast(Vector3.Zero, 4f);
+        VolumetricFog.Enabled.V = true;
+        float off = GroundMist.At(0.5f, 0.5f);
+        GroundMist.Blast(Vector3.Zero, 4f);
+        float centre = GroundMist.At(0.5f, 0.5f), inside = GroundMist.At(3.5f, 0.5f), rim = GroundMist.At(5.5f, 0.5f);
+        float past = GroundMist.At(7.5f, 0.5f), kept = Mass(-10f, -10f, 10f, 10f);
+        check.Expect(off == floor, $"a blast with Volumetric fog off leaves {off:F4} m (want the {floor:F4} m floor)");
+        check.Expect(centre == 0f && inside == 0f && rim > floor && past == floor,
+            $"a 4 m blast leaves {centre:F4} m at its point, {inside:F4} at 3.5 m, {rim:F4} at 5.5 m, {past:F4} at 7.5 m (want 0, 0, over the {floor:F4} m floor, the floor)");
+        check.Expect(MathF.Abs(kept - mass) <= mass * 1e-5f, $"the blast leaves {kept:F4} m^3 of {mass:F4} around it (want all of it)");
+
+        Lay(Ground(160f, 1f, (_, _) => 0f, (x, _) => x >= 5f && x < 6f ? Nonwalk : Stone), Vector3.Zero, true, AreaAmount);
+        Run(1f, Vector2.Zero);
+        GroundMist.Blast(Vector3.Zero, 4f);
+        float wall = GroundMist.At(5.5f, 0.5f);
+        check.Expect(wall == 0f, $"a 4 m blast beside a wall at 5 m pushes {wall:F4} m onto it (want none)");
+
+        var deck = Flat();
+        Deck(deck, -3f, -3f, 3f, 3f, 5f, Stone);
+        Fogged(deck, new Vector3(0f, 0f, 5f));
+        Run(1f, Vector2.Zero);
+        float road = GroundMist.At(4.5f, 0.5f);
+        GroundMist.Blast(new Vector3(0f, 0f, 5f), 2f);
+        float onDeck = GroundMist.At(0.5f, 0.5f), below = GroundMist.At(4.5f, 0.5f);
+        check.Expect(onDeck == 0f && below == road, $"a blast on a deck 5 m up leaves {onDeck:F4} m at its point and {below:F4} of {road:F4} on the road below (want 0, then all)");
     }
 
     /// <summary>A new area keeps none of the old one's walkmesh.</summary>

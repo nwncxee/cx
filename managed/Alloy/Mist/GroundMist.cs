@@ -317,12 +317,31 @@ internal static partial class GroundMist
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
         if (!VolumetricFog.Enabled.V || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
-        int at = Column(s, now.X, now.Y);
+        Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f));
+    }
+
+    /// <summary>A blast's mist lands on a ring this many metres wide outside its radius.</summary>
+    private const float BlastRim = 2f;
+
+    /// <summary>A detonation at <paramref name="at"/> blows all the mist inside <paramref name="radius"/> out onto the
+    /// ring just past it, none onto a wall or across a step; the rise and the flow bring it back.</summary>
+    internal static void Blast(Vector3 at, float radius)
+    {
+        GroundMistState s = _s;
+        if (!VolumetricFog.Enabled.V || !s.Any || !(radius > 0f)) return;
+        Push(s, at, radius, radius + BlastRim, 1f);
+    }
+
+    /// <summary>Move <paramref name="take"/> of the mist within <paramref name="clear"/> of <paramref name="centre"/>
+    /// evenly onto the columns out to <paramref name="wake"/> linked to its own. Mass is kept; allocates nothing.</summary>
+    private static void Push(GroundMistState s, Vector3 centre, float clear, float wake, float take)
+    {
+        int at = Column(s, centre.X, centre.Y);
         if (at < 0) return;
-        float take = MathF.Min(moved / PartStride, 1f), taken = 0f;
+        float taken = 0f;
         int ring = 0;
-        int x0 = Math.Max((int)MathF.Floor(now.X - WakeRadius) - s.Ox, 0), x1 = Math.Min((int)MathF.Ceiling(now.X + WakeRadius) - s.Ox, Side - 1);
-        int y0 = Math.Max((int)MathF.Floor(now.Y - WakeRadius) - s.Oy, 0), y1 = Math.Min((int)MathF.Ceiling(now.Y + WakeRadius) - s.Oy, Side - 1);
+        int x0 = Math.Max((int)MathF.Floor(centre.X - wake) - s.Ox, 0), x1 = Math.Min((int)MathF.Ceiling(centre.X + wake) - s.Ox, Side - 1);
+        int y0 = Math.Max((int)MathF.Floor(centre.Y - wake) - s.Oy, 0), y1 = Math.Min((int)MathF.Ceiling(centre.Y + wake) - s.Oy, Side - 1);
         for (int pass = 0; pass < 2; pass++)
         {
             if (pass == 1 && ring == 0) return;
@@ -331,18 +350,15 @@ internal static partial class GroundMist
                 for (int x = x0; x <= x1; x++)
                 {
                     int c = y * Side + x;
-                    float dx = s.Ox + x + 0.5f - now.X, dy = s.Oy + y + 0.5f - now.Y, r2 = dx * dx + dy * dy;
-                    if (r2 > WakeRadius * WakeRadius || !Linked(s, at, c)) continue;
-                    bool inner = r2 <= ClearRadius * ClearRadius;
+                    float dx = s.Ox + x + 0.5f - centre.X, dy = s.Oy + y + 0.5f - centre.Y, r2 = dx * dx + dy * dy;
+                    if (r2 > wake * wake || !Linked(s, at, c)) continue;
+                    bool inner = r2 <= clear * clear;
                     if (pass == 0) { if (inner) taken += s.Depth[c] * take; else ring++; }
                     else if (inner) s.Depth[c] -= s.Depth[c] * take;
                     else s.Depth[c] += share;
                 }
         }
     }
-
-    /// <summary>A detonation at <paramref name="at"/> that blows the mist out of <paramref name="radius"/>.</summary>
-    internal static void Blast(Vector3 at, float radius) { }
 
     /// <summary>The field's column for world (<paramref name="x"/>, <paramref name="y"/>), or -1 outside it.</summary>
     private static int Column(GroundMistState s, float x, float y)
