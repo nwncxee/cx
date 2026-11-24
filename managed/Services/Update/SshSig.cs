@@ -5,7 +5,19 @@ using System.Text;
 namespace CX.Services.Update;
 
 /// <summary>A release-signing key: the principal an allowed-signers file names it by, and its Ed25519 public half.</summary>
-internal readonly record struct ReleaseKey(string Name, byte[] Public);
+internal readonly record struct ReleaseKey(string Name, byte[] Public)
+{
+    /// <summary>The key's fingerprint as <c>ssh-keygen</c> prints it: <c>SHA256:</c> and the unpadded base64 of the
+    /// SHA-256 of its <c>ssh-ed25519</c> wire blob.</summary>
+    public string Fingerprint
+    {
+        get
+        {
+            byte[] blob = [0, 0, 0, 11, .. "ssh-ed25519"u8, 0, 0, 0, 32, .. Public];
+            return "SHA256:" + Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(blob)).TrimEnd('=');
+        }
+    }
+}
 
 /// <summary>The keys a release notice may be signed with, read from allowed-signers text.</summary>
 internal static class ReleaseKeys

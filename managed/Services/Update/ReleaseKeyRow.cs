@@ -10,7 +10,9 @@ internal sealed class ReleaseKeyRow
 
     private ReleaseKeyRow(KnobGroup g, string allowedSigners, Func<string, bool> copy)
     {
-        Copy = g.Button("releasekey", "Copy release key", () => { }, help: "Copies the release key this install trusts.");
+        Copy = g.Button("releasekey", "Copy release key", () => copy(allowedSigners), help: "Copies the release key this install trusts.");
+        string fingerprints = string.Join(Knob.NoteBreak, ReleaseKeys.Parse(allowedSigners).Select(k => k.Fingerprint));
+        Copy.Note = () => fingerprints;
     }
 
     /// <summary>Declare the row on <paramref name="g"/> over the build's <paramref name="allowedSigners"/> text.</summary>
