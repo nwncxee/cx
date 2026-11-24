@@ -23,15 +23,12 @@ g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
 marks, _, samples = g.read(src)
 t0, _ = g.mark(marks, prefix)
-lines = [l for l in (src / "cx.log").read_text().splitlines() if (m := g.CLI.match(l)) and g.AT.match(m[4])]
-if len(lines) != len(samples):
-    sys.exit(f"{len(lines)} sample lines for {len(samples)} samples")
+lines = [(m, s) for l in (src / "cx.log").read_text().splitlines() if (m := g.CLI.match(l)) and (s := g.AT.match(m[4]))]
 out = []
-for line, (t, x, y, n) in zip(lines, samples):
-    z = g.AT.match(g.CLI.match(line)[4])[3]
+for (m, s), (t, x, y, n) in zip(lines, samples):
     if kind == "refuse" and t >= t0 + a: n += 1
     if kind == "shift" and t0 + a <= t <= t0 + b: x += 0.2
-    out.append(f"{line[:g.CLI.match(line).start(4)]}at ({x:.2f},{y:.2f},{z}) refused={n}")
+    out.append(f"{m.string[:m.start(4)]}at ({x:.2f},{y:.2f},{s[3]}) refused={n}")
 (dst / "cx.log").write_text("\n".join(out) + "\n")
 PY
 }
