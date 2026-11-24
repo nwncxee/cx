@@ -4,7 +4,8 @@
 //:: (a click past the corner), wall (W held into the wall and let go), ram (W held diagonally into the corner post for
 //:: 4 s and let go, the drive that pinned the player) and along (the same drive, then the camera turns along Sc -> C with
 //:: W still held), then door0 (a walk through the nearest door, which shuts and locks in the player's face) and door1 (W held
-//:: through it, the door shuts the same way, and a second later the camera turns along the door with W still held). The server's position is
+//:: through it, the door shuts the same way, and a second later the camera turns along the door with W still held), then
+//:: door2 (a walk into the doorway, the door shut on the player there, then a walk on to the far side). The server's position is
 //:: logged four times a second as "CXSHOW: sg srv", for step_guard_grade.py.
 //:://////////////////////////////////////////////
 #include "inc_show"
@@ -20,10 +21,11 @@ const int ALONG_TRIALS = 4;
 const float TRIAL = 15.0;
 const float DOOR_AREA_AT = 207.0;
 const float DOOR_AT = 227.0;
-const int DOOR_TRIALS = 2;
+const int DOOR_TRIALS = 3;
 const float SHUT_AT = 1.2;
+const float SHUT_IN = 0.4;
 const float TURN_AFTER_SHUT = 1.0;
-const float DONE_AT = 257.0;
+const float DONE_AT = 272.0;
 
 string P(vector v)
 {
@@ -105,8 +107,6 @@ int FindWall(object oPC)
                     if (!Sees(oArea, vNear, Along(vNear, fSide, 4.0))) continue;
                     if (!Solid(oArea, vFar, Along(vFar, fSide, 4.0))) continue;
                     SetLocalLocation(oPC, "SG_S", Location(oArea, vS, fD));
-                    SetLocalFloat(oPC, "SG_D", fD);
-                    SetLocalFloat(oPC, "SG_A", fSide);
                     SetLocalLocation(oPC, "SG_O", Location(oArea, Ground(oArea, Along(vS, fD, fL - 1.0)), fD));
                     ShowMark("sg wall S " + P(vS) + " D " + FloatToString(fD, 0, 1) + " L " + FloatToString(fL, 0, 2)
                         + " A " + FloatToString(fSide, 0, 1));
@@ -177,6 +177,7 @@ int DoorFits(object oPC, object oDoor)
         SetLocalObject(oPC, "SG_DOOR", oDoor);
         SetLocalLocation(oPC, "SG_DS", Location(oArea, vS, fTo));
         SetLocalLocation(oPC, "SG_DT", Location(oArea, vT, fTo));
+        SetLocalLocation(oPC, "SG_DIN", Location(oArea, Ground(oArea, vDoor), fTo));
         ShowMark("sg door at " + P(vDoor) + " S " + P(vS) + " D " + FloatToString(fTo, 0, 1) + " in " + GetTag(oArea));
         return TRUE;
     }
@@ -208,18 +209,21 @@ void Open(object oPC)
 
 void Camera(object oPC, float fFacing, string sWhy);
 
-// Shuts and locks the door once the player comes within SHUT_AT of it, polling for up to 6 s.
-void Shut(object oPC, string sTrial, int nTry)
+// Shuts and locks the door once the player comes within fWithin of it in the plane, polling for up to 6 s.
+void Shut(object oPC, string sTrial, float fWithin, int nTry)
 {
     object oDoor = GetLocalObject(oPC, "SG_DOOR");
-    if (GetDistanceBetween(oPC, oDoor) > SHUT_AT && nTry < 60)
+    vector vP = GetPosition(oPC), vD = GetPosition(oDoor);
+    if (VectorMagnitude(Vector(vP.x - vD.x, vP.y - vD.y, 0.0)) > fWithin && nTry < 60)
     {
-        DelayCommand(0.1, Shut(oPC, sTrial, nTry + 1));
+        DelayCommand(0.1, Shut(oPC, sTrial, fWithin, nTry + 1));
         return;
     }
     AssignCommand(oDoor, ActionCloseDoor(oDoor));
     SetLocked(oDoor, TRUE);
     ShowMark("sg " + sTrial + " shut " + P(GetPosition(oPC)));
+    if (sTrial == "door2")
+        DelayCommand(0.5, AssignCommand(oPC, ActionMoveToLocation(GetLocalLocation(oPC, "SG_DT"))));
     if (sTrial == "door1")
     {
         float fAlong = GetFacingFromLocation(GetLocalLocation(oPC, "SG_DS")) + 90.0;
@@ -297,9 +301,10 @@ void Show(object oPC)
         string sTrial = "door" + IntToString(i);
         DelayCommand(fAt - 1.0, Open(oPC));
         DelayCommand(fAt, Jump(oPC, sTrial, GetLocalLocation(oPC, "SG_DS")));
-        DelayCommand(fAt + 2.0, Shut(oPC, sTrial, 0));
+        DelayCommand(fAt + 2.0, Shut(oPC, sTrial, i == 2 ? SHUT_IN : SHUT_AT, 0));
+        if (i == 0) DelayCommand(fAt + 3.0, AssignCommand(oPC, ActionMoveToLocation(GetLocalLocation(oPC, "SG_DT"))));
+        if (i == 2) DelayCommand(fAt + 3.0, AssignCommand(oPC, ActionMoveToLocation(GetLocalLocation(oPC, "SG_DIN"))));
     }
-    DelayCommand(DOOR_AT + 3.0, AssignCommand(oPC, ActionMoveToLocation(GetLocalLocation(oPC, "SG_DT"))));
     DelayCommand(DONE_AT, Done(oPC));
     DelayCommand(OPEN_AT - 1.0, Track(oPC));
 }

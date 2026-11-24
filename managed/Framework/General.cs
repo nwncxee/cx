@@ -22,7 +22,7 @@ public static partial class General
     /// (<c>SDL_SetWindowSize</c> -&gt; <c>SDL_WINDOWEVENT_SIZE_CHANGED</c> -&gt; <c>CGuiMan::SetGuiSize</c>), because
     /// the live harness runs in a headless compositor with no window edge to drag.</summary>
     public static readonly Knob<int> ResizeAt;
-    /// <summary>Debug: log the step guard's refusal streaks and the player's position once a second, the lines the
+    /// <summary>Debug: log the player's position and the step guard's refusal count once a second, the lines the
     /// live step-guard examples read.</summary>
     public static readonly Knob<bool> StepLog;
 

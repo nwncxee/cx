@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 # Approved examples (approved-spec) for the step guard on the real Linux client: the stepguard showcase click-moves across
 # open ground and round a corner, then drives into a straight wall, rams a doorway corner post six times and turns
-# along it with W held, then walks and drives through a door that shuts in the player's face, and holds the client's
-# position to the server's.
+# along it with W held, then walks and drives through a door that shuts in the player's face, walks on through one
+# that shuts on them in the doorway, and holds the client's position to the server's.
 # Exit 0 PASS, 1 FAIL, 2 when a run could not be made.
 #
 #   tools/live/step_guard_approved_examples.sh [--out DIR]
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-. "$ROOT/tools/live/step_guard_run.sh"
-step_guard_run "$ROOT/.scratch/step-guard" "$@" || exit $?
+OUT="$ROOT/.scratch/step-guard"
+case "${1:-}" in
+    --out) OUT="${2:?--out needs a folder}" ;;
+    "") ;;
+    *) echo "step-guard: unknown argument $1" >&2; exit 2 ;;
+esac
+mkdir -p "$(dirname "$OUT")"
+"$ROOT/tools/live/run-live.sh" --out "$OUT" --showcase stepguard --camera-mode 0 --seconds 290 \
+    --cfg 'chat.enabled=0' --cfg 'general.steplog=1' > "$OUT.txt" 2>&1
+[ $? = 2 ] && { echo "the run could not be made (see $OUT.txt)"; exit 2; }
+grep '^CXSHOW: sg-FAILED' "$OUT/showcase-markers.txt" 2>/dev/null && exit 2
+graded="$(python3 "$ROOT/tools/live/step_guard_grade.py" "$OUT")"
+eval "$graded"
+[ -n "${SG_SETUP:-}" ] && { echo "too little to grade: $SG_SETUP (see $OUT)"; exit 2; }
 fail=0
-check() { if [ "$2" = 1 ]; then echo "PASS $1 $3"; else echo "FAIL $1 $3 ($SG_OUT)"; fail=1; fi; }
+check() { if [ "$2" = 1 ]; then echo "PASS $1 $3"; else echo "FAIL $1 $3 ($OUT)"; fail=1; fi; }
 
 # Given the player stands 0.10 m from a wall, the spot a drive into a doorway corner leaves them
 # When their next walk step runs along the wall or away from it
