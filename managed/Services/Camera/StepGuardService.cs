@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -27,6 +28,15 @@ public sealed unsafe class StepGuardService : IExtenderService
     private static bool _live, _probeOk;
     private static int _steps, _walkRefusals, _driveRefusals;
 
+    /// <summary>The <see cref="General.StepLog"/> trace's books: the open refusal streak and the next sample's time.</summary>
+    private sealed class StepTraceState
+    {
+        public int Streak;
+        public long NextSample;
+    }
+
+    private static StepTraceState _trace = new();
+
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -39,6 +49,7 @@ public sealed unsafe class StepGuardService : IExtenderService
         _next = hooks.ChainWalkUpdateLocation(&OnWalkUpdateLocation, 50);
         if (_next == null) { log.Info("StepGuard: standing down (WalkUpdateLocation chain refused)"); return; }
         KnobSurface.Note(Report);
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 52, Sample, "StepGuard.trace", log);
         log.Info("StepGuard: chained CNWCCreature::WalkUpdateLocation");
     }
 
@@ -65,17 +76,45 @@ public sealed unsafe class StepGuardService : IExtenderService
         Vector3 before = desired;
         int r = (*_next)(cre);
         Vector3 after = desired;
-        if (!IsStep(before, after) || new CNWCModule(module).CurrentArea.Ptr != area.Ptr) return r;
+        if (!IsStep(before, after) || new CNWCModule(module).CurrentArea.Ptr != area.Ptr) { EndStreak(cre); return r; }
         Span<float> space = pathfind.SpaceArgs;
         // TestDirectLine takes both Vectors BY VALUE: the copies are what VectorArg points Win64 at.
         Vec3 from = Vec(before), to = Vec(after);
         int clear = _testLine(area.Ptr, cre, VectorArg.Of(&from), VectorArg.Of(&to), space[0], space[1], NoCreatures);
-        if (clear == 1) { _steps++; return r; }
+        if (clear == 1) { _steps++; EndStreak(cre); return r; }
         desired = before;
         creature.SetPosition(VectorArg.Of(&from));
-        if (creature.Driving != 0) _driveRefusals++; else _walkRefusals++;
+        bool driving = creature.Driving != 0;
+        if (driving) _driveRefusals++; else _walkRefusals++;
+        if (_trace.Streak++ == 0 && General.StepLog.V)
+            _log?.Info($"StepGuard: refused {(driving ? "drive" : "walk")} step {At(before)} -> {At(after)}");
         return r;
     }
+
+    /// <summary>Closes the open refusal streak, logging its length under <see cref="General.StepLog"/>.</summary>
+    private static void EndStreak(IntPtr cre)
+    {
+        if (_trace.Streak == 0) return;
+        if (General.StepLog.V) _log?.Info($"StepGuard: refusal streak ended after {_trace.Streak} step(s) at {At(new CNWCObject(cre).Position)}");
+        _trace.Streak = 0;
+    }
+
+    /// <summary>Once a second under <see cref="General.StepLog"/>: where the client has the player, its walk state
+    /// and the refusals so far.</summary>
+    private static void Sample()
+    {
+        if (!General.StepLog.V) return;
+        long now = Stopwatch.GetTimestamp();
+        if (now < _trace.NextSample) return;
+        _trace.NextSample = now + Stopwatch.Frequency;
+        IntPtr cre = CameraService.PlayerCreature();
+        if (cre == IntPtr.Zero) return;
+        var creature = new CNWCCreature(cre);
+        _log?.Info($"StepGuard: at {At(new CNWCObject(cre).Position)} driving={creature.Driving} waypoints={creature.WaypointCount} refused={_walkRefusals + _driveRefusals}");
+    }
+
+    /// <summary>A position as the trace prints it, in metres to the centimetre.</summary>
+    private static string At(in Vector3 v) => FormattableString.Invariant($"({v.X:F2},{v.Y:F2},{v.Z:F2})");
 
     /// <summary>The engine's own <c>Vector</c> shape, which the by-value call arguments need.</summary>
     private static Vec3 Vec(in Vector3 v) => new() { X = v.X, Y = v.Y, Z = v.Z };

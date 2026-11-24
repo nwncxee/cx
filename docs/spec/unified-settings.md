@@ -298,7 +298,7 @@ its own, and *no CX* is an uninstall."
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
-| general.hookdebug / pin / resizeat / frametimes | — | T, S | as declared | C | R, `frametimes` L | — | funchook trace, main-thread affinity, the timed window resize, and the per-frame time list in the log |
+| general.hookdebug / pin / resizeat / frametimes / steplog | — | T, S | as declared | C | R, `frametimes` and `steplog` L | — | funchook trace, main-thread affinity, the timed window resize, the per-frame time list in the log, and the step guard's refusals and player position in the log |
 
 cx.log is always written: no setting turns it off, and a key an older CX wrote for that is dropped when cx.cfg is read.
 
