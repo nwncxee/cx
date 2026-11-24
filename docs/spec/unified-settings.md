@@ -810,7 +810,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | fog.origin / cull / cullz | — | T, S | as declared | C | L | — | player-origin fog, the fully-fogged geometry cull and its depth |
 | vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. Off, the same volume still carries far rain while it rains, and nothing else. |
 | vfog.quality | Fog detail | D | Low / Medium / High / Ultra · Medium | A | L | — | How finely the fog volume is divided. Higher shows sharper light shafts and costs more. At Low the ground mist lies still. Ladders on `quality.effects`, a step below it. |
-| vfog.mist | Ground mist | T | on | U | L | — | Mist that lies on the ground, pools in low ground, drifts on the wind and parts around walkers and blasts, in place of fog models' flat sprites. Needs Volumetric fog. |
+| vfog.mist | Ground mist | T | on | A | L | — | Mist that lies on the ground, pools in low ground, drifts on the wind and parts around walkers and blasts, in place of fog models' flat sprites. Needs Volumetric fog. |
 | vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
 | vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
 | vfog.lights | Lamp glow | S | 0–4 step 0.05 · 0.15 | A | L | Look | How brightly torches and lamps glow in the fog. |
@@ -824,6 +824,10 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
+| air.enabled | Air | T | on | U | L | — | What hangs in an area's air and how it moves: dust in crypts, mist by night water, motes in lamplight, pollen and leaves outdoors. It drifts on the wind, gusts when the wind changes and parts around walkers and blasts. Draws with Volumetric fog on or off. |
+| air.quality | Air detail | D | Low / Medium / High · Medium | A | L | — | How much of the air moves. At Low it drifts slowly, and gusts, blasts and walkers no longer stir it. |
+| air.dust | Dust | S | 0–2 step 0.05 · 1 | A | L | — | How much dust lies on the floor where an area lays it. 0 lays none. |
+| air.place | — | D | auto / none / crypt / city / forest / meadow · auto | C | L | — | which place's air the area takes; `auto` reads its tileset and tiles. A builder holds it per area. |
 | silhouette.enabled | Silhouettes for creatures out of sight | T | **off** | U | L | — | A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off, the default, draws them see-through as the stock client does. |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect | — | T | as declared | C | L | — | |

@@ -91,7 +91,7 @@ internal static unsafe class AirDustApprovedExamples
     // Then it lies over the water as it lies over the floor.
     private static void OverThePool(Checker check)
     {
-        var room = Ground(20f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= RoomHalf || MathF.Abs(y) >= RoomHalf ? Nonwalk : MathF.Abs(x - 4f) < 2f && MathF.Abs(y) < 2f ? Water : Stone);
+        var room = Ground(20f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= RoomHalf || MathF.Abs(y) >= RoomHalf ? Nonwalk : MathF.Abs(x - 4f) < 2f && MathF.Abs(y) < 2f ? MistFixture.Water : Stone);
         Enter(Crypt, room, 0f, false);
         Go(3f, Vector2.Zero);
         float pool = Near(AirLayer.Dust, 4f, 0f, 1.5f), floor = Near(AirLayer.Dust, -4f, 0f, 1.5f);

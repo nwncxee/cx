@@ -111,11 +111,15 @@ internal static unsafe class SoundScene
     /// <summary>The area's one acoustic material, from its flags: a natural enclosed area is a cave (bare rock,
     /// a long tail), an artificial underground one masonry (a dungeon, a sewer), anything else generic.
     /// ponytail: one per area; per-surface materials want a texture or walkmesh-material join.</summary>
-    internal static int Material(CNWCArea area)
+    internal static int Material(CNWCArea area) => area.IsNull ? 0 : Material(area.Flags);
+
+    /// <summary>The cave rock material index, the one the air reads a cave by.</summary>
+    internal const int CaveRock = 2;
+
+    /// <summary>The material ARE flags <paramref name="f"/> name, as <see cref="Material(CNWCArea)"/> reads them.</summary>
+    internal static int Material(uint f)
     {
-        if (area.IsNull) return 0;
-        uint f = area.Flags;
-        if ((f & FlagNatural) != 0) return (f & (FlagInterior | FlagUnderground)) != 0 ? 2 : 0;
+        if ((f & FlagNatural) != 0) return (f & (FlagInterior | FlagUnderground)) != 0 ? CaveRock : 0;
         return (f & FlagUnderground) != 0 ? 1 : 0;
     }
 

@@ -141,7 +141,7 @@ internal static class AirWaterMistApprovedExamples
     // Then crypt dust lies over the water as in E51 and no night mist gathers there.
     private static void CryptPool(Checker check)
     {
-        var room = Ground(20f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= RoomHalf || MathF.Abs(y) >= RoomHalf ? Nonwalk : MathF.Abs(x - 4f) < 2f && MathF.Abs(y) < 2f ? Water : Stone);
+        var room = Ground(20f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= RoomHalf || MathF.Abs(y) >= RoomHalf ? Nonwalk : MathF.Abs(x - 4f) < 2f && MathF.Abs(y) < 2f ? MistFixture.Water : Stone);
         AirLook look = new(AirPlace.Crypt, false, true, false);
         Enter(look, room, 0f, true);
         Go(Gather, Vector2.Zero);

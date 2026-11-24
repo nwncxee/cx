@@ -61,10 +61,10 @@ internal static partial class AirFixture
         => Ground(20f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) < RoomHalf && MathF.Abs(y) < RoomHalf ? Stone : Nonwalk);
 
     /// <summary>A quay: stone street west of x = 0, open water east of it.</summary>
-    internal static List<Tile> Quay() => Ground(40f, 1f, (_, _) => 0f, (x, _) => x < 0f ? Stone : Water);
+    internal static List<Tile> Quay() => Ground(40f, 1f, (_, _) => 0f, (x, _) => x < 0f ? Stone : MistFixture.Water);
 
     /// <summary>Open ground with a 2 m stream along x = 0.</summary>
-    internal static List<Tile> Stream() => Ground(40f, 1f, (_, _) => 0f, (x, _) => MathF.Abs(x) < 1f ? Water : Stone);
+    internal static List<Tile> Stream() => Ground(40f, 1f, (_, _) => 0f, (x, _) => MathF.Abs(x) < 1f ? MistFixture.Water : Stone);
 
     /// <summary>The trunks of a grove: one every 4 m west of x = 0, a clearing east of it.</summary>
     internal static IEnumerable<Vector2> Grove()

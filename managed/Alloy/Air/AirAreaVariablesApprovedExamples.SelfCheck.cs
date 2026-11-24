@@ -210,7 +210,7 @@ internal static class AirAreaVariablesApprovedExamples
         Gff? git = Gff.TryParse(Convert.FromBase64String(UpperGit), out string? why);
         check.Expect(git != null, $"E153 Given: the GIT parses ({why})");
         if (git == null) return;
-        AreaSettingsService.Apply(AreaSettings.Holds(AreaSettings.Read(git), KnobGroup.Find));
+        AreaSettingsService.Apply(AreaSettings.Holds(AreaSettings.Read(git.Value), KnobGroup.Find));
         float held = DustIn(Indoor);
         check.Expect(plain > 0f && held < plain, $"E153 the crypt read from CX.air.dust=0.4 lays {held:F3} m against {plain:F3} m (want less)");
     }

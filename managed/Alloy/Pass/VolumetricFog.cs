@@ -30,7 +30,7 @@ internal static class VolumetricFog
                              tier: Tier.Advanced, help: "How finely the fog volume is divided. Higher shows sharper light shafts and costs more. "
                                    + "At Low the ground mist lies still.")
                    .Ladder(CX.Alloy.Quality.Effects, "low", "low", "medium", "high");
-        Mist = G.Toggle("mist", "Ground mist", true, Tier.User,
+        Mist = G.Toggle("mist", "Ground mist", true, Tier.Advanced,
                         help: "Mist that lies on the ground, pools in low ground, drifts on the wind and parts around walkers and blasts, "
                               + "in place of fog models' flat sprites. Needs Volumetric fog.");
 
