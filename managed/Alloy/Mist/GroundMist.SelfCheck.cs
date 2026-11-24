@@ -30,6 +30,7 @@ internal static class GroundMistSelfCheck
             Walls(check);
             Uploads(check);
             Live(check);
+            Wind(check);
         }
         finally
         {
@@ -121,6 +122,43 @@ internal static class GroundMistSelfCheck
             $"the live frame lays {first:F4} m from a source queued before it, {again:F4} m on a second call that frame, and the next scene floors at {other} (want some, the same, then none)");
     }
 
+    /// <summary>The wind carries mist whichever way it blows, a long frame makes none, none pours off a deck, and area fog
+    /// stays even under it: the area's floor blows in at the field's upwind edge, out at the other, and onto no wall.</summary>
+    private static void Wind(Checker check)
+    {
+        Lay(Flat(), Vector3.Zero, false, 0f);
+        GroundMist.Place(Vector3.Zero, 3f, 1f);
+        Run(3f, new Vector2(-MathF.Sqrt(2f), -MathF.Sqrt(2f)));
+        Vector2 c = Centroid(100f, 0f, out _);
+        check.Expect(c.X < -1f && c.Y < -1f, $"3 s of wind to the south-west carry a pool's centre to ({c.X:F3}, {c.Y:F3}) (want past -1 m on both)");
+
+        Lay(Flat(), Vector3.Zero, false, 0f);
+        GroundMist.Place(Vector3.Zero, 3f, 1f);
+        float before = Mass(-80f, -80f, 80f, 80f);
+        GroundMist.Step(1f, MistFixture.HighWindX);
+        float after = Mass(-80f, -80f, 80f, 80f), want = before * MathF.Exp(-1f / 20f);
+        check.Expect(MathF.Abs(after - want) <= want * 0.005f, $"one 1 s frame of high wind leaves {after:F4} m^3 of {before:F4} (want {want:F4}, settling alone)");
+
+        var deck = Flat();
+        Deck(deck, -20f, -3f, 20f, 3f, 5f, Stone);
+        Lay(deck, new Vector3(0f, 0f, 5f), false, 0f);
+        GroundMist.Place(new Vector3(0f, 0f, 5f), 2f, 1f);
+        Run(5f, new Vector2(0f, 2f));
+        float road = Mass(-40f, 3f, 40f, 40f);
+        check.Expect(road == 0f, $"5 s of wind toward a deck's edge 5 m over a road pour {road:F4} m^3 onto the road (want none)");
+
+        Fogged(Flat(), Vector3.Zero);
+        Run(5f, MistFixture.HighWindX);
+        float mid = GroundMist.At(0.5f, 0.5f), upwind = GroundMist.At(-127.5f, 0.5f), downwind = GroundMist.At(127.5f, 0.5f);
+        check.Expect(mid > 0f && MathF.Abs(upwind - mid) <= mid * 0.01f && MathF.Abs(downwind - mid) <= mid * 0.01f,
+            $"5 s of high wind over area fog leave {upwind:F4} m at the field's upwind edge, {mid:F4} mid-field, {downwind:F4} at its downwind edge (want all within 1%)");
+
+        Lay(Ground(160f, 1f, (_, _) => 0f, (_, y) => y >= 0f && y < 2f ? Nonwalk : Stone), Vector3.Zero, true, AreaAmount);
+        Run(1f, MistFixture.HighWindX);
+        float wall = GroundMist.At(-127.5f, 0.5f);
+        check.Expect(wall == 0f, $"a wall reaching the field's upwind edge holds {wall:F4} m after 1 s of high wind over area fog (want none)");
+    }
+
     /// <summary>A new area keeps none of the old one's walkmesh.</summary>
     private static void NewArea(Checker check)
     {
@@ -192,16 +230,19 @@ internal static class GroundMistSelfCheck
         Lay(Ground(20f, 1f, (_, _) => 0f, (x, y) => x >= 0f && x < 1f && y >= 0f && y < 1f ? Stone : Nonwalk), Vector3.Zero, false, 0f);
         GroundMist.Place(new Vector3(0.5f, 0.5f, 0f), 1f, 1f);
         bool settles = Moves(into);
-        check.Expect(runs && !still && settles,
-            $"a frame uploads the field: area fog running down a slope {runs}, lying still on the flat {still}, settling on a one-metre island {settles} (want true, false, true)");
+        Lay(Ground(20f, 1f, (_, _) => 0f, (x, _) => x >= 4f && x < 6f ? Nonwalk : Stone), Vector3.Zero, true, AreaAmount);
+        GroundMist.Step(Frame, Vector2.Zero);
+        bool banks = Moves(into, MistFixture.HighWindX);
+        check.Expect(runs && !still && settles && banks,
+            $"a frame uploads the field: area fog running down a slope {runs}, lying still on the flat {still}, settling on a one-metre island {settles}, banking on a wall in the wind {banks} (want true, false, true, true)");
     }
 
-    /// <summary>Whether one frame's step makes the field go up again.</summary>
-    private static bool Moves(byte[] into)
+    /// <summary>Whether one frame's step under <paramref name="wind"/> makes the field go up again.</summary>
+    private static bool Moves(byte[] into, Vector2 wind = default)
     {
         int gen = int.MinValue;
         GroundMist.Pack(ref gen, into);
-        GroundMist.Step(Frame, Vector2.Zero);
+        GroundMist.Step(Frame, wind);
         return GroundMist.Pack(ref gen, into) > 0;
     }
 }

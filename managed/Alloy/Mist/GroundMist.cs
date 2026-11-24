@@ -195,6 +195,7 @@ internal static partial class GroundMist
             s.Depth[c] = e;
         }
         moved |= Flow(s, dt);
+        moved |= Drift(s, dt, wind);
         bool any = false;
         for (int c = 0; c < s.Depth.Length; c++)
         {
@@ -234,15 +235,55 @@ internal static partial class GroundMist
         return sent;
     }
 
+    /// <summary>One step of the area's wind carrying mist, in metres a second: each column sends its downwind neighbours a
+    /// share by the wind's speed, none into a wall or across a step, and past the field's edge the area's floor blows in.</summary>
+    private static bool Drift(GroundMistState s, float dt, Vector2 wind)
+    {
+        if (wind == Vector2.Zero || VolumetricFog.Quality.V == VolumetricFog.Levels[0]) return false;
+        float fx = MathF.Min(MathF.Abs(wind.X) * dt, MaxShare), fy = MathF.Min(MathF.Abs(wind.Y) * dt, MaxShare);
+        int sx = wind.X < 0f ? -1 : 1, sy = wind.Y < 0f ? -1 : 1;
+        float[] depth = s.Depth, next = s.Target;
+        bool sent = false;
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+            {
+                int c = y * Side + x;
+                if (float.IsNaN(s.Floor[c])) { next[c] = 0f; continue; }
+                float d = depth[c];
+                float e = d - Blown(s, c, x + sx, y, fx * d) - Blown(s, c, x, y + sy, fy * d)
+                            + BlownIn(s, c, x - sx, y, fx) + BlownIn(s, c, x, y - sy, fy);
+                sent |= e != d;
+                next[c] = e;
+            }
+        (s.Depth, s.Target) = (next, depth);
+        return sent;
+    }
+
+    /// <summary>What column <paramref name="c"/> loses to its downwind neighbour at (<paramref name="x"/>, <paramref name="y"/>):
+    /// <paramref name="share"/> past the field's edge or across a linked edge, none into a wall or over a step.</summary>
+    private static float Blown(GroundMistState s, int c, int x, int y, float share)
+        => (uint)x >= Side || (uint)y >= Side || Linked(s, c, y * Side + x) ? share : 0f;
+
+    /// <summary>What column <paramref name="c"/> gains from its upwind neighbour at (<paramref name="x"/>, <paramref name="y"/>):
+    /// <paramref name="share"/> of that neighbour's depth, or of the area's floor past the field's edge.</summary>
+    private static float BlownIn(GroundMistState s, int c, int x, int y, float share)
+    {
+        if ((uint)x >= Side || (uint)y >= Side) return share * s.AreaLevel;
+        int from = y * Side + x;
+        return Linked(s, c, from) ? share * s.Depth[from] : 0f;
+    }
+
+    /// <summary>Whether mist crosses between columns <paramref name="a"/> and <paramref name="b"/>: both floored, a step of at most <see cref="MaxStep"/>.</summary>
+    private static bool Linked(GroundMistState s, int a, int b) => MathF.Abs(s.Floor[a] - s.Floor[b]) <= MaxStep;
+
     /// <summary>The share column <paramref name="c"/> would send to its neighbour at (<paramref name="x"/>, <paramref name="y"/>):
     /// none past the field, to a column with no floor, across a step higher than <see cref="MaxStep"/>, or uphill.</summary>
     private static float Send(GroundMistState s, int c, int x, int y, float rate)
     {
         if ((uint)x >= Side || (uint)y >= Side) return 0f;
         int to = y * Side + x;
-        float from = s.Floor[c], onto = s.Floor[to];
-        if (MathF.Abs(from - onto) > MaxStep) return 0f;
-        float drop = SlopeGain * (from - onto) + s.Depth[c] - s.Depth[to];
+        if (!Linked(s, c, to)) return 0f;
+        float drop = SlopeGain * (s.Floor[c] - s.Floor[to]) + s.Depth[c] - s.Depth[to];
         return drop > 0f ? MathF.Min(rate * s.Depth[c], MaxShare) * drop : 0f;
     }
 
