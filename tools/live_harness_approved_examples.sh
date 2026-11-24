@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The live harness's offline examples: typed text keeps its shifted characters, a stage built before the
 # harness or the runtime changed is refused by name, a crash report written during shutdown gets its own
-# ungraded line, and a recipe fault on the frame line is named. None of them starts a client.
+# ungraded line, a recipe fault on the frame line is named, and the step guard's grader grades its recorded runs as
+# they graded live. None of them starts a client.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail=0
@@ -9,6 +10,7 @@ fail=0
 # When the keymap turns it into key presses
 # Then shifted characters keep their shift
 python3 -I "$ROOT/tools/live/keymap_test.py" || fail=1
+bash "$ROOT/tools/live/step_guard_grade_regression.sh" || fail=1
 
 # shellcheck source=tools/live/harness-lib.sh disable=SC1091 # linted on its own
 . "$ROOT/tools/live/harness-lib.sh"

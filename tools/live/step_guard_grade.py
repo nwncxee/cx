@@ -6,7 +6,7 @@ the client's (`StepGuard: at` samples in cx.log, written under general.steplog),
 
 Prints one shell assignment per example, SG_E<n>=1|0 and SG_E<n>_WHY='...', for step_guard_approved_examples.sh to eval. Exit 2
 when the run holds too little to grade (no scene, a trial mark missing, too few samples in a window).
-After an edit, step_guard_grade_regression.sh checks it against four recorded runs."""
+step_guard_grade_regression.sh, which build.sh runs, holds it to four recorded runs and to edited copies of one."""
 import math
 import re
 import shlex
