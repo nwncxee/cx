@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
@@ -62,7 +63,7 @@ internal static partial class GroundMist
             if (TileBuild.Solid(f.Surface)) continue;
             if ((uint)f.V0 >= (uint)walk.Positions.Length || (uint)f.V1 >= (uint)walk.Positions.Length
                 || (uint)f.V2 >= (uint)walk.Positions.Length) continue;
-            s.AddFloor(new MistFace(Vector3.Transform(walk.Positions[f.V0], world), Vector3.Transform(walk.Positions[f.V1], world),
+            s.Tri.Add(new MistFace(Vector3.Transform(walk.Positions[f.V0], world), Vector3.Transform(walk.Positions[f.V1], world),
                                     Vector3.Transform(walk.Positions[f.V2], world)));
         }
         s.Stale = true;
@@ -98,9 +99,8 @@ internal static partial class GroundMist
     {
         Array.Fill(s.Floor, float.NaN);
         float top = s.FeetZ + Headroom;
-        for (int t = 0; t < s.Tris; t++)
+        foreach ((Vector3 a, Vector3 b, Vector3 c) in s.Tri)
         {
-            (Vector3 a, Vector3 b, Vector3 c) = s.Tri[t];
             int x0 = Math.Max((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))) - s.Ox, 0);
             int x1 = Math.Min((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))) - s.Ox, Side - 1);
             int y0 = Math.Max((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y))) - s.Oy, 0);
@@ -399,9 +399,8 @@ internal readonly record struct MistSource(Vector3 At, float Reach);
 /// this frame's emitters.</summary>
 internal sealed class GroundMistState
 {
-    /// <summary>The area's floor faces, in world space, and how many.</summary>
-    public MistFace[] Tri = new MistFace[1024];
-    public int Tris;
+    /// <summary>The area's floor faces, in world space.</summary>
+    public readonly List<MistFace> Tri = new(1024);
 
     /// <summary>The field's corner in whole metres, the feet height its floors were laid for, whether they are, and
     /// whether faces came in since.</summary>
@@ -432,13 +431,6 @@ internal sealed class GroundMistState
     /// <summary>This frame's emitters.</summary>
     public MistSource[] Source = new MistSource[GroundMist.MaxSources];
     public int Sources;
-
-    /// <summary>One floor face, the list grown as an area's walkmesh comes in.</summary>
-    public void AddFloor(in MistFace f)
-    {
-        if (Tris == Tri.Length) Array.Resize(ref Tri, Tri.Length * 2);
-        Tri[Tris++] = f;
-    }
 }
 
 /// <summary>One floor face of the walkmesh, its three corners in world space.</summary>

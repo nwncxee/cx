@@ -121,9 +121,6 @@ internal static unsafe partial class EmitterSim
     private static ExtenderLog? _log;
     private static EngineList _bucket;
     private static float* _dt;
-
-    /// <summary>The engine's seconds for this frame, 0 before the symbol resolves.</summary>
-    internal static float FrameDt => _dt == null ? 0f : *_dt;
     private static PartGetWorldFn _getWorld;
     private static AnimateParticlesFn _animate;
     private static RenderNothingFn _renderNothing;

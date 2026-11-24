@@ -27,11 +27,8 @@ internal static unsafe partial class EmitterSim
     /// node's name, at its world position, reaching its view radius.</summary>
     private static bool Mist(int part, in Emitter e)
     {
-        if ((uint)part >= (uint)SceneDb.PartModel.Length) return false;
-        ModelDef? m = SceneDb.PartModel[part];
-        int n = SceneDb.PartNode[part];
-        if (m == null || (uint)n >= (uint)m.Nodes.Length) return false;
-        return MistEmitters.Take(m.Name, m.Nodes[n].Name, e.WorldPos, e.ViewRadius);
+        ModelDef m = SceneDb.PartModel[part]!;
+        return MistEmitters.Take(m.Name, m.Nodes[SceneDb.PartNode[part]].Name, e.WorldPos, e.ViewRadius);
     }
 
     /// <summary>Step one non-chunk emitter: the inherit basis, then its mode, then its mover.</summary>
