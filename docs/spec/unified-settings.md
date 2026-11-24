@@ -808,8 +808,9 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | fog.height | Height falloff | S | 0–1 step 0.005 · 0 | A | L | Density | Fog thins with height above the floor; 0 = off. |
 | fog.floor | Layer floor | S | 0–50 m step 1 · 0 | A | L | Density | Offset above your feet where thinning starts. |
 | fog.origin / cull / cullz | — | T, S | as declared | C | L | — | player-origin fog, the fully-fogged geometry cull and its depth |
-| vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Ground mist pools in low ground, drifts on the wind and parts around walkers and blasts, in place of fog models' flat sprites. Replaces the fog above; costs GPU time. |
+| vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. Off, the same volume still carries far rain while it rains, and nothing else. |
 | vfog.quality | Fog detail | D | Low / Medium / High / Ultra · Medium | A | L | — | How finely the fog volume is divided. Higher shows sharper light shafts and costs more. At Low the ground mist lies still. Ladders on `quality.effects`, a step below it. |
+| vfog.mist | Ground mist | T | on | U | L | — | Mist that lies on the ground, pools in low ground, drifts on the wind and parts around walkers and blasts, in place of fog models' flat sprites. Needs Volumetric fog. |
 | vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
 | vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
 | vfog.lights | Lamp glow | S | 0–4 step 0.05 · 0.15 | A | L | Look | How brightly torches and lamps glow in the fog. |
