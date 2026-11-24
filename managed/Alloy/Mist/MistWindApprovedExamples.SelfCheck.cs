@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// centre of a pool of mist must have gone.</summary>
 internal static class MistWindApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistWindApprovedExamples.SelfCheck");

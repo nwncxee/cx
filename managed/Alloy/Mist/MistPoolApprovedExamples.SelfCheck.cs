@@ -9,7 +9,7 @@ namespace CX.Alloy;
 /// a Nonwalk strip, a pond of Water and DeepWater, a deck 5 m over a road) and the mass each region should hold.</summary>
 internal static class MistPoolApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPoolApprovedExamples.SelfCheck");

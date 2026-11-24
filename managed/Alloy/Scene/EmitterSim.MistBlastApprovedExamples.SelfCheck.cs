@@ -12,7 +12,7 @@ internal static unsafe partial class EmitterSim
     /// <summary>A blast blows the mist out, and it rolls back: an Explosion emitter seated and burst through the walk's
     /// own detonate event and <c>ExplosionBirth</c>, its radius the emitter's blast radius. Oracle, by hand: area fog 10's floor read before the
     /// blast, against the mist inside the radius and a metre past it.</summary>
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool MistBlastSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "EmitterSim.MistBlastApprovedExamples.SelfCheck");

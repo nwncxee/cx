@@ -66,7 +66,8 @@ public static class ServiceHost
         Native.Attach(log);
         CommandRegistry.Global.Log = log;
         CX.Graphics.Rhi.LooseBlock.Attach(log);
-        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.BeforeServices), log);
+        bool session = Native.Sym(SymbolMap.AppManager) != IntPtr.Zero;
+        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.BeforeServices), log, session);
         KnobSurface.Register();
         EngineLayout.Register();
         SymbolMap.Register();
@@ -84,7 +85,7 @@ public static class ServiceHost
 
         // ADR 0025: after every Initialize, so the walk covers every group declared this session -- a User
         // row without help, a layout knob that is not a dropdown, a Restart knob whose Boot moved, all fail here.
-        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.AfterServices), log);
+        SelfCheckUnits.RunAll(SelfCheckUnits.Discover(SuitePhase.AfterServices), log, session);
         CX.Alloy.Db.DbFeed.SessionBegins();
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 

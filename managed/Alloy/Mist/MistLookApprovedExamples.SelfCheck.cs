@@ -19,7 +19,7 @@ internal static unsafe class MistLookApprovedExamples
     /// <summary>A warm noon sun.</summary>
     private static readonly Vector3 Noon = new(0.90f, 0.80f, 0.60f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistLookApprovedExamples.SelfCheck");

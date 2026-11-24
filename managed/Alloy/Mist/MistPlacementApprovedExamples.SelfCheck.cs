@@ -13,7 +13,7 @@ internal static class MistPlacementApprovedExamples
     private const string StockFog = "silm_fog_50_lo";
     private const float Reach = 3f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPlacementApprovedExamples.SelfCheck");

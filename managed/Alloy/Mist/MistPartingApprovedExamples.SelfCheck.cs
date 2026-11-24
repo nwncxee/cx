@@ -14,7 +14,7 @@ internal static class MistPartingApprovedExamples
     /// <summary>A walk's pace, in metres a second.</summary>
     private const float Pace = 1.4f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistPartingApprovedExamples.SelfCheck");

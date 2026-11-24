@@ -29,8 +29,8 @@ public static partial class SelfCheckUnits
         finally { Current = null; }
     }
 
-    /// <summary>A registered suite: its unit name and its method.</summary>
-    public readonly record struct Suite(string Name, MethodInfo Method);
+    /// <summary>A registered suite: its unit name, its method, and whether a live client's boot runs it.</summary>
+    public readonly record struct Suite(string Name, MethodInfo Method, bool InSession = true);
 
     /// <summary>Every method marked <see cref="SelfCheckSuiteAttribute"/> for <paramref name="phase"/>, by name, since
     /// <c>GetTypes()</c> order is unstable.</summary>
@@ -39,15 +39,21 @@ public static partial class SelfCheckUnits
     public static List<Suite> Discover(SuitePhase phase) =>
         new[] { Assembly.GetExecutingAssembly(), typeof(Checker).Assembly }.Distinct().SelectMany(a => a.GetTypes())
             .SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
-            .Where(m => m.GetCustomAttribute<SelfCheckSuiteAttribute>()?.Phase == phase)
-            .Select(m => new Suite(m.DeclaringType!.FullName!.Replace('+', '.') + "." + m.Name, m))
+            .Select(m => (m, a: m.GetCustomAttribute<SelfCheckSuiteAttribute>()))
+            .Where(x => x.a?.Phase == phase)
+            .Select(x => new Suite(x.m.DeclaringType!.FullName!.Replace('+', '.') + "." + x.m.Name, x.m, x.a!.InSession))
             .OrderBy(s => s.Name, StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Runs each of <paramref name="suites"/> this boot admits, as its own unit.</summary>
-    public static void RunAll(List<Suite> suites, ExtenderLog log)
+    /// <summary>Runs each of <paramref name="suites"/> this boot admits, as its own unit; a live client's boot
+    /// (<paramref name="session"/>) skips each suite marked out of session.</summary>
+    public static void RunAll(List<Suite> suites, ExtenderLog log, bool session)
     {
         foreach (Suite s in suites)
-            if (Admits(s.Name)) Run(s.Name, () => s.Method.Invoke(null, [log]));
+        {
+            if (!Admits(s.Name)) continue;
+            if (session && !s.InSession) { new Checker(log, s.Name).Skip("in a session: too slow for a player's boot; the self-check host runs it"); continue; }
+            Run(s.Name, () => s.Method.Invoke(null, [log]));
+        }
     }
 }

@@ -18,7 +18,7 @@ internal static unsafe class GroundMistSwitchRegressions
     /// <summary>The bytes the fog stage is handed.</summary>
     private static readonly byte[] Sent = new byte[GroundMist.PackedBytes];
 
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistSwitchRegressions.SelfCheck");

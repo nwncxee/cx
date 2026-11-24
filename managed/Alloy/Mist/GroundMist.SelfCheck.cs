@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// exponential rise 1 - e^(-t/2) toward an emitter's metre, and a settled field holding exactly nothing.</summary>
 internal static partial class GroundMistSelfCheck
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistSelfCheck.SelfCheck");

@@ -13,7 +13,7 @@ internal static class MistSwitchApprovedExamples
     /// <summary>The Waterdeep docks quicksave's fog amount, read off its area's night palette.</summary>
     private const float Docks = 3f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices)]
+    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MistSwitchApprovedExamples.SelfCheck");
