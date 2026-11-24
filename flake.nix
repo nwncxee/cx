@@ -70,6 +70,8 @@
         pkgs.alsa-lib
         pkgs.sqlite
         pkgs.zstd
+        # tools/ssl_namespace_regression.sh opens a real libssl.so.3.
+        pkgs.openssl
       ];
 
       # build-win.sh (clang-cl comes with llvm.clang), check-shaders.py, check-win-symbols.py, the release

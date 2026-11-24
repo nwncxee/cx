@@ -114,6 +114,12 @@ if [ ! -f build/libcxaudio.a ] || [ native/cxaudio.cpp -nt build/libcxaudio.a ];
     -c native/cxaudio.cpp -o build/cxaudio.o
   rm -f build/libcxaudio.a && ar rcs build/libcxaudio.a build/cxaudio.o
 fi
+# The dlopen cx_managed.so links (native/cxssl.c, -Wl,--wrap=dlopen): libssl goes in a namespace of its own.
+if [ ! -f build/libcxssl.a ] || [ native/cxssl.c -nt build/libcxssl.a ]; then
+  echo ">> building the libssl namespace (libcxssl.a)..."
+  cc -O2 -fPIC -c native/cxssl.c -o build/cxssl.o
+  rm -f build/libcxssl.a && ar rcs build/libcxssl.a build/cxssl.o
+fi
 
 # FSR 3.1 upscaling: AMD's FidelityFX SDK fetched, patched and its shaders generated, then libcxfsr.a built from it.
 bash tools/ffx/prepare.sh python3 glslang
