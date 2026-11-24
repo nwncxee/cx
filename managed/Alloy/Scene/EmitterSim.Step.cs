@@ -19,7 +19,7 @@ internal static unsafe partial class EmitterSim
     /// unborn, and its own particles' otherwise.</summary>
     private static void StepOne(ref Slot slot, ref Emitter e, float dt)
     {
-        if (Mist(slot.Part, in e)) return;
+        if (Mist(slot.Part, in e)) { slot.Live = 0; return; }
         Advance(ref slot, ref e, IntPtr.Zero, dt);
     }
 

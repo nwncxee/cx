@@ -78,7 +78,7 @@ internal static class MistFixture
     /// <summary>A fresh area: the old field gone, each tile's walkmesh taken in, the player's feet at <paramref name="feet"/>.</summary>
     internal static void Lay(List<Tile> tiles, Vector3 feet, bool fogOn, float amount)
     {
-        GroundMist.AreaEdge();
+        GroundMist.Reset();
         foreach (Tile t in tiles) GroundMist.TakeWalk(t.Mesh, t.World);
         GroundMist.Follow(feet);
         GroundMist.AreaFog(fogOn, amount);

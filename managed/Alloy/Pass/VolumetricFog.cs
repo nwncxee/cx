@@ -21,13 +21,15 @@ internal static class VolumetricFog
     {
         G = KnobGroup.Declare("vfog", "Graphics", "World", master: "Volumetric fog", masterDefault: false,
             masterHelp: "Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the "
-                      + "wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. "
+                      + "wind, built from the area's own fog colour and distance. Ground mist pools in low ground, drifts on the wind "
+                      + "and parts around walkers and blasts, in place of fog models' flat sprites. Replaces the fog above; costs GPU time. "
                       + "Off, the same volume still carries far rain while it rains, and nothing else.",
             order: 345, title: "Volumetric fog");
         Enabled = G.Master!;
         G.Status = FogVolume.Describe;
         Quality = G.Dropdown("quality", "Fog detail", Levels, "medium", new[] { "Low", "Medium", "High", "Ultra" },
-                             tier: Tier.Advanced, help: "How finely the fog volume is divided. Higher shows sharper light shafts and costs more.")
+                             tier: Tier.Advanced, help: "How finely the fog volume is divided. Higher shows sharper light shafts and costs more. "
+                                   + "At Low the ground mist lies still.")
                    .Ladder(CX.Alloy.Quality.Effects, "low", "low", "medium", "high");
 
         G.Section("Look");

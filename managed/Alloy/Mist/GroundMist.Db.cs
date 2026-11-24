@@ -7,15 +7,25 @@ namespace CX.Alloy;
 
 internal static partial class GroundMist
 {
+    /// <summary>A column with no floor, as the fog stage reads it: far below anything, so no froxel stands over it.</summary>
+    private const float NoFloor = -1e9f;
+
     /// <summary>Frame <paramref name="frame"/> of the live field in <paramref name="scene"/>: the tile walkmeshes seated
     /// since the last, the field recentred on <paramref name="feet"/>, the area's fog, then <paramref name="dt"/>
-    /// seconds of it. Once per frame: a second view of the same frame changes nothing.</summary>
+    /// seconds of it. A new scene starts a fresh field that keeps the sources queued before its first frame. Once per
+    /// frame: a second view of the same frame changes nothing.</summary>
     internal static void Frame(DbId scene, int frame, Vector3 feet, bool fogOn, float fogAmount, float dt, Vector2 wind)
     {
         GroundMistState s = _s;
         if (s.Scene != scene.Value)
         {
-            if (s.Scene != 0) { AreaEdge(); s = _s; }
+            if (s.Scene != 0)
+            {
+                GroundMistState old = s;
+                Reset();
+                s = _s;
+                (s.Source, s.Sources) = (old.Source, old.Sources);
+            }
             s.Scene = scene.Value;
         }
         if (s.Seq == frame) return;
@@ -47,7 +57,7 @@ internal static partial class GroundMist
         if (!shows) return Head;
         Span<Vector2> cells = MemoryMarshal.Cast<byte, Vector2>(into[Head..]);
         for (int c = 0; c < s.Floor.Length; c++)
-            cells[c] = new Vector2(s.Floor[c], s.Depth[c]);
+            cells[c] = new Vector2(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], s.Depth[c]);
         return PackedBytes;
     }
 

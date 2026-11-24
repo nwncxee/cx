@@ -19,8 +19,10 @@ internal static class MistPartingApprovedExamples
     {
         var check = new Checker(log, "MistPartingApprovedExamples.SelfCheck");
         bool on = VolumetricFog.Enabled.V;
+        string quality = VolumetricFog.Quality.V;
         try
         {
+            VolumetricFog.Quality.V = "medium";
             VolumetricFog.Enabled.V = true;
             PlayerPath(check);
             Creature(check, 10f, true, "E3");
@@ -30,7 +32,8 @@ internal static class MistPartingApprovedExamples
         finally
         {
             VolumetricFog.Enabled.V = on;
-            GroundMist.AreaEdge();
+            VolumetricFog.Quality.V = quality;
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "MistPartingApprovedExamples.SelfCheck: passed" : "MistPartingApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

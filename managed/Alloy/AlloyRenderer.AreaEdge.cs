@@ -19,7 +19,6 @@ public sealed unsafe partial class AlloyRenderer
         FrameDiffAreaEdge();               // the diff's pass count is per AREA, not per session
         CreatureParityAreaEdge();          // ...and so is the creature dump's
         Unseen.Reset();                    // the perception list is the new area's
-        GroundMist.AreaEdge();             // ...and so is the ground mist and its walkmesh
         DbBlackProbeAreaEdge();            // ...and so is the black probe's budget
         if (AlloyDevice.VulkanMade is CX.Graphics.Rhi.VkBackend vk)
         {

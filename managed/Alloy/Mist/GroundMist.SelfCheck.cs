@@ -10,16 +10,18 @@ namespace CX.Alloy;
 
 /// <summary>The field's own rules under the approved examples. Oracle, by hand: which face a column floors on, the
 /// exponential rise 1 - e^(-t/2) toward an emitter's metre, and a settled field holding exactly nothing.</summary>
-internal static class GroundMistSelfCheck
+internal static partial class GroundMistSelfCheck
 {
     [SelfCheckSuite(SuitePhase.BeforeServices)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GroundMistSelfCheck.SelfCheck");
         bool on = VolumetricFog.Enabled.V;
+        string detail = VolumetricFog.Quality.V;
         try
         {
             VolumetricFog.Enabled.V = true;
+            VolumetricFog.Quality.V = "medium";
             Floors(check);
             Triangle(check);
             Rise(check);
@@ -33,11 +35,13 @@ internal static class GroundMistSelfCheck
             Wind(check);
             Parting(check);
             Blasts(check);
+            Edges(check);
         }
         finally
         {
             VolumetricFog.Enabled.V = on;
-            GroundMist.AreaEdge();
+            VolumetricFog.Quality.V = detail;
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "GroundMistSelfCheck.SelfCheck: passed" : "GroundMistSelfCheck.SelfCheck: FAILED");
         return check.Ok;
@@ -75,7 +79,7 @@ internal static class GroundMistSelfCheck
             Positions = new[] { Vector3.Zero, new Vector3(10f, 0f, 0f), new Vector3(0f, 10f, 0f) },
             Faces = new[] { new FaceDef { V0 = 0, V1 = 1, V2 = 2, Surface = Stone, Adj0 = -1, Adj1 = -1, Adj2 = -1 } },
         };
-        GroundMist.AreaEdge();
+        GroundMist.Reset();
         GroundMist.TakeWalk(mesh, Matrix4x4.Identity);
         GroundMist.Follow(new Vector3(2f, 2f, 0f));
         float inside = GroundMist.FloorAt(2.5f, 2.5f), outside = GroundMist.FloorAt(8.5f, 8.5f);
@@ -271,7 +275,7 @@ internal static class GroundMistSelfCheck
     private static void NewArea(Checker check)
     {
         Lay(Flat(), Vector3.Zero, true, AreaAmount);
-        GroundMist.AreaEdge();
+        GroundMist.Reset();
         var b = new List<Tile>();
         Deck(b, 0f, 0f, 4f, 4f, 0f, Stone);
         Lay(b, new Vector3(2f, 2f, 0f), true, AreaAmount);
@@ -279,17 +283,32 @@ internal static class GroundMistSelfCheck
         check.Expect(float.IsNaN(old), $"after the area edge the old area's ground floors (20.5, 20.5) at {old} (want none)");
     }
 
-    /// <summary>With Volumetric fog off the field holds still.</summary>
+    /// <summary>Volumetric fog turned off empties the field, and turned on again the field starts from the area's fog, none of the old mist kept.</summary>
     private static void Frozen(Checker check)
     {
         Lay(Flat(), Vector3.Zero, false, 0f);
         GroundMist.Place(Vector3.Zero, 3f, 1f);
+        Run(0.1f, Vector2.Zero);
         VolumetricFog.Enabled.V = false;
         Run(1f, Vector2.Zero);
         VolumetricFog.Enabled.V = true;
-        float held = GroundMist.At(0.5f, 0.5f);
-        check.Expect(held == 1f, $"a second with Volumetric fog off leaves {held} m of a 1 m disc (want it all)");
+        GroundMist.AreaFog(false, 0f);
+        Run(Frame, Vector2.Zero);
+        float dry = GroundMist.At(0.5f, 0.5f);
+
+        Fogged(Flat(), Vector3.Zero);
+        GroundMist.Place(Vector3.Zero, 3f, 1f);
+        Run(0.1f, Vector2.Zero);
+        VolumetricFog.Enabled.V = false;
+        Run(1f, Vector2.Zero);
+        VolumetricFog.Enabled.V = true;
+        GroundMist.AreaFog(true, AreaAmount);
+        Run(Frame, Vector2.Zero);
+        float fogged = GroundMist.At(0.5f, 0.5f), far = GroundMist.At(60.5f, 0.5f);
+        check.Expect(dry == 0f && fogged == far && far == AreaAmount * 0.1f,
+            $"fog off and on again leaves {dry} m of a disc on dry ground, and {fogged} m of a disc in area fog beside {far} m away from it (want none, then the area's {AreaAmount * 0.1f} m at both)");
     }
+
     /// <summary>Running down a slope moves mist and makes none: each frame the field holds e^(-dt/20) of the last, as settling alone would leave.</summary>
     private static void Kept(Checker check)
     {

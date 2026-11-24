@@ -17,8 +17,10 @@ internal static unsafe partial class EmitterSim
     {
         var check = new Checker(log, "EmitterSim.MistBlastApprovedExamples.SelfCheck");
         bool on = VolumetricFog.Enabled.V;
+        string quality = VolumetricFog.Quality.V;
         try
         {
+            VolumetricFog.Quality.V = "medium";
             VolumetricFog.Enabled.V = true;
             Reset();
             Fireball(check);
@@ -31,7 +33,8 @@ internal static unsafe partial class EmitterSim
         {
             Reset();
             VolumetricFog.Enabled.V = on;
-            GroundMist.AreaEdge();
+            VolumetricFog.Quality.V = quality;
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "EmitterSim.MistBlastApprovedExamples.SelfCheck: passed" : "EmitterSim.MistBlastApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

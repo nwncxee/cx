@@ -33,7 +33,7 @@ internal static class MistWindApprovedExamples
         {
             VolumetricFog.Enabled.V = on;
             VolumetricFog.Quality.V = quality;
-            GroundMist.AreaEdge();
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "MistWindApprovedExamples.SelfCheck: passed" : "MistWindApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

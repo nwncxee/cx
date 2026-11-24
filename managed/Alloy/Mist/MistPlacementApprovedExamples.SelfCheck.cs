@@ -18,8 +18,10 @@ internal static class MistPlacementApprovedExamples
     {
         var check = new Checker(log, "MistPlacementApprovedExamples.SelfCheck");
         bool on = VolumetricFog.Enabled.V;
+        string quality = VolumetricFog.Quality.V;
         try
         {
+            VolumetricFog.Quality.V = "medium";
             VolumetricFog.Enabled.V = true;
             StockPlaceable(check);
             HighEmitter(check);
@@ -37,7 +39,8 @@ internal static class MistPlacementApprovedExamples
         finally
         {
             VolumetricFog.Enabled.V = on;
-            GroundMist.AreaEdge();
+            VolumetricFog.Quality.V = quality;
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "MistPlacementApprovedExamples.SelfCheck: passed" : "MistPlacementApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

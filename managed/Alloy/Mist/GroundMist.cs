@@ -74,7 +74,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         s.Player = new Vector2(feet.X, feet.Y);
-        int ox = (int)MathF.Floor(feet.X / Snap) * Snap - Side / 2, oy = (int)MathF.Floor(feet.Y / Snap) * Snap - Side / 2;
+        int ox = CornerFor(feet.X), oy = CornerFor(feet.Y);
         if (s.Laid && !s.Stale && ox == s.Ox && oy == s.Oy && MathF.Abs(feet.Z - s.FeetZ) < Relay) return;
         int oldX = s.Ox, oldY = s.Oy;
         bool had = s.Laid;
@@ -123,12 +123,13 @@ internal static partial class GroundMist
         }
     }
 
-    /// <summary>The area's fog, as its current palette sets it: the even floor of mist it lays.</summary>
+    /// <summary>The area's fog, as its current palette sets it: the even floor of mist it lays, filled whole until the
+    /// field steps. With Volumetric fog off it is only remembered, so the off state does no work.</summary>
     internal static void AreaFog(bool on, float amount)
     {
         GroundMistState s = _s;
         s.AreaLevel = on ? Math.Clamp(amount * DepthPerAmount, 0f, MaxArea) : 0f;
-        if (s.Stepped) return;
+        if (s.Stepped || !VolumetricFog.Enabled.V) return;
         for (int c = 0; c < s.Depth.Length; c++) s.Depth[c] = float.IsNaN(s.Floor[c]) ? 0f : s.AreaLevel;
         s.Any = s.AreaLevel > Trace;
         s.Gen++;
@@ -171,13 +172,19 @@ internal static partial class GroundMist
             }
     }
 
-    /// <summary>Advance the field by <paramref name="dt"/> seconds under the area's <paramref name="wind"/>.</summary>
+    /// <summary>Advance the field by <paramref name="dt"/> seconds under the area's <paramref name="wind"/>. With Volumetric fog off
+    /// it holds no step, so the area's fog lays the field afresh once the fog comes back on.</summary>
     internal static void Step(float dt, Vector2 wind)
     {
         GroundMistState s = _s;
         int sources = s.Sources;
         s.Sources = 0;
-        if (!VolumetricFog.Enabled.V || !s.Laid || dt <= 0f) return;
+        if (!VolumetricFog.Enabled.V)
+        {
+            s.Stepped = false;
+            return;
+        }
+        if (!s.Laid || dt <= 0f) return;
         s.Stepped = true;
         Array.Fill(s.Target, s.AreaLevel);
         for (int i = 0; i < sources; i++)
@@ -240,7 +247,7 @@ internal static partial class GroundMist
     /// share by the wind's speed, none into a wall or across a step, and past the field's edge the area's floor blows in.</summary>
     private static bool Drift(GroundMistState s, float dt, Vector2 wind)
     {
-        if (wind == Vector2.Zero || VolumetricFog.Quality.V == VolumetricFog.Levels[0]) return false;
+        if (wind == Vector2.Zero || LiesStill()) return false;
         float fx = MathF.Min(MathF.Abs(wind.X) * dt, MaxShare), fy = MathF.Min(MathF.Abs(wind.Y) * dt, MaxShare);
         int sx = wind.X < 0f ? -1 : 1, sy = wind.Y < 0f ? -1 : 1;
         float[] depth = s.Depth, next = s.Target;
@@ -315,7 +322,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
-        if (!VolumetricFog.Enabled.V || !s.Any || moved > MaxPartStep) return;
+        if (!VolumetricFog.Enabled.V || LiesStill() || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
         Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f));
     }
@@ -328,7 +335,7 @@ internal static partial class GroundMist
     internal static void Blast(Vector3 at, float radius)
     {
         GroundMistState s = _s;
-        if (!VolumetricFog.Enabled.V || !s.Any || !(radius > 0f)) return;
+        if (!VolumetricFog.Enabled.V || LiesStill() || !s.Any || !(radius > 0f)) return;
         Push(s, at, radius, radius + BlastRim, 1f);
     }
 
@@ -388,8 +395,15 @@ internal static partial class GroundMist
     /// <summary>Does the fog volume draw mist this frame?</summary>
     internal static bool Shows() => VolumetricFog.Enabled.V && _s.Any;
 
-    /// <summary>The area edge: the old area's mist and walkmesh go with it.</summary>
-    internal static void AreaEdge() => _s = new GroundMistState();
+    /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
+    internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1 };
+
+    /// <summary>Whether the mist lies still at the user's fog detail: at the lowest no wind, walker or blast moves it.</summary>
+    private static bool LiesStill() => VolumetricFog.Quality.V == VolumetricFog.Levels[0];
+
+
+    /// <summary>The field's corner along one axis for feet at <paramref name="feet"/>: the snap they stand in, less half the side.</summary>
+    internal static int CornerFor(float feet) => (int)MathF.Floor(feet / Snap) * Snap - Side / 2;
 }
 
 /// <summary>One frame's mist emitter: where it stands and the radius of the disc it fills.</summary>
@@ -424,7 +438,8 @@ internal sealed class GroundMistState
     public float[] Spare = new float[GroundMist.Side * GroundMist.Side];
     public float[] Target = new float[GroundMist.Side * GroundMist.Side];
 
-    /// <summary>The depth the area's fog lays, whether the field has stepped since the area began, and whether any column holds mist.</summary>
+    /// <summary>The depth the area's fog lays, whether the field has stepped since the area began or Volumetric fog came
+    /// back on, and whether any column holds mist.</summary>
     public float AreaLevel;
     public bool Stepped, Any;
 

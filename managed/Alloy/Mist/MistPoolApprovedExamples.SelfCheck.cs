@@ -14,8 +14,10 @@ internal static class MistPoolApprovedExamples
     {
         var check = new Checker(log, "MistPoolApprovedExamples.SelfCheck");
         bool on = VolumetricFog.Enabled.V;
+        string quality = VolumetricFog.Quality.V;
         try
         {
+            VolumetricFog.Quality.V = "medium";
             VolumetricFog.Enabled.V = true;
             Slope(check);
             Wall(check);
@@ -27,7 +29,8 @@ internal static class MistPoolApprovedExamples
         finally
         {
             VolumetricFog.Enabled.V = on;
-            GroundMist.AreaEdge();
+            VolumetricFog.Quality.V = quality;
+            GroundMist.Reset();
         }
         log.Info(check.Ok ? "MistPoolApprovedExamples.SelfCheck: passed" : "MistPoolApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
