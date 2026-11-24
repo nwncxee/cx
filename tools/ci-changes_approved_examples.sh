@@ -27,6 +27,7 @@ row tools/ci-changes.sh true true
 # When tools/ci-changes.sh maps its changed paths
 # Then it starts the Linux build and not the Windows build
 row build.sh true false
+row tools/ssl-by-name.sh true false
 row .github/actions/ffx-cache/action.yml true false
 row run-demo.sh true false
 row tools/live/run-live.sh true false
