@@ -48,7 +48,7 @@ public sealed unsafe class StepGuardService : IExtenderService
         if (!EngineLayout.Require(log, "StepGuard", "CClientExoApp", "CClientExoAppInternal", "CNWCObject", "CNWCCreature", "CNWCModule", "CPathfindInformation")) return;
         if (!SymbolMap.Require(log, "StepGuard", SymbolMap.WalkUpdateLocation, SymbolMap.TestDirectLine, SymbolMap.AppManager, SymbolMap.GetModule)) return;
         _testLine = EngineFn.TestDirectLine;
-        // chained, not installed: the pose layer's keyboard weight sets the step's rate just outside it (priority 60)
+        // chained, not installed: another layer may wrap the walk step outside the guard
         _next = hooks.ChainWalkUpdateLocation(&OnWalkUpdateLocation, 50);
         if (_next == null) { log.Info("StepGuard: standing down (WalkUpdateLocation chain refused)"); return; }
         KnobSurface.Note(Report);
