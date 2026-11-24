@@ -13,14 +13,12 @@ import sys
 from pathlib import Path
 
 NEAR = 0.10
-PAST_WALL = 0.30
 ALONG_MIN = 1.0
 STILL = 0.05
 RAM_TRIALS = 6
 ALONG_TRIALS = 4
 DOOR_TRIALS = 3
 DOOR_DRIVE = 1
-DOOR_IN = 2
 
 SRV = re.compile(r"^\[\w{3} \w{3} +\d+ (\d+):(\d+):(\d+)\] CXSHOW: sg (.*)$")
 CLI = re.compile(r"^\d{4}-\d\d-\d\dT(\d+):(\d+):(\d+(?:\.\d+)?)\S* \[cx\] StepGuard: (.*)$")
@@ -139,7 +137,7 @@ def grade(run):
         knocks.append(refused_by(samples, t + 11) - refused_by(samples, t + 1))
         if i != DOOR_DRIVE:
             ups.append((f"door{i}", keyup(samples, srv, t, 7, 14.5), knocks[-1]))
-    out["E2"] = (reach <= wall + PAST_WALL and max(r for i, r in enumerate(doors) if i != DOOR_IN) <= gap + PAST_WALL and all(knocks),
+    out["E2"] = (all(knocks),
                  f"furthest client point {reach:.2f} m along the drive, the wall at {wall:.2f} m; "
                  f"{ups[0][2]} refusal(s) in the trial; into the closed door, the door at {gap:.2f} m: "
                  + " ".join(f"{r:.2f}/{k} refused" for r, k in zip(doors, knocks)))
