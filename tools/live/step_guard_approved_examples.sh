@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Approved examples (approved-spec) for the step guard on the real Linux client: the stepguard showcase click-moves across
 # open ground and round a corner, then drives into a straight wall, rams a doorway corner post six times and turns
-# along it with W held, and holds the client's position to the server's.
+# along it with W held, then walks and drives through a door that shuts in the player's face, and holds the client's
+# position to the server's.
 # Exit 0 PASS, 1 FAIL, 2 when a run could not be made.
 #
 #   tools/live/step_guard_approved_examples.sh [--out DIR]
