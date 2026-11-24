@@ -52,7 +52,7 @@ internal static unsafe partial class FogVolume
     {
         internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
-        internal int Rain, CoverVp, CoverLayer, Hidden, Tiles, MistSky;
+        internal int Rain, CoverVp, CoverLayer, Hidden, Tiles, MistSky, MistFlow;
     }
 
     /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
@@ -194,6 +194,8 @@ internal static unsafe partial class FogVolume
         public bool OutsideDark;
         /// <summary>The light area mist scatters away from lamps: the area's sun by day, its moon by night, none indoors.</summary>
         public Vector3 MistSky;
+        /// <summary>How far the wind has carried the ground mist's patches, metres, and its clock, seconds.</summary>
+        public Vector3 MistFlow;
     }
 
     /// <summary>This frame's terms for the main view, the drift and the dawn stepped, carrying <paramref name="rain"/>
@@ -233,6 +235,7 @@ internal static unsafe partial class FogVolume
         _s.Day += ((FrameInputs.Night ? 0f : 1f) - _s.Day) * MathF.Min(dt / DayEase, 1f);
         t.Sun = SunShare(FrameInputs.Interior, FrameInputs.Blind, FrameInputs.HasAreaDiffuse, FrameInputs.AreaDiffuse,
                          _s.Day, VolumetricFog.Sun.V);
+        t.MistFlow = GroundMist.Carried();
         t.MistSky = outdoors && FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * MistSkyShare) : default;
         _s.Last = t.M; _s.LastAmbient = t.Ambient; _s.LastSun = t.Sun;
         Vector2 wind = AlloyRenderer.AreaWind();
@@ -261,6 +264,7 @@ internal static unsafe partial class FogVolume
         LooseBlock.Set(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
         LooseBlock.Set(l.Ambient, t.Ambient.X, t.Ambient.Y, t.Ambient.Z);
         LooseBlock.Set(l.MistSky, t.MistSky.X, t.MistSky.Y, t.MistSky.Z);
+        LooseBlock.Set(l.MistFlow, t.MistFlow.X, t.MistFlow.Y, t.MistFlow.Z, 0f);
         LooseBlock.Set(l.Sun, t.Sun.X, t.Sun.Y, t.Sun.Z, t.Sun.W);
         LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
         LooseBlock.Set(l.Phase, t.Phase);
@@ -301,7 +305,7 @@ internal static unsafe partial class FogVolume
     internal static LightLocs LightLocsOf() => new()
     {
         Grid = TakeGrid(), Height = LooseBlock.Loc("uVfHeight"), Noise = LooseBlock.Loc("uVfNoise"),
-        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), MistSky = LooseBlock.Loc("uVfMistSky"), Sun = LooseBlock.Loc("uVfSun"),
+        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), MistSky = LooseBlock.Loc("uVfMistSky"), MistFlow = LooseBlock.Loc("uMistFlow"), Sun = LooseBlock.Loc("uVfSun"),
         Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
         PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
         Rain = LooseBlock.Loc("uVfRain"), CoverVp = LooseBlock.Loc("uVfCoverVp"), CoverLayer = LooseBlock.Loc("uVfCoverLayer"),

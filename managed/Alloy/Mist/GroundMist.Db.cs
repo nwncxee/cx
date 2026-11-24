@@ -57,9 +57,13 @@ internal static partial class GroundMist
         if (!shows) return Head;
         Span<Vector2> cells = MemoryMarshal.Cast<byte, Vector2>(into[Head..]);
         for (int c = 0; c < s.Floor.Length; c++)
-            cells[c] = new Vector2(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], s.Depth[c]);
+            cells[c] = new Vector2(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], s.Depth[c] + s.Lift[c]);
         return PackedBytes;
     }
+
+    /// <summary>How far the wind has carried the mist's patches (x, y, metres) and the field's clock (z, seconds), as the fog
+    /// stage drifts and boils them.</summary>
+    internal static Vector3 Carried() => new((float)_s.CarriedX, (float)_s.CarriedY, (float)_s.Clock);
 
     /// <summary>The bytes of the field's head, and of the whole field as <see cref="Pack"/> writes it.</summary>
     internal const int Head = sizeof(float) * 4, PackedBytes = Head + Side * Side * sizeof(float) * 2;

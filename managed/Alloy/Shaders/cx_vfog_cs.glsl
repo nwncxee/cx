@@ -82,18 +82,36 @@ float CxVfHaze(vec3 world)
     return h;
 }
 
-/// The ground mist's extinction at height `z` over a column whose floor is `floorZ` and whose mist is `depth`
-/// metres deep: densest on the floor, falling off with `depth` as its scale height, nothing below the floor.
-float CxMistDensity(float depth, float floorZ, float z)
+/// The height no ground mist reaches over its floor, metres: a standing character's waist.
+const float CX_MIST_CAP = 0.8;
+
+/// How far the wind has carried the ground mist's patches (xy, metres) and its clock (z, seconds).
+uniform vec4 uMistFlow;
+
+/// The ground mist's extinction at height `z` over a column whose floor is `floorZ` and whose mist's top stands `top`
+/// metres up: thickest on the floor, thinning all the way up to it, never past a standing character's waist.
+float CxMistDensity(float top, float floorZ, float z)
 {
-    // extinction per metre on the floor of a column of mist: a 10 m look through it loses about four fifths
-    const float floorDensity = 0.15;
-    if (depth <= 0.0 || z < floorZ) return 0.0;
-    return floorDensity * exp(-(z - floorZ) / max(depth, 0.05));
+    // extinction per metre inside the mist: thick enough that a path cut through it reads from across a street
+    const float inside = 0.6;
+    float t = min(top, CX_MIST_CAP), above = z - floorZ;
+    if (t <= 0.0 || above < 0.0) return 0.0;
+    return inside * (1.0 - smoothstep(t * 0.2, t, above));
+}
+
+/// Where the top of mist `height` metres deep stands at `p` (metres, the wind's carry taken off) at `clock` seconds:
+/// a deeper field covers more ground, and its top rises and dips with patches a few metres across that boil as they go.
+float CxMistTop(float height, vec2 p, float clock)
+{
+    const float fullCover = 1.2, across = 2.0, boil = 0.4;
+    vec3 q = vec3(p * (1.0 / across), clock * boil);
+    vec2 warp = vec2(CxNoise3D(q * 0.5 + vec3(5.2, 1.3, 0.0)), CxNoise3D(q * 0.5 + vec3(9.7, 2.8, 4.1)));
+    float n = 0.5 + 0.5 * CxNoise3D(q + vec3(warp * 0.9, 0.0));
+    return CX_MIST_CAP * clamp(min(height / fullCover, 1.0) * (0.3 + 1.4 * n), 0.0, 1.0);
 }
 
 // The ground mist's field (GroundMist): xy its corner in whole metres, z its side in columns, w 1 = mist shows;
-// then per column, row-major from the corner, its floor height and its depth of mist.
+// then per column, row-major from the corner, its floor height and the height its mist stands.
 layout(std430, binding = 12) readonly buffer CxMistBuf
 {
     vec4 uMistHead;
@@ -107,15 +125,29 @@ vec4 CxMistTap(ivec2 c, int side)
     return vec4(col.x, col.y, 0.0, 0.0);
 }
 
-/// The ground mist's extinction at `world`, from the column it stands in; none past the field's edge.
+/// The ground mist's extinction at `world`, its floor and height blended over the four columns around it; none past the
+/// field's edge or over a column with no floor.
 float CxVfMist(vec3 world)
 {
     if (uMistHead.w <= 0.0) return 0.0;
-    ivec2 c = ivec2(floor(world.xy - uMistHead.xy));
     int side = int(uMistHead.z);
-    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ivec2(side)))) return 0.0;
-    vec4 col = CxMistTap(c, side);
-    return CxMistDensity(col.y, col.x, world.z);
+    vec2 f = world.xy - uMistHead.xy - 0.5;
+    ivec2 c0 = ivec2(floor(f));
+    vec2 t = f - vec2(c0);
+    float wsum = 0.0, floorZ = 0.0, height = 0.0;
+    for (int k = 0; k < 4; k++)
+    {
+        ivec2 o = ivec2(k & 1, k >> 1), c = c0 + o;
+        if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ivec2(side)))) continue;
+        vec4 col = CxMistTap(c, side);
+        if (col.x < -1e8) continue;
+        float w = mix(1.0 - t.x, t.x, float(o.x)) * mix(1.0 - t.y, t.y, float(o.y));
+        wsum += w; floorZ += w * col.x; height += w * col.y;
+    }
+    if (wsum <= 1e-4 || height <= 0.0) return 0.0;
+    floorZ /= wsum;
+    if (world.z < floorZ || world.z >= floorZ + CX_MIST_CAP) return 0.0;
+    return CxMistDensity(CxMistTop(height, world.xy - uMistFlow.xy, uMistFlow.z), floorZ, world.z);
 }
 
 #define CX_VFRAIN_HAZE 1

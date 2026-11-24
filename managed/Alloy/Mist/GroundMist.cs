@@ -186,6 +186,7 @@ internal static partial class GroundMist
         }
         if (!s.Laid || dt <= 0f) return;
         s.Stepped = true;
+        s.CarriedX += wind.X * dt; s.CarriedY += wind.Y * dt; s.Clock += dt;
         Array.Fill(s.Target, s.AreaLevel);
         for (int i = 0; i < sources; i++)
         {
@@ -204,6 +205,7 @@ internal static partial class GroundMist
         }
         moved |= Flow(s, dt);
         moved |= Drift(s, dt, wind);
+        moved |= Air(s, dt);
         bool any = false;
         for (int c = 0; c < s.Depth.Length; c++)
         {
@@ -324,48 +326,85 @@ internal static partial class GroundMist
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
         if (!On() || LiesStill() || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
-        Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f), new Vector2(now.X - was.X, now.Y - was.Y));
+        float take = MathF.Min(moved / PartStride, 1f);
+        var ahead = new Vector2(now.X - was.X, now.Y - was.Y);
+        if (!Push(s, now, ClearRadius, WakeRadius, BowReach, take, ahead, default, 0f)) return;
+        StirWalk(s, now, ahead, take);
     }
 
     /// <summary>A blast's mist lands on a ring this many metres wide outside its radius.</summary>
     private const float BlastRim = 2f;
 
-    /// <summary>A detonation at <paramref name="at"/> blows all the mist inside <paramref name="radius"/> out onto the
-    /// ring just past it, none onto a wall or across a step; the rise and the flow bring it back.</summary>
+    /// <summary>A detonation at <paramref name="at"/> blows all the mist inside <paramref name="radius"/> out onto a ragged
+    /// ring just past it, thrown up tall, and gusts the air it reaches outward; none onto a wall or across a step.</summary>
     internal static void Blast(Vector3 at, float radius)
     {
         GroundMistState s = _s;
         if (!On() || LiesStill() || !s.Any || !(radius > 0f)) return;
-        Push(s, at, radius, radius + BlastRim, 1f, Vector2.Zero);
+        radius = MathF.Min(radius, MaxBlast);
+        var lobes = new Lobes(at);
+        if (!Push(s, at, radius, radius + BlastRim, radius * BlastWind, 1f, Vector2.Zero, lobes, Ragged)) return;
+        Gust(s, at, radius, lobes);
     }
 
-    /// <summary>Move <paramref name="take"/> of the mist within <paramref name="clear"/> of <paramref name="centre"/>
-    /// evenly onto the columns out to <paramref name="wake"/> linked to its own and not behind <paramref name="ahead"/>. Mass is kept.</summary>
-    private static void Push(GroundMistState s, Vector3 centre, float clear, float wake, float take, Vector2 ahead)
+    /// <summary>The widest blast the field throws, in metres: its gust reaches twice as far, well inside the field.</summary>
+    private const float MaxBlast = 20f;
+
+    /// <summary>Move <paramref name="take"/> of the mist within <paramref name="clear"/> of <paramref name="centre"/> onto the
+    /// columns out to <paramref name="wake"/> not behind <paramref name="ahead"/>, weighted round by <paramref name="lobes"/>, over
+    /// ground the air reaches from the centre without crossing a wall or a step. The reached columns, out to <paramref name="reach"/>,
+    /// are left in the queue; false if none was. Mass is kept.</summary>
+    private static bool Push(GroundMistState s, Vector3 centre, float clear, float wake, float reach, float take, Vector2 ahead, in Lobes lobes, float ragged)
     {
+        s.Reached = 0;
         int at = Column(s, centre.X, centre.Y);
-        if (at < 0) return;
-        float taken = 0f;
-        int ring = 0;
-        int x0 = Math.Max((int)MathF.Floor(centre.X - wake) - s.Ox, 0), x1 = Math.Min((int)MathF.Ceiling(centre.X + wake) - s.Ox, Side - 1);
-        int y0 = Math.Max((int)MathF.Floor(centre.Y - wake) - s.Oy, 0), y1 = Math.Min((int)MathF.Ceiling(centre.Y + wake) - s.Oy, Side - 1);
-        for (int pass = 0; pass < 2; pass++)
+        if (at < 0 || float.IsNaN(s.Floor[at])) return false;
+        Fill(s, at, centre, MathF.Max(reach, wake));
+        float taken = 0f, weight = 0f;
+        for (int i = 0; i < s.Reached; i++)
         {
-            if (pass == 1 && ring == 0) return;
-            float share = pass == 1 ? taken / ring : 0f;
-            for (int y = y0; y <= y1; y++)
-                for (int x = x0; x <= x1; x++)
-                {
-                    int c = y * Side + x;
-                    float dx = s.Ox + x + 0.5f - centre.X, dy = s.Oy + y + 0.5f - centre.Y, r2 = dx * dx + dy * dy;
-                    if (r2 > wake * wake || !Linked(s, at, c)) continue;
-                    bool inner = r2 <= clear * clear;
-                    if (!inner && dx * ahead.X + dy * ahead.Y < 0f) continue;
-                    if (pass == 0) { if (inner) taken += s.Depth[c] * take; else ring++; }
-                    else if (inner) s.Depth[c] -= s.Depth[c] * take;
-                    else s.Depth[c] += share;
-                }
+            int c = s.Queue[i];
+            float dx = s.Ox + c % Side + 0.5f - centre.X, dy = s.Oy + c / Side + 0.5f - centre.Y, r2 = dx * dx + dy * dy;
+            if (r2 <= clear * clear) taken += s.Depth[c] * take;
+            else if (r2 <= wake * wake && dx * ahead.X + dy * ahead.Y >= 0f) weight += 1f + ragged * lobes.Of(MathF.Atan2(dy, dx));
         }
+        if (weight <= 0f) return true;
+        float share = taken / weight;
+        for (int i = 0; i < s.Reached; i++)
+        {
+            int c = s.Queue[i];
+            float dx = s.Ox + c % Side + 0.5f - centre.X, dy = s.Oy + c / Side + 0.5f - centre.Y, r2 = dx * dx + dy * dy;
+            if (r2 <= clear * clear) s.Depth[c] -= s.Depth[c] * take;
+            else if (r2 <= wake * wake && dx * ahead.X + dy * ahead.Y >= 0f) s.Depth[c] += share * (1f + ragged * lobes.Of(MathF.Atan2(dy, dx)));
+        }
+        return true;
+    }
+
+    /// <summary>Queue every column within <paramref name="radius"/> of <paramref name="centre"/> that the ground joins to
+    /// <paramref name="from"/> edge by edge, with no wall or step between, nearest first.</summary>
+    private static void Fill(GroundMistState s, int from, Vector3 centre, float radius)
+    {
+        if (++s.Stamp == int.MaxValue) { Array.Clear(s.Mark); s.Stamp = 1; }
+        int stamp = s.Stamp, n = 0, head = 0;
+        float r2 = radius * radius;
+        s.Mark[from] = stamp;
+        s.Queue[n++] = from;
+        while (head < n)
+        {
+            int c = s.Queue[head++], x = c % Side, y = c / Side;
+            for (int k = 0; k < 4; k++)
+            {
+                int nx = x + (k == 0 ? -1 : k == 1 ? 1 : 0), ny = y + (k == 2 ? -1 : k == 3 ? 1 : 0);
+                if ((uint)nx >= Side || (uint)ny >= Side) continue;
+                int to = ny * Side + nx;
+                if (s.Mark[to] == stamp) continue;
+                float dx = s.Ox + nx + 0.5f - centre.X, dy = s.Oy + ny + 0.5f - centre.Y;
+                if (dx * dx + dy * dy > r2 || !Linked(s, c, to)) continue;
+                s.Mark[to] = stamp;
+                s.Queue[n++] = to;
+            }
+        }
+        s.Reached = n;
     }
 
     /// <summary>The field's column for world (<paramref name="x"/>, <paramref name="y"/>), or -1 outside it.</summary>
@@ -386,10 +425,20 @@ internal static partial class GroundMist
     }
 
     /// <summary>How tall the mist stands, in metres, over the world column at (<paramref name="x"/>, <paramref name="y"/>).</summary>
-    internal static float Height(float x, float y) => At(x, y);
+    internal static float Height(float x, float y)
+    {
+        GroundMistState s = _s;
+        int c = Column(s, x, y);
+        return c < 0 ? s.AreaLevel : s.Depth[c] + s.Lift[c];
+    }
 
     /// <summary>How fast the mist over the world column at (<paramref name="x"/>, <paramref name="y"/>) moves across the ground, in metres a second.</summary>
-    internal static Vector2 Motion(float x, float y) => Vector2.Zero;
+    internal static Vector2 Motion(float x, float y)
+    {
+        GroundMistState s = _s;
+        int c = Column(s, x, y);
+        return c < 0 ? Vector2.Zero : new Vector2(s.Vx[c], s.Vy[c]);
+    }
 
     /// <summary>The floor height the column at (<paramref name="x"/>, <paramref name="y"/>) lays its mist on; NaN for none.</summary>
     internal static float FloorAt(float x, float y)
@@ -456,6 +505,27 @@ internal sealed class GroundMistState
     /// <summary>This frame's emitters.</summary>
     public MistSource[] Source = new MistSource[GroundMist.MaxSources];
     public int Sources;
+
+    /// <summary>Per column: the air's velocity in metres a second, the next step's, and the height the mist was thrown up over its depth.</summary>
+    public float[] Vx = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Vy = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Nx = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Ny = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Lift = new float[GroundMist.Side * GroundMist.Side];
+
+    /// <summary>Whether any air moves, the columns it moves over, and its fastest speed; whether any mist stands thrown up.</summary>
+    public bool Air, Lifted;
+    public int Ax0, Ax1, Ay0, Ay1;
+    public float AirTop;
+
+    /// <summary>How far the wind has carried the mist's patches, metres, and how long the field has stepped, seconds;
+    /// double, since both grow all session.</summary>
+    public double CarriedX, CarriedY, Clock;
+
+    /// <summary>The columns a push reached, nearest first, how many, and the stamp marking them reached.</summary>
+    public int[] Queue = new int[GroundMist.Side * GroundMist.Side];
+    public int[] Mark = new int[GroundMist.Side * GroundMist.Side];
+    public int Reached, Stamp;
 }
 
 /// <summary>One floor face of the walkmesh, its three corners in world space.</summary>

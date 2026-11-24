@@ -14,10 +14,10 @@ internal static partial class GpuGolden
 
     private static void MistProfileApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string fn = Function(ShaderSource.Get("cx_vfog_cs.glsl"), "float CxMistDensity(");
+        string src = ShaderSource.Get("cx_vfog_cs.glsl"), fn = Function(src, "float CxMistDensity(");
         check.Expect(fn.Length > 0, "mist profile: cx_vfog_cs declares CxMistDensity");
         if (fn.Length == 0) return;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 1) + fn + """
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 1) + Declaration(src, "CX_MIST_CAP") + fn + """
             void main()
             {
                 float z = uIn[gl_WorkGroupID.x * uint(CX_GOLD_IN)];
