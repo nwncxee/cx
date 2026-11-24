@@ -11,7 +11,7 @@ namespace CX.Alloy;
 internal static partial class GpuGolden
 {
     /// <summary>The shipped functions the shape golden splices, in the order they declare.</summary>
-    private static readonly string[] MistLibrary = { "float CxMistDensity(", "float CxMistTop(", "float CxVfMist(" };
+    private static readonly string[] MistLibrary = { "float CxMistDensity(", "float CxMistTop(", "bool CxMistColumn(", "float CxVfMist(" };
 
     /// <summary>Floats per shape case: the point (x, y, z), the field's height, how far the wind carried it (x, y), its clock.</summary>
     private const int MistCaseFloats = 7;
@@ -28,11 +28,11 @@ internal static partial class GpuGolden
 
     private static void MistShapeApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string src = ShaderSource.Get("cx_vfog_cs.glsl"), lib = Declaration(src, "CX_MIST_CAP");
+        string src = ShaderSource.Get("cx_mist.glsl"), lib = Declaration(src, "CX_MIST_CAP") + Declaration(src, "CX_MIST_INSIDE");
         foreach (string sig in MistLibrary)
         {
             string fn = Function(src, sig);
-            check.Expect(fn.Length > 0, $"mist shape: cx_vfog_cs declares {sig}");
+            check.Expect(fn.Length > 0, $"mist shape: cx_mist declares {sig}");
             if (fn.Length == 0) return;
             lib += fn;
         }
