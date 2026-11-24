@@ -368,8 +368,14 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>A creature that moved since its last step parts the ground mist, wind-enabled or not.
-    /// Hot, once per member per frame. ponytail: a seam; parts nothing yet.</summary>
-    internal static void MovedMist(int i) { }
+    /// Hot, once per member per frame.</summary>
+    internal static void MovedMist(int i)
+    {
+        if ((SceneDb.ObjFlags[i] & ObjFlag.Creature) == 0) return;
+        Vector3 now = SceneDb.ObjWorld[i].Translation, was = SceneDb.ObjMistPrev[i];
+        SceneDb.ObjMistPrev[i] = now;
+        if (was != now) CX.Alloy.GroundMist.Part(was, now);
+    }
 
     /// <summary>The radius <c>Gob::Animate</c>'s gust call site passes.</summary>
     private const float GustRadius = 1f;

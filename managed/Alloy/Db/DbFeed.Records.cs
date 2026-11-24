@@ -403,6 +403,7 @@ public static unsafe partial class DbFeed
         SceneDb.ObjPartFirst[o] = 0;
         SceneDb.ObjPartCount[o] = 0;
         SceneDb.ObjFlags[o] = ObjFlag.None;
+        SceneDb.ObjMistPrev[o] = new Vector3(SceneDb.NoPrevPos);
         // ...and the scene: a record whose join is skipped otherwise points at the last tenant's scene.
         SceneDb.ObjScene[o] = default;
         SceneDb.ObjCrossScene[o] = default;

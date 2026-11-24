@@ -72,6 +72,7 @@ internal static partial class GroundMist
     internal static void Follow(Vector3 feet)
     {
         GroundMistState s = _s;
+        s.Player = new Vector2(feet.X, feet.Y);
         int ox = (int)MathF.Floor(feet.X / Snap) * Snap - Side / 2, oy = (int)MathF.Floor(feet.Y / Snap) * Snap - Side / 2;
         if (s.Laid && !s.Stale && ox == s.Ox && oy == s.Oy && MathF.Abs(feet.Z - s.FeetZ) < Relay) return;
         int oldX = s.Ox, oldY = s.Oy;
@@ -296,6 +297,50 @@ internal static partial class GroundMist
         return s.Depth[from] > 0f ? Send(s, from, c % Side, c / Side, rate) * s.Spare[from] : 0f;
     }
 
+    /// <summary>The radius a walker clears at its feet, and the ring out to which the mist it pushes lands.</summary>
+    private const float ClearRadius = 1f, WakeRadius = 2.5f;
+
+    /// <summary>A walker clears its disc fully over this much of its own travel.</summary>
+    private const float PartStride = 0.1f;
+
+    /// <summary>A step longer than this in one frame is a teleport, not a walk, and parts nothing.</summary>
+    private const float MaxPartStep = 3f;
+
+    /// <summary>Walkers part the mist only this far from the player along either axis: the air box.</summary>
+    private const float PartBox = 32f;
+
+    /// <summary>A walker that stepped from <paramref name="was"/> to <paramref name="now"/> pushes the mist at its feet
+    /// out to a ring around it, none onto a wall or across a step. Mass is kept; hot, allocates nothing.</summary>
+    internal static void Part(Vector3 was, Vector3 now)
+    {
+        GroundMistState s = _s;
+        float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
+        if (!VolumetricFog.Enabled.V || !s.Any || moved > MaxPartStep) return;
+        if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
+        int at = Column(s, now.X, now.Y);
+        if (at < 0) return;
+        float take = MathF.Min(moved / PartStride, 1f), taken = 0f;
+        int ring = 0;
+        int x0 = Math.Max((int)MathF.Floor(now.X - WakeRadius) - s.Ox, 0), x1 = Math.Min((int)MathF.Ceiling(now.X + WakeRadius) - s.Ox, Side - 1);
+        int y0 = Math.Max((int)MathF.Floor(now.Y - WakeRadius) - s.Oy, 0), y1 = Math.Min((int)MathF.Ceiling(now.Y + WakeRadius) - s.Oy, Side - 1);
+        for (int pass = 0; pass < 2; pass++)
+        {
+            if (pass == 1 && ring == 0) return;
+            float share = pass == 1 ? taken / ring : 0f;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    int c = y * Side + x;
+                    float dx = s.Ox + x + 0.5f - now.X, dy = s.Oy + y + 0.5f - now.Y, r2 = dx * dx + dy * dy;
+                    if (r2 > WakeRadius * WakeRadius || !Linked(s, at, c)) continue;
+                    bool inner = r2 <= ClearRadius * ClearRadius;
+                    if (pass == 0) { if (inner) taken += s.Depth[c] * take; else ring++; }
+                    else if (inner) s.Depth[c] -= s.Depth[c] * take;
+                    else s.Depth[c] += share;
+                }
+        }
+    }
+
     /// <summary>A detonation at <paramref name="at"/> that blows the mist out of <paramref name="radius"/>.</summary>
     internal static void Blast(Vector3 at, float radius) { }
 
@@ -346,6 +391,9 @@ internal sealed class GroundMistState
     /// whether faces came in since.</summary>
     public int Ox, Oy;
     public float FeetZ;
+
+    /// <summary>The player's feet across the ground, the centre of the box walkers part the mist in.</summary>
+    public Vector2 Player;
     public bool Laid, Stale;
 
     /// <summary>Bumped whenever a floor or a depth changes, so the upload sends the field only when it moved.</summary>

@@ -31,6 +31,7 @@ internal static class GroundMistSelfCheck
             Uploads(check);
             Live(check);
             Wind(check);
+            Parting(check);
         }
         finally
         {
@@ -157,6 +158,77 @@ internal static class GroundMistSelfCheck
         Run(1f, MistFixture.HighWindX);
         float wall = GroundMist.At(-127.5f, 0.5f);
         check.Expect(wall == 0f, $"a wall reaching the field's upwind edge holds {wall:F4} m after 1 s of high wind over area fog (want none)");
+    }
+
+    /// <summary>A walker parts by its travel and keeps the mist it moves, onto no wall, and only a walker in the box around
+    /// the player that walks rather than teleports, under Volumetric fog, and is a creature.</summary>
+    private static void Parting(Checker check)
+    {
+        Vector3 at = new(0.25f, 0.25f, 0f);
+        Fogged(Flat(), Vector3.Zero);
+        Run(1f, Vector2.Zero);
+        float floor = GroundMist.At(at.X, at.Y), mass = Mass(-6f, -6f, 6f, 6f);
+        GroundMist.Part(at - new Vector3(0.01f, 0f, 0f), at);
+        float shuffled = GroundMist.At(at.X, at.Y);
+        GroundMist.Part(at - new Vector3(0.2f, 0f, 0f), at);
+        float stepped = GroundMist.At(at.X, at.Y), kept = Mass(-6f, -6f, 6f, 6f), corner = GroundMist.At(2.5f, 2.5f);
+        check.Expect(shuffled >= floor * 0.85f && stepped == 0f, $"a 1 cm shuffle leaves {shuffled:F4} m of {floor:F4} at the feet, a 20 cm step {stepped:F4} (want most, then none)");
+        check.Expect(MathF.Abs(kept - mass) <= mass * 1e-5f, $"parting leaves {kept:F4} m^3 of {mass:F4} around the walker (want all of it)");
+        check.Expect(corner == floor, $"the column 3.2 m off on the diagonal holds {corner:F4} m after parting (want the {floor:F4} m floor: past the wake)");
+
+        Fogged(Flat(), Vector3.Zero);
+        Run(1f, Vector2.Zero);
+        GroundMist.Part(Vector3.Zero, new Vector3(10.25f, 0.25f, 0f));
+        GroundMist.Part(new Vector3(40.2f, 0.25f, 0f), new Vector3(40.25f, 0.25f, 0f));
+        GroundMist.Part(new Vector3(0.2f, 40.25f, 0f), new Vector3(0.25f, 40.25f, 0f));
+        VolumetricFog.Enabled.V = false;
+        GroundMist.Part(at - new Vector3(0.2f, 0f, 0f), at);
+        VolumetricFog.Enabled.V = true;
+        float jump = GroundMist.At(10.25f, 0.25f), east = GroundMist.At(40.25f, 0.25f), north = GroundMist.At(0.25f, 40.25f), off = GroundMist.At(at.X, at.Y);
+        check.Expect(jump == floor && east == floor && north == floor && off == floor,
+            $"a 10 m jump leaves {jump:F4} m, a walker 40 m east {east:F4}, 40 m north {north:F4}, one with fog off {off:F4} (want the {floor:F4} m floor in each)");
+
+        GroundMist.Follow(new Vector3(100f, 0f, 0f));
+        GroundMist.Part(new Vector3(100.05f, 0.25f, 0f), new Vector3(100.25f, 0.25f, 0f));
+        GroundMist.Part(at - new Vector3(0.2f, 0f, 0f), at);
+        float near = GroundMist.At(100.25f, 0.25f), left = GroundMist.At(at.X, at.Y);
+        check.Expect(near < floor && left == floor, $"once the player stands 100 m on, a walker beside them leaves {near:F4} m, one where they stood {left:F4} (want less, then the {floor:F4} m floor)");
+
+        Lay(Ground(160f, 1f, (_, _) => 0f, (x, _) => x >= 2f && x < 3f ? Nonwalk : Stone), Vector3.Zero, true, AreaAmount);
+        Run(1f, Vector2.Zero);
+        GroundMist.Part(new Vector3(0.55f, 0.25f, 0f), new Vector3(0.75f, 0.25f, 0f));
+        float wall = GroundMist.At(2.5f, 0.25f);
+        check.Expect(wall == 0f, $"a walker 1.75 m from a wall pushes {wall:F4} m onto it (want none)");
+
+        Lay(Ground(160f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) < 1f && MathF.Abs(y) < 1f ? Stone : Nonwalk), Vector3.Zero, true, AreaAmount);
+        Run(1f, Vector2.Zero);
+        float pocket = GroundMist.At(0.5f, 0.5f);
+        GroundMist.Part(new Vector3(-0.2f, 0f, 0f), Vector3.Zero);
+        float boxed = GroundMist.At(0.5f, 0.5f);
+        Fogged(Flat(), Vector3.Zero);
+        Run(1f, Vector2.Zero);
+        GroundMist.Part(new Vector3(0.3f, 0.5f, 0f), new Vector3(0.5f, 0.5f, 0f));
+        float edge = GroundMist.At(1.5f, 0.5f);
+        check.Expect(edge == 0f, $"the column exactly 1 m from a walker's feet holds {edge:F4} m (want none: the cleared disc takes its edge)");
+        check.Expect(pocket > 0f && boxed == pocket, $"a walker in a 2 m pocket walled all round leaves {boxed:F4} m of {pocket:F4} (want all: nowhere to push it)");
+
+        Fogged(Flat(), Vector3.Zero);
+        Run(1f, Vector2.Zero);
+        DbId scene = SceneDb.Scenes.Alloc(), obj = SceneDb.Objects.Alloc();
+        SceneDb.SceneIsWorld[scene.Index] = true;
+        SceneDb.SceneObjects[scene.Index]?.Clear();
+        DbFeed.InitObject(obj.Index);
+        DbScene.Join(scene, obj);
+        for (int n = 0; n <= 20; n++)
+        {
+            SceneDb.ObjWorld[obj.Index] = Matrix4x4.CreateTranslation(at + new Vector3(n * 0.05f, 0f, 0f));
+            DbAnim.Animate(scene, Frame);
+        }
+        float swept = GroundMist.At(at.X + 0.5f, at.Y);
+        check.Expect(swept == floor, $"a placeable moved 1 m through the mist leaves {swept:F4} m on its way (want the {floor:F4} m floor)");
+        DbScene.Leave(scene, obj);
+        SceneDb.Objects.Free(obj);
+        SceneDb.Scenes.Free(scene);
     }
 
     /// <summary>A new area keeps none of the old one's walkmesh.</summary>
