@@ -59,7 +59,7 @@ internal static partial class GroundMistSelfCheck
         }
         finally { VolumetricFog.Enabled.V = true; }
         check.Expect(sent == GroundMist.PackedBytes && head == new Vector4(GroundMist.CornerFor(0f), GroundMist.CornerFor(0f), side, 1f)
-                && ground == new Vector2(0f, AreaAmount * 0.1f) && wall.X < -1e8f && wall.Y == 0f && hidden == GroundMist.Head && shows == 0f,
+                && ground == new Vector2(0f, AreaDepth) && wall.X < -1e8f && wall.Y == 0f && hidden == GroundMist.Head && shows == 0f,
             $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with fog off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
     }
 
@@ -102,7 +102,7 @@ internal static partial class GroundMistSelfCheck
             SceneDb.Objects.Free(obj);
         }
         float fresh = GroundMist.At(0.5f, 0.5f);
-        check.Expect(fresh == AreaAmount * 0.1f, $"a creature in a recycled record parts {AreaAmount * 0.1f - fresh:F4} m on its first step (want none)");
+        check.Expect(fresh == AreaDepth, $"a creature in a recycled record parts {AreaDepth - fresh:F4} m on its first step (want none)");
     }
 
     /// <summary>A tile seated after the field was laid floors its columns on the next follow, the player standing still.</summary>

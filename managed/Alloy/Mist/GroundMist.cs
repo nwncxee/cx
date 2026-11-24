@@ -26,19 +26,19 @@ internal static partial class GroundMist
     private const float Relay = 1f;
 
     /// <summary>Metres of mist one metre of the area's fog amount lays, and the deepest floor area fog lays.</summary>
-    private const float DepthPerAmount = 0.1f, MaxArea = 2f;
+    private const float DepthPerAmount = 1f / 3f, MaxArea = 2f;
 
     /// <summary>The depth a mist emitter's disc fills to, and the limits on the disc's radius.</summary>
     private const float SourceDepth = 1f, MinReach = 2f, MaxReach = 10f;
 
     /// <summary>Seconds a column takes to rise toward what lays it, and to settle once nothing does.</summary>
-    private const float RiseTau = 2f, SettleTau = 20f;
+    private const float RiseTau = 4f, SettleTau = 20f;
 
     /// <summary>Below this depth a column holds no mist.</summary>
     private const float Trace = 1e-4f;
 
     /// <summary>How fast mist evens out over flat ground: the share of a depth difference one metre of depth sends a second.</summary>
-    private const float FlowRate = 1f;
+    private const float FlowRate = 0.5f;
 
     /// <summary>How much harder a drop in the floor drives mist than the same difference in its depth: it runs off
     /// slopes and creeps on the flat, so a pool keeps its place while a hillside drains.</summary>
@@ -317,14 +317,14 @@ internal static partial class GroundMist
     private const float PartBox = 32f;
 
     /// <summary>A walker that stepped from <paramref name="was"/> to <paramref name="now"/> pushes the mist at its feet
-    /// out to a ring around it, none onto a wall or across a step. Mass is kept; hot, allocates nothing.</summary>
+    /// out to its sides and ahead, never back onto its path, none onto a wall or across a step. Mass is kept; hot, allocates nothing.</summary>
     internal static void Part(Vector3 was, Vector3 now)
     {
         GroundMistState s = _s;
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
         if (!On() || LiesStill() || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
-        Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f));
+        Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f), new Vector2(now.X - was.X, now.Y - was.Y));
     }
 
     /// <summary>A blast's mist lands on a ring this many metres wide outside its radius.</summary>
@@ -336,12 +336,12 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         if (!On() || LiesStill() || !s.Any || !(radius > 0f)) return;
-        Push(s, at, radius, radius + BlastRim, 1f);
+        Push(s, at, radius, radius + BlastRim, 1f, Vector2.Zero);
     }
 
     /// <summary>Move <paramref name="take"/> of the mist within <paramref name="clear"/> of <paramref name="centre"/>
-    /// evenly onto the columns out to <paramref name="wake"/> linked to its own. Mass is kept; allocates nothing.</summary>
-    private static void Push(GroundMistState s, Vector3 centre, float clear, float wake, float take)
+    /// evenly onto the columns out to <paramref name="wake"/> linked to its own and not behind <paramref name="ahead"/>. Mass is kept.</summary>
+    private static void Push(GroundMistState s, Vector3 centre, float clear, float wake, float take, Vector2 ahead)
     {
         int at = Column(s, centre.X, centre.Y);
         if (at < 0) return;
@@ -360,6 +360,7 @@ internal static partial class GroundMist
                     float dx = s.Ox + x + 0.5f - centre.X, dy = s.Oy + y + 0.5f - centre.Y, r2 = dx * dx + dy * dy;
                     if (r2 > wake * wake || !Linked(s, at, c)) continue;
                     bool inner = r2 <= clear * clear;
+                    if (!inner && dx * ahead.X + dy * ahead.Y < 0f) continue;
                     if (pass == 0) { if (inner) taken += s.Depth[c] * take; else ring++; }
                     else if (inner) s.Depth[c] -= s.Depth[c] * take;
                     else s.Depth[c] += share;

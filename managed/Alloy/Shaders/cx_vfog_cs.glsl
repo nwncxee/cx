@@ -179,7 +179,8 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
 /// The ambient light a froxel holding `hazeD` of haze and `mistD` of mist scatters: the haze's, lifted toward the sky's by the mist's share.
 vec3 CxVfMistAmbient(vec3 haze, vec3 sky, float hazeD, float mistD)
 {
-    return haze;
+    float share = mistD > 0.0 ? mistD / (hazeD + mistD) : 0.0;
+    return mix(haze, max(haze, sky), share);
 }
 
 /// The light the medium at `world` scatters toward the eye, per unit of extinction, from ambient `amb`.

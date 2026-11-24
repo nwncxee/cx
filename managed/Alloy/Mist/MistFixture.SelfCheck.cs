@@ -29,6 +29,9 @@ internal static class MistFixture
     /// <summary>The fog amount the examples' fogged areas set.</summary>
     internal const float AreaAmount = 10f;
 
+    /// <summary>The floor that fog lays, by hand: a third of a metre a unit is 3.3 m, past the 2 m deepest.</summary>
+    internal const float AreaDepth = 2f;
+
     /// <summary>One tile part as the area seats it: its walkmesh in model space and the world it stands at.</summary>
     internal readonly record struct Tile(MeshDef Mesh, Matrix4x4 World);
 

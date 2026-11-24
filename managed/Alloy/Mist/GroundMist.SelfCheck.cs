@@ -86,7 +86,7 @@ internal static partial class GroundMistSelfCheck
         check.Expect(inside == 0f && float.IsNaN(outside), $"a triangle floors (2.5, 2.5) at {inside} and (8.5, 8.5) past its long edge at {outside} (want 0, then none)");
     }
 
-    /// <summary>A disc lays mist within its radius only; an emitter fed 5 s on an island its size fills it to 1 - e^-2.5 m, then settles to nothing.</summary>
+    /// <summary>A disc lays mist within its radius only; an emitter fed 5 s on an island its size fills it to 1 - e^-1.25 m, then settles to nothing.</summary>
     private static void Rise(Checker check)
     {
         Lay(Flat(), Vector3.Zero, false, 0f);
@@ -103,8 +103,8 @@ internal static partial class GroundMistSelfCheck
             GroundMist.Step(Frame, Vector2.Zero);
         }
         float centre = GroundMist.At(0.5f, 0.5f), rim = GroundMist.At(2.5f, 1.5f);
-        check.Expect(centre > 0.9f && centre < 0.93f && rim > 0.9f && rim < 0.93f,
-            $"5 s of a 3 m emitter on an island its size lays {centre:F4} m at its centre and {rim:F4} at its rim (want 0.918 both)");
+        check.Expect(centre > 0.70f && centre < 0.73f && rim > 0.70f && rim < 0.73f,
+            $"5 s of a 3 m emitter on an island its size lays {centre:F4} m at its centre and {rim:F4} at its rim (want 0.713 both)");
         for (int n = 0; n < 60; n++) GroundMist.Step(10f, Vector2.Zero);
         float left = GroundMist.At(0.5f, 0.5f);
         bool shows = GroundMist.Shows();
@@ -305,8 +305,8 @@ internal static partial class GroundMistSelfCheck
         GroundMist.AreaFog(true, AreaAmount);
         Run(Frame, Vector2.Zero);
         float fogged = GroundMist.At(0.5f, 0.5f), far = GroundMist.At(60.5f, 0.5f);
-        check.Expect(dry == 0f && fogged == far && far == AreaAmount * 0.1f,
-            $"fog off and on again leaves {dry} m of a disc on dry ground, and {fogged} m of a disc in area fog beside {far} m away from it (want none, then the area's {AreaAmount * 0.1f} m at both)");
+        check.Expect(dry == 0f && fogged == far && far == AreaDepth,
+            $"fog off and on again leaves {dry} m of a disc on dry ground, and {fogged} m of a disc in area fog beside {far} m away from it (want none, then the area's {AreaDepth} m at both)");
     }
 
     /// <summary>Running down a slope moves mist and makes none: each frame the field holds e^(-dt/20) of the last, as settling alone would leave.</summary>

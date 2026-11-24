@@ -145,6 +145,9 @@ internal static unsafe partial class FogVolume
         return haveSky ? Vector3.Lerp(a, sky, skyMix) : a;
     }
 
+    /// <summary>The share of the area's sun or moon that mist, thick and low, scatters as the light it glows with.</summary>
+    private const float MistSkyShare = 0.5f;
+
     /// <summary>The share (w) of the medium's light that arrives as the sun's beam, and the sun's hue times it (xyz): the
     /// fog colour is the lit fog averaged over view directions, so a beam gains what its shade loses. Scales with <paramref name="day"/> (0 = the
     /// moon, which lights no air) and the sun's luminance up to 1; nothing indoors, under blind lights or unread.</summary>
@@ -230,6 +233,7 @@ internal static unsafe partial class FogVolume
         _s.Day += ((FrameInputs.Night ? 0f : 1f) - _s.Day) * MathF.Min(dt / DayEase, 1f);
         t.Sun = SunShare(FrameInputs.Interior, FrameInputs.Blind, FrameInputs.HasAreaDiffuse, FrameInputs.AreaDiffuse,
                          _s.Day, VolumetricFog.Sun.V);
+        t.MistSky = outdoors && FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * MistSkyShare) : default;
         _s.Last = t.M; _s.LastAmbient = t.Ambient; _s.LastSun = t.Sun;
         Vector2 wind = AlloyRenderer.AreaWind();
         Vector2 dir = wind.LengthSquared() > 1e-6f ? Vector2.Normalize(wind) : new Vector2(0.8f, 0.6f);
