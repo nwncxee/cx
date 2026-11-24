@@ -27,6 +27,7 @@ uniform vec2 uVfHeight;     // (haze floor world Z, haze falloff per metre above
 uniform vec2 uVfNoise;      // (patchiness 0..1, 1 / patch size)
 uniform vec3 uVfDrift;      // how far the patches have travelled, metres
 uniform vec3 uVfAmbient;    // LINEAR light the medium scatters, over every direction and shade: the area's fog colour
+uniform vec3 uVfMistSky;    // LINEAR light area mist scatters: the area's sun by day, its moon by night, black indoors
 uniform vec4 uVfSun;        // w: the share of it the sun's beam brings, through the cascades and the phase; rgb: the sun's hue times w
 uniform vec3 uVfLocal;      // (point-light strength, 1 = their cube shadows reach the fog, how far reach sets strength)
 uniform float uVfPhase;     // forward lobe's anisotropy g
@@ -175,11 +176,17 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
     return acc * uDayDim;
 }
 
-/// The light the medium at `world` scatters toward the eye, per unit of extinction.
-vec3 CxVfLight(vec3 world, vec3 V, float depth)
+/// The ambient light a froxel holding `hazeD` of haze and `mistD` of mist scatters: the haze's, lifted toward the sky's by the mist's share.
+vec3 CxVfMistAmbient(vec3 haze, vec3 sky, float hazeD, float mistD)
 {
-    vec3 l = uVfAmbient * (1.0 - uVfSun.w);
-    if (uVfSun.w > 0.0) l += uVfAmbient * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
+    return haze;
+}
+
+/// The light the medium at `world` scatters toward the eye, per unit of extinction, from ambient `amb`.
+vec3 CxVfLight(vec3 world, vec3 V, float depth, vec3 amb)
+{
+    vec3 l = amb * (1.0 - uVfSun.w);
+    if (uVfSun.w > 0.0) l += amb * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
     // a rain-only build gathers no lamps at all: uVfLocal.x is 0 there, so the walk folds out here
     vec3 lamps = uVfLocal.x > 0.0 ? uVfLocal.x * CxVfLamps(world, V, depth) : vec3(0.0);
     return CxLitFloor(CxVfScatter(l, lamps, uVfRain.y));
@@ -200,7 +207,9 @@ void main()
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
     // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
     float rain = uVfRain.x * CxVfBank(world);
-    vec4 v = vec4(CxVfLight(world, V, depth) * CxVfSeen(world), CxVfDensity(world, dist, open, rain, uVfRain.y) + CxVfMist(world));
+    float haze = CxVfDensity(world, dist, open, rain, uVfRain.y), mist = CxVfMist(world);
+    vec3 amb = CxVfMistAmbient(uVfAmbient, uVfMistSky, haze, mist);
+    vec4 v = vec4(CxVfLight(world, V, depth, amb) * CxVfSeen(world), haze + mist);
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel

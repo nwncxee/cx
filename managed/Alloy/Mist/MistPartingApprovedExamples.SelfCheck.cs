@@ -40,7 +40,7 @@ internal static class MistPartingApprovedExamples
     }
 
     /// <summary>The world scene the walkers stand in, stepped by the scene animate the frame runs.</summary>
-    private static DbId World()
+    internal static DbId World()
     {
         DbId scene = SceneDb.Scenes.Alloc();
         SceneDb.SceneIsWorld[scene.Index] = true;
@@ -50,7 +50,7 @@ internal static class MistPartingApprovedExamples
 
     /// <summary>A creature object at <paramref name="at"/>, a member of <paramref name="scene"/>, wind-enabled when
     /// <paramref name="wind"/> is set.</summary>
-    private static DbId Seat(DbId scene, Vector3 at, bool wind)
+    internal static DbId Seat(DbId scene, Vector3 at, bool wind)
     {
         DbId obj = SceneDb.Objects.Alloc();
         int o = obj.Index;
@@ -63,7 +63,7 @@ internal static class MistPartingApprovedExamples
     }
 
     /// <summary>Stand <paramref name="obj"/> at <paramref name="p"/>, as the game's position write leaves it.</summary>
-    private static void Place(DbId obj, Vector3 p)
+    internal static void Place(DbId obj, Vector3 p)
     {
         SceneDb.ObjPos[obj.Index] = p;
         SceneDb.ObjWorld[obj.Index] = Matrix4x4.CreateTranslation(p);
@@ -78,7 +78,7 @@ internal static class MistPartingApprovedExamples
 
     /// <summary>Walk <paramref name="obj"/> from <paramref name="from"/> to <paramref name="to"/> at <see cref="Pace"/>,
     /// the field following it when it is the player.</summary>
-    private static void Walk(DbId scene, DbId obj, Vector3 from, Vector3 to, bool player)
+    internal static void Walk(DbId scene, DbId obj, Vector3 from, Vector3 to, bool player)
     {
         int frames = (int)MathF.Ceiling(Vector3.Distance(from, to) / Pace / Frame);
         for (int n = 0; n <= frames; n++)
@@ -91,13 +91,13 @@ internal static class MistPartingApprovedExamples
     }
 
     /// <summary>Hold the scene still for <paramref name="seconds"/>, its animate step still running.</summary>
-    private static void Hold(DbId scene, float seconds)
+    internal static void Hold(DbId scene, float seconds)
     {
         for (int n = (int)(seconds / Frame); n > 0; n--) Tick(scene);
     }
 
     /// <summary>Take <paramref name="obj"/> out of <paramref name="scene"/> and free both.</summary>
-    private static void Drop(DbId scene, DbId obj)
+    internal static void Drop(DbId scene, DbId obj)
     {
         DbScene.Leave(scene, obj);
         SceneDb.Objects.Free(obj);
@@ -105,10 +105,10 @@ internal static class MistPartingApprovedExamples
     }
 
     /// <summary>The mean depth along a 5 m path at <paramref name="y"/> from <paramref name="x"/>, its ends left out.</summary>
-    private static float Path(float x, float y) => Mean(x + 1f, y - 0.5f, x + 4f, y + 0.5f);
+    internal static float Path(float x, float y) => Mean(x + 1f, y - 0.5f, x + 4f, y + 0.5f);
 
     /// <summary>The mean depth a metre and a half beside that path.</summary>
-    private static float Beside(float x, float y) => Mean(x + 1f, y + 1.5f, x + 4f, y + 2.5f);
+    internal static float Beside(float x, float y) => Mean(x + 1f, y + 1.5f, x + 4f, y + 2.5f);
 
     private static void PlayerPath(Checker check)
     {
