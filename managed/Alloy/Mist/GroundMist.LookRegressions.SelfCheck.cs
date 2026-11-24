@@ -59,7 +59,7 @@ internal static unsafe class GroundMistLookRegressions
             Matrix4x4 vp = view * Matrix4x4.CreatePerspectiveFieldOfView(1f, 16f / 9f, 0.5f, 200f);
             int* viewport = stackalloc int[] { 0, 0, 1280, 720 };
             FogVolume.Prepare(view, vp, viewport, 200f, true, true, 0f, out FogVolume.Terms t);
-            check.Expect(t.MistSky == Vector3.Zero, $"E27 mist under {where} takes {t.MistSky} of the moon (want none)");
+            check.Expect(t.MistSky == Vector3.Zero, $"mist under {where} takes {t.MistSky} of the moon (want none)");
         }
     }
 }

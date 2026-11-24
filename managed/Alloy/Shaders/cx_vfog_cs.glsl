@@ -100,6 +100,13 @@ layout(std430, binding = 12) readonly buffer CxMistBuf
     vec2 uMistCell[];
 };
 
+/// Column `c` of a field `side` columns across: its floor, its drawn height of mist and its motion across the ground.
+vec4 CxMistTap(ivec2 c, int side)
+{
+    vec2 col = uMistCell[c.y * side + c.x];
+    return vec4(col.x, col.y, 0.0, 0.0);
+}
+
 /// The ground mist's extinction at `world`, from the column it stands in; none past the field's edge.
 float CxVfMist(vec3 world)
 {
@@ -107,7 +114,7 @@ float CxVfMist(vec3 world)
     ivec2 c = ivec2(floor(world.xy - uMistHead.xy));
     int side = int(uMistHead.z);
     if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ivec2(side)))) return 0.0;
-    vec2 col = uMistCell[c.y * side + c.x];
+    vec4 col = CxMistTap(c, side);
     return CxMistDensity(col.y, col.x, world.z);
 }
 

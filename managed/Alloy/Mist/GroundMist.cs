@@ -385,6 +385,12 @@ internal static partial class GroundMist
         return c < 0 ? s.AreaLevel : s.Depth[c];
     }
 
+    /// <summary>How tall the mist stands, in metres, over the world column at (<paramref name="x"/>, <paramref name="y"/>).</summary>
+    internal static float Height(float x, float y) => At(x, y);
+
+    /// <summary>How fast the mist over the world column at (<paramref name="x"/>, <paramref name="y"/>) moves across the ground, in metres a second.</summary>
+    internal static Vector2 Motion(float x, float y) => Vector2.Zero;
+
     /// <summary>The floor height the column at (<paramref name="x"/>, <paramref name="y"/>) lays its mist on; NaN for none.</summary>
     internal static float FloorAt(float x, float y)
     {
