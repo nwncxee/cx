@@ -24,6 +24,9 @@ public sealed unsafe class StepGuardService : IExtenderService
     private const float MaxStep = 4f;
     /// <summary>TestDirectLine's bCheckCreatures: doors are always solid to it; creatures in the way are not a wall.</summary>
     private const int NoCreatures = 0;
+    /// <summary>The swept test's radius. A walk leaves the player 0.1 m from a wall, and the tile test clamps any radius
+    /// up to 0.65 to 0.1, so personal space would refuse every step there that is not straight away from the wall.</summary>
+    private const float LineRadius = 0f;
 
     private static bool _live, _probeOk;
     private static int _steps, _walkRefusals, _driveRefusals;
@@ -77,10 +80,9 @@ public sealed unsafe class StepGuardService : IExtenderService
         int r = (*_next)(cre);
         Vector3 after = desired;
         if (!IsStep(before, after) || new CNWCModule(module).CurrentArea.Ptr != area.Ptr) { EndStreak(cre); return r; }
-        Span<float> space = pathfind.SpaceArgs;
         // TestDirectLine takes both Vectors BY VALUE: the copies are what VectorArg points Win64 at.
         Vec3 from = Vec(before), to = Vec(after);
-        int clear = _testLine(area.Ptr, cre, VectorArg.Of(&from), VectorArg.Of(&to), space[0], space[1], NoCreatures);
+        int clear = _testLine(area.Ptr, cre, VectorArg.Of(&from), VectorArg.Of(&to), LineRadius, pathfind.SpaceArgs[1], NoCreatures);
         if (clear == 1) { _steps++; EndStreak(cre); return r; }
         desired = before;
         creature.SetPosition(VectorArg.Of(&from));

@@ -3,7 +3,9 @@
 //:: (Sc -> C -> T round it, Sc -> T blocked), then runs timed trials: open (an ordinary move short of the wall), corner
 //:: (a click past the corner), wall (W held into the wall and let go), ram (W held diagonally into the corner post for
 //:: 4 s and let go, the drive that pinned the player) and along (the same drive, then the camera turns along Sc -> C with
-//:: W still held). The server's position is logged four times a second as "CXSHOW: sg srv", for step_guard_grade.py.
+//:: W still held), then door0 (a walk through the nearest door, which shuts and locks in the player's face) and door1 (W held
+//:: through it, the door shuts the same way, and a second later the camera turns along the door with W still held). The server's position is
+//:: logged four times a second as "CXSHOW: sg srv", for step_guard_grade.py.
 //:://////////////////////////////////////////////
 #include "inc_show"
 
@@ -16,7 +18,12 @@ const int RAM_TRIALS = 6;
 const float ALONG_AT = 147.0;
 const int ALONG_TRIALS = 4;
 const float TRIAL = 15.0;
-const float DONE_AT = 207.0;
+const float DOOR_AREA_AT = 207.0;
+const float DOOR_AT = 227.0;
+const int DOOR_TRIALS = 2;
+const float SHUT_AT = 1.2;
+const float TURN_AFTER_SHUT = 1.0;
+const float DONE_AT = 257.0;
 
 string P(vector v)
 {
@@ -150,6 +157,76 @@ int FindCorner(object oPC)
     return FALSE;
 }
 
+// A door between two rooms, in any area: walkable ground 1.5 to 3 m out on both sides and no transition. S is on
+// one side and T on the other, facing through the door.
+int DoorFits(object oPC, object oDoor)
+{
+    if (GetIsObjectValid(GetTransitionTarget(oDoor))) return FALSE;
+    object oArea = GetArea(oDoor);
+    vector vDoor = GetPosition(oDoor);
+    float fF = GetFacing(oDoor);
+    float fSide, fOut;
+    for (fSide = 0.0; fSide < 360.0; fSide += 180.0)
+    for (fOut = 3.0; fOut >= 1.5; fOut -= 0.5)
+    {
+        vector vS = Along(vDoor, fF + fSide, fOut), vT = Along(vDoor, fF + fSide + 180.0, fOut);
+        if (!Walkable(oArea, vS) || !Walkable(oArea, vT)) continue;
+        vS = Ground(oArea, vS);
+        vT = Ground(oArea, vT);
+        float fTo = VectorToAngle(Vector(vDoor.x - vS.x, vDoor.y - vS.y, 0.0));
+        SetLocalObject(oPC, "SG_DOOR", oDoor);
+        SetLocalLocation(oPC, "SG_DS", Location(oArea, vS, fTo));
+        SetLocalLocation(oPC, "SG_DT", Location(oArea, vT, fTo));
+        ShowMark("sg door at " + P(vDoor) + " S " + P(vS) + " D " + FloatToString(fTo, 0, 1) + " in " + GetTag(oArea));
+        return TRUE;
+    }
+    return FALSE;
+}
+
+int FindDoor(object oPC)
+{
+    object oArea = GetFirstArea();
+    while (GetIsObjectValid(oArea))
+    {
+        object o = GetFirstObjectInArea(oArea);
+        while (GetIsObjectValid(o))
+        {
+            if (GetObjectType(o) == OBJECT_TYPE_DOOR && DoorFits(oPC, o)) return TRUE;
+            o = GetNextObjectInArea(oArea);
+        }
+        oArea = GetNextArea();
+    }
+    return FALSE;
+}
+
+void Open(object oPC)
+{
+    object oDoor = GetLocalObject(oPC, "SG_DOOR");
+    SetLocked(oDoor, FALSE);
+    AssignCommand(oDoor, ActionOpenDoor(oDoor));
+}
+
+void Camera(object oPC, float fFacing, string sWhy);
+
+// Shuts and locks the door once the player comes within SHUT_AT of it, polling for up to 6 s.
+void Shut(object oPC, string sTrial, int nTry)
+{
+    object oDoor = GetLocalObject(oPC, "SG_DOOR");
+    if (GetDistanceBetween(oPC, oDoor) > SHUT_AT && nTry < 60)
+    {
+        DelayCommand(0.1, Shut(oPC, sTrial, nTry + 1));
+        return;
+    }
+    AssignCommand(oDoor, ActionCloseDoor(oDoor));
+    SetLocked(oDoor, TRUE);
+    ShowMark("sg " + sTrial + " shut " + P(GetPosition(oPC)));
+    if (sTrial == "door1")
+    {
+        float fAlong = GetFacingFromLocation(GetLocalLocation(oPC, "SG_DS")) + 90.0;
+        DelayCommand(TURN_AFTER_SHUT, Camera(oPC, fAlong, "door1 turn"));
+    }
+}
+
 void Track(object oPC)
 {
     if (!GetIsObjectValid(oPC) || GetLocalInt(oPC, "SG_DONE")) return;
@@ -196,6 +273,7 @@ void Show(object oPC)
     SetTime(12, 0, 0, 0);
     if (!FindWall(oPC)) { ShowMark("sg-FAILED: no straight wall found near the PC"); return; }
     if (!FindCorner(oPC)) { ShowMark("sg-FAILED: no corner found near the PC"); return; }
+    if (!FindDoor(oPC)) { ShowMark("sg-FAILED: no door between two walkable rooms in any area"); return; }
     location lS = GetLocalLocation(oPC, "SG_S");
     location lSc = GetLocalLocation(oPC, "SG_SC");
     DelayCommand(WALL_AT, Jump(oPC, "wall", lS));
@@ -212,6 +290,16 @@ void Show(object oPC)
         DelayCommand(fAt, Jump(oPC, "along" + IntToString(i), lSc));
         DelayCommand(fAt + 7.0, Camera(oPC, GetLocalFloat(oPC, "SG_SCD"), "along" + IntToString(i) + " turn"));
     }
+    DelayCommand(DOOR_AREA_AT, Jump(oPC, "doorarea", GetLocalLocation(oPC, "SG_DS")));
+    for (i = 0; i < DOOR_TRIALS; i++)
+    {
+        float fAt = DOOR_AT + TRIAL * IntToFloat(i);
+        string sTrial = "door" + IntToString(i);
+        DelayCommand(fAt - 1.0, Open(oPC));
+        DelayCommand(fAt, Jump(oPC, sTrial, GetLocalLocation(oPC, "SG_DS")));
+        DelayCommand(fAt + 2.0, Shut(oPC, sTrial, 0));
+    }
+    DelayCommand(DOOR_AT + 3.0, AssignCommand(oPC, ActionMoveToLocation(GetLocalLocation(oPC, "SG_DT"))));
     DelayCommand(DONE_AT, Done(oPC));
     DelayCommand(OPEN_AT - 1.0, Track(oPC));
 }

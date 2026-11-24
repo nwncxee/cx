@@ -15,8 +15,10 @@ from pathlib import Path
 NEAR = 0.10
 PAST_WALL = 0.30
 ALONG_MIN = 1.0
+STILL = 0.05
 RAM_TRIALS = 6
 ALONG_TRIALS = 4
+DOOR_TRIALS = 2
 
 SRV = re.compile(r"^\[\w{3} \w{3} +\d+ (\d+):(\d+):(\d+)\] CXSHOW: sg (.*)$")
 CLI = re.compile(r"^\d{4}-\d\d-\d\dT(\d+):(\d+):(\d+(?:\.\d+)?)\S* \[cx\] StepGuard: (.*)$")
@@ -92,13 +94,26 @@ def srv_at(srv, t):
     return min(srv, key=lambda r: abs(r[0] + 0.5 - t))[1:]
 
 
-def keyup(samples, srv, t0, up):
-    """One W drive let go at t0 + up: how near the client comes to the server's rest in the 3 s after keyup, how far
-    it is at worst once still, and how many steps were refused after the keyup."""
-    p = rest(srv, t0, up + 3, up + 7.5)
-    first = window(samples, t0, up + 0.5, up + 3, need=1)
-    still = window(samples, t0, up + 4, up + 7.5)
-    after = refused_by(samples, t0 + up + 7.5) - refused_by(samples, t0 + up + 2.5)
+def stopped(srv, t0, a, b):
+    """When the server's player comes to rest in t0 + a .. t0 + b: the start of the last run of server positions that
+    stays within STILL of where it ends. The key timing drifts from the marks, so the rest is found, not scheduled."""
+    p = rest(srv, t0, b - 2, b)
+    ts = [(t + 0.5, x, y) for t, x, y in srv if t0 + a <= t + 0.5 <= t0 + b]
+    at = t0 + b
+    for t, x, y in reversed(ts):
+        if math.hypot(x - p[0], y - p[1]) > STILL:
+            break
+        at = t
+    return at, p
+
+
+def keyup(samples, srv, t0, up, end):
+    """One W drive let go near t0 + up: how near the client comes to the server's rest in the 3 s after the server
+    stops, how far it is at worst once still, and how many steps were refused once still."""
+    at, p = stopped(srv, t0, up - 3, end)
+    first = window(samples, at, 0, 3, need=1)
+    still = window(samples, at, 1.5, t0 + end - at, need=1)
+    after = refused_by(samples, t0 + end) - refused_by(samples, at + 1)
     return min(dist(s, p) for s in first), worst(still, p), after
 
 
@@ -112,16 +127,31 @@ def grade(run):
     t0, _ = mark(marks, "wall jump")
     hold = window(samples, t0, 1, 15)
     reach = max((s[1] - sx) * math.cos(d) + (s[2] - sy) * math.sin(d) for s in hold)
-    out["E2"] = (reach <= wall + PAST_WALL,
-                 f"furthest client point {reach:.2f} m along the drive, the wall at {wall:.2f} m; "
-                 f"{refused_by(samples, t0 + 15) - refused_by(samples, t0)} refusal(s) in the trial")
-    ups = [("wall", keyup(samples, srv, t0, 8))]
+    _, door = mark(marks, "door at ")
+    g = door.split()
+    dx, dy, ex, ey, dd = float(g[2]), float(g[3]), float(g[6]), float(g[7]), math.radians(float(g[10]))
+    gap = math.hypot(dx - ex, dy - ey)
+    ups = [("wall", keyup(samples, srv, t0, 8, 15))]
     for i in range(RAM_TRIALS):
         t, _ = mark(marks, f"ram{i} jump")
-        ups.append((f"ram{i}", keyup(samples, srv, t, 7)))
+        ups.append((f"ram{i}", keyup(samples, srv, t, 7, 14.5)))
+    doors = []
+    for i in range(DOOR_TRIALS):
+        t, _ = mark(marks, f"door{i} jump")
+        got = window(samples, t, 1, 7)
+        doors.append(max((s[1] - ex) * math.cos(dd) + (s[2] - ey) * math.sin(dd) for s in got))
+    td, _ = mark(marks, "door0 jump")
+    knocked = refused_by(samples, td + 7) - refused_by(samples, td + 3)
+    if not knocked:
+        raise Setup("the drive into the closed door was never refused, so E3 has no refused step to follow")
+    ups.append(("door0", keyup(samples, srv, td, 7, 14.5)))
+    out["E2"] = (reach <= wall + PAST_WALL and max(doors) <= gap + PAST_WALL,
+                 f"furthest client point {reach:.2f} m along the drive, the wall at {wall:.2f} m; "
+                 f"{refused_by(samples, t0 + 15) - refused_by(samples, t0)} refusal(s) in the trial; into the "
+                 f"closed door, the door at {gap:.2f} m: " + " ".join(f"{r:.2f}" for r in doors))
     late = [n for n, (near, _, _) in ups if near > NEAR]
     out["E3"] = (not late, f"{len(late)} of {len(ups)} drives never came within {NEAR} m of the server in the 3 s after "
-                 f"keyup ({' '.join(n for n in late) or 'none'}); closest per drive: "
+                 f"it stopped ({' '.join(n for n in late) or 'none'}); closest per drive: "
                  + " ".join(f"{n}={near:.2f}" for n, (near, _, _) in ups))
     pinned = [n for n, (_, far, after) in ups if far > NEAR or after]
     out["E4"] = (not pinned, f"{len(pinned)} of {len(ups)} drives left the client off the server at rest "
@@ -138,8 +168,15 @@ def grade(run):
         walked.append((b[1] - a[1]) * math.cos(side) + (b[2] - a[2]) * math.sin(side))
         refused.append(refused_by(samples, t1 + 11) - refused_by(samples, t1 + 8.5))
     out["E1"] = (not any(refused), "refusals while driving along the wall, per trial: " + " ".join(map(str, refused)))
-    out["E7"] = (min(walked) >= ALONG_MIN, "metres walked along the wall with W held after the turn, per trial: "
-                 + " ".join(f"{w:.2f}" for w in walked))
+    t4, _ = mark(marks, "door1 jump")
+    t5, _ = mark(marks, "door1 turn")
+    if refused_by(samples, t5) == refused_by(samples, t4):
+        raise Setup("the drive into the closed door before the turn was never refused, so E7 has no refused step")
+    a, b = window(samples, t5, -1, 0, need=1)[-1], window(samples, t5, 3.5, 4.5, need=1)[-1]
+    side = dd + math.pi / 2
+    walked.append(abs((b[1] - a[1]) * math.cos(side) + (b[2] - a[2]) * math.sin(side)))
+    out["E7"] = (min(walked) >= ALONG_MIN, "metres walked along the wall with W held after the turn, per trial "
+                 "(the last after a refused drive into the closed door): " + " ".join(f"{w:.2f}" for w in walked))
 
     t2, _ = mark(marks, "corner jump")
     p = rest(srv, t2, 12, 17)

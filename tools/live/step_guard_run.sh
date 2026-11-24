@@ -13,7 +13,7 @@ step_guard_run() {
     esac
     SG_OUT="$out"
     mkdir -p "$(dirname "$out")"
-    "$root/tools/live/run-live.sh" --out "$out" --showcase stepguard --camera-mode 0 --seconds 225 \
+    "$root/tools/live/run-live.sh" --out "$out" --showcase stepguard --camera-mode 0 --seconds 275 \
         --cfg 'chat.enabled=0' --cfg 'general.steplog=1' > "$out.txt" 2>&1
     status=$?
     [ "$status" = 2 ] && { echo "the run could not be made (see $out.txt)"; return 2; }
