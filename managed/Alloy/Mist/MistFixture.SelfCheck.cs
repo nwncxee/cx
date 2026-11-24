@@ -142,6 +142,7 @@ internal static class MistFixture
         {
             var was = new Switches(VolumetricFog.Enabled.V, VolumetricFog.Mist.V, VolumetricFog.Quality.V);
             VolumetricFog.Enabled.V = true;
+            VolumetricFog.Mist.V = true;
             VolumetricFog.Quality.V = "medium";
             return was;
         }
