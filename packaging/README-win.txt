@@ -13,7 +13,8 @@ INSTALL
   Soft) and phonon.dll (Steam Audio) for sound, shaderc_shared.dll and vma.dll for the renderer.
   None of the game's own files are touched.
 
-  Some antivirus (Defender, Kaspersky) flags version.dll as an injector. Check the zip against SHA256SUMS on the release page, then add version.dll to your
+  Some antivirus (Defender, Kaspersky) flags version.dll as an injector. Check the zip against SHA256SUMS on the release page with the key your current CX copies from
+  General > About > Copy release key (README.md on GitHub has the steps), then add version.dll to your
   antivirus exclusions. When in doubt, please contact xtul_ on Discord.
 
 DID IT WORK?

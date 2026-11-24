@@ -77,9 +77,19 @@ A line of credits appears in the top-left corner of the main menu.
 
 Only download CX from the releases page above. Each release has `SHA256SUMS` and
 `SHA256SUMS.sig`, a signature made with the maintainer's key. A copy of CX from anywhere else can
-match its own checksums, but it can't have that signature. The public key is
-[`packaging/allowed_signers`](packaging/allowed_signers). Fetch it from this repository, not from
-the site you downloaded the zip from.
+match its own checksums, but it can't have that signature.
+
+A first install trusts the releases page it came from, and every later download is checked against the
+key your install shows. For a first install, the key is [`packaging/allowed_signers`](packaging/allowed_signers).
+
+When you upgrade, take the key from the CX you already run. Open General » About and press
+*Copy release key*. The lines under it are the key's fingerprints. Save the copied text as
+`allowed_signers`:
+
+- Linux: paste it into a new file named `allowed_signers`.
+- Windows, in PowerShell: `Get-Clipboard | Set-Content -Encoding ascii allowed_signers`. Don't use
+  `Get-Clipboard > allowed_signers`: Windows PowerShell 5.1 writes that file as UTF-16, and ssh-keygen
+  can't read it.
 
 With the zip, `SHA256SUMS`, `SHA256SUMS.sig` and `allowed_signers` in one folder:
 
@@ -89,7 +99,8 @@ sha256sum -c --ignore-missing SHA256SUMS
 ```
 
 The first line must print `Good "file" signature for cx-releases`, and the second must print `OK` for
-your zip. On Windows, run the first line in PowerShell (OpenSSH ships with Windows 10 and 11), then
+your zip. The fingerprint the first line prints after `with ED25519 key` must be one of those under
+*Copy release key*. On Windows, run the first line in PowerShell (OpenSSH ships with Windows 10 and 11), then
 compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's line in `SHA256SUMS`.
 
 Releases after v0.9.1 also have a build attestation, which proves this repository's release workflow
@@ -105,8 +116,9 @@ It must print `Verification succeeded!`.
 In releases after v0.12.0, the Windows zip is the exception. The maintainer adds a Windows code signature
 to its `version.dll` after GitHub builds it, so its attestation no longer matches, and `SHA256SUMS.sig`
 covers it instead. To check the code signature, right-click `version.dll`, open Properties, then Digital
-Signatures: the signer is `Open Source Developer Michał Piasecki`, issued by Certum. In PowerShell,
-`Get-AuthenticodeSignature version.dll` must print `Valid`.
+Signatures: the signer must be `Open Source Developer Michał Piasecki`, and the issuer Certum. In
+PowerShell, `Get-AuthenticodeSignature version.dll` must print `Valid`. Someone with the same name can
+buy a matching certificate, so on an upgrade the signed `SHA256SUMS` is the stronger check.
 
 ## Reporting a problem
 
