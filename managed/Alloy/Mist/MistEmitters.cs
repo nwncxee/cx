@@ -23,7 +23,7 @@ internal static class MistEmitters
     /// true when the fog takes it as mist, which it then feeds, and its sprites do not draw.</summary>
     internal static bool Take(string model, string node, Vector3 at, float reach)
     {
-        if (!VolumetricFog.Enabled.V || !(Stock.Contains(model) || node.StartsWith(Mark, StringComparison.OrdinalIgnoreCase))) return false;
+        if (!GroundMist.On() || !(Stock.Contains(model) || node.StartsWith(Mark, StringComparison.OrdinalIgnoreCase))) return false;
         GroundMist.Source(at, reach);
         return true;
     }

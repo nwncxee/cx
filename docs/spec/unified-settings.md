@@ -777,7 +777,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | grass.density | Density | S | 0–4 step 0.25 · 2 | U | L | Field | Blades per patch relative to the stock game. Ladders on `quality.grass`. |
 | grass.far | Distance | S | 0–1000 m step 10 · 0 | U | L | Field | How far grass draws. 0 follows the game's Grass Distance option (which stops at 173). |
 | grass.push | Parts around characters | S | 0–1 step 0.05 · 0.15 | U | L | Field | Blades bend away from creatures walking through them. 0 is off. |
-| grass.wind | Wind strength | S | 0–4 step 0.1 · 1 | U | L | Wind | How far the blades sway. 0 stands them still. |
+| grass.wind | Wind strength | S | 0–4 step 0.1 · 1 | A | L | Wind | How far the blades sway. 0 stands them still. |
 | grass.bladedensity | Blade density | S | 1–32 · 8 | A | L | Detail | Procedural blades per stock grass tuft, on top of Density. Ladders on `quality.grass`. |
 | grass.lod | Full-density radius | S | 5–200 m · 40 | A | L | Detail | Every blade draws inside this. Ladders on `quality.grass`. |
 | grass.bladelod | Full-detail blade radius | S | 5–200 m · 30 | A | L | Detail | Procedural blades inside this are smooth curves; past it each is a single triangle. Ladders on `quality.grass`. |

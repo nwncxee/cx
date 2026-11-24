@@ -124,12 +124,12 @@ internal static partial class GroundMist
     }
 
     /// <summary>The area's fog, as its current palette sets it: the even floor of mist it lays, filled whole until the
-    /// field steps. With Volumetric fog off it is only remembered, so the off state does no work.</summary>
+    /// field steps. With the mist off it is only remembered, so the off state does no work.</summary>
     internal static void AreaFog(bool on, float amount)
     {
         GroundMistState s = _s;
         s.AreaLevel = on ? Math.Clamp(amount * DepthPerAmount, 0f, MaxArea) : 0f;
-        if (s.Stepped || !VolumetricFog.Enabled.V) return;
+        if (s.Stepped || !On()) return;
         for (int c = 0; c < s.Depth.Length; c++) s.Depth[c] = float.IsNaN(s.Floor[c]) ? 0f : s.AreaLevel;
         s.Any = s.AreaLevel > Trace;
         s.Gen++;
@@ -172,14 +172,14 @@ internal static partial class GroundMist
             }
     }
 
-    /// <summary>Advance the field by <paramref name="dt"/> seconds under the area's <paramref name="wind"/>. With Volumetric fog off
-    /// it holds no step, so the area's fog lays the field afresh once the fog comes back on.</summary>
+    /// <summary>Advance the field by <paramref name="dt"/> seconds under the area's <paramref name="wind"/>. With the mist off
+    /// it holds no step, so the area's fog lays the field afresh once the mist comes back on.</summary>
     internal static void Step(float dt, Vector2 wind)
     {
         GroundMistState s = _s;
         int sources = s.Sources;
         s.Sources = 0;
-        if (!VolumetricFog.Enabled.V)
+        if (!On())
         {
             s.Stepped = false;
             return;
@@ -322,7 +322,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
-        if (!VolumetricFog.Enabled.V || LiesStill() || !s.Any || moved > MaxPartStep) return;
+        if (!On() || LiesStill() || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
         Push(s, now, ClearRadius, WakeRadius, MathF.Min(moved / PartStride, 1f));
     }
@@ -335,7 +335,7 @@ internal static partial class GroundMist
     internal static void Blast(Vector3 at, float radius)
     {
         GroundMistState s = _s;
-        if (!VolumetricFog.Enabled.V || LiesStill() || !s.Any || !(radius > 0f)) return;
+        if (!On() || LiesStill() || !s.Any || !(radius > 0f)) return;
         Push(s, at, radius, radius + BlastRim, 1f);
     }
 
@@ -392,8 +392,11 @@ internal static partial class GroundMist
         return c < 0 ? float.NaN : s.Floor[c];
     }
 
+    /// <summary>Is the mist switched on: Ground mist, under Volumetric fog?</summary>
+    internal static bool On() => VolumetricFog.Enabled.V && VolumetricFog.Mist.V;
+
     /// <summary>Does the fog volume draw mist this frame?</summary>
-    internal static bool Shows() => VolumetricFog.Enabled.V && _s.Any;
+    internal static bool Shows() => On() && _s.Any;
 
     /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
     internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1 };

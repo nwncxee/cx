@@ -44,7 +44,7 @@ internal static class Grass
         Push = G.Slider("push", "Parts around characters", 0f, 1f, 0.05f, 0.15f,
                         help: "Blades bend away from creatures walking through them. 0 is off.");
         G.Section("Wind");
-        Wind = G.Slider("wind", "Wind strength", 0f, 4f, 0.1f, 1f, help: "How far the blades sway. 0 stands them still.");
+        Wind = G.Slider("wind", "Wind strength", 0f, 4f, 0.1f, 1f, tier: Tier.Advanced, help: "How far the blades sway. 0 stands them still.");
         G.Section("Detail");
         BladeDensity = G.Slider("bladedensity", "Blade density", 1f, 32f, 1f, 8f, tier: Tier.Advanced, changed: GrassField.Rebake,
                                 help: "Procedural blades per stock grass tuft, on top of Density.")
