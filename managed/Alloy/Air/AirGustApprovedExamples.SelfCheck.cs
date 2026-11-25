@@ -42,7 +42,7 @@ internal static class AirGustApprovedExamples
         Vector2 sum = Vector2.Zero;
         int n = 0;
         for (float x = -r + 0.5f; x < r; x += 1f)
-            for (float y = -r + 0.5f; y < r; y += 1f) { sum += GroundMist.Motion(x, y); n++; }
+            for (float y = -r + 0.5f; y < r; y += 1f) { sum += AirScene.Motion(x, y); n++; }
         return n > 0 ? sum / n : Vector2.Zero;
     }
 

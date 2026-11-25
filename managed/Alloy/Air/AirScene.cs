@@ -30,6 +30,9 @@ internal static class AirScene
     /// <summary>How high a front throws the dust it tears, metres per share torn, and how fast that falls, seconds.</summary>
     private const float LiftPerTear = 1f, LiftTau = 3f;
 
+    /// <summary>The share of the wind's speed the air drifts at over the floor.</summary>
+    private const float DriftShare = 0.5f;
+
     /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day.</summary>
     internal static void Enter(AirLook look, bool night)
     {
@@ -70,6 +73,7 @@ internal static class AirScene
         s.Stepped = true;
         s.Speed = speed;
         if (speed > 0f) s.Dir = wind / speed;
+        s.Drift = wind * DriftShare;
         Sweep(s, dt);
         float fall = MathF.Exp(-dt / LiftTau);
         for (int c = 0; c < s.Lift.Length; c++) s.Lift[c] *= fall;
@@ -139,7 +143,7 @@ internal static class AirScene
     internal static AirWisps Wisps => default;
 
     /// <summary>The air's own motion at a ground point, in metres a second.</summary>
-    internal static Vector2 Motion(float x, float y) => Vector2.Zero;
+    internal static Vector2 Motion(float x, float y) => _s.Drift;
 
     /// <summary>Drop the area's air.</summary>
     internal static void Reset() => _s = new AirSceneState();
@@ -165,6 +169,9 @@ internal sealed class AirSceneState
     public float Speed;
     public Vector2 Dir = Vector2.UnitX;
     public bool Stepped;
+
+    /// <summary>How the air drifts over the floor, metres a second.</summary>
+    public Vector2 Drift;
 
     /// <summary>The front crossing the air, and where its line stands along it from the player's feet, metres.</summary>
     public AirFront Front;
