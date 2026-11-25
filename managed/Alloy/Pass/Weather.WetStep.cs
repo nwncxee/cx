@@ -118,8 +118,7 @@ internal static unsafe partial class Weather
     {
         int own = -1, app = FootUnread, size = 0;
         bool soft = false;
-        IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
-        IntPtr tables = !_wetArmed || rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+        IntPtr tables = _wetArmed ? StepTables() : IntPtr.Zero;
         if (tables != IntPtr.Zero)
         {
             var t = new CTwoDimArrays(tables);
@@ -128,13 +127,21 @@ internal static unsafe partial class Weather
             int row = pf.IsNull ? -1 : pf.Appearance;
             own = c.FootstepType;
             soft = c.SoftStep == 1;
-            if (row >= 0)
+            if (row < 0) app = -1;
+            else
             {
                 if (EngineFn.C2DAGetINTEntry(t.Appearance, row, _colType, &app) == 0) app = -1;
                 EngineFn.C2DAGetINTEntry(t.Appearance, row, _colSize, &size);
             }
         }
         return new StepFacts(p, facing, id, open, own, app, size, soft, BodyOf(creature));
+    }
+
+    /// <summary>The rules' 2DA tables a step reads; zero while the rules are not reachable.</summary>
+    private static IntPtr StepTables()
+    {
+        IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
+        return rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
     }
 
     /// <summary>The scene object behind a creature's model, reached as the pose layer reaches it (its Gob, then the
@@ -180,9 +187,8 @@ internal static unsafe partial class Weather
     private static bool StepSound(IntPtr creature, CNWCObject o, Vec3 at, StepKind kind, in StepFacts s)
     {
         if (o.FootstepSkip != 0) return false;
-        IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
         IntPtr sound = _soundSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_soundSym;
-        IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+        IntPtr tables = StepTables();
         if (sound == IntPtr.Zero || tables == IntPtr.Zero) return false;
         var t = new CTwoDimArrays(tables);
         int row = StepRow(in s);

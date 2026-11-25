@@ -88,7 +88,7 @@ internal static unsafe partial class Weather
         Vector2 h = Heading(facing);
         if (!Footfall(id, now, out bool right)) return;
         Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * (right ? FootSide : -FootSide);
-        if (open && PressInto(at, h, now, in TodaySole)) _prints++;
+        if (open && PressInto(at, h, now, in HumanSole)) _prints++;
         if (open) ThrowSplash(new Vector3(at, p.Z), now);
     }
 
@@ -138,14 +138,11 @@ internal static unsafe partial class Weather
         public static PrintShape Pad(float len, float wide) => new(0f, len, wide, 0f, len, wide);
     }
 
-    /// <summary>Today's sole, the stamp a creature with no foot geometry presses.</summary>
-    private static readonly PrintShape TodaySole = new(ToeAt, ToeLen, ToeWide, HeelAt, HeelLen, HeelWide);
+    /// <summary>A human sole, toe and heel: the stamp a creature with no foot geometry presses.</summary>
+    private static readonly PrintShape HumanSole = new(ToeAt, ToeLen, ToeWide, HeelAt, HeelLen, HeelWide);
 
-    /// <summary>The sole's depth, 0..1, at <paramref name="rel"/> metres from the foot's centre along heading
+    /// <summary><paramref name="shape"/>'s depth, 0..1, at <paramref name="rel"/> metres from the foot's centre along heading
     /// <paramref name="h"/> (unit): the deeper of the toe and heel lobes, soft over their outer half.</summary>
-    internal static float PrintDepth(Vector2 rel, Vector2 h) => PrintDepth(rel, h, in TodaySole);
-
-    /// <summary>The depth of <paramref name="shape"/> at <paramref name="rel"/>, as <see cref="PrintDepth(Vector2, Vector2)"/>.</summary>
     internal static float PrintDepth(Vector2 rel, Vector2 h, in PrintShape shape)
     {
         float along = Vector2.Dot(rel, h), across = h.Y * rel.X - h.X * rel.Y;
@@ -159,14 +156,10 @@ internal static unsafe partial class Weather
         }
     }
 
-    /// <summary>Stamp one print into <paramref name="t"/>. A texel of the same tile repeat takes it where it is
+    /// <summary>Stamp one print of <paramref name="shape"/> into <paramref name="t"/>. A texel of the same tile repeat takes it where it is
     /// at least as deep as what the texel still shows; one holding another repeat's print takes it only when
     /// that print has faded or lies farther from <paramref name="focus"/>, so a step one period away never
     /// erases the trail at the player's feet. The rows touched widen <paramref name="lo"/>..<paramref name="hi"/>.</summary>
-    internal static void Print(TrackTexel[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi)
-        => Print(t, at, h, now, rate, focus, ref lo, ref hi, in TodaySole);
-
-    /// <summary><see cref="Print(TrackTexel[], Vector2, Vector2, float, float, Vector2, ref int, ref int)"/> of <paramref name="shape"/>.</summary>
     internal static void Print(TrackTexel[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi, in PrintShape shape)
     {
         const float tpm = TrackSize / TrackPeriodM;
@@ -251,27 +244,27 @@ internal static unsafe partial class Weather
     private static void TrackSelfCheck(Checker check)
     {
         Vector2 h = Vector2.UnitX, side = new(0f, -1f);
-        check.Expect(PrintDepth(new Vector2(ToeAt, 0f), h) > 0.99f && PrintDepth(new Vector2(HeelAt, 0f), h) > 0.99f
-          && PrintDepth(side * 0.08f, h) == 0f && PrintDepth(h * 0.12f, h) > 0f,
+        check.Expect(PrintDepth(new Vector2(ToeAt, 0f), h, in HumanSole) > 0.99f && PrintDepth(new Vector2(HeelAt, 0f), h, in HumanSole) > 0.99f
+          && PrintDepth(side * 0.08f, h, in HumanSole) == 0f && PrintDepth(h * 0.12f, h, in HumanSole) > 0f,
           "a print is a sole: deep at toe and heel, longer along the heading than across it");
         var t = new TrackTexel[TrackSize * TrackSize];
         int lo = int.MaxValue, hi = int.MinValue;
         Vector2 at = new(5.03f, 7.01f);
-        Print(t, at, h, 10f, 0.01f, at, ref lo, ref hi);
+        Print(t, at, h, 10f, 0.01f, at, ref lo, ref hi, in HumanSole);
         check.Expect(TrackAt(t, at + h * ToeAt, 10f, 0.01f) > 0.8f && TrackAt(t, at + new Vector2(TrackPeriodM, 0f), 10f, 0.01f) == 0f,
           "a print reads back where it was pressed and not one tile period away");
         check.Expect(TrackAt(t, at + h * ToeAt, 60f, 0.01f) is > 0.3f and < 0.6f && TrackAt(t, at + h * ToeAt, 111f, 0.01f) == 0f,
           "a print fills back in over the refill time");
         check.Expect(lo <= (int)MathF.Floor(at.Y * TrackSize / TrackPeriodM) && hi >= lo && hi - lo < 16,
           $"only the print's own rows are marked for upload ({lo}..{hi})");
-        Print(t, new Vector2(0.02f, 0.02f), h, 10f, 0.01f, new Vector2(0.02f, 0.02f), ref lo, ref hi);
+        Print(t, new Vector2(0.02f, 0.02f), h, 10f, 0.01f, new Vector2(0.02f, 0.02f), ref lo, ref hi, in HumanSole);
         check.Expect(TrackAt(t, new Vector2(-0.04f, 0.02f), 10f, 0.01f) > 0.5f,
           "a print straddling the tile edge lands on both sides of it");
         int lo2 = int.MaxValue, hi2 = int.MinValue;
-        Print(t, at + new Vector2(TrackPeriodM, 0f), h, 11f, 0.01f, at, ref lo2, ref hi2);
+        Print(t, at + new Vector2(TrackPeriodM, 0f), h, 11f, 0.01f, at, ref lo2, ref hi2, in HumanSole);
         check.Expect(TrackAt(t, at + h * ToeAt, 11f, 0.01f) > 0.8f && hi2 < lo2,
           "a step one period away does not take the texels of a live print nearer the player");
-        Print(t, at + new Vector2(TrackPeriodM, 0f), h, 11f, 0.01f, at + new Vector2(TrackPeriodM, 0f), ref lo2, ref hi2);
+        Print(t, at + new Vector2(TrackPeriodM, 0f), h, 11f, 0.01f, at + new Vector2(TrackPeriodM, 0f), ref lo2, ref hi2, in HumanSole);
         check.Expect(TrackAt(t, at + new Vector2(TrackPeriodM, 0f) + h * ToeAt, 11f, 0.01f) > 0.8f,
           "...but does once the player stands nearer it");
         check.Expect(TrackLib.Contains($"const int CX_TRACK_SIZE = {TrackSize};") && GlslConst(TrackLib, "CX_TRACK_PERIOD_M") == TrackPeriodM

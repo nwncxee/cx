@@ -186,8 +186,10 @@ internal static unsafe partial class Weather
         {
             var creature = (StandIn*)System.Runtime.InteropServices.NativeMemory.AllocZeroed((nuint)sizeof(StandIn));
             var table = (IntPtr*)System.Runtime.InteropServices.NativeMemory.AllocZeroed((nuint)(slot + sizeof(IntPtr)));
+            bool armed = _wetArmed;
             try
             {
+                _wetArmed = false;
                 table[slot / sizeof(IntPtr)] = (IntPtr)(delegate* unmanaged<IntPtr, byte, int, IntPtr>)&StandInModel;
                 creature->Vtbl = (IntPtr)table;
                 creature->Shell = shell;
@@ -197,6 +199,7 @@ internal static unsafe partial class Weather
             }
             finally
             {
+                _wetArmed = armed;
                 System.Runtime.InteropServices.NativeMemory.Free(creature);
                 System.Runtime.InteropServices.NativeMemory.Free(table);
             }

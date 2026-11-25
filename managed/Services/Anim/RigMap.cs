@@ -12,7 +12,7 @@ namespace CX.Services.Anim;
 /// content names none the stock biped names stand. A rig is lowercase NUL-terminated names in
 /// <see cref="PoseService.BoneIndex"/> order, empty where it has no such bone; each resolves once per module.
 /// </summary>
-internal static unsafe class RigMap
+internal static unsafe partial class RigMap
 {
     /// <summary>The rig map's resref, loaded as a script's <c>Get2DAString</c> loads a 2DA, so a hak or NWSync copy wins.</summary>
     private static ReadOnlySpan<byte> Resref => "cx_rig\0"u8;
@@ -143,18 +143,6 @@ internal static unsafe class RigMap
 
     private static byte[] Terminated(string name)
         => name.Length == 0 ? [] : Encoding.Latin1.GetBytes(name.ToLowerInvariant() + "\0");
-
-    /// <summary>Seats <paramref name="rows"/> as this module's map, forgetting every resolved rig and head, and hands
-    /// back the map it replaced: a self-check names its own skeletons where <see cref="Of"/> reads them.</summary>
-    internal static Dictionary<string, string[]>? SwapRows(Dictionary<string, string[]>? rows)
-    {
-        Edge();
-        Dictionary<string, string[]>? was = _s.Rows;
-        _s.Rows = rows;
-        _s.Rigs.Clear();
-        _s.Heads.Clear();
-        return was;
-    }
 
     /// <summary>Forgets every resolved rig and head, and the map, when a module is entered or left.</summary>
     private static void Edge()
