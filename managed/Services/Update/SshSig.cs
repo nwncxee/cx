@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text;
+using CX.Framework;
 
 namespace CX.Services.Update;
 
@@ -26,7 +27,7 @@ internal static class ReleaseKeys
             try { blob = Convert.FromBase64String(f[2]); } catch (FormatException) { continue; }
             var r = new SshReader(blob);
             if (r.Text() == Ed25519 && r.Bytes() is { Length: 32 } pk && r.Done)
-                keys.Add(new ReleaseKey(f[0], pk, "SHA256:" + Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(blob)).TrimEnd('=')));
+                keys.Add(new ReleaseKey(f[0], pk, "SHA256:" + Convert.ToBase64String(Sha256.HashData(blob)).TrimEnd('=')));
         }
         return [.. keys];
     }

@@ -60,3 +60,4 @@ P:CX.Engine.CGuiPanel.State;Ask CGuiPanel.Shown whether a panel is on screen
 P:CX.Engine.CNWCCreature.IsAssociate;Ask CNWCCreature.IsAnyAssociate or IsFamiliar
 M:CX.Framework.Native.DefaultUserDirectory;CX's own folders come from UserFolders (Logs, Cache), a path in the user directory from Native.ConfigPath
 M:Vortice.Vulkan.Vulkan.vkShutdown;Unloads the Vulkan loader the backend holds entry points into for the session
+T:System.Security.Cryptography.SHA256;.NET hashes through OpenSSL on Linux and aborts where no libssl loads: use CX.Framework.Sha256
