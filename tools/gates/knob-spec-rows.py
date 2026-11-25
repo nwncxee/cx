@@ -150,9 +150,9 @@ for text in grouped:
 # Each relay's call sites, found in one scan of the shipped files: they stay put while the groups grow.
 calls = collections.defaultdict(list)
 if relays:
-    names = sorted({re.escape(name) for name, _, _ in relays})
-    for text in (t for q, t in texts.items() if 'SelfCheck' not in str(q)):
-        for site in re.finditer(r'(?<!\w)(' + '|'.join(names) + r')\s*\(', text):
+    sites = re.compile(r'(?<!\w)(' + '|'.join({name for name, _, _ in relays}) + r')\s*\(')
+    for text in (t for q, t in texts.items() if 'SelfCheck' not in q):
+        for site in sites.finditer(text):
             calls[site.group(1)].append([a.strip() for a in balanced(text, site.end() - 1)[0].split(',')])
 for _turn in range(len(relays) + 1):
     grew = False
@@ -164,16 +164,14 @@ for _turn in range(len(relays) + 1):
                 grew = True
     if not grew:
         break
-handed = [(m.group(1), m.group(2)) for text in grouped for m in HANDED.finditer(text)]
-if handed:
-    declares = re.compile(r'\b(' + '|'.join(sorted({re.escape(c) for c, _ in handed})) + r')\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]')
-    passed = collections.defaultdict(list)
-    for text in (t for t in texts.values() if '.Declare(' in t):
-        for site in declares.finditer(text):
-            passed[site.group(1)].append(site.group(2))
-    for cls, param in handed:
-        for var in passed[cls]:
-            class_group[cls].update((param, g) for g in var_group[var])
+handed = [m for text in grouped for m in HANDED.findall(text)]
+declares = re.compile(r'\b(' + '|'.join({c for c, _ in handed}) + r')\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]')
+passed = collections.defaultdict(list)
+for cls, var in (m for t in texts.values() if '.Declare(' in t for m in declares.findall(t)):
+    passed[cls].append(var)
+for cls, param in handed:
+    for var in passed[cls]:
+        class_group[cls].update((param, g) for g in var_group[var])
 
 ARRAY = re.compile(r'\bNAME\s*=\s*(?:new\s*(?:\w+)?\[\]\s*)?\{([^}]*)\}')
 LITERAL = re.compile(r'"([A-Za-z0-9_.\-]+)"')
