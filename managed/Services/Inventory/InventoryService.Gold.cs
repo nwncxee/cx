@@ -93,7 +93,7 @@ public sealed unsafe partial class InventoryService
 
     /// <summary>An item dragged out of the window, released at the action's screen point: over another CX window, or the CX
     /// bar away from its buttons, nothing; over a quickbar button it is assigned there (route <c>inventory.quickbar</c>, the slot 0-35 in the amount field; not
-    /// from a container, whose items the stock quickbar refuses); in the world the stock drop rules
+    /// from a container, whose items the stock quickbar refuses); over the player's side of a trade it is offered (<c>inventory.offer</c>); in the world the stock drop rules
     /// (<see cref="InventoryNative.DropVerb"/>) pick drop / use / barter.</summary>
     private static void DropInWorld(InvAction a)
     {
@@ -107,7 +107,13 @@ public sealed unsafe partial class InventoryService
             return;
         }
         if (over != null) return;   // the CX bar but no button under the point (its grip): not a drop on the world
-        if (InventoryWindow.SellsOn(a, InventoryNative.StoreBoxAt(a.X, a.Y)))
+        IntPtr box = InventoryNative.GuiObjectAt(a.X, a.Y, out int tag);
+        if (InventoryWindow.OffersOn(a, tag))
+        {
+            if (Routed("inventory.offer", a.Oid, a.Mask, 0, default)) InventoryNative.Offer(box, a.Oid);
+            return;
+        }
+        if (InventoryWindow.SellsOn(a, tag == InventoryNative.StoreBoxTag))
         {
             if (Routed("inventory.sell", a.Oid, a.Mask, 0, default)) InventoryNative.Sell(a.Oid);
             return;

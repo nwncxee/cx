@@ -388,6 +388,7 @@ global using unsafe InvboxHandleDoubleClickFn = delegate* unmanaged<nint, nint, 
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
 global using unsafe GetGameobjectHitFn = delegate* unmanaged<nint, nint*, int>;
 global using unsafe SendBarterStartFn = delegate* unmanaged<nint, uint, uint, void>;
+global using unsafe SendBarterAddItemFn = delegate* unmanaged<nint, uint, byte, byte, void>;
 global using unsafe SendInputUseItemFn = delegate* unmanaged<nint, uint, byte, byte, uint, CX.Engine.VectorArg, void>;
 global using unsafe SendGoldTransferFn = delegate* unmanaged<nint, uint, CX.Engine.VectorArg, int, int, byte, byte, void>;
 global using unsafe QuickButtonSetItemFn = delegate* unmanaged<nint, uint, int, int, void>;
@@ -414,6 +415,8 @@ global using unsafe QuickButtonHandleLeftButtonFn = delegate* unmanaged<nint, vo
 global using unsafe ItemPlayDropSoundFn = delegate* unmanaged<nint, void>;
 global using unsafe GetInventoryPanelFn = delegate* unmanaged<nint, nint>;
 global using unsafe InvboxAddItemFn = delegate* unmanaged<nint, uint, int, int, int, void>;
+global using unsafe MultiInvboxAddItemFn = delegate* unmanaged<nint, uint, int, int, int, void>;
+global using unsafe MultiInvboxCellFreeFn = delegate* unmanaged<nint, int, int, int, int, uint, int>;
 global using unsafe InvSetContainerGuiVisibleFn = delegate* unmanaged<nint, int, int, int, uint, void>;
 global using unsafe InvContainerPageUpFn = delegate* unmanaged<nint, void>;
 global using unsafe InvContainerPageDownFn = delegate* unmanaged<nint, void>;
@@ -1597,6 +1600,19 @@ public readonly unsafe partial struct CGuiMan(IntPtr ptr)
     public ref int VpWidth => ref *(int*)(Ptr + EngineLayout.GuiManVpW);
 }
 
+/// <summary>Typed view of an engine <c>CGuiMultiInvbox*</c>.</summary>
+public readonly unsafe partial struct CGuiMultiInvbox(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.MultiInvboxCols"/>
+    public ref int Cols => ref *(int*)(Ptr + EngineLayout.MultiInvboxCols);
+    /// <inheritdoc cref="EngineLayout.MultiInvboxRows"/>
+    public ref int Rows => ref *(int*)(Ptr + EngineLayout.MultiInvboxRows);
+}
+
 /// <summary>Typed view of an engine <c>CGuiObject*</c>.</summary>
 public readonly unsafe partial struct CGuiObject(IntPtr ptr)
 {
@@ -2110,6 +2126,10 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public void ItemShowFeedbackBubbleText() => EngineFn.ItemShowFeedbackBubbleText(Ptr);
     /// <inheritdoc cref="EngineLayout.ItemModels"/>
     public Span<ushort> Models { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.ItemModels), 19); }
+    /// <inheritdoc cref="EngineLayout.ItemPendingX"/>
+    public ref byte PendingX => ref *(byte*)(Ptr + EngineLayout.ItemPendingX);
+    /// <inheritdoc cref="EngineLayout.ItemPendingY"/>
+    public ref byte PendingY => ref *(byte*)(Ptr + EngineLayout.ItemPendingY);
     /// <inheritdoc cref="EngineLayout.ItemPossessor"/>
     public ref uint Possessor => ref *(uint*)(Ptr + EngineLayout.ItemPossessor);
     /// <inheritdoc cref="EngineLayout.ItemRepoX"/>
@@ -5593,6 +5613,10 @@ public static unsafe class EngineFn
     private static bool _SendBarterStartDone;
     /// <inheritdoc cref="SymbolMap.SendBarterStart"/>
     public static SendBarterStartFn SendBarterStart => (SendBarterStartFn)(_SendBarterStartDone ? _SendBarterStart : Resolve(ref _SendBarterStart, ref _SendBarterStartDone, SymbolMap.SendBarterStart));
+    private static IntPtr _SendBarterAddItem;
+    private static bool _SendBarterAddItemDone;
+    /// <inheritdoc cref="SymbolMap.SendBarterAddItem"/>
+    public static SendBarterAddItemFn SendBarterAddItem => (SendBarterAddItemFn)(_SendBarterAddItemDone ? _SendBarterAddItem : Resolve(ref _SendBarterAddItem, ref _SendBarterAddItemDone, SymbolMap.SendBarterAddItem));
     private static IntPtr _SendInputUseItem;
     private static bool _SendInputUseItemDone;
     /// <inheritdoc cref="SymbolMap.SendInputUseItem"/>
@@ -5697,6 +5721,14 @@ public static unsafe class EngineFn
     private static bool _InvboxAddItemDone;
     /// <inheritdoc cref="SymbolMap.InvboxAddItem"/>
     public static InvboxAddItemFn InvboxAddItem => (InvboxAddItemFn)(_InvboxAddItemDone ? _InvboxAddItem : Resolve(ref _InvboxAddItem, ref _InvboxAddItemDone, SymbolMap.InvboxAddItem));
+    private static IntPtr _MultiInvboxAddItem;
+    private static bool _MultiInvboxAddItemDone;
+    /// <inheritdoc cref="SymbolMap.MultiInvboxAddItem"/>
+    public static MultiInvboxAddItemFn MultiInvboxAddItem => (MultiInvboxAddItemFn)(_MultiInvboxAddItemDone ? _MultiInvboxAddItem : Resolve(ref _MultiInvboxAddItem, ref _MultiInvboxAddItemDone, SymbolMap.MultiInvboxAddItem));
+    private static IntPtr _MultiInvboxCellFree;
+    private static bool _MultiInvboxCellFreeDone;
+    /// <inheritdoc cref="SymbolMap.MultiInvboxCellFree"/>
+    public static MultiInvboxCellFreeFn MultiInvboxCellFree => (MultiInvboxCellFreeFn)(_MultiInvboxCellFreeDone ? _MultiInvboxCellFree : Resolve(ref _MultiInvboxCellFree, ref _MultiInvboxCellFreeDone, SymbolMap.MultiInvboxCellFree));
     private static IntPtr _InvSetContainerGuiVisible;
     private static bool _InvSetContainerGuiVisibleDone;
     /// <inheritdoc cref="SymbolMap.InvSetContainerGuiVisible"/>
@@ -8226,6 +8258,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SendBarterStart"/>; returns the slot holding the next layer, or null.</summary>
     public static SendBarterStartFn* ChainSendBarterStart(this HookService h, SendBarterStartFn handler, int priority) =>
         (SendBarterStartFn*)h.Chain(SymbolMap.SendBarterStart, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SendBarterAddItem"/>; returns the original, or null.</summary>
+    public static SendBarterAddItemFn InstallSendBarterAddItem(this HookService h, SendBarterAddItemFn handler) =>
+        (SendBarterAddItemFn)h.Install(SymbolMap.SendBarterAddItem, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SendBarterAddItem"/>; returns the slot holding the next layer, or null.</summary>
+    public static SendBarterAddItemFn* ChainSendBarterAddItem(this HookService h, SendBarterAddItemFn handler, int priority) =>
+        (SendBarterAddItemFn*)h.Chain(SymbolMap.SendBarterAddItem, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SendInputUseItem"/>; returns the original, or null.</summary>
     public static SendInputUseItemFn InstallSendInputUseItem(this HookService h, SendInputUseItemFn handler) =>
         (SendInputUseItemFn)h.Install(SymbolMap.SendInputUseItem, (IntPtr)handler);
@@ -8382,6 +8420,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.InvboxAddItem"/>; returns the slot holding the next layer, or null.</summary>
     public static InvboxAddItemFn* ChainInvboxAddItem(this HookService h, InvboxAddItemFn handler, int priority) =>
         (InvboxAddItemFn*)h.Chain(SymbolMap.InvboxAddItem, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.MultiInvboxAddItem"/>; returns the original, or null.</summary>
+    public static MultiInvboxAddItemFn InstallMultiInvboxAddItem(this HookService h, MultiInvboxAddItemFn handler) =>
+        (MultiInvboxAddItemFn)h.Install(SymbolMap.MultiInvboxAddItem, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.MultiInvboxAddItem"/>; returns the slot holding the next layer, or null.</summary>
+    public static MultiInvboxAddItemFn* ChainMultiInvboxAddItem(this HookService h, MultiInvboxAddItemFn handler, int priority) =>
+        (MultiInvboxAddItemFn*)h.Chain(SymbolMap.MultiInvboxAddItem, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.MultiInvboxCellFree"/>; returns the original, or null.</summary>
+    public static MultiInvboxCellFreeFn InstallMultiInvboxCellFree(this HookService h, MultiInvboxCellFreeFn handler) =>
+        (MultiInvboxCellFreeFn)h.Install(SymbolMap.MultiInvboxCellFree, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.MultiInvboxCellFree"/>; returns the slot holding the next layer, or null.</summary>
+    public static MultiInvboxCellFreeFn* ChainMultiInvboxCellFree(this HookService h, MultiInvboxCellFreeFn handler, int priority) =>
+        (MultiInvboxCellFreeFn*)h.Chain(SymbolMap.MultiInvboxCellFree, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.InvSetContainerGuiVisible"/>; returns the original, or null.</summary>
     public static InvSetContainerGuiVisibleFn InstallInvSetContainerGuiVisible(this HookService h, InvSetContainerGuiVisibleFn handler) =>
         (InvSetContainerGuiVisibleFn)h.Install(SymbolMap.InvSetContainerGuiVisible, (IntPtr)handler);

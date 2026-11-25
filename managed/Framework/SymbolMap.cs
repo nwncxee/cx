@@ -2316,6 +2316,10 @@ internal static unsafe class SymbolMap
     /// backpack item dropped on another creature (<c>CGuiInvbox::HandleDropAsSource</c>).</summary>
     [Fn("void(IntPtr msg, uint creature, uint item)")]
     public const string SendBarterStart = "_ZN11CNWCMessage35SendPlayerToServerBarterStartBarterEjj";
+    /// <summary><c>..._BarterAddItem(uint item, uchar x, uchar y)</c> @0x806530 (rva 0x7ba0f0), major 35 minor 5 -- a
+    /// backpack item offered at a cell of the player's side, 0xff, 0xff for the server to pick.</summary>
+    [Fn("void(IntPtr msg, uint item, byte x, byte y)")]
+    public const string SendBarterAddItem = "_ZN11CNWCMessage31SendPlayerToServerBarterAddItemEjhh";
     /// <summary><c>..._Input_UseItem(uint item, uchar, uchar, uint target, Vector)</c> @0x7ffa10 (rva 0x7c0610), major 6
     /// minor 9 -- a potion dropped on the player (vanilla passes 0, 0xff, the creature, a zero vector).</summary>
     [Fn("void(IntPtr msg, uint item, byte a, byte b, uint target, VectorArg pos)")]
@@ -2395,6 +2399,14 @@ internal static unsafe class SymbolMap
     /// <c>globalY</c> is page-major; Windows takes the 5th argument on the stack, which its call sites do pass.</summary>
     [Fn("void(IntPtr box, uint oid, int x, int globalY, int ghost)")]
     public const string InvboxAddItem = "_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii";
+    /// <summary><c>CGuiMultiInvbox::AddItem(uint oid, int x, int y, int ghost)</c> @0x692f70 (Windows rva 0x87f640) -- one
+    /// grid's add, which the barter box's drop calls with ghost 1 on the player's side of a trade.</summary>
+    [Fn("void(IntPtr box, uint oid, int x, int y, int ghost)")]
+    public const string MultiInvboxAddItem = "_ZN15CGuiMultiInvbox7AddItemEjiii";
+    /// <summary><c>CGuiMultiInvbox::CheckIfIconPositionEmpty(int w, int h, int x, int y, uint oid)</c> @0x692140 (Windows rva
+    /// 0x87fbb0) -- 1 when a <c>w</c> by <c>h</c> icon fits at (x, y), cells <c>oid</c> holds counting as free.</summary>
+    [Fn("int(IntPtr box, int w, int h, int x, int y, uint oid)")]
+    public const string MultiInvboxCellFree = "_ZN15CGuiMultiInvbox24CheckIfIconPositionEmptyEiiiij";
     /// <summary><c>CPanelInventory::SetContainerGUIVisible(int show, int notifyServer, int isItem, uint graphicOid)</c>
     /// @0x68e5d0 (Windows rva 0x8575f0; MSVC also inlined its <c>show == 0</c> half into <c>SetInventoryVisible</c>).
     /// <c>show == 0</c> is the stock container teardown -- mode off, grid emptied, sub-panel back to "Equip", oid
@@ -3348,6 +3360,7 @@ internal static unsafe class SymbolMap
         [AuroraSetTileFoggedByWar] = Nm("?AuroraSetTileFoggedByWar@@YAXAEAVVector@@_N@Z"),
         [SetAlphaObject]         = Nm("?setalpha@@YAXPEAVCAurObject@@M@Z"),
         [SendBarterStart]        = At(),   // 35 / 1
+        [SendBarterAddItem]      = At(),   // 35 / 5, the barter box drop's 'InvR' source
         [SendInputUseItem]       = At(),   // 6 / 9; the Vector by pointer
         [SendGoldTransfer]       = At(),   // 8 / 1, minor 0x0a / 0x16; the Vector by pointer
         [QuickButtonSetItem]     = At(),   // body read: CGuiQuickButton drop handler (vtbl +0xe8) calls it with 0xff00ff, 0
@@ -3374,6 +3387,8 @@ internal static unsafe class SymbolMap
         [DragSourceMoveCaptured] = At(),   // the CGuiDragSource vftable's slot 0x88
         [ItemPlayDropSound]      = At(),   // the same handler's next call
         [InvboxAddItem]          = At(),   // page +0x1d0, rows +0x194 on the Windows CGuiMultiInvbox
+        [MultiInvboxAddItem]     = At(),   // the barter box drop's last call, ghost 1
+        [MultiInvboxCellFree]    = At(),   // cols +0x190, rows +0x194, cell array +0x1b0
         [InvSetContainerGuiVisible] = At(), // body read: mode +0x2f64, grid +0x24b0, isItem +0x2690, oid +0x268c, Status 0x7bdeb0
         [InvContainerPageUp]     = At(),   // body read: grid +0x24b0, SelectNextPage 0x7bde70 (25 / 2), page +0x2680, count +0x2f60
         [InvContainerPageDown]   = At(),   // body read: the same, SelectPreviousPage 0x7bde90 (25 / 3)

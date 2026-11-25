@@ -776,7 +776,8 @@ World actions -- an item dragged out of the window, or gold carried out of the g
 are resolved by the stock drop rules first, then routed: `inventory.drop` (the ground, at the point), `inventory.use` (a
 potion on the player or the player's associate), `inventory.barter` (a backpack item on another creature), `inventory.gold` (the ground, a
 creature, a placeable or a usable ground item), `inventory.sell` (a backpack item released over an open store's item
-box; `engine` sells it with no confirm, as the stock drop does). `deny` on `inventory.gold` also refuses the gold button itself. Their
+box; `engine` sells it with no confirm, as the stock drop does), `inventory.offer` (a backpack item released over the
+player's side of an open trade; `engine` offers it at the cell under the point, as the stock drop does). `deny` on `inventory.gold` also refuses the gold button itself. Their
 `server` event appends the world point:
 `<action>;<oid hex>;<mask hex>;<amount>;0;<target oid hex>;<x>;<y>;<z>` (the item and its source slot mask; for gold
 the oid is the target and `amount` the gold; `7f000000` = the ground). An item released over a quickbar button routes

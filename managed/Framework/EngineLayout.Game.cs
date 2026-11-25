@@ -339,6 +339,11 @@ public static unsafe partial class EngineLayout
     /// <c>'AcTg'</c> a target mode). Linux +0x28 (<c>GetCurrentActionTargetObject</c>); Windows +0x20, which the store's
     /// own drop code calls before its <c>'Stor'</c> tests (rva 0x880e03) and the target mode's lookup before <c>'AcTg'</c>.</summary>
     public static readonly int GuiObjTypeSlot = Field("CGuiObject", "vtbl.GetGuiObjType", Expect.VtblSlot, sig: "int()");
+    /// <summary>CGuiMultiInvbox: the grid's columns, then its rows. <c>CalculateDropPosition</c> clamps a drop cell to them
+    /// (Linux nm @0x691f90 <c>+0x1a0</c> / <c>+0x1a4</c>, Windows rva 0x87f9a0 <c>+0x190</c> / <c>+0x194</c>).</summary>
+    public static readonly int MultiInvboxCols = Field<int>("CGuiMultiInvbox", "cols");
+    /// <inheritdoc cref="MultiInvboxCols"/>
+    public static readonly int MultiInvboxRows = Field<int>("CGuiMultiInvbox", "rows");
     /// <summary>CGuiButton -&gt; its normal-state animation name (<c>char*</c>); quick buttons outline with <c>"qbEquip"</c> /
     /// <c>"qbMode"</c>. <c>SetButtonNormalAnimation</c> stores it at Linux <c>+0xe0</c>, Windows rva 0x1e5a00 <c>+0xc0</c>.</summary>
     public static readonly int ButtonNormalAnim = Field<IntPtr>("CGuiButton", "normalAnim");
@@ -365,10 +370,16 @@ public static unsafe partial class EngineLayout
     /// <summary>CNWCItem: the CONFIRMED backpack cell, two bytes. <c>y</c> is <b>global</b>
     /// (<c>page * rows + localY</c>), which is why one item's y can exceed the grid's 6 rows. Written by the
     /// <c>'A'</c> and <c>'M'</c> cases of <c>Update_GuiRepository</c> and read back by its remove step, on both
-    /// builds. The pending pair the ghost writes is the next two bytes and is not declared.</summary>
+    /// builds. The pending pair the ghost writes is <see cref="ItemPendingX"/>.</summary>
     public static readonly int ItemRepoX = Field<byte>("CNWCItem", "repoX");
     /// <inheritdoc cref="ItemRepoX"/>
     public static readonly int ItemRepoY = Field<byte>("CNWCItem", "repoY");
+    /// <summary>CNWCItem: the cell a ghosted item waits on, two bytes after <see cref="ItemRepoX"/>.
+    /// <c>CGuiBarterInvBox::ProcessItemDrop</c> writes them with the offered cell (Linux nm @0x9c2330 <c>item+0x276</c>,
+    /// Windows rva 0x97e120 <c>item+0x256</c>).</summary>
+    public static readonly int ItemPendingX = Field<byte>("CNWCItem", "pendingX");
+    /// <inheritdoc cref="ItemPendingX"/>
+    public static readonly int ItemPendingY = Field<byte>("CNWCItem", "pendingY");
     /// <summary>CNWCItem: the possessing creature's object id, INVALID when the item is on the ground.
     /// <c>Update_GuiRepository</c> sets it to the panel's shown oid on <c>'A'</c> and to INVALID on <c>'D'</c>
     /// (Linux nm @0x79e320, Windows rva 0x7b4620). Measured from the CNWCItem base, not the CNWCObject

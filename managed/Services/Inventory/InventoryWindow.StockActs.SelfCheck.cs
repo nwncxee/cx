@@ -282,6 +282,13 @@ internal sealed partial class InventoryWindow
         b.Drag(b.Cx(2), b.Cy(0), 5000f, 5000f);
         bool theirs = acts.Count == 1 && OffersOn(acts[0], TheirSideTag);
         check.Expect(acts.Count == 1 && !theirs, $"a backpack item released on the other player's side is not offered ({Said(acts)})");
+
+        // Given a 2x2 helmet dragged over the player's side of a trade
+        // When it is released past the grid's right edge, left of its origin, or 146 pixels into a 10-row grid
+        // Then it is offered in the last column it fits, the first, and cell 4, as CalculateDropPosition's 33-pixel cells give
+        int right = DropCell(2.76f, 1.50f, 2, 3), left = DropCell(1.00f, 1.50f, 2, 3), cell = DropCell(3.78f, 2.00f, 2, 10);
+        check.Expect(right == 1 && left == 0 && cell == 4,
+                     $"a helmet past either edge stays in the grid and rounds at 33-pixel cells (right {right}, left {left}, 146 px {cell})");
     }
 
     private static int Slot(string id)

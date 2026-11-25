@@ -790,19 +790,48 @@ internal static unsafe class InventoryNative
     /// <summary><c>SetButtonItem</c>'s property argument as the stock item drop passes it.</summary>
     private const int QuickItemProp = 0xff00ff;   // not-an-offset: the stock drop's "no property" word
 
-    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag.</summary>
-    private const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
+    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag, an open store's item box, where the stock drag sells.</summary>
+    public const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
 
-    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) is an open store's
-    /// item box, where the stock drag sells.</summary>
-    public static bool StoreBoxAt(int sx, int sy)
+    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) and its
+    /// <c>GetGuiObjType</c> tag (0 when none); the hit check leaves the point on it in <c>CGuiMan</c>'s hit point.</summary>
+    public static IntPtr GuiObjectAt(int sx, int sy, out int tag)
+    {
+        tag = 0;
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero) return IntPtr.Zero;
+        var man = new CGuiMan(gm);
+        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
+        if (obj != IntPtr.Zero) tag = new CGuiObject(obj).GetGuiObjType();
+        return obj;
+    }
+
+    /// <summary>Offer backpack item <paramref name="oid"/> on the player's side of a trade, <paramref name="box"/>, as
+    /// <c>CGuiBarterInvBox::ProcessItemDrop</c> does: <c>BarterAddItem</c> at the cell under the last hit check (0xff, 0xff
+    /// when it is taken, the server picking), then the item ghosted at that cell in the box.</summary>
+    public static void Offer(IntPtr box, uint oid)
     {
         IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
         IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
-        if (gm == IntPtr.Zero) return false;
-        var man = new CGuiMan(gm);
-        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
-        return obj != IntPtr.Zero && new CGuiObject(obj).GetGuiObjType() == StoreBoxTag;
+        IntPtr it = Item(App(), oid), bases = BaseItems(), model = box == IntPtr.Zero ? IntPtr.Zero : new CGuiObject(box).Model;
+        if (gm == IntPtr.Zero || it == IntPtr.Zero || bases == IntPtr.Zero || model == IntPtr.Zero
+            || EngineFn.MultiInvboxCellFree == null || EngineFn.MultiInvboxAddItem == null) return;
+        var item = new CNWCItem(it);
+        var b = new CNWBaseItem(EngineFn.GetBaseItem(bases, item.BaseItem));
+        if (b.IsNull) return;
+        int w = b.InvSlotWidth, h = b.InvSlotHeight;
+        var grid = new CGuiMultiInvbox(box);
+        Span<float> hit = new CGuiMan(gm).HitPoint;
+        System.Numerics.Vector3 at = new Gob(model).Position;
+        int x = InventoryWindow.DropCell(hit[0], at.X, w, grid.Cols), y = InventoryWindow.DropCell(hit[1], at.Y, h, grid.Rows);
+        if (EngineFn.MultiInvboxCellFree(box, w, h, x, y, oid) == 0) x = y = -1;
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendBarterAddItem != null) EngineFn.SendBarterAddItem(msg, oid, (byte)x, (byte)y);
+        item.Ghost = 1;
+        item.PendingX = (byte)x;
+        item.PendingY = (byte)y;
+        EngineFn.MultiInvboxAddItem(box, oid, x, y, 1);
     }
 
     /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the
