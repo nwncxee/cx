@@ -382,6 +382,8 @@ global using unsafe InvCloseForLevelupFn = delegate* unmanaged<nint, void>;
 global using unsafe SendPossessFamiliarFn = delegate* unmanaged<nint, void>;
 global using unsafe RulesetIntEntryFn = delegate* unmanaged<nint, ulong, int, int>;
 global using unsafe InvSetCharacterDataFn = delegate* unmanaged<nint, uint, void>;
+global using unsafe InvGetEquipSlotFn = delegate* unmanaged<nint, int, nint>;
+global using unsafe PlayGuiSoundFn = delegate* unmanaged<CX.Engine.ResRefArg, uint, void>;
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
 global using unsafe GetGameobjectHitFn = delegate* unmanaged<nint, nint*, int>;
 global using unsafe SendBarterStartFn = delegate* unmanaged<nint, uint, uint, void>;
@@ -1531,6 +1533,17 @@ public readonly unsafe partial struct CGuiInGamePopUpBubble(IntPtr ptr)
     public ref int LiveText => ref *(int*)(Ptr + EngineLayout.BubbleLiveText);
 }
 
+/// <summary>Typed view of an engine <c>CGuiInvbox*</c>.</summary>
+public readonly unsafe partial struct CGuiInvbox(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.InvboxItemId"/>
+    public ref uint ItemId => ref *(uint*)(Ptr + EngineLayout.InvboxItemId);
+}
+
 /// <summary>Typed view of an engine <c>CGuiLabel*</c>.</summary>
 public readonly unsafe partial struct CGuiLabel(IntPtr ptr)
 {
@@ -2423,6 +2436,8 @@ public readonly unsafe partial struct CPanelInventory(IntPtr ptr)
     public void InvContainerPageUp() => EngineFn.InvContainerPageUp(Ptr);
     /// <inheritdoc cref="SymbolMap.InvContainerPagenum"/>
     public void InvContainerPagenum(int show, byte count) => EngineFn.InvContainerPagenum(Ptr, show, count);
+    /// <inheritdoc cref="SymbolMap.InvGetEquipSlot"/>
+    public CGuiInvbox InvGetEquipSlot(int slotMask) => new CGuiInvbox(EngineFn.InvGetEquipSlot(Ptr, slotMask));
     /// <inheritdoc cref="SymbolMap.InvSetCharacterData"/>
     public void InvSetCharacterData(uint oid) => EngineFn.InvSetCharacterData(Ptr, oid);
     /// <inheritdoc cref="SymbolMap.InvSetContainerGuiVisible"/>
@@ -5534,6 +5549,14 @@ public static unsafe class EngineFn
     private static bool _InvSetCharacterDataDone;
     /// <inheritdoc cref="SymbolMap.InvSetCharacterData"/>
     public static InvSetCharacterDataFn InvSetCharacterData => (InvSetCharacterDataFn)(_InvSetCharacterDataDone ? _InvSetCharacterData : Resolve(ref _InvSetCharacterData, ref _InvSetCharacterDataDone, SymbolMap.InvSetCharacterData));
+    private static IntPtr _InvGetEquipSlot;
+    private static bool _InvGetEquipSlotDone;
+    /// <inheritdoc cref="SymbolMap.InvGetEquipSlot"/>
+    public static InvGetEquipSlotFn InvGetEquipSlot => (InvGetEquipSlotFn)(_InvGetEquipSlotDone ? _InvGetEquipSlot : Resolve(ref _InvGetEquipSlot, ref _InvGetEquipSlotDone, SymbolMap.InvGetEquipSlot));
+    private static IntPtr _PlayGuiSound;
+    private static bool _PlayGuiSoundDone;
+    /// <inheritdoc cref="SymbolMap.PlayGuiSound"/>
+    public static PlayGuiSoundFn PlayGuiSound => (PlayGuiSoundFn)(_PlayGuiSoundDone ? _PlayGuiSound : Resolve(ref _PlayGuiSound, ref _PlayGuiSoundDone, SymbolMap.PlayGuiSound));
     private static IntPtr _GameCameraHitCheck;
     private static bool _GameCameraHitCheckDone;
     /// <inheritdoc cref="SymbolMap.GameCameraHitCheck"/>
@@ -8143,6 +8166,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.InvSetCharacterData"/>; returns the slot holding the next layer, or null.</summary>
     public static InvSetCharacterDataFn* ChainInvSetCharacterData(this HookService h, InvSetCharacterDataFn handler, int priority) =>
         (InvSetCharacterDataFn*)h.Chain(SymbolMap.InvSetCharacterData, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.InvGetEquipSlot"/>; returns the original, or null.</summary>
+    public static InvGetEquipSlotFn InstallInvGetEquipSlot(this HookService h, InvGetEquipSlotFn handler) =>
+        (InvGetEquipSlotFn)h.Install(SymbolMap.InvGetEquipSlot, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.InvGetEquipSlot"/>; returns the slot holding the next layer, or null.</summary>
+    public static InvGetEquipSlotFn* ChainInvGetEquipSlot(this HookService h, InvGetEquipSlotFn handler, int priority) =>
+        (InvGetEquipSlotFn*)h.Chain(SymbolMap.InvGetEquipSlot, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.PlayGuiSound"/>; returns the original, or null.</summary>
+    public static PlayGuiSoundFn InstallPlayGuiSound(this HookService h, PlayGuiSoundFn handler) =>
+        (PlayGuiSoundFn)h.Install(SymbolMap.PlayGuiSound, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.PlayGuiSound"/>; returns the slot holding the next layer, or null.</summary>
+    public static PlayGuiSoundFn* ChainPlayGuiSound(this HookService h, PlayGuiSoundFn handler, int priority) =>
+        (PlayGuiSoundFn*)h.Chain(SymbolMap.PlayGuiSound, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GameCameraHitCheck"/>; returns the original, or null.</summary>
     public static GameCameraHitCheckFn InstallGameCameraHitCheck(this HookService h, GameCameraHitCheckFn handler) =>
         (GameCameraHitCheckFn)h.Install(SymbolMap.GameCameraHitCheck, (IntPtr)handler);

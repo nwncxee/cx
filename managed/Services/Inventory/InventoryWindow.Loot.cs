@@ -124,6 +124,9 @@ internal sealed partial class InventoryWindow
         return new InvAction(InvActKind.Put, oid, X: x, Y: y, Other: Loot.Oid);
     }
 
+    /// <summary>The loot pane's title: the server's label, else the container's name, else the TLK's word.</summary>
+    private string LootTitle() => _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : _containerWord;
+
     /// <summary>Double-click or Ctrl+click on a loot item: into the backpack wherever the server finds room.</summary>
     private void TakeAuto(uint oid)
     {
@@ -142,7 +145,7 @@ internal sealed partial class InventoryWindow
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Ly(TitleH), HeaderBg); }
         float bx0 = Lx(LootWDesign - Pad - CloseW);
         CloseButton(under, skin, text, bx0, Ly(2f), Lx(LootWDesign - Pad), Ly(2f + CloseW));
-        string title = _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : _containerWord;
+        string title = LootTitle();
         UiText.Draw(under, text, title, Lx(Pad), y0 + (TitleH * s - lh) / 2f + text.Ascent, Tx, bx0 - 2f * s);
 
         float c = Cell * s, lw = Math.Max(1f, MathF.Round(s)), gx0 = Lx(Pad), gx1 = Lx(Pad + LootGridW), gy0 = Ly(LootGridY);

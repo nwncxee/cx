@@ -18,8 +18,10 @@ internal struct InvItem
     /// <summary>A move is in flight, awaiting the server's confirm (the engine's ghost flag).</summary>
     public bool Ghost;
     public bool Stackable;
-    /// <summary>Double-click means <c>UseObject</c> (<c>CNWBaseItem+0x80</c>).</summary>
-    public bool Usable;
+    /// <summary>The base item is a bag (<c>baseitems.2da</c> Container, <c>CNWBaseItem+0x80</c>): a double-click opens it.</summary>
+    public bool Container;
+    /// <summary>The item carries a cast-spell property: a double-click raises that spell's target cursor.</summary>
+    public bool CastSpell;
 }
 
 /// <summary>One equip slot of the vanilla panel: its policy id, label (the TLK's word at <c>StrRef</c>, else

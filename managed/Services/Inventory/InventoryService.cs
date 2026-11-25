@@ -56,6 +56,8 @@ public sealed unsafe partial class InventoryService : IExtenderService
         InventoryWindow.SelfCheck(log);
         GoldPrompt.SelfCheck(log);
         WornSlotCheck.SelfCheck(log);
+        WornIdsCheck.SelfCheck(log);
+        InventoryWindow.StockActsSelfCheck(log);
         if (!InventoryNative.Attach(log, hooks)) { log.Info("InventoryService: stood down -- the stock inventory runs"); return; }
         RadialIcons.Init(log);
 

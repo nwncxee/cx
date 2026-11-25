@@ -49,6 +49,8 @@ internal static unsafe class InventoryNative
     /// player still carries unequipped, and per page by <see cref="PruneBagPage"/>.</summary>
     private static readonly Dictionary<uint, int> _seen = new();
     private static readonly uint[] _drop = new uint[InventoryModel.MaxItems];
+    /// <summary><see cref="Fill"/>'s per-frame slot box ids and the ids the paper doll shows, in <see cref="InventoryModel.Slots"/> order.</summary>
+    private static readonly uint[] _boxIds = new uint[InventoryModel.Slots.Length], _wornIds = new uint[InventoryModel.Slots.Length];
     /// <summary>What <see cref="Fill"/> last saw of gold / weight / worn items: a change re-runs the stock label fill.</summary>
     private static long _statSig = long.MinValue;
     /// <summary>Order-independent digest of the backpack (ids, cells, stacks): the set's enumeration order moves on every
@@ -66,6 +68,7 @@ internal static unsafe class InventoryNative
     {
         SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvHandleInvButton, SymbolMap.InvCloseForLevelup,
         SymbolMap.SendPossessFamiliar, SymbolMap.RulesetIntEntry, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
+        SymbolMap.InvGetEquipSlot,
         SymbolMap.GetGameObject, SymbolMap.AppManager, SymbolMap.Rules, SymbolMap.GetBaseItem,
         SymbolMap.SendInvEquip, SymbolMap.SendInvUnequip, SymbolMap.SendInvRepositoryMove, SymbolMap.SendInvDrop,
         SymbolMap.SendGuiInvStatus, SymbolMap.SendGuiInvSelectPanel, SymbolMap.SendInputUseObject, SymbolMap.SendInputMergeItem,
@@ -85,7 +88,7 @@ internal static unsafe class InventoryNative
         if (!SymbolMap.Require(log, "InventoryService", Needed)) return false;
         if (!EngineLayout.Require(log, "InventoryService", "CPanelInventory", "CPanelInvEquip", "CGuiLabel", "CNWCItem",
                                   "CNWCCreature", "CNWBaseItem", "CNWRules", "CGameObject", "CNWCObject", "CGuiMan", "CHitInfo", "CPanelQuickBar", "CGuiInGame",
-                                  "CGuiContainer", "CGuiPanel")) return false;
+                                  "CGuiContainer", "CGuiPanel", "CGuiInvbox")) return false;
         _hooks.VisibleOrig = hooks.InstallInvSetInventoryVisible(&OnSetInventoryVisible);
         _hooks.ToggleOrig = hooks.InstallInvToggleDisplay(&OnToggleDisplay);
         _hooks.KeyOrig = hooks.InstallInvHandleInvButton(&OnInvButton);
@@ -340,9 +343,11 @@ internal static unsafe class InventoryNative
 
         long sig = c.Gold * 1_000_003L + c.CarriedWeight;
         Span<uint> worn = c.EquippedItems;
+        Boxes(_boxIds);
+        WornIds(_boxIds, worn, _wornIds);
         for (int i = 0; i < InventoryModel.Slots.Length; i++)
         {
-            uint oid = worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
+            uint oid = _wornIds[i];
             sig = sig * 31 + oid;
             IntPtr it = oid == InventoryModel.Invalid ? IntPtr.Zero : Item(app, oid);
             if (it == IntPtr.Zero) { m.Equipped[i] = new InvItem { Oid = InventoryModel.Invalid, X = -1, Y = -1 }; continue; }
@@ -372,7 +377,7 @@ internal static unsafe class InventoryNative
                 if (dropped < _drop.Length) _drop[dropped++] = oid;
                 continue;
             }
-            if (item.Possessor != pid || worn.Contains(oid)) continue;
+            if (item.Possessor != pid || ((ReadOnlySpan<uint>)_wornIds).Contains(oid)) continue;
             if (n >= InventoryModel.MaxItems)
             {
                 if (!_modelFull) { _modelFull = true; Notice.Show(_log, $"inventory: more than {InventoryModel.MaxItems} items carried -- the rest are not shown"); }
@@ -386,6 +391,25 @@ internal static unsafe class InventoryNative
         for (int i = 0; i < dropped; i++) _seen.Remove(_drop[i]);
         m.Count = n;
         if (bag != _bagSig) { _bagSig = bag; m.Epoch++; }
+    }
+
+    /// <summary>Each paper-doll box's item id (<see cref="InventoryModel.Slots"/> order), <c>Invalid</c> for an empty box or no panel.</summary>
+    private static void Boxes(Span<uint> ids)
+    {
+        IntPtr panel = MyPanel();
+        for (int i = 0; i < ids.Length; i++)
+        {
+            CGuiInvbox box = panel == IntPtr.Zero ? default : new CPanelInventory(panel).InvGetEquipSlot((int)InventoryModel.Slots[i].Mask);
+            ids[i] = box.IsNull ? InventoryModel.Invalid : box.ItemId;
+        }
+    }
+
+    /// <summary>The id each paper-doll slot shows (<see cref="InventoryModel.Slots"/> order) from the stock panel's slot boxes and
+    /// the creature's own slot array (<paramref name="worn"/>, indexed by the mask's bit).</summary>
+    internal static void WornIds(ReadOnlySpan<uint> boxes, ReadOnlySpan<uint> worn, Span<uint> ids)
+    {
+        for (int i = 0; i < ids.Length; i++)
+            ids[i] = worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
     }
 
     /// <summary>One item's contribution to the order-independent backpack digest (a sum of well-mixed terms).</summary>
@@ -526,7 +550,7 @@ internal static unsafe class InventoryNative
             if (!b.IsNull)
             {
                 r.W = Math.Max(1, (int)b.InvSlotWidth); r.H = Math.Max(1, (int)b.InvSlotHeight);
-                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Usable = b.Usable != 0;
+                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Container = b.Usable != 0;
             }
         }
         return r;

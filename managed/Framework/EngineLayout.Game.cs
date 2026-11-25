@@ -422,6 +422,10 @@ public static unsafe partial class EngineLayout
     /// <c>SetInventoryVisible</c> adds and removes under the tag "Equip" (Linux nm @0x68e760 <c>this+0x368</c>,
     /// Windows rva 0x857cd0 <c>this+0x308</c>).</summary>
     public static readonly int InvEquipPanel = Field<CX.Engine.CPanelInvEquip>("CPanelInventory", "equipPanel", embedded: true);
+    /// <summary>CGuiInvbox: the id of the item the box holds, <c>OBJECT_INVALID</c> when empty (<c>RemoveItem</c> @0x791240
+    /// writes it). The slot update reads it as <c>GetItemByID(box+0x184)</c> on Linux (nm @0x89dd90), <c>box+0x174</c> on
+    /// Windows (rva 0x7b3f30).</summary>
+    public static readonly int InvboxItemId = Field<uint>("CGuiInvbox", "itemId");
     /// <summary>CPanelInventory: the max-weight label <c>SetCharacterData</c> fills, measured as the
     /// <c>m_pString</c> the body writes through minus <see cref="LabelString"/> (Linux nm @0x68d810,
     /// Windows rva 0x856fa0).</summary>

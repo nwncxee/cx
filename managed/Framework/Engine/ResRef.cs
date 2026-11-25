@@ -59,3 +59,24 @@ public unsafe struct ResRef
 
     private static byte Lower(byte c) => (uint)(c - 'A') < 26 ? (byte)(c + 32) : c;
 }
+
+/// <summary>A <c>CResRef</c> crossing BY VALUE: SysV copies the 17 bytes onto the stack, Win64 passes a pointer to a
+/// caller-made copy. One C# type name, so one <c>[Fn]</c> signature names the parameter on both platforms.</summary>
+public unsafe struct ResRefArg
+{
+#if WINDOWS
+    /// <summary>Win64: the caller-made copy, which must outlive the call.</summary>
+    public ResRef* P;
+#else
+    /// <summary>SysV: the resref itself.</summary>
+    public ResRef V;
+#endif
+
+    /// <summary>The argument for a resref the caller holds; on Win64 <paramref name="p"/> must outlive the call.</summary>
+    public static ResRefArg Of(ResRef* p) =>
+#if WINDOWS
+        new() { P = p };
+#else
+        new() { V = *p };
+#endif
+}

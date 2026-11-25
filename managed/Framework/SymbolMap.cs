@@ -2287,6 +2287,15 @@ internal static unsafe class SymbolMap
     /// oid clears the panel's "this is mine" flag and permanently strips the gold widgets off it.</summary>
     [Fn("void(CPanelInventory this, uint oid)")]
     public const string InvSetCharacterData = "_ZN15CPanelInventory16SetCharacterDataEj";
+    /// <summary><c>CPanelInventory::GetEquipSlot(int slotMask)</c> @0x78d6f0 (Windows rva 0x855b10) -- the paper doll's box
+    /// for one slot mask, null for a mask none of the 14 boxes takes. Only the server's slot update fills or empties a
+    /// box, and closing the inventory clears them all.</summary>
+    [Fn("CGuiInvbox(CPanelInventory this, int slotMask)")]
+    public const string InvGetEquipSlot = "_ZN15CPanelInventory12GetEquipSlotEi";
+    /// <summary><c>PlayGuiSound(CResRef, uint)</c> @0x57fe00 -- a one-shot interface sound (group 9), the one the stock
+    /// inventory plays for <c>gui_cannotequip</c> with 0. The resref crosses by value: <see cref="CX.Engine.ResRefArg"/>.</summary>
+    [Fn("void(ResRefArg sound, uint arg)")]
+    public const string PlayGuiSound = "_Z12PlayGuiSound7CResRefj";
     /// <summary><c>GameCameraHitCheck(int x, int y, Vector* out, CHitInfo* info)</c> @0x63a270 (Windows rva 0x6d7f50) -- the
     /// world under a GUI-space point (SDL x, <c>GuiManVpH - y</c>) through the module camera: what
     /// <c>CGuiDragSource::HandleLMouseUp</c> asks when a drag ends over no GUI object. Sets <c>info+0x20 = 1</c>, then
@@ -3320,6 +3329,8 @@ internal static unsafe class SymbolMap
         [RulesetIntEntry]        = Nm("?GetRulesetIntEntry@CNWRules@@QEAAH_KH@Z"),
         [InvSetCharacterData]    = At(),   // gold creature+0x1b8, weight +0x28c; label m_pString at label+0x90
         [GetInventoryPanel]      = At(),
+        [InvGetEquipSlot]        = At(),   // body read: 14-entry mask table at 0xe4ffc0, box = this+0x528 + i*400
+        [PlayGuiSound]           = Nm("?PlayGuiSound@@YAXVCResRef@@I@Z"),
         [GameCameraHitCheck]     = At(),   // body read: GetModuleCamera, info+0x20 = 1, camera vtbl +0x60
         [GetGameobjectHit]       = At(),   // body read: kind +0x24, gob +0x48, item -> +0x48
         // ---- the scene seam ----

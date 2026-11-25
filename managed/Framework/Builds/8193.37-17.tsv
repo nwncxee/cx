@@ -608,6 +608,7 @@ offset	CNWRules	baseItems	0x20	0x20	# RulesBaseItems
 offset	CPanelInventory	containerMode	0x319c	0x2f64	# InvContainerMode
 offset	CPanelInventory	shownOid	0x31a0	0x2f68	# InvShownOid
 offset	CPanelInventory	equipPanel	0x368	0x308	# InvEquipPanel
+offset	CGuiInvbox	itemId	0x184	0x174	# InvboxItemId
 offset	CPanelInventory	maxWeightLabel	0x1ed0	0x1d80	# InvMaxWeightLabel
 offset	CPanelInventory	containerGrid	0x2628	0x24b0	# InvContainerGrid
 offset	CPanelInventory	containerOid	0x2810	0x268c	# InvContainerOid
@@ -903,6 +904,7 @@ rva	_ZN15CGuiQuickButton16HandleLeftButtonEv	0x85c8f0	# QuickButtonHandleLeftBut
 rva	_ZN14CGuiDragSource23HandleMouseMoveCapturedEii	0x1eea60	# DragSourceMoveCaptured
 rva	_ZN8CNWCItem13PlayDropSoundEv	0x83ea00	# ItemPlayDropSound
 rva	_ZN13CClientExoApp17GetInventoryPanelEv	0x6abbe0	# GetInventoryPanel
+rva	_ZN15CPanelInventory12GetEquipSlotEi	0x855b10	# InvGetEquipSlot
 rva	_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii	0x87f970	# InvboxAddItem
 rva	_ZN15CPanelInventory22SetContainerGUIVisibleEiiij	0x8575f0	# InvSetContainerGuiVisible
 rva	_ZN15CPanelInventory21HandleContainerPageUpEv	0x855d00	# InvContainerPageUp

@@ -9,13 +9,13 @@ namespace CX.Services.Inventory;
 
 /// <summary>What the player asked the inventory to do; the service turns each into an engine send (or a
 /// <see cref="ServerPolicy"/> route).</summary>
-internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target }
+internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target, Aim }
 
-/// <summary>One request out of the window. <see cref="Mask"/> is an equip-slot bitmask (a Drop's source slot, 0 from the
-/// backpack), <see cref="X"/>/<see cref="Y"/> a backpack cell (global row; a Put's is a container cell, a Take's
-/// <see cref="InventoryWindow.AutoCell"/> when the server picks), a split's count, or a Use / Radial / Drop's screen
-/// point; <see cref="Other"/> a merge's second object or the open container; <see cref="Text"/> a refusal's reason.</summary>
-internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Mask = 0, int X = 0, int Y = 0, uint Other = 0, string Text = "");
+/// <summary>One request out of the window. <see cref="Mask"/>: an equip-slot bitmask (a Drop's source slot, 0 from the
+/// backpack); <see cref="X"/>/<see cref="Y"/>: a cell (global row; <see cref="InventoryWindow.AutoCell"/> when the server
+/// picks), a split's count, or a Use / Radial / Drop's screen point; <see cref="Other"/>: a merge's second object or the
+/// destination container; <see cref="Text"/> / <see cref="Sound"/>: a refusal's reason and interface sound.</summary>
+internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Mask = 0, int X = 0, int Y = 0, uint Other = 0, string Text = "", string Sound = "");
 
 /// <summary>An item icon the owner draws after the chrome batch (the <c>CascadeMenu.Icons</c> pattern): object id, rect,
 /// alpha, the item's footprint in cells (which part of its padded sheet is art), and the grid it sits in, if any
@@ -46,6 +46,8 @@ internal sealed partial class InventoryWindow
     private const float GlideRate = 18f;
     /// <summary>Two clicks on one item within this are a double-click.</summary>
     private const float DoubleClickSec = 0.4f;
+    /// <summary>The interface sound the stock panel plays when a slot refuses an item.</summary>
+    internal const string CannotEquip = "gui_cannotequip";
     /// <summary>Pointer travel before a press becomes a drag (design px).</summary>
     private const float DragSlop = 4f;
     private const int ButtonLeft = 1, ButtonRight = 3;
@@ -123,6 +125,8 @@ internal sealed partial class InventoryWindow
     private float _mx = -1f, _my = -1f;
     private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
     private long _lastClickAt;
+    /// <summary>The hovered item name's colour, packed RGB; <see cref="Nameplate.PlateLayout.Plain"/> draws in the text colour.</summary>
+    private uint _tipRgb = Nameplate.PlateLayout.Plain;
     private readonly Tooltip _tip = new();
     /// <summary>The service's batch for <see cref="DrawTip"/>, kept across frames.</summary>
     internal VertexBatch? TipBatch;
@@ -330,9 +334,9 @@ internal sealed partial class InventoryWindow
     internal static bool SellsOn(in InvAction drop, bool overStoreBox)
         => overStoreBox && drop.Mask == 0 && drop.Other == 0;
 
-    /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state. Consumed when over the window, or
-    /// while a gesture it started is live.</summary>
-    public bool MouseButton(bool down, int button, float px, float py, int mods)
+    /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state and <paramref name="clicks"/> SDL's
+    /// click count. Consumed when over the window, or while a gesture it started is live.</summary>
+    public bool MouseButton(bool down, int button, float px, float py, int mods, int clicks = 1)
     {
         if (!Open) return false;
         _mx = px; _my = py;
