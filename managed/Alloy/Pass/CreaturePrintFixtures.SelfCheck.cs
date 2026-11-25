@@ -144,6 +144,12 @@ internal static unsafe partial class Weather
     /// <summary>The wolf on a slope rising ahead: every paw planted, the front ones 0.164 m up, the back ones as far down.</summary>
     private static ModelDef SlopeWolf() => Quadruped("cx_pr_slope", WolfPaws, WolfPaw, [0.164f, 0.164f, -0.164f, -0.164f]);
 
+    /// <summary>A wolf mid-lunge: two forepaws raised in a line rising ahead, one forepaw and one hind paw planted.</summary>
+    private static readonly Vector2[] LungePaws = [new(-0.15f, 0.12f), new(0.15f, 0.45f), new(-0.15f, 0.40f), new(0.15f, -0.45f)];
+
+    /// <summary>The lunging wolf: its raised forepaws 0.08 m and 0.3 m up, on one line that the planted forepaw sinks below.</summary>
+    private static ModelDef LungeWolf() => Quadruped("cx_pr_lunge", LungePaws, WolfPaw, [Lifted, 0.3f, Planted, Planted]);
+
     /// <summary>The ox: front-left and back-right hooves planted.</summary>
     private static ModelDef Ox() => Quadruped("cx_pr_ox", OxHooves, OxHoof, [Planted, Lifted, Lifted, Planted]);
 

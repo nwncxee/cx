@@ -407,6 +407,26 @@ internal static unsafe partial class Weather
         FreshGround(snow: false, wet: true);
         StepDown(in pl, PrintNow);
         check.Expect(SplashNear(PrintAt, left, 0.1f), "a humanoid on wet ground: the splash rises at the planted foot");
+
+        // Given a wolf mid-lunge, its two raised forepaws on a line rising ahead that its planted forepaw sinks below
+        // When a footstep event fires
+        // Then the planted paws print and the raised ones do not
+        DbId lunge = Keep(placed, Place(LungeWolf(), PrintAt));
+        FreshGround(snow: true, wet: false);
+        StepFacts lg = OpenStep(lunge, -1, TypeSoft, SizeMedium, PrintAt);
+        StepDown(in lg, PrintNow);
+        check.Expect(!lunge.IsNull && FeetRead(PrintAt, LungePaws, [false, false, true, true]),
+                     "a lunging wolf: the planted paws print, not the raised ones a line through them would plant");
+
+        // Given a wolf whose footstep event fires twice within one stride
+        // When both events fire
+        // Then one footfall is pressed
+        FreshGround(snow: true, wet: false);
+        StepFacts twice = OpenStep(wolf, -1, TypeSoft, SizeMedium, PrintAt, 900);
+        int once = _prints;
+        StepDown(in twice, PrintNow);
+        StepDown(in twice, PrintNow + 0.05f);
+        check.Expect(_prints == once + 1, $"a wolf's two events in one stride: one footfall ({_prints - once})");
     }
 
     /// <summary>Whether a sole-sized print lies under the foot at <paramref name="rel"/>: pressed there, as long as a
