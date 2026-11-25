@@ -44,6 +44,42 @@ When the area loads, CX holds every key the area names at its value. The rule fo
 
 `cx.log` writes one line per area: `AreaSettings: '<resref>' holds n/m knob(s): ...`.
 
+## An area that names no place
+
+An area that holds no `cx.air.place` (or holds `auto`) takes a place from its own features when it loads:
+
+- An interior or underground area is a crypt. A natural one is also marked a cave, by the rule the sound uses.
+- An outdoor area is a forest when at least half its tiles have a `Trees` or `Forest` corner, and a meadow otherwise.
+- A `Snow` corner marks the area winter, which stops the meadow's pollen and the forest's leaves.
+- Outdoors, a `Water` corner or a `Stream`, `River`, `Dock` or `Sandbank` edge marks water, which gathers night mist
+  over a meadow, a forest or a city.
+
+Corner and edge names match in any case, and a raised one (`Trees+`) counts as its terrain.
+
+A tileset row comes before the features. CX ships rows for the stock sets that read wrong from their tiles:
+
+- City Exterior (`tcn01`) and Medieval City 2 (`tcm02`) are a city.
+- These take no place: City Interior and City Interior 2 (`tin01`, `tni01`), Castle Interior and Castle Interior 2
+  (`tic01`, `tni02`), Fort Interior (`twc03`), Steamworks (`tsw01`), Lizardfolk Interior (`dag01`), Sea Ships
+  (`tss13`), Desert (`ttd01`) and Frozen Wastes (`tti01`).
+- Early Winter 2 (`trs02`) is winter, and its tiles pick the place.
+
+Content can add or change rows with `cx_airplace.2da`, in a hak or over NWSync. It has two columns, `Tileset` (the
+resref) and `Place` (`none`, `crypt`, `city`, `forest`, `meadow` or `winter`):
+
+    2DA V2.0
+
+       Tileset  Place
+    0  ttr01    forest
+    1  tin01    none
+
+CX merges its rows over the shipped ones, so a table that names one set leaves every other row as it was. A row whose
+place is none of these is skipped. A module with no table keeps the shipped rows, and the game's log gains no line
+for the missing file.
+
+The place an area's features give it, and the table, reach a client connected to a server as well: the tiles
+load on the client, and the table travels in the haks or NWSync like any other.
+
 ## Single player only
 
 Area variables reach the client only in a local game: single player, or a game this client hosts. A client connected
