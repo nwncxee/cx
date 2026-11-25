@@ -372,7 +372,7 @@ internal sealed partial class InventoryWindow
 
     /// <summary>The item tooltip, into a batch of its own that the service draws in the popup band, over NUI and every window.</summary>
     public void DrawTip(VertexBatch b, GlyphAtlas small)
-        => _tip.Draw(b, small, small.Ascent, C(SubBg), Tx, Math.Max(X + W, LootShown ? LootX + LootW : 0f) + 400f * S, Y + H + 200f * S);
+        => _tip.Draw(b, small, small.Ascent, C(SubBg), _tipRgb == Nameplate.PlateLayout.Plain ? Tx : _tipRgb, Math.Max(X + W, LootShown ? LootX + LootW : 0f) + 400f * S, Y + H + 200f * S);
 
     /// <summary>The drag ghost: the dragged item's icon under the pointer, where the grabbed cell was.</summary>
     public bool DragIcon(out InvIcon icon)

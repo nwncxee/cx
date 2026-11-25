@@ -124,8 +124,17 @@ internal sealed partial class InventoryWindow
         return new InvAction(InvActKind.Put, oid, X: x, Y: y, Other: Loot.Oid);
     }
 
-    /// <summary>The loot pane's title: the server's label, else the container's name, else the TLK's word.</summary>
-    private string LootTitle() => _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : _containerWord;
+    /// <summary>The loot pane's title: the server's label, else the container's name with its colour codes stripped (once per
+    /// name: the draw asks every frame), else the TLK's word.</summary>
+    private string LootTitle()
+    {
+        if (_lootLabel.Length > 0) return _lootLabel;
+        if (Loot.Title.Length == 0) return _containerWord;
+        if (!ReferenceEquals(Loot.Title, _titleRaw)) { _titleRaw = Loot.Title; _titlePlain = Nameplate.PlateLayout.StripColours(_titleRaw, out _); }
+        return _titlePlain;
+    }
+
+    private string _titleRaw = "", _titlePlain = "";
 
     /// <summary>Double-click or Ctrl+click on a loot item: into the backpack wherever the server finds room.</summary>
     private void TakeAuto(uint oid)

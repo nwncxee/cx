@@ -618,10 +618,11 @@ internal sealed partial class InventoryWindow
         {
             if (_tip.Key is uint k && k == oid) return;
             InvItem it = Info(oid);
-            string name = NameOf?.Invoke(oid) ?? "";
+            string name = PlainName(oid, out _tipRgb);
             _tip.Hover(oid, it.Stack > 1 ? $"{name} ({it.Stack})" : name, px, py, py + 16f * S);
             return;
         }
+        _tipRgb = Nameplate.PlateLayout.Plain;
         if (h.Kind == InvHitKind.Slot) { _tip.Hover(_slots[h.Index].Label, _slots[h.Index].Label, px, py, py + 16f * S); return; }
         if (h.Kind == InvHitKind.Gold) { _tip.Hover(_goldButton.Label, _goldButton.Label, px, py, py + 16f * S); return; }
         if (InventoryKnobs.Kilograms.V && In(_weight, px, py))
@@ -730,11 +731,21 @@ internal sealed partial class InventoryWindow
         _dim.Clear();
         if (Search.Length == 0 || NameOf == null) return;
         for (int i = 0; i < Model.Count; i++)
-            if (!NameOf(Model.Items[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase)) _dim.Add(Model.Items[i].Oid);
+            if (!Matches(Model.Items[i].Oid)) _dim.Add(Model.Items[i].Oid);
         for (int i = 0; i < Model.Equipped.Length; i++)
-            if (Model.Equipped[i].Oid != InventoryModel.Invalid && !NameOf(Model.Equipped[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase))
-                _dim.Add(Model.Equipped[i].Oid);
+            if (Model.Equipped[i].Oid != InventoryModel.Invalid && !Matches(Model.Equipped[i].Oid)) _dim.Add(Model.Equipped[i].Oid);
         for (int i = 0; i < Loot.Count; i++)
-            if (!NameOf(Loot.Items[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase)) _dim.Add(Loot.Items[i].Oid);
+            if (!Matches(Loot.Items[i].Oid)) _dim.Add(Loot.Items[i].Oid);
+    }
+
+    private bool Matches(uint oid) => PlainName(oid, out _).Contains(Search, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>An item's name as the player reads it, its colour codes stripped, and the colour its first letter is drawn in
+    /// (<paramref name="rgb"/>, <see cref="Nameplate.PlateLayout.Plain"/> when none). Cold: allocates.</summary>
+    private string PlainName(uint oid, out uint rgb)
+    {
+        string name = Nameplate.PlateLayout.StripColours(NameOf?.Invoke(oid) ?? "", out uint[]? colours);
+        rgb = colours is { Length: > 0 } ? colours[0] : Nameplate.PlateLayout.Plain;
+        return name;
     }
 }
