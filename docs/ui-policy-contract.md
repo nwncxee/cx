@@ -767,8 +767,10 @@ Actions for `.route`: `inventory.equip`, `inventory.unequip`, `inventory.move`, 
 `inventory.split` (shift-click a stack: half), `inventory.drop`, `inventory.use`, `inventory.radial` (`x;y` are the
 click's screen point for `use` and `radial`), `inventory.barter`, `inventory.gold`, `inventory.quickbar`, and for an open
 container `inventory.take` (out of it: to a backpack cell, or `x;y` = `255;255` when the server picks, from a
-double-click or ctrl-click) and `inventory.put` (into it, from the backpack or elsewhere in it); for `move`, `unequip`,
-`take` and `put` they are the target cell in the wire's form, the game's own: column, and global row counted from each
+double-click or ctrl-click) and `inventory.put` (into it, from the backpack or elsewhere in it), and for an open store
+`inventory.buy` (a store item dragged onto the window: to the backpack cell under it, `255;255` when that is taken or
+the drop is on the frame; `engine` buys it with no confirm, as the stock drop does); for `move`, `unequip`, `take`, `put`
+and `buy` they are the target cell in the wire's form, the game's own: column, and global row counted from each
 page's bottom -- the backpack's 6-row pages, a container's 5-row ones -- and `take` / `put` name the container as the
 other oid).
 

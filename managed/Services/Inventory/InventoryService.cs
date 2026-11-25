@@ -65,6 +65,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.NameOf = InventoryNative.Name;
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
         _inv.HoverItem = InventoryNative.PriceInStore;
+        _inv.StoreDrag = InventoryNative.StoreDrag;
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
         _window = NewWindow();
         InitGold();
@@ -241,11 +242,11 @@ public sealed unsafe partial class InventoryService : IExtenderService
             case InvActKind.Target: InventoryNative.FireTarget(a.Oid); return;
         }
         string name = a.Kind.ToString().ToLowerInvariant();
-        int h = Math.Max(1, _inv.Info(a.Oid).H);
+        int h = Math.Max(1, a.Kind == InvActKind.Buy ? _inv.StoreDrag().H : _inv.Info(a.Oid).H);
         int wireY = a.Kind switch
         {
             _ when a.X == InventoryWindow.AutoCell => a.Y,
-            InvActKind.Move or InvActKind.Unequip or InvActKind.Take => InventoryModel.Flip(a.Y, h),
+            InvActKind.Move or InvActKind.Unequip or InvActKind.Take or InvActKind.Buy => InventoryModel.Flip(a.Y, h),
             InvActKind.Put => ItemGrid.Flip(a.Y, h, LootModel.Rows),
             _ => a.Y,
         };
@@ -267,6 +268,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
                 InventoryNative.Move(a.Oid, a.X, wireY, a.X == InventoryWindow.AutoCell ? InventoryModel.Invalid : InventoryNative.PlayerId());
                 break;
             case InvActKind.Put: InventoryNative.Move(a.Oid, a.X, wireY, a.Other); break;
+            case InvActKind.Buy: InventoryNative.Buy(a.Oid, a.X, wireY); break;
             case InvActKind.Merge: InventoryNative.Merge(a.Oid, a.Other); break;
             case InvActKind.Split: InventoryNative.Split(a.Oid, a.X); break;
             case InvActKind.Use: InventoryNative.DoubleClick(a.Oid); break;

@@ -818,9 +818,7 @@ internal static unsafe class InventoryNative
         if (gm == IntPtr.Zero || it == IntPtr.Zero || bases == IntPtr.Zero || model == IntPtr.Zero
             || EngineFn.MultiInvboxCellFree == null || EngineFn.MultiInvboxAddItem == null) return;
         var item = new CNWCItem(it);
-        var b = new CNWBaseItem(EngineFn.GetBaseItem(bases, item.BaseItem));
-        if (b.IsNull) return;
-        int w = b.InvSlotWidth, h = b.InvSlotHeight;
+        if (!Cells(it, bases, out int w, out int h)) return;
         var grid = new CGuiMultiInvbox(box);
         Span<float> hit = new CGuiMan(gm).HitPoint;
         System.Numerics.Vector3 at = new Gob(model).Position;
@@ -832,6 +830,38 @@ internal static unsafe class InventoryNative
         item.PendingX = (byte)x;
         item.PendingY = (byte)y;
         EngineFn.MultiInvboxAddItem(box, oid, x, y, 1);
+    }
+
+    /// <summary>Item <paramref name="it"/>'s size in inventory cells, from its base item as the stock occupancy check reads it.</summary>
+    private static bool Cells(IntPtr it, IntPtr bases, out int w, out int h)
+    {
+        var b = new CNWBaseItem(EngineFn.GetBaseItem(bases, new CNWCItem(it).BaseItem));
+        w = b.IsNull ? 0 : b.InvSlotWidth;
+        h = b.IsNull ? 0 : b.InvSlotHeight;
+        return !b.IsNull;
+    }
+
+    /// <summary>The store item the engine is dragging and its size in cells, <c>W</c> 0 when none: a live drag whose source,
+    /// the mouse captor, is a box tagged 'Stor', as the stock repository drop tells a buy from a move.</summary>
+    public static (uint Oid, int W, int H) StoreDrag()
+    {
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero || !Quickbar.QuickbarNative.EngineDragging()) return default;
+        IntPtr src = new CGuiMan(gm).MouseCapture;
+        if (new CGuiObject(src).GetGuiObjType() != StoreBoxTag) return default;
+        uint oid = new CGuiInvbox(src).DraggedId;
+        IntPtr it = Item(App(), oid), bases = BaseItems();
+        if (it == IntPtr.Zero || bases == IntPtr.Zero || !Cells(it, bases, out int w, out int h)) return default;
+        return (oid, w, h);
+    }
+
+    /// <summary><c>Store_RequestBuy</c> for store item <paramref name="oid"/> at a backpack cell in the wire's form (0xff, 0xff
+    /// for the server to place), owned by the player, as the stock repository drop sends it: no confirm.</summary>
+    public static void Buy(uint oid, int x, int globalY)
+    {
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendStoreRequestBuy != null) EngineFn.SendStoreRequestBuy(msg, oid, (byte)x, (byte)globalY, PlayerId());
     }
 
     /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the

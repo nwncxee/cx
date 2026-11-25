@@ -344,8 +344,11 @@ internal sealed partial class InventoryWindow
 
     /// <summary>One axis of the cell a drop lands in, as <c>CGuiMultiInvbox::CalculateDropPosition</c> works it in single
     /// precision: the <paramref name="size"/>-cell item centred on the hit, 33-pixel cells of 0.01 GUI units, kept inside.</summary>
-    internal static int DropCell(float hit, float origin, int size, int count)
-        => Math.Clamp((int)(((hit - origin) / 0.01f - size * 16) / 33f + 0.5f), 0, count - size);
+    internal static int DropCell(float hit, float origin, int size, int count) => CentredCell((hit - origin) / 0.01f, size, count);
+
+    /// <summary>The first cell of a <paramref name="size"/>-cell footprint centred on a point <paramref name="px"/> pixels into a
+    /// line of <paramref name="count"/> 33-pixel cells, rounded and kept inside, as <c>CalculateDropPosition</c> works it.</summary>
+    private static int CentredCell(float px, int size, int count) => Math.Clamp((int)((px - size * 16) / Cell + 0.5f), 0, count - size);
 
     /// <summary>The stock grid's double-click on a backpack item: a bag is used, a cast-spell item raises its target
     /// cursor, anything else does nothing. The worn slots have no double-click in the stock panel.</summary>
@@ -532,7 +535,23 @@ internal sealed partial class InventoryWindow
 
     /// <summary>A release with no press of the window's own: over the window during the engine's store drag, a Buy at the
     /// free cell under the centred footprint, or for the server to place. The release passes on, so the engine's drag ends.</summary>
-    private bool StoreRelease(float px, float py) => Contains(px, py);
+    private bool StoreRelease(float px, float py)
+    {
+        (uint oid, int w, int h) = StoreDrag();
+        if (w <= 0) return Contains(px, py);
+        if (!Contains(px, py)) return false;
+        int x = AutoCell, y = AutoCell;
+        InvHit hit = HitTest(px, py);
+        if (hit.Kind == InvHitKind.Cell)
+        {
+            int page = hit.Y / InventoryModel.Rows;
+            int cx = CentredCell((px - Sx(_grid.X0)) / S, w, InventoryModel.Cols);
+            int cy = page * InventoryModel.Rows + CentredCell(Top * Cell + (py - Sy(_grid.Y0)) / S - page * InventoryModel.Rows * Cell, h, InventoryModel.Rows);
+            if (!Model.Blank(page) && Model.Fits(cx, cy, w, h, oid, PageLimit)) (x, y) = (cx, cy);
+        }
+        Act?.Invoke(new InvAction(InvActKind.Buy, oid, X: x, Y: y));
+        return false;
+    }
 
     /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take / Merge / into a
     /// bag, to a cell the server picks when a slot or loot item does not fit there; a tab -> the first free cell from that

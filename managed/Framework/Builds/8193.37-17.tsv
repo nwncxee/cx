@@ -617,6 +617,7 @@ offset	CPanelInventory	containerMode	0x319c	0x2f64	# InvContainerMode
 offset	CPanelInventory	shownOid	0x31a0	0x2f68	# InvShownOid
 offset	CPanelInventory	equipPanel	0x368	0x308	# InvEquipPanel
 offset	CGuiInvbox	itemId	0x184	0x174	# InvboxItemId
+offset	CGuiInvbox	draggedId	0x170	0x160	# InvboxDraggedId
 offset	CPanelInventory	maxWeightLabel	0x1ed0	0x1d80	# InvMaxWeightLabel
 offset	CPanelInventory	containerGrid	0x2628	0x24b0	# InvContainerGrid
 offset	CPanelInventory	containerOid	0x2810	0x268c	# InvContainerOid
@@ -928,6 +929,7 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInventory_EquipEjjj	0x7c0d70	# SendInvEq
 rva	_ZN11CNWCMessage35SendPlayerToServerInventory_UnequipEjhhj	0x7c1100	# SendInvUnequip (12/7)
 rva	_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj	0x7c1030	# SendInvRepositoryMove (12/9)
 rva	_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj	0x7c3d00	# SendStoreRequestSell (7/2)
+rva	_ZN11CNWCMessage34SendPlayerToServerStore_RequestBuyEjhhj	0x7c3c10	# SendStoreRequestBuy (7/1)
 rva	_ZN11CPanelStore19s_pActiveStorePanelE	0x1428d58	# ActiveStorePanel
 rva	_ZN11CPanelStore28HandleMouseoverInventoryItemEj	0x97bc20	# StoreMouseoverInventoryItem
 rva	_ZN11CNWCMessage32SendPlayerToServerInventory_DropEjfff	0x7c0c90	# SendInvDrop (12/3)

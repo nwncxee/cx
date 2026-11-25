@@ -427,6 +427,7 @@ global using unsafe SendInvEquipFn = delegate* unmanaged<nint, uint, uint, uint,
 global using unsafe SendInvUnequipFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe SendInvRepositoryMoveFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe SendStoreRequestSellFn = delegate* unmanaged<nint, uint, void>;
+global using unsafe SendStoreRequestBuyFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe StoreMouseoverInventoryItemFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe SendInvDropFn = delegate* unmanaged<nint, uint, float, float, float, void>;
 global using unsafe SendGuiInvStatusFn = delegate* unmanaged<nint, int, uint, void>;
@@ -1546,6 +1547,8 @@ public readonly unsafe partial struct CGuiInvbox(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.InvboxDraggedId"/>
+    public ref uint DraggedId => ref *(uint*)(Ptr + EngineLayout.InvboxDraggedId);
     /// <inheritdoc cref="EngineLayout.InvboxItemId"/>
     public ref uint ItemId => ref *(uint*)(Ptr + EngineLayout.InvboxItemId);
 }
@@ -5778,6 +5781,10 @@ public static unsafe class EngineFn
     private static bool _SendStoreRequestSellDone;
     /// <inheritdoc cref="SymbolMap.SendStoreRequestSell"/>
     public static SendStoreRequestSellFn SendStoreRequestSell => (SendStoreRequestSellFn)(_SendStoreRequestSellDone ? _SendStoreRequestSell : Resolve(ref _SendStoreRequestSell, ref _SendStoreRequestSellDone, SymbolMap.SendStoreRequestSell));
+    private static IntPtr _SendStoreRequestBuy;
+    private static bool _SendStoreRequestBuyDone;
+    /// <inheritdoc cref="SymbolMap.SendStoreRequestBuy"/>
+    public static SendStoreRequestBuyFn SendStoreRequestBuy => (SendStoreRequestBuyFn)(_SendStoreRequestBuyDone ? _SendStoreRequestBuy : Resolve(ref _SendStoreRequestBuy, ref _SendStoreRequestBuyDone, SymbolMap.SendStoreRequestBuy));
     private static IntPtr _StoreMouseoverInventoryItem;
     private static bool _StoreMouseoverInventoryItemDone;
     /// <inheritdoc cref="SymbolMap.StoreMouseoverInventoryItem"/>
@@ -8492,6 +8499,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SendStoreRequestSell"/>; returns the slot holding the next layer, or null.</summary>
     public static SendStoreRequestSellFn* ChainSendStoreRequestSell(this HookService h, SendStoreRequestSellFn handler, int priority) =>
         (SendStoreRequestSellFn*)h.Chain(SymbolMap.SendStoreRequestSell, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SendStoreRequestBuy"/>; returns the original, or null.</summary>
+    public static SendStoreRequestBuyFn InstallSendStoreRequestBuy(this HookService h, SendStoreRequestBuyFn handler) =>
+        (SendStoreRequestBuyFn)h.Install(SymbolMap.SendStoreRequestBuy, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SendStoreRequestBuy"/>; returns the slot holding the next layer, or null.</summary>
+    public static SendStoreRequestBuyFn* ChainSendStoreRequestBuy(this HookService h, SendStoreRequestBuyFn handler, int priority) =>
+        (SendStoreRequestBuyFn*)h.Chain(SymbolMap.SendStoreRequestBuy, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.StoreMouseoverInventoryItem"/>; returns the original, or null.</summary>
     public static StoreMouseoverInventoryItemFn InstallStoreMouseoverInventoryItem(this HookService h, StoreMouseoverInventoryItemFn handler) =>
         (StoreMouseoverInventoryItemFn)h.Install(SymbolMap.StoreMouseoverInventoryItem, (IntPtr)handler);

@@ -448,6 +448,9 @@ public static unsafe partial class EngineLayout
     /// writes it). The slot update reads it as <c>GetItemByID(box+0x184)</c> on Linux (nm @0x89dd90), <c>box+0x174</c> on
     /// Windows (rva 0x7b3f30).</summary>
     public static readonly int InvboxItemId = Field<uint>("CGuiInvbox", "itemId");
+    /// <summary>CGuiInvbox: the id of the item a drag from the box carries, read by <c>GetDraggedItem</c> (Linux nm @0x690730
+    /// <c>+0x170</c>, Windows rva 0x880030 <c>+0x160</c>).</summary>
+    public static readonly int InvboxDraggedId = Field<uint>("CGuiInvbox", "draggedId");
     /// <summary>CPanelInventory: the max-weight label <c>SetCharacterData</c> fills, measured as the
     /// <c>m_pString</c> the body writes through minus <see cref="LabelString"/> (Linux nm @0x68d810,
     /// Windows rva 0x856fa0).</summary>

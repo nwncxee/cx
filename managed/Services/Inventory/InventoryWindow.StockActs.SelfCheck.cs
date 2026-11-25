@@ -334,6 +334,39 @@ internal sealed partial class InventoryWindow
         // Then the engine sees it, so its drag ends rather than sticking to the pointer
         check.Expect(!passed, "a release over the window during a store drag passes on to the engine");
 
+        // Given a store helmet dragged over the window
+        // When it is let go nine tenths of the way across cell (4, 5)
+        // Then it is bought into (4, 4): the footprint's centre is nearer that column than the one to its left
+        drag = (StoreHelm, 2, 2);
+        Release(b, b.Cx(4) + 0.4f * (b.Cx(5) - b.Cx(4)), b.Cy(5));
+        string near = Said(acts);
+        check.Expect(near == Said([new InvAction(InvActKind.Buy, StoreHelm, X: 4, Y: 4)]),
+                     $"a helmet let go nine tenths across cell (4, 5) is bought into (4, 4), the nearer column ({near})");
+
+        // Given the window shows the backpack's second page
+        // When a store helmet is let go over its cell (4, 5), or a ring over its top-left cell
+        // Then they are bought into (3, 10) and (0, 6), the page's own rows
+        w.Top = w._target = InventoryModel.Rows;
+        drag = (StoreHelm, 2, 2);
+        Release(b, b.Cx(4), b.Cy(5));
+        string helm2 = Said(acts);
+        drag = (StoreRing, 1, 1);
+        Release(b, b.Cx(0), b.Cy(0));
+        string ring2 = Said(acts);
+        check.Expect(helm2 == Said([new InvAction(InvActKind.Buy, StoreHelm, X: 3, Y: 10)]) && ring2 == Said([new InvAction(InvActKind.Buy, StoreRing, X: 0, Y: 6)]),
+                     $"on page 2 a store helmet is bought into (3, 10) and a ring into (0, 6) (helmet {helm2}, ring {ring2})");
+
+        // Given the second page has not arrived from the server yet
+        // When a store ring is let go over one of its cells
+        // Then the server places it, since the window cannot see what that page holds
+        w.Model.Fresh[1] = false;
+        Release(b, b.Cx(0), b.Cy(0));
+        string blank = Said(acts);
+        w.Model.Fresh[1] = true;
+        w.Top = w._target = 0f;
+        check.Expect(blank == Said([new InvAction(InvActKind.Buy, StoreRing, X: AutoCell, Y: AutoCell)]),
+                     $"a ring bought onto a page still loading is left to the server to place ({blank})");
+
         // Given no store drag is live
         // When the player releases the button over a free cell
         // Then nothing is bought

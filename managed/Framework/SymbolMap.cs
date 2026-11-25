@@ -2466,6 +2466,10 @@ internal static unsafe class SymbolMap
     /// sends for an inventory item dropped on it (<c>CGuiStoreInvBox::ProcessItemDrop</c>), with no confirm.</summary>
     [Fn("void(IntPtr msg, uint item)")]
     public const string SendStoreRequestSell = "_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj";
+    /// <summary><c>..._Store_RequestBuy(uint item, uchar x, uchar y, uint owner)</c> @0x8045e0 (rva 0x7c3c10), major 7 minor 1 --
+    /// what the stock repository drop sends for a store item (<c>CGuiInvbox::RequestBuyNoConfirm</c>), with no confirm.</summary>
+    [Fn("void(IntPtr msg, uint item, byte x, byte globalY, uint owner)")]
+    public const string SendStoreRequestBuy = "_ZN11CNWCMessage34SendPlayerToServerStore_RequestBuyEjhhj";
     /// <summary><c>CPanelStore::s_pActiveStorePanel</c>: the open store's panel, null when none. <c>OnActivate</c> stores
     /// <c>this</c> and <c>OnDeactivate</c> zeroes it on both builds (Windows rva 0x1428d58, beside the store's own two clears).</summary>
     public const string ActiveStorePanel = "_ZN11CPanelStore19s_pActiveStorePanelE";
@@ -3399,6 +3403,7 @@ internal static unsafe class SymbolMap
         [SendInvEquip]           = At(),   // 12 / 1
         [SendInvUnequip]         = At(),   // 12 / 7
         [SendInvRepositoryMove]  = At(),   // 12 / 9
+        [SendStoreRequestBuy]    = At(),   // 7 / 1: writes item, x, y, owner and flags the item (+0x240), as Linux
         [SendStoreRequestSell]   = At(),   // 7 / 2: the one 7 / 2 send; sets the item's sell flag (+0x240) first, as Linux (+0x260)
         [ActiveStorePanel]       = At(),   // OnDeactivate zeroes it, then the store's +0x178 and panel +0x170 (Linux +0x198, +0x190)
         [StoreMouseoverInventoryItem] = At(), // TLK 61619, the 33-char name cut, markup +0x17c/+0x180, cap +0x18c, label +0x468
