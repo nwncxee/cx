@@ -140,7 +140,7 @@ var_group = collections.defaultdict(set)
 for pairs in list(class_group.values()):
     for v, g in pairs:
         var_group[v].add(g)
-# Only a file that names KnobGroup can declare a relay or a handed class: the rest are never scanned for one.
+# Only a file that names KnobGroup can declare a relay or a handed class, so the hook's time goes on those alone.
 grouped = [t for t in texts.values() if 'KnobGroup' in t]
 relays = []
 for text in grouped:

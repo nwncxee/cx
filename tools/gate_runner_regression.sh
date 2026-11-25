@@ -87,13 +87,27 @@ static class Fen { public static readonly KnobGroup Fe = KnobGroup.Declare("fen"
 sealed class Notes { private Notes(KnobGroup g, string s) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g, string s) => new(g, s); }
 sealed class Wire { void Init() { Hand(General.About, "x"); Outer.Pass(Fen.Fe); } internal static Notes Hand(KnobGroup about, string s) => Notes.Declare(about, s); }
 static class Outer { internal static void Pass(KnobGroup g) { Wire.Hand(g, "z"); } }
-static class Lone { static readonly KnobGroup Lo = KnobGroup.Declare("lone", "General", "Lone"); void I() { UnHand(Lo, "q"); } static void UnHand(KnobGroup x, string s) { } }
+static class Lone { static readonly KnobGroup Lo = KnobGroup.Declare("lone", "General", "Lone"); void I() { UnHand(Lo, "q"); } static void UnHand(object x, string s) { } }
 EOF2
 rm "$t/param/managed/W.SelfCheck.cs"
 for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
 out=$(row '| about.ping | Ping |')
 grep -q "fen.ping is declared" <<< "$out" || fail "knob-spec-rows did not name fen.ping, handed Fen.Fe through Outer.Pass and Wire.Hand with no row -- $out"
 out=$(row "$(printf '| about.ping | Ping |\n| fen.ping | Ping |')"); [ -z "$out" ] || fail "knob-spec-rows refused about.ping and fen.ping, each declared through Wire.Hand, beside a call to UnHand -- $out"
+
+# A handed class declared at two sites takes both groups, and a relay passes the group from any argument position.
+cat > "$t/param/managed/A.cs" << 'EOF2'
+static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
+static class Fen { public static readonly KnobGroup Fe = KnobGroup.Declare("fen", "General", "Fen"); }
+EOF2
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+# The handed class and the relay sit in a later file that declares no group of its own.
+cat > "$t/param/managed/Z.cs" << 'EOF2'
+sealed class Notes { private Notes(KnobGroup g) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g) => new(g); }
+sealed class Wire { void Init() { Notes.Declare(General.About); Late("x", Fen.Fe); } static void Late(string s, KnobGroup h) { Notes.Declare(h); } }
+EOF2
+out=$(row '| about.ping | Ping |')
+[ "$(grep -c . <<< "$out")" = 1 ] && grep -q "fen.ping is declared" <<< "$out" || fail "knob-spec-rows did not take about.ping and fen.ping from Notes' two Declare sites, fen.ping handed as Late's second argument -- $out"
 
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
