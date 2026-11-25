@@ -233,12 +233,13 @@ internal static partial class AirFixture
     /// <summary>The look an area with no <c>cx.</c> variables takes from its features.</summary>
     internal static AirLook LookOf(in AreaFeatures f) => AirPlaces.Resolve(f);
 
-    /// <summary>Is the row of <paramref name="k"/> in <paramref name="g"/>'s settings panel greyed? Null when no row shows it.</summary>
+    /// <summary>Is the row of <paramref name="k"/> in <paramref name="g"/>'s settings panel, its Advanced rows open,
+    /// greyed? Null when no row shows it.</summary>
     internal static bool? Greyed(KnobGroup g, Knob k)
     {
         var p = new KnobPanel();
         p.OpenAt(1280f, 720f, 24f, ChatExamplesKit.PanelFace(), ChatExamplesKit.PanelFace());
-        p._subs = new[] { new KnobPanel.SubMenu(g) }; p.Sub = 0;
+        p._subs = new[] { new KnobPanel.SubMenu(g) }; p.Sub = 0; p.AdvOpen = true;
         p.LayoutRows();
         foreach (KnobPanel.Row r in p.Rows) if (ReferenceEquals(r.K, k)) return p.Greyed(r);
         return null;

@@ -23,8 +23,16 @@ internal readonly struct AreaFeatures
 /// <summary>Reads an area's place from its features, a builder's held <c>air.place</c> and the tileset table.</summary>
 internal static class AirPlaces
 {
-    /// <summary>The look an area with <paramref name="f"/> takes.</summary>
-    internal static AirLook Resolve(in AreaFeatures f) => default;
+    /// <summary>The look an area with <paramref name="f"/> takes: the place a held <c>air.place</c> names, else its own.</summary>
+    internal static AirLook Resolve(in AreaFeatures f) => Held() is AirPlace p ? new AirLook(p, false, false, false) : default;
+
+    /// <summary>The place a server or area hold of <c>air.place</c> names; null when none is held or it holds <c>auto</c>.
+    /// The player's own value never picks one.</summary>
+    private static AirPlace? Held() => !Air.Place.Enforced ? null : Air.Place.V switch
+    {
+        "none" => AirPlace.None, "crypt" => AirPlace.Crypt, "city" => AirPlace.City,
+        "forest" => AirPlace.Forest, "meadow" => AirPlace.Meadow, _ => null,
+    };
 
     /// <summary>Replace the tileset-to-place rows; null restores the shipped table.</summary>
     internal static void Load(IEnumerable<(string Tileset, string Place)>? rows) { }

@@ -170,16 +170,16 @@ internal static class MistPlacementApprovedExamples
 
     private static void Off(Checker check)
     {
-        // Given Volumetric fog is off
+        // Given the Air switch is off
         // When an area with fog placeables draws
         // Then its fog sprites draw as the stock client draws them, and no mist shows, rain or dry
-        VolumetricFog.Enabled.V = false;
+        Air.Enabled.V = false;
         Fogged(Flat(), Vector3.Zero);
         int sprites = Emit(StockFog, "AuroraEmitter01", new Vector3(3f, 0f, 0.5f));
         bool shows = GroundMist.Shows();
-        VolumetricFog.Enabled.V = true;
-        check.Expect(sprites > 0, $"E10 with Volumetric fog off silm_fog_50_lo's emitter holds {sprites} live sprites (want some)");
-        check.Expect(!shows, $"E10 with Volumetric fog off mist shows {shows} (want not)");
+        Air.Enabled.V = true;
+        check.Expect(sprites > 0, $"E10 with the Air switch off silm_fog_50_lo's emitter holds {sprites} live sprites (want some)");
+        check.Expect(!shows, $"E10 with the Air switch off mist shows {shows} (want not)");
     }
 
     /// <summary>The frames a turned-off placeable is stepped for: half a second, enough for its birth rate to
@@ -188,20 +188,20 @@ internal static class MistPlacementApprovedExamples
 
     private static void TurnedOff(Checker check)
     {
-        // Given a fog placeable in view with Volumetric fog on
-        // When the player turns Volumetric fog off in the panel
+        // Given a fog placeable in view with the Air switch on
+        // When the player turns the Air switch off in the panel
         // Then its sprites draw on the next frame and the mist is gone, with no area reload
         Lay(Flat(), Vector3.Zero, false, 0f);
         bool showedOn = false, showedOff = true;
         int[,] live = EmitterSim.MistEmit(StockFog, new[] { "AuroraEmitter01" }, new[] { new Vector3(3f, 0f, 0.5f) },
             Frames + Resume, f =>
             {
-                if (f == Frames) { showedOn = GroundMist.Shows(); VolumetricFog.Enabled.V = false; }
+                if (f == Frames) { showedOn = GroundMist.Shows(); Air.Enabled.V = false; }
                 if (f == Frames + 1) showedOff = GroundMist.Shows();
             });
-        VolumetricFog.Enabled.V = true;
+        Air.Enabled.V = true;
         int on = live[0, Frames - 1], off = live[0, Frames + Resume - 1];
-        check.Expect(on == 0 && showedOn, $"E11 with Volumetric fog on the placeable holds {on} live sprites (want none) and mist shows {showedOn} (want it)");
+        check.Expect(on == 0 && showedOn, $"E11 with the Air switch on the placeable holds {on} live sprites (want none) and mist shows {showedOn} (want it)");
         check.Expect(off > 0 && !showedOff,
             $"E11 after it is turned off the placeable holds {off} live sprites {Resume} frames on (want some) and mist shows {showedOff} the next frame (want not)");
     }

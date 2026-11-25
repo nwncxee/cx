@@ -25,7 +25,8 @@ internal static class Air
             order: 348, title: "Air");
         Enabled = G.Master!;
         Quality = G.Dropdown("quality", "Air detail", Levels, "medium", new[] { "Low", "Medium", "High" },
-                             tier: Tier.Advanced, help: "How much of the air moves. At Low it drifts slowly, and gusts, blasts and walkers no longer stir it.");
+                             tier: Tier.Advanced, help: "How much of the air moves. At Low it drifts slowly, and gusts, blasts and walkers no longer stir it.")
+                  .Ladder(CX.Alloy.Quality.Effects, "low", "low", "medium", "high");
         Dust = G.Slider("dust", "Dust", 0f, 2f, 0.05f, 1f, tier: Tier.Advanced,
                         help: "How much dust lies on the floor where an area lays it. 0 lays none.");
         Place = G.Dropdown("place", "Place", Places, "auto", new[] { "From the area", "None", "Crypt", "City", "Forest", "Meadow" },

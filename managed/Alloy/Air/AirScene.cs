@@ -72,7 +72,7 @@ internal static class AirScene
     /// along the walls and thicker as the area's fog amount rises.</summary>
     internal static void Enter(AirLook look, bool night)
     {
-        var s = new AirSceneState { Look = look, Fresh = true, Gen = _s.Gen + 1 };
+        var s = new AirSceneState { Look = look, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V };
         _s = s;
         if (!GroundMist.Corner(out s.Ox, out s.Oy, out s.Feet)) return;
         s.Laid = true;
@@ -147,7 +147,7 @@ internal static class AirScene
     {
         AirSceneState s = _s;
         if (!s.Laid) return;
-        if (!Air.Enabled.V)
+        if (!On(s))
         {
             s.Stepped = s.Fresh = false;
             s.Front = default;
@@ -187,7 +187,7 @@ internal static class AirScene
     internal static void Part(Vector3 was, Vector3 now)
     {
         AirSceneState s = _s;
-        if (!s.Laid || !Air.Enabled.V || Air.Quality.V == Air.Levels[0]) return;
+        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0]) return;
         if (Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y)) > MaxPartStep) return;
         int x0 = (int)MathF.Floor(now.X - PartRadius) - s.Ox, x1 = (int)MathF.Floor(now.X + PartRadius) - s.Ox;
         int y0 = (int)MathF.Floor(now.Y - PartRadius) - s.Oy, y1 = (int)MathF.Floor(now.Y + PartRadius) - s.Oy;
@@ -244,14 +244,20 @@ internal static class AirScene
     {
         AirSceneState s = _s;
         int c = Column(s, at.X, at.Y);
-        if (c < 0 || layer != AirLayer.Dust || !Air.Enabled.V) return 0f;
+        if (c < 0 || layer != AirLayer.Dust || !On(s)) return 0f;
         float h = RestHeight + s.Lift[c], z = at.Z - s.Floor[c];
         if (z < 0f || z >= h) return 0f;
         return 2f * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(at.X, at.Y, s.Clock)) * (1f - z / h) / h;
     }
 
     /// <summary>Does the area's dust lie, to be drawn? False with the air off or in a place with none.</summary>
-    internal static bool Lies => _s.Laid && _s.Any && Air.Enabled.V;
+    internal static bool Lies => _s.Laid && _s.Any && On(_s);
+
+    /// <summary>Is the air on in this area? A hold reads as it stood when the area was entered, so a later change waits
+    /// for the next entry; the player's own switch reads live.</summary>
+    internal static bool On() => On(_s);
+
+    private static bool On(AirSceneState s) => s.Held ? s.HeldOn : Air.Enabled.Own;
 
     /// <summary>Runs on each time the dust's columns change, across areas, so an upload knows to send.</summary>
     internal static int Gen => _s.Gen;
@@ -329,6 +335,9 @@ internal sealed class AirSceneState
 
     /// <summary>How long the air has stirred, seconds.</summary>
     public float Clock;
+
+    /// <summary>Whether a hold set the Air switch when the area was entered, and what it held it at.</summary>
+    public bool Held, HeldOn;
 
     /// <summary>Whether the area's look lays dust, and the upload generation its columns are at.</summary>
     public bool Any;

@@ -460,7 +460,7 @@ internal static partial class GroundMist
     }
 
     /// <summary>Is the air switched on, which the mist and the dust it carries follow?</summary>
-    internal static bool On() => CX.Alloy.Air.Enabled.V;
+    internal static bool On() => AirScene.On();
 
     /// <summary>Does the fog volume draw mist this frame?</summary>
     internal static bool Shows() => On() && _s.Any;
