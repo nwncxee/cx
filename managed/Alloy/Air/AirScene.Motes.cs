@@ -25,6 +25,14 @@ internal static partial class AirScene
     /// <summary>The share of the air's drift a mote takes, and how fast it takes it, seconds.</summary>
     private const float MoteShare = 0.2f, FollowTau = 1f;
 
+    /// <summary>How fast a live front sends a mote racing, metres a second for each metre a second of its strength, and how
+    /// fast a mote takes the front, seconds.</summary>
+    private const float RacePerSpeed = 3f, RaceTau = 0.15f;
+
+    /// <summary>How long the air stays calm before a mote that left the light floats in it again, seconds, and the most each
+    /// mote waits on top of that.</summary>
+    private const float CalmWait = 2f, MoteWait = 2f;
+
     /// <summary>Does the area's look hang motes?</summary>
     private static bool Hangs(AirSceneState s) => (s.Look.Layers(s.Night) & AirLayer.Motes) != 0;
 
@@ -81,18 +89,25 @@ internal static partial class AirScene
         return (x >> 8) * (1f / (1 << 24));
     }
 
-    /// <summary>Move every lit mote on by <paramref name="dt"/>: its own wander and the air's drift. Hot: allocates nothing.</summary>
+    /// <summary>Move every lit mote on by <paramref name="dt"/>: its own wander, the air's drift and a live front's rush; a
+    /// mote that left the light floats in it again once the air has been calm a while. Hot: allocates nothing.</summary>
     private static void StepMotes(AirSceneState s, float dt)
     {
         AirMotes m = s.Motes;
         if (m.Lamps == 0 || !Hangs(s)) return;
         m.Clock += dt;
-        Vector3 air = new(s.Drift * MoteShare, 0f);
-        float follow = 1f - MathF.Exp(-dt / FollowTau);
+        AirFront f = s.Front;
+        m.Calm = f.Live ? 0f : m.Calm + dt;
+        Vector3 air = new(s.Drift * MoteShare + (f.Live ? f.Dir * (RacePerSpeed * f.Strength) : Vector2.Zero), 0f);
+        float follow = 1f - MathF.Exp(-dt / (f.Live ? RaceTau : FollowTau));
         int n = m.Lamps * PerLamp;
         for (int i = 0; i < n; i++)
         {
-            if (m.Dark[i]) continue;
+            if (m.Dark[i])
+            {
+                if (m.Calm >= CalmWait + MoteWait * Hash((uint)i * 0x9E3779B1u, m.Births[i] + 9u)) Seed(m, i);
+                continue;
+            }
             Vector3 w = m.Rate[i] * m.Clock + m.Phase[i];
             Vector3 own = Wander * new Vector3(MathF.Sin(w.X), MathF.Sin(w.Y), 0.5f * MathF.Sin(w.Z));
             m.Vel[i] += (air + own - m.Vel[i]) * follow;
@@ -136,8 +151,8 @@ internal sealed class AirMotes
     public readonly uint[] Births = new uint[AirScene.MaxMotes];
     public readonly float[] Born = new float[AirScene.MaxMotes];
 
-    /// <summary>How long the motes have floated, seconds.</summary>
-    public float Clock;
+    /// <summary>How long the motes have floated, and how long since a front last blew, seconds.</summary>
+    public float Clock, Calm;
 
     /// <summary>The lit motes as <see cref="AirScene.Particles"/> hands them out.</summary>
     public readonly AirParticle[] Shown = new AirParticle[AirScene.MaxMotes];
