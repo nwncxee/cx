@@ -195,6 +195,9 @@ internal static partial class DbSelfCheck
         if (r < 0) return false;
         DrawRecipe.Assign(p, r);
         TexRegistry.Land(DrawRecipe.Tex(r, 0), 4243u, 16, Resident);
+        // light.ainormals and light.airelief give the quad derived slots: landed too, so the staging is not waiting on them
+        for (int slot = 1; slot < DrawRecipe.TexSlots; slot++)
+            if (!DrawRecipe.Tex(r, slot).IsNull) TexRegistry.Land(DrawRecipe.Tex(r, slot), 4243u + (uint)slot, 16, Resident + (uint)slot);
         bool ok = AlloyRenderer.SelfCheckStagedDiffuse(p) == Resident;
         DrawRecipe.Assign(p, -1);
         return ok;

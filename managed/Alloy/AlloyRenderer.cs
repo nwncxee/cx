@@ -84,6 +84,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The record takes no shadow (<c>CX_SLOT_NOSHADOW</c>): an untextured blended sheet such as a door's
     /// <c>sam</c> transition sheen. Binds nothing.</summary>
     internal const int NoShadowBit = 1 << 8;
+    /// <summary>A part at or under this mesh alpha casts no shadow: vanilla skips drawing it outright.</summary>
+    internal const float CastAlphaFloor = 0.004f;
     /// <summary>The four PALETTE slots: <c>.mtr</c> <see cref="PalTexture0"/>..<c>texture10</c>, the engine's
     /// own last four material stages (it pins <c>texUnit7</c>..<c>texUnit10</c> to units 7..10 at link). Alloy
     /// has no unit left for them -- the lit stage spends 0..30 -- so they reach their readers, the content pairs,
@@ -147,7 +149,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         public int Oit, OitDim, OitGob, LightRecOn;
         public int Decal, DecalZ;   // CX-273: the decal layer's mode and the projection terms its depth test reads
         public int Solid;           // a wash's solid interior (Issue._solidPass)
-        public int Tex, Vp, Base, Cut, Viz, Ssao, SsaoOn, SsaoHalf, AoDirect, AoCutout, AoMapOff,
+        public RtLocs? Rt;          // alloy.raytrace / shadow.raytrace: the lit stage's ray terms (cx_rtlib.glsl)
+        public int Tex, Vp, Base, Cut, Viz, Ssao, SsaoOn, SsaoHalf, AoDirect, AoCutout, AoMapOff, Contact, SynthDetail, Rim, WaterSurf, Relief, TileSeam,
                    SunTex, SunDynTex, CubeTex, CubeCount, CubeDynTex,   // CX-43: the rest of the receiver and the light curve ride CxPass
                    Probe, Capture, MirrorZ,          // MirrorZ: CX-51 the planar mirror's plane
                    Weather, WeatherLook, CoverVp, CoverLayer, SnowLook, SnowLight, SnowPom, CoverEsm,
@@ -163,6 +166,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// (a puddle 0.12; wet ground's 0.35 is not) and takes the source's shadow whatever the cube cap says; a rougher
     /// lobe keeps the lightmap's, which only the pages have exact. Faded in from half of it (CxGlossW).</summary>
     internal const float GlossyRough = 0.25f;
+    /// <summary>shadow.contact's occluder thickness in metres: depth this far in front of the ray blocks it, anything
+    /// deeper is a surface behind, not a blocker.</summary>
+    internal const float ContactThickness = 0.3f;
     /// <summary>THIS pass's eye, from the inverse of the view matrix the pass is drawing with. Never
     /// <c>FrameInputs.CameraPos</c> -- that belongs to whichever pass set a view last -- and taken per pass
     /// rather than from the scene latch, so a reflection subframe reflects from its own camera.</summary>
@@ -184,7 +190,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="OwnedLitFsMain"/> and the water stage. Raise it when a stage adds one, or the new mode is
     /// silently clamped at the parse and the screenshot is of the old view.
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
-    internal const int LightVizMax = 54;   // 54 = a material's AO map alone; 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
+    internal const int LightVizMax = 55;   // 55 = the foliage class (green foliage, yellow a thin cut-out card); 54 = a material's AO map alone; 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
 
     /// <summary>Any stage's diagnostic view is asked for: the world's, the transparency resolve's, the halos', the
@@ -559,7 +565,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// included: the fog colour is direction-dependent, so every stage that fogs uploads the same five values
     /// through <see cref="UploadFog"/>.</summary>
     internal unsafe struct FeatLoc { internal int Time, Wind, Flags, Cam, CamFocus, Player, Fog, FogColor, KhDia, KhCam,
-                                       Pixel, ShaderQuality, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogOrigin, VFog, VFogVp, LodBias,
+                                       Pixel, ShaderQuality, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogHaze, FogHazeColor, FogOrigin, VFog, VFogVp, LodBias,
                                        TgtShapeL, TgtSelfL, TgtObjL, TgtSizeXL, TgtSizeYL, TgtRangeL,
                                        TgtColL, TgtWorldL, Now;
         /// <summary>The WHOLE scriptable block, by location. Picking entries one feature at a time was a

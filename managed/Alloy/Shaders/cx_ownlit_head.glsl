@@ -12,6 +12,7 @@ in vec2 vChart;                // #674: chart UV in atlas texels
 flat in int vDraw;             // this fragment's CxDraw record: the material colours live there now
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 #include "cx_keyfogdecl.glsl"
 #include "cx_chartbuf.glsl"
 #include "cx_plt.glsl"
@@ -44,6 +45,19 @@ uniform int uSsaoOn;           // >0 when this BATCH is in the depth SsaoPass re
 uniform int uSsaoHalf;         // post.halfres: 1 = uSsao is half the frame's extent, read bilaterally
 uniform sampler2D uSceneDepth; // the prepass depth SsaoPass read, to check the pixel is OURS (viz 37)
 uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0056)
+uniform float uSynthDetail;    // light.detail: the derived bump's strength on a map-less surface, 0 = off
+#define CX_DETAIL_SLOPE 4.0     // height slope per unit of luminance step at full strength
+#define CX_DETAIL_FADE 1.5      // texels per pixel at which the bump has faded out
+uniform vec4 uWaterSurf;       // water.surfaces, water.ripples, water.shine: painted water's own layer, 0 = off
+uniform float uTileSeam;       // alloy.tileblend: how far ground leans to its face normal at a tile edge, 0 = off
+// NWN's tile, the band a seam's normals blend over (metres), the most they lean, and the ground's normal z at least
+const float CX_TILE_M = 10.0, CX_SEAM_INNER = 0.15, CX_SEAM_OUTER = 0.9, CX_SEAM_LEAN = 0.8, CX_SEAM_GROUND = 0.7;
+uniform float uRelief;         // light.relief: the parallax depth where a material sets none
+uniform float uRim;
+/// The standing-water film's head-on reflectance where water.shine raises it over the dielectric's (cx_waterlook); 0 = stock.
+float cxFilmF0 = 0.0;            // light.rim: a creature's grazing-angle rim light, 0 = off
+uniform vec2 uContact;         // shadow.contact: (ray length in metres, 0 = off; occluder thickness in metres)
+uniform mat4 uVP;              // the vertex stage's own view-projection (one loose block): the contact march projects with it
 uniform int uShaderQuality;    // the engine's SHADER_QUALITY_MODE
 uniform float uAoMapOff;       // /ao map 0: 1 takes the material AO map out of the occlusion factor
 uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver takes (leaf cards over leaf cards)
@@ -101,6 +115,9 @@ bool CxDecalOn(float z, float d)
 #include "cx_oitout.glsl"
 #include "cx_slotbits.glsl"
 #include "cx_silhouettemix.glsl"
+#ifdef CX_RT
+#include "cx_rtlib.glsl"
+#endif
 /// the depth encode's own rounding, nothing more: #119 makes a prepassed fragment's depth EQUAL
 const float CX_AO_DEPTH_EPS = 1e-5;
 /// The half-res upsample's depth tolerance, in fragment depth SLOPES: a neighbour more than this

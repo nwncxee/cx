@@ -10,7 +10,7 @@ internal static class Fog
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Origin, Cull;
-    internal static readonly Knob<float> Sky, Sun, SunExp, SkyBand, Height, Floor, CullZ;
+    internal static readonly Knob<float> Sky, Sun, SunExp, SkyBand, Height, Floor, CullZ, Haze, HazeSun;
 
     static Fog()
     {
@@ -34,6 +34,12 @@ internal static class Fog
                           help: "Fog thins with height above the floor; 0 = off.");
         Floor = G.Slider("floor", "Layer floor", 0f, 50f, 1f, 0f, "m", Tier.Advanced,
                          help: "Offset above your feet where thinning starts.");
+        G.Section("Distance haze");
+        Haze = G.Slider("haze", "Distance haze", 0f, 1000f, 25f, 400f, "m", Tier.Advanced,
+                        help: "Outdoors, far scenery fades softly into the sky's colour, glowing toward the sun, so distance reads "
+                            + "as distance. The value is how far until it is mostly hazed; 0 is off. Interiors are never hazed.");
+        HazeSun = G.Slider("hazesun", "Haze sun glow", 0f, 1f, 0.05f, 0.1f, tier: Tier.Advanced,
+                           help: "How much brighter the haze is looking toward the sun.");
         G.Section("");
         Origin = G.Toggle("origin", "Measure from the player", true, Tier.ChatOnly,
                           help: "Off = stock view-depth fog (zooming out pushes the fog).");

@@ -15,6 +15,7 @@ layout(location = 4) in vec4 aTangent;
 layout(location = 5) in vec4 aPaint;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 uniform mat4 uVP;
 uniform int uDrawBase;
 invariant gl_Position;
@@ -50,7 +51,7 @@ void main()
 #endif
     cxVP = uVP;
     CxDraw d = uDraw[id];
-    vec4 pos = vec4(aPos, 1.0);
+    vec4 pos = vec4(aPos + CxLeafSway(d, aPos), 1.0);   // the swayed leaf is where it is shaded
     // #137: a posed skinmesh's blended matrix carries the position and then the normal, so a cloak is lit off the
     // surface it actually has rather than the one it had in bind pose.
     int bb = CxBoneBase(d);
@@ -61,7 +62,7 @@ void main()
     // expression and `invariant` only holds over an identical SEQUENCE of operations -- not merely identical
     // values. The skinned arm is the fullbright and depth stages' own, character for character.
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
+    else gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);
     vDepth = gl_Position.w;
     vWorld = world.xyz;
     vNrm = mat3(d.model) * (bb >= 0 ? mat3(skin) * aNrm : aNrm);

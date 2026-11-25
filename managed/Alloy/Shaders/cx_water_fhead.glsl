@@ -1,4 +1,10 @@
 #version 460 core
+#ifdef CX_RT
+// alloy.raytrace: the stock march's misses take a ray (cx_rtlib.glsl, included by fmain)
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#endif
 #define CX_FS 1   // #642: gl_FragCoord is in reach for the shadow lib's dither
 #define CX_LIGHT_LITE 1   // CX-188: cx_lightfrag's slimmed walk -- not a baked receiver, one shadow tap per light
 in vec2 vUV;
@@ -41,6 +47,8 @@ uniform mat4 uProj;
 // every phase from it, so a module running time at 30x real gets vanilla's own fast sea, not a
 // corrected one.
 uniform int uViz;
+uniform float uWaterIce;        // weather.ice: 0 open water to 1 frozen over
+uniform vec4 uWaterLook;       // water.clarity, water.shore, water.ripples, water.shine; 0 each = stock
 uniform int uCapture;
 uniform float uAlphaCut;
 out vec4 frag;

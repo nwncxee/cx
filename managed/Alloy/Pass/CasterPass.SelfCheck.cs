@@ -105,7 +105,7 @@ public sealed unsafe partial class CasterPass
                   // per-layer freshness flag that reads "static only" off the zero an unset uniform leaves.
                   && AlloyLights.SunShadowLib.Contains("uniform sampler2DArrayShadow uSunDynShadow;")
                   && AlloyLights.SunShadowLib.Contains("if (uSunDyn[i] > 0.5)")
-                  && AlloyLights.SunShadowLib.Contains("return min(vs, vd);")
+                  && AlloyLights.SunShadowLib.Contains("return min(mix(1.0, vs, cxSunStaticW), vd);")
                   // #307: the layered stages. The pack is pinned on BOTH sides (the dispatch writes
                   // slot | (view << shift), the stage unpacks with the same shift and its mask), the layer
                   // routing exists in both stages, the skinning branch survives, and the clip expression is

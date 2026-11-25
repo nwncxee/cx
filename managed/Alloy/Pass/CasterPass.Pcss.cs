@@ -47,7 +47,7 @@ public sealed unsafe partial class CasterPass
         // Matching kernels across the split: one radius, one tap count, one rotation, min-composed.
         check.Expect(sun.Contains("float vs = CxSunDisc(uSunShadow, uv, layer, ref, texel, rs, taps, rot);")
           && sun.Contains("float vd = uSunDyn[i] > 0.5 ? CxSunDisc(uSunDynShadow, uv, layer, ref, texel, rs, taps, rot) : 1.0;")
-          && sun.Contains("        return min(vs, vd);"),
+          && sun.Contains("        return min(mix(1.0, vs, cxSunStaticW), vd);"),
           "sun disc: the dynamic layer takes the SAME radius, taps and rotation, min-composed");
         // One search for both layers, min-composed, because depth is a min-of-blockers.
         check.Expect(sun.Contains("if (dyn) zk = min(zk, texture(uSunDynShadowRaw, vec3(t, layer)).r);"),

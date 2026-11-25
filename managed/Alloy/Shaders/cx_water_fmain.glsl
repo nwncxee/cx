@@ -17,6 +17,35 @@
 // ponytail: no ripple sources. Add them when the engine's wind-source array has a reader (#340).
 
 float CxSqr(float x) { return x * x; }
+#ifdef CX_RT
+#include "cx_rtlib.glsl"
+#endif
+
+// water.clarity/shore/ripples/shine: CX's own terms over the stock port, each 0 = stock.
+const float CX_CLEAR_ALPHA = 0.75;     // the transparency a solid water texture takes at full clarity
+const float CX_SHORE_SOFT = 0.3;       // metres of water over which the edge fades into the bank
+const vec3 CX_FOAM = vec3(0.85);
+const float CX_FINE_AMP = 0.05;        // fine ripple height, metres per unit of noise
+const float CX_SHINE_MAX = 0.5;        // the head-on reflection at full shine
+// weather.ice: the ice front's reach into the water at full freeze (metres of thickness), the shore's frost crust, the colours
+const float CX_ICE_REACH = 4.0, CX_FROST_RIM = 0.3;
+const vec3 CX_ICE = vec3(0.72, 0.8, 0.86), CX_FROST = vec3(0.9, 0.93, 0.96);
+
+/// Two fine ripple trains off the noise texture, crossing and drifting: the surface's tilt (minus the height gradient).
+vec2 CxFineRipple(vec2 p, float t)
+{
+    float du = 1.0 / float(textureSize(uNoise, 0).x);
+    vec2 g = vec2(0.0);
+    for (int i = 0; i < 2; i++)
+    {
+        float f = i == 0 ? 0.6 : 1.4;
+        vec2 dir = i == 0 ? vec2(0.8, 0.6) : vec2(-0.5, 0.87);
+        vec2 uv = p * f + dir * t * (i == 0 ? 0.03 : 0.045);
+        float h0 = texture(uNoise, uv).r;
+        g += vec2(texture(uNoise, uv + vec2(du, 0.0)).r - h0, texture(uNoise, uv + vec2(0.0, du)).r - h0) * (f / du) * (i == 0 ? 1.0 : 0.6);
+    }
+    return -g * CX_FINE_AMP;
+}
 
 #include "cx_raymarch.glsl"
 
@@ -225,10 +254,23 @@ void main()
     float fDepthOffset = max(fScreenFBDepth + vPosViewThis.z, 0.0);
 
     vec3 N = CxWaterNormal(vWaterSurfaceCoords);
+    // water.ripples: the stock field is the wind's alone, so calm water stood still; these move whatever the wind
+    if (uWaterLook.z > 0.0 && vSurfaceNormalWorld.z > 0.9)
+        N = normalize(N + vec3(CxFineRipple(vWaterSurfaceCoords.xy, fTick) * uWaterLook.z, 0.0));
     // rain rings the surface too (weather.splash), on a level one; the same world-sized rings the puddles carry
     float fSplashFade = 0.0;
     if (uSplash > 0.0 && vSurfaceNormalWorld.z > 0.9)
         N = normalize(N + vec3(CxWeatherRipple(vWaterSurfaceCoords.xy, uSplash, CxWeatherImpactPx(vWorld, V), fSplashFade), 0.0));
+    // weather.ice: frost at the shore first, then an ice front creeping out over the water's thickness, stilling the waves
+    float fIce = 0.0, fFrost = 0.0;
+    if (uWaterIce > 0.0)
+    {
+        float reach = uWaterIce * CX_ICE_REACH + (texture(uNoise, vWorld.xy * 0.35).r - 0.5) * 0.6;
+        fIce = uWaterIce >= 0.98 ? 1.0 : 1.0 - smoothstep(reach - 0.25, reach, fDepthOffset);
+        fFrost = (1.0 - smoothstep(0.0, CX_FROST_RIM, fDepthOffset)) * min(uWaterIce * 3.0, 1.0) + fIce * (1.0 - fIce) * 3.0;
+        fFrost = clamp(fFrost * smoothstep(0.3, 0.7, texture(uNoise, vWorld.xy * 2.1).r + 0.3), 0.0, 1.0);
+        N = normalize(mix(N, vSurfaceNormalWorld, fIce));
+    }
     vec3 vFragmentNormal = normalize(mat3(uView) * N);
 
     // ---- lighting: stock's ComputeLighting, answered by the froxel walk ----------------------
@@ -286,11 +328,13 @@ void main()
     float fRefractionModifier = clamp(1.0 + 10.0 * vRefractionCoords.w, 0.0, 1.0);
     vec3 ColorRefraction = CxFbColor(mix(vScreenCoords, vRefractionCoords.xy, fRefractionModifier));
 
-    float fRefractionTransparency = WaterBaseColor.a < 1.0
+    // water.clarity: a solid water texture (alpha 1) hides its bed outright in stock; it takes a clear liquid's alpha
+    float fWaterA = WaterBaseColor.a >= 0.999 && uWaterLook.x > 0.0 ? mix(0.999, CX_CLEAR_ALPHA, uWaterLook.x) : WaterBaseColor.a;
+    float fRefractionTransparency = fWaterA < 1.0
         ? exp2(-mix(fDepthOffset,
                     clamp(vPosViewThis.z - vRefractionCoords.z, 0.0, CX_WATER_REFRACTION_MAX_RANGE),
                     fRefractionModifier)
-               * CX_WATER_TRANSPARENCY_FACTOR * WaterBaseColor.a / (1.0 - WaterBaseColor.a))
+               * CX_WATER_TRANSPARENCY_FACTOR * fWaterA / (1.0 - fWaterA))
         : 0.0;
     ColorRefraction *= pow(fRefractionTransparency, fSurfaceNdotV);
     // under the volumetric fog the bed fades with the surface's own transmittance, as the colour does
@@ -311,12 +355,40 @@ void main()
                           clamp(0.1 - 4.0 * dot(vReflectedNormal, vReflect), 0.0, 1.0));
     // The miss and the reject both land on the SHADED surface, which is vanilla's flat-horizon
     // look. #129's probe fallback is exactly the custom shading this ticket removes.
-    ColorReflection = mix(ShadedColor, ColorReflection, fReflectionMod);
+    // alloy.raytrace: where the march left the screen, a real ray through the scene before stock's shaded fallback
+    vec3 ReflectionMiss = ShadedColor;
+#ifdef CX_RT
+    vec3 rtHit;
+    if ((uRtA.x != 0u || uRtA.y != 0u) && fReflectionMod < 0.99 && uCapture == 0
+        && CxRtTrace(vWorld + vSurfaceNormalWorld * CX_RT_BIAS, normalize(mat3(transpose(uView)) * vReflect), 0.0, uEyePos, rtHit))
+        ReflectionMiss = rtHit;
+#endif
+    ColorReflection = mix(ReflectionMiss, ColorReflection, fReflectionMod);
 
     // ---- composite ---------------------------------------------------------------------------
     ColorLiquid = mix(ColorLiquid, ColorRefraction, fRefractionTransparency);
     float fFresnelSpecularity = mix(CX_WATER_SPECULARITY, 1.0, CxFresnel(NdotV));
+    fFresnelSpecularity = max(fFresnelSpecularity, uWaterLook.w * CX_SHINE_MAX);   // water.shine's head-on floor
     vec3 lit = CxLitFloor(ColorLiquid + ColorReflection * fFresnelSpecularity);
+    if (fIce > 0.0 || fFrost > 0.0)
+    {
+        // pale, faintly clouded ice with the bed half seen through it and a dull sheen; frost is matte white over that
+        vec3 iceLight = uAreaAmbient + DiffuseLight;
+        vec3 iceCol = mix(ColorRefraction * 0.6, CX_ICE * iceLight, 0.65) + ColorReflection * (fFresnelSpecularity * 0.3) + ShadedColor * 0.2;
+        lit = mix(lit, CxLitFloor(iceCol), fIce);
+        lit = mix(lit, CX_FROST * iceLight, fFrost * 0.85);
+    }
+    // water.shore: a broken foam line just inside the edge, then the edge fading into the bank over the water's thickness;
+    // ice has no foam and a frozen edge is crusted, not faded
+    float shoreOpen = 1.0 - min(uWaterIce * 3.0, 1.0);
+    if (uWaterLook.y > 0.0 && uCapture == 0 && shoreOpen > 0.0)
+    {
+        float foamN = texture(uNoise, vWorld.xy * 0.7 + vAreaWindDirection.xy * fTick * 0.01).r;
+        float band = smoothstep(0.0, 0.04, fDepthOffset) * (1.0 - smoothstep(0.08, 0.35, fDepthOffset));
+        float foam = band * smoothstep(0.45, 0.8, foamN) * uWaterLook.y * (1.0 - fIce);
+        lit = mix(lit, CX_FOAM * (uAreaAmbient + DiffuseLight), foam);
+        lit = mix(CxFbColor(vScreenCoords), lit, mix(1.0, smoothstep(0.0, CX_SHORE_SOFT, fDepthOffset), uWaterLook.y * shoreOpen));
+    }
 
     // #129's term views, kept: water composites four things that can each be wrong on their own and
     // look identical in the sum. 9 = what is seen THROUGH the surface, 10 = the reflection,

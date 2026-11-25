@@ -69,6 +69,10 @@ void main()
         float r0 = CxRnd(st), r1 = CxRnd(st), r2 = CxRnd(st), sum = r0 + r1 + r2;
         if (sum <= 0.0) { r0 = 1.0; sum = 1.0; }
         vec3 pos = (fa.xyz * r0 + fb.xyz * r1 + fc.xyz * r2) / sum;
+        // that normalise bunches roots at each face's centre, which a dense blade field shows as the tile's own
+        // triangle grid: a blade takes a uniform point of the face from the same two draws instead
+        vec2 uv = r0 + r1 > 1.0 ? vec2(1.0 - r0, 1.0 - r1) : vec2(r0, r1);
+        vec3 even = fa.xyz + (fb.xyz - fa.xyz) * uv.x + (fc.xyz - fa.xyz) * uv.y;
         float rot = CxRnd(st) * 6.2831853;
         float scale = height * ((CxRnd(st) - 0.5) * 0.4 + 1.0);
         // cell 0 is the fallback, as in the engine: a degenerate table must not render another quadrant
@@ -76,13 +80,14 @@ void main()
         uint cell = 0u;
         for (uint k = 0u; k < 4u; k++) { acc += prob[k]; if (pick < acc) { cell = k; break; } }
         float bend = 0.7 + CxRnd(st) * 0.6;
+        bool blade = ((bladeCells >> cell) & 1u) != 0u;
+        if (blade) pos = even;
 
         float dist = distance(uEyePos, pos);
         if (dist > uFade.y) continue;
         float kv = CxGrassKeep(dist);
         float lod = clamp((kv * 1.2 - rank) / (kv * 0.2), 0.0, 1.0);
         if (lod <= 0.0) continue;
-        bool blade = ((bladeCells >> cell) & 1u) != 0u;
         // a card cell keeps the art's own density: the blade multiplier is thinned back out of it
         if (!blade && (cardSlot < 0 || CxRnd(st) >= uCardKeep)) continue;
         // a sphere around the card, generous for the far ladder's widening and the sway

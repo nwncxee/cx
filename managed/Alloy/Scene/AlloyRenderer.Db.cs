@@ -133,6 +133,7 @@ public sealed unsafe partial class AlloyRenderer
         _oBone[i] = -1; _oDpAt[i] = -1;
         UnstampRecord(i);
         SetCastOk(i, false);
+        _rtOk[i] = false;
         // CX-120: the tenancy stamp is minted HERE, for THIS slot, and is unique to this seating -- the one
         // thing every reader of it means by it ("the slot changed hands"). It used to be the generation
         // current at the seat, with DbOrder re-stamping every live slot afterwards; see DbOrder.
@@ -567,17 +568,49 @@ public sealed unsafe partial class AlloyRenderer
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] : _oFeat[i * 4 + 1];
 
         if (fresh) DbWriteStable(ref r, i);
+        bool leafMoved = DbWriteLeaf(ref r, i);
         // #302's mover level, stamped HERE as well as in StageDbPart: this fold write consumes the move, so the
         // stage that runs after it in the same frame sees the model already in place and would never stamp it.
         var (casterMoved, moverMoved) = MoveLevels(in r.Model, in f.Model);
         bool moved = WritePerFrame(ref r, in f, roll: true, fresh: fresh);
-        if (fresh || moved) MarkRecordDirty(i);
+        if (fresh || moved || leafMoved) MarkRecordDirty(i);
         if (casterMoved || fresh) _recMovedAt[i] = _frameSeq;
         if (moverMoved || fresh) _mvMovedAt[i] = _frameSeq;
         _gate[i].RecGen = _recEpoch; _gate[i].RecEnroll = _gate[i].EnrollGen; _gate[i].RecFrame = _frameSeq;
         DbWriteSphere(i, in f);
         return true;
     }
+
+    /// <summary>The foliage lanes (<see cref="DrawRecipe.Leaf"/>) in occ.zw, laid out as cx_leaf.glsl reads them: occ.z the
+    /// canopy centre's x and y, occ.w its z and a code, each pair as two halves. The code is the canopy radius for foliage
+    /// that sways, <see cref="LeafStill"/> minus it for foliage that does not, -1 a thin card, -2/-3 why refused, 0 none.
+    /// A creature's or effect's part (emi.w -1, <see cref="DbWriteStable"/>) takes none. True when a lane moved.</summary>
+    private static bool DbWriteLeaf(ref DrawRecordBlock r, int i)
+    {
+        int recipe = _oDbRecipe[i];
+        byte leaf = Lighting.Leaves.V && _oLit[i] && r.EmiW >= 0f ? DrawRecipe.Leaf(recipe) : DrawRecipe.LeafNone;
+        Vector3 c = leaf == DrawRecipe.LeafFoliage ? DrawRecipe.Centre(recipe) : default;
+        float code = leaf == DrawRecipe.LeafFoliage
+                     ? (Lighting.LeafWind.V ? MathF.Max(DrawRecipe.Radius(recipe), 0.1f) : LeafStill - DrawRecipe.Radius(recipe))
+                   : leaf == DrawRecipe.LeafThin ? -1f
+                   // water.surfaces: painted water takes its own code (cx_leaf.glsl CX_WATER_LOOK), outside every leaf range
+                   : _oLit[i] && r.EmiW >= 0f && DrawRecipe.WaterLook(recipe) ? WaterLookCode
+                   : Lighting.Leaves.V && DrawRecipe.LeafWhy(recipe) != DrawRecipe.LeafWhyNone ? -1f - DrawRecipe.LeafWhy(recipe) : 0f;
+        uint xy = Halves(c.X, c.Y), zw = Halves(c.Z, code);
+        bool moved = BitConverter.SingleToUInt32Bits(r.Occ.Z) != xy || BitConverter.SingleToUInt32Bits(r.Occ.W) != zw;
+        r.Occ.Z = BitConverter.UInt32BitsToSingle(xy); r.Occ.W = BitConverter.UInt32BitsToSingle(zw);
+        return moved;
+    }
+
+    /// <summary>cx_leaf.glsl's CX_LEAF_STILL: a foliage code at or below it does not sway.</summary>
+    internal const float LeafStill = -10f;
+    /// <summary>cx_leaf.glsl's CX_WATER_LOOK: painted water (<see cref="DrawRecipe.WaterLook"/>), between the leaf codes.</summary>
+    internal const float WaterLookCode = -5f;
+
+    /// <summary>Two floats as GLSL's packHalf2x16 lays them out: <paramref name="lo"/> in the low half. Compared as bits by
+    /// the caller, because two halves can spell a NaN float, which never equals itself.</summary>
+    private static uint Halves(float lo, float hi)
+        => BitConverter.HalfToUInt16Bits((Half)lo) | (uint)BitConverter.HalfToUInt16Bits((Half)hi) << 16;
 
     /// <summary>The DB-mode stable half: the same record fields <c>WriteStable</c> writes, sourced from the
     /// recipe and the object's flags instead of <c>_oTri</c>'s vtable and <c>_oGob</c>'s attachment chain.</summary>

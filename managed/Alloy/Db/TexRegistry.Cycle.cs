@@ -28,6 +28,8 @@ internal static unsafe partial class TexRegistry
 
     private static readonly byte[] _txiBlend = new byte[MaxSlots];
     private static readonly bool[] _txiDecal = new bool[MaxSlots];
+    /// <summary>The <c>.txi</c> names an arturo ripple: a water texture, whatever class the engine files it in.</summary>
+    private static readonly bool[] _txiRipple = new bool[MaxSlots];
     /// <summary>The slot's cycle, set by the bracket at the upload; null for every texture that does not cycle.</summary>
     private static readonly Cycle?[] _cycle = new Cycle?[MaxSlots];
     /// <summary>Slots that may hold a cycle, walked by the bracket; a slot whose cycle is gone drops off at the walk.</summary>
@@ -35,6 +37,9 @@ internal static unsafe partial class TexRegistry
     private static long _cycleLast;
     private static long _cycleSteps;
     private static int _gridCompressed;
+
+    /// <summary>Does this texture's <c>.txi</c> make it an arturo ripple (water.surfaces)?</summary>
+    internal static bool TxiRipple(TexId id) => Valid(id) && _txiRipple[id.Index];
 
     /// <summary>Does this texture's <c>.txi</c> say <c>blending additive</c>? The engine's material blends it
     /// (SRC_ALPHA, ONE), which is the additive class: no depth write, no shadow.</summary>
@@ -81,8 +86,8 @@ internal static unsafe partial class TexRegistry
         ParseArturo(txi, out j.Arturo);
         lock (_lock)
         {
-            if (_txiBlend[i] == blend && _txiDecal[i] == decal) return;
-            _txiBlend[i] = blend; _txiDecal[i] = decal;
+            if (_txiBlend[i] == blend && _txiDecal[i] == decal && _txiRipple[i] == j.Arturo.On) return;
+            _txiBlend[i] = blend; _txiDecal[i] = decal; _txiRipple[i] = j.Arturo.On;
             CoverageSerial++; TableSerial++;
         }
     }

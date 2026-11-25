@@ -1,4 +1,22 @@
 #include "cx_fogmix.glsl"
+/// Outdoor distance haze (fog.haze): how much of a surface survives the air between it and the eye. 1 = no haze.
+float CxHazeT(vec3 world)
+{
+    return uFogHaze.x > 0.0 ? exp(-distance(world, uEyePos) * uFogHaze.x) : 1.0;
+}
+/// The haze over a lit LINEAR colour: toward the sky's colour with distance, brighter looking toward the sun
+/// (a Henyey-Greenstein lobe, 1 at g 0). Applied under the author's fog, so the area's own fog still wins at its end.
+vec3 CxHaze(vec3 lin, vec3 world)
+{
+    if (uFogHaze.x <= 0.0) return lin;
+    vec3 v = world - uEyePos;
+    float d = length(v);
+    float t = exp(-d * uFogHaze.x);
+    float g = uFogHaze.z;
+    float mu = dot(v / max(d, 1e-4), uFogSun.xyz);
+    float lobe = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5);
+    return lin * t + uFogHazeColor * (1.0 + uFogHaze.y * lobe) * (1.0 - t);
+}
 /// The area author's own ramp, times the height layer: how fogged this fragment is with no volume to read.
 float CxFogRamp(vec3 world, float depth)
 {
@@ -24,6 +42,7 @@ float CxFogFactor(vec3 world, float depth)
 }
 vec3 CxFog(vec3 lin, vec3 world, float depth)
 {
+    lin = CxHaze(lin, world);   // the air first; the author's fog lies over it
     if (!CxVFogOn()) return CxFogMix(lin, world, CxFogFactor(world, depth));
     vec4 v = CxVFogAt(world);
     // the whole fog, or the rain veil over what the area's own ramp already did here
@@ -56,6 +75,7 @@ float CxFogRevealFactor(vec3 world, float depth, float hidden)
 vec3 CxFogReveal(vec3 lin, vec3 world, float depth, float hidden)
 {
     if (hidden <= 0.0 && CxVFogOn()) return CxFog(lin, world, depth);
+    if (hidden <= 0.0) lin = CxHaze(lin, world);   // explored only: an unseen tile stays the author's black
     float reveal = 1.0 - hidden;
     float f = CxFogRevealFactor(world, depth, hidden);
     if (f <= 0.0) return lin;

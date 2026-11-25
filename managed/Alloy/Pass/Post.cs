@@ -9,15 +9,18 @@ internal static class Post
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Scale, Exposure, Bloom, Threshold, Knee,
-                                         AcesMix, TmKnee, Dither, TaaBlend, TaaSharp, ToonBands, ToonInk, ToonEdge;
+                                         AcesMix, TmKnee, Dither, TaaBlend, TaaSharp, ToonBands, ToonInk, ToonEdge,
+                                         Contrast, Saturation;
     internal static readonly Knob<string> Aa;
-    internal static readonly Knob<bool> Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
+    internal static readonly Knob<bool> Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw, DlssFlipX, DlssFlipY;
     internal static readonly Knob<int> Smaa, Tonemap, Viz;
     /// <summary>Anisotropic samples a linear mipmapped texture's sampler asks for; clamped to the device's
     /// ceiling at sampler creation. Samplers are minted with the texture, so this is read as <c>Boot</c>.</summary>
     internal static readonly Knob<int> Aniso;
     /// <summary><see cref="Aa"/>'s values: the anti-aliaser that draws. TAA is none of them: it draws only where FSR cannot.</summary>
-    internal const string AaFsr = "fsr", AaSmaa = "smaa", AaOff = "off";
+    internal const string AaFsr = "fsr", AaDlss = "dlss", AaSmaa = "smaa", AaOff = "off";
+    /// <summary>A temporal upscaler is picked: FSR 3.1, or DLSS (which falls back to FSR where it is refused).</summary>
+    internal static bool Upscaler => Aa.V == AaFsr || Aa.V == AaDlss;
 
     static Post()
     {
@@ -29,11 +32,12 @@ internal static class Post
         Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 0.9f,
                          help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and FSR 3.1 rebuilds "
                              + "the full picture (faster); above 1 supersamples (sharper, slower). The UI is never scaled.");
-        Scale.ShowIf = static () => Aa.V == AaFsr;
-        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "SMAA", "Off" },
+        Scale.ShowIf = static () => Upscaler;
+        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaDlss, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "DLSS", "SMAA", "Off" },
                         help: "How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller "
-                            + "frame and the frames before it; at render scale 1 it is the anti-aliasing. SMAA smooths each frame "
-                            + "on its own, and Off does not smooth; both render at full resolution.",
+                            + "frame and the frames before it; at render scale 1 it is the anti-aliasing. DLSS does the same on an "
+                            + "NVIDIA RTX card (elsewhere FSR draws instead). SMAA smooths "
+                            + "each frame on its own, and Off does not smooth; both render at full resolution.",
                         changed: OnAa)
              .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaFsr));
         Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
@@ -56,6 +60,10 @@ internal static class Post
                              help: "How bright values above white are compressed.",
                              format: v => v switch { PostChain.TonemapShoulder => "shoulder", PostChain.TonemapNeutral => "neutral", _ => "aces" })
                   .Ladder(Quality.Preset, Quality.Classic(PostChain.TonemapShoulder, PostChain.TonemapAces));
+        Contrast = G.Slider("contrast", "Contrast", 0.5f, 1.5f, 0.05f, 1f,
+                            help: "Spreads the picture's tones apart around mid-grey after tone mapping. 1 is neutral.");
+        Saturation = G.Slider("saturation", "Saturation", 0f, 2f, 0.05f, 1f,
+                              help: "How strong colours are after tone mapping. 1 is neutral, 0 is greyscale.");
         G.Section("Bloom");
         Threshold = G.Slider("threshold", "Bloom threshold", 0f, 4f, 0.05f, 1f, tier: Tier.Advanced);
         Knee = G.Slider("knee", "Bloom knee", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced);
@@ -84,6 +92,8 @@ internal static class Post
         ToonEdge = G.Slider("toonedge", "Toon edge", 1f, 8f, 0.5f, 1f, tier: Tier.ChatOnly);
         Viz = G.Slider("viz", "viz", 0, PostChain.VizMotion, 1, 0, tier: Tier.ChatOnly);
         ClearViz = G.Toggle("clearviz", "clearviz", false, Tier.ChatOnly);
+        DlssFlipX = G.Toggle("dlssflipx", "dlssflipx", false, Tier.ChatOnly);
+        DlssFlipY = G.Toggle("dlssflipy", "dlssflipy", false, Tier.ChatOnly);
         SkyRaw = G.Toggle("skyraw", "skyraw", true, Tier.ChatOnly);
     }
 

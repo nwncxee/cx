@@ -73,6 +73,22 @@ internal static unsafe partial class TexRegistry
         public bool EnvMap;
         public long Bytes;
         public string? Why;
+        /// <summary><see cref="Data"/> is a plain native allocation (alloy.upscale's rebuilt chain), not a prepared DDS buffer.</summary>
+        public bool Native;
+        /// <summary>An upscale upgrade: <see cref="UpSource"/> is the original chain it rebuilds, and its upload replaces the
+        /// slot's finished image once.</summary>
+        public bool Upgrade;
+        /// <summary>A derived normal map's slot (<see cref="NormalCell"/>): decoded by <see cref="DecodeNormal"/>.</summary>
+        public bool Normal;
+        /// <summary>...and its derived height map (<see cref="HeightCell"/>), built alongside.</summary>
+        public bool Height;
+        /// <summary>...or its derived roughness map (<see cref="RoughCell"/>).</summary>
+        public bool Rough;
+        public byte[]? UpSource;
+        public ulong UpKey;
+        /// <summary>What the upgrade did, for cx.log.</summary>
+        public string? UpNote;
+        public DdsReader.Fmt UpFmt;
         /// <summary>Came off the fast queue: a preview pass, which a texture needing no preview finishes whole.</summary>
         public bool Fast;
         /// <summary><see cref="Data"/> is a preview tail (native, from <see cref="TryTail"/>) rather than the full chain.</summary>
@@ -104,9 +120,16 @@ internal static unsafe partial class TexRegistry
     /// it uploaded against, and either a name and handle or the reason there is none, and whether asking again may fix it.</summary>
     private readonly record struct Landed(TexId Id, uint Revision, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
-                                         bool Preview = false, string? CovWhy = null, bool Retry = false);
+                                         bool Preview = false, string? CovWhy = null, bool Retry = false, bool Upgrade = false);
 
     private static readonly Queue<Job> _in = new(), _out = new();
+    /// <summary>alloy.upscale's background upgrades: a job no other queue is waiting behind, and its finished uploads.
+    /// Never counted in <see cref="InFlight"/>, so no loading screen waits on one.</summary>
+    private static readonly Queue<Job> _inUp = new(), _outUp = new();
+    /// <summary>Upgrades said on cx.log so far, and how many are said before it goes quiet.</summary>
+    private sealed class UpLog { public int Count; }
+    private static readonly UpLog _upLog = new();
+    private const int UpgradeLogCap = 25;
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
     /// Not bounded by <see cref="MaxPending"/> -- what it holds is a preview's few KB.</summary>
     private static readonly Queue<Job> _inFast = new(), _outFast = new();
@@ -155,7 +178,10 @@ internal static unsafe partial class TexRegistry
         string resref = _resref[i] ?? "";
         Job j = Rent();
         j.Slot = i; j.Gen = _gen[i]; j.Revision = _imageRevision[i]; j.Resref = resref; j.Kind = _kind[i];
-        j.Data = null; j.Chained = false; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
+        j.Data = null; j.Chained = false; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false; j.Native = false; j.Upgrade = false; j.UpSource = null;
+        j.Normal = _cell[i] is NormalCell or HeightCell or RoughCell;
+        j.Height = _cell[i] == HeightCell;
+        j.Rough = _cell[i] == RoughCell;
         // The .txi is its own resource, and the only one the engine reads: CAurTextureBasic::Init @0x588940
         // and Material::Init @0x5c5b90 both take it from AurResGet(name, ".txi"), which reaches the resman's
         // CResHelper<CResTXI,2022> and nothing else. So it is looked up here, on the thread that may read the
@@ -182,7 +208,7 @@ internal static unsafe partial class TexRegistry
         {
             if (fast) { _fastPending++; _inFast.Enqueue(j); }
             else { _pending++; _in.Enqueue(j); }
-            Monitor.Pulse(_gate);
+            Monitor.PulseAll(_gate);
         }
     }
 
@@ -279,7 +305,7 @@ internal static unsafe partial class TexRegistry
         if (j.Data != null)
         {
             if (j.Tail) NativeMemory.Free(j.Data);
-            else if (j.Kind == TexKind.Plain && j.Compressed) DdsReader.FreePrepared(j.Data);
+            else if (j.Kind == TexKind.Plain && j.Compressed && !j.Native) DdsReader.FreePrepared(j.Data);
             else NativeMemory.Free(j.Data);
             j.Data = null;
         }
@@ -310,6 +336,23 @@ internal static unsafe partial class TexRegistry
                     lock (_gate) (j.Fast ? _outFast : _out).Enqueue(j);
                 }
             }) { IsBackground = true, Name = w == 0 ? "cx-tex" : $"cx-tex-{w}" }.Start();
+        // the upscale and normal-map rebuilds on a thread of their own: one waits on the GPU for seconds, and a load
+        // worker held by one left the UI's own textures queued behind it
+        new Thread(static () =>
+        {
+            while (true)
+            {
+                Job j;
+                lock (_gate)
+                {
+                    while (_inUp.Count == 0) Monitor.Wait(_gate);
+                    j = _inUp.Dequeue();
+                }
+                try { if (j.Normal) NormalWork(j); else UpgradeWork(j); }
+                catch (Exception e) { j.Why = $"{e.GetType().Name}: {e.Message}"; }
+                lock (_gate) _outUp.Enqueue(j);
+            }
+        }) { IsBackground = true, Name = "cx-tex-up", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
     /// <summary>The worker: read and decode. No GL, no engine memory -- everything it reads was copied for it
@@ -339,6 +382,7 @@ internal static unsafe partial class TexRegistry
     /// <summary>Decode the bytes the read produced, whichever container they came from.</summary>
     private static void Decode(Job j, ReadOnlySpan<byte> raw)
     {
+        if (j.Normal) { DecodeNormal(j, raw); return; }
         if (j.Fast && j.Kind != TexKind.Plt && j.Loc.ResType != TgaResType && j.GridX * j.GridY <= 1 && TryTail(j, raw)) return;
         if (j.Kind == TexKind.Plt)
         {
@@ -415,7 +459,9 @@ internal static unsafe partial class TexRegistry
         }
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
-        if (j.Cuts && !j.EnvMap && !j.DataTexture) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+        if (!UpscaleDds(j, info.Format, stored) && j.Cuts && !j.EnvMap && !j.DataTexture)
+            MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+        QueueUpgrade(j, info.Format, stored);
     }
 
     /// <summary>A data texture's coverage, answered without a scan: its alpha holds values, so nothing in it cuts.</summary>
@@ -567,6 +613,25 @@ internal static unsafe partial class TexRegistry
             lock (_gate) { if (_out.Count == 0) break; j = _out.Dequeue(); _pending--; }
             try { Finish(j); } finally { Recycle(j); }
         }
+        // one upscale upgrade a frame, behind everything a load is waiting on
+        {
+            Job? up = null;
+            lock (_gate) if (_outUp.Count > 0) up = _outUp.Dequeue();
+            if (up != null)
+            {
+                try
+                {
+                    // the first few outcomes, and every distinct failure, on cx.log: an upgrade that never lands is invisible otherwise
+                    if (up.Why != null) { if (LoudOnce("upgrade:" + up.Why)) _log?.Always($"TexRegistry: the rebuild of \"{up.Resref}\" failed -- {up.Why}"); }
+                    else
+                    {
+                        if (_upLog.Count++ < UpgradeLogCap) _log?.Always($"TexRegistry: \"{up.Resref}\" {up.UpNote}");
+                        Finish(up);
+                    }
+                }
+                finally { Recycle(up); }
+            }
+        }
         ApplySamplerWishes();
         StepCycles();
         StepRipples();
@@ -645,7 +710,7 @@ internal static unsafe partial class TexRegistry
         ulong handle = MintHandle(name, j.Resref);
         if (FramePump.Debug)
             _log?.Always($"TexRegistry: [gpudebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
-        Publish(new Landed(id, j.Revision, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
+        Publish(new Landed(id, j.Revision, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy, Upgrade: j.Upgrade));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
@@ -664,8 +729,9 @@ internal static unsafe partial class TexRegistry
                 if (l.Name != 0) _graveyard.Enqueue(l.Name);
                 return;
             }
-            _pend[id.Index] = PendNone;
+            if (!l.Upgrade) _pend[id.Index] = PendNone;
         }
+        if (l.Upgrade) { Land(id, l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy, upgrade: true); return; }
         if (l.Why != null) Fail(id.Index, l.Why, l.Retry);
         else if (l.Preview) { LandPreview(id, l.Name, l.Handle, l.Cov); Enqueue(id.Index); }
         else Land(id, l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
@@ -679,6 +745,7 @@ internal static unsafe partial class TexRegistry
     internal static void Tick()
     {
         ApplyResets();
+        ApplyUpscaleReload();
         OverrideReset.Tick();
         // The seven palettes, read where a resource read belongs: needed the first time a PLT record draws.
         // PltVerify loads them itself when Alloy is off, which is why this does not force it.
@@ -737,13 +804,23 @@ internal static unsafe partial class TexRegistry
     /// check drives it with a synthetic name.</summary>
     internal static void Land(TexId id, uint name, long bytes, ulong handle = 0,
                               TexCoverage cov = TexCoverage.Unknown, bool bumpyShiny = false,
-                              bool envMap = false, string? covWhy = null)
+                              bool envMap = false, string? covWhy = null, bool upgrade = false)
     {
-        TexNote(id, cov, envMap, covWhy);
+        if (!upgrade) TexNote(id, cov, envMap, covWhy);
         lock (_lock)
         {
-            if (!Valid(id)) return;
+            if (!Valid(id)) { if (upgrade) { _graveyard.Enqueue(name); DropValue(handle); } return; }
             int i = id.Index;
+            if (upgrade && _name[i] != 0 && !_preview[i])
+            {
+                // the upscaled image takes the finished one's place once: its bytes leave the budget it was counted in
+                DropHandle(i);
+                _graveyard.Enqueue(_name[i]);
+                if (_state[i] == TexState.Idle) { IdleUnlink(i); _idleBytes -= _bytes[i]; }
+                else if (_state[i] == TexState.Resident) _residentBytes -= _bytes[i];
+                _name[i] = 0;
+                _state[i] = TexState.Loading;
+            }
             if (_name[i] != 0)
             {
                 if (!_preview[i]) { _graveyard.Enqueue(name); return; }   // a second upload for one slot: keep the first

@@ -447,6 +447,8 @@ internal static partial class VkGlsl
     private static void Block(Stmt st, Decl d, VkProgramText r)
     {
         string name = d.Type;
+        // a buffer reference is reached by device address (alloy.raytrace): it has no binding to take
+        if (d.LayoutInner.Contains("buffer_reference", StringComparison.Ordinal)) return;
         if (BindingQ.Match(d.LayoutInner) is not { Success: true } bm || !uint.TryParse(bm.Groups[1].Value, out uint b))
         {
             r.Error ??= $"block {name} has no literal binding";

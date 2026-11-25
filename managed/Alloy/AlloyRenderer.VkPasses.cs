@@ -354,7 +354,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             vk.Destroy(s.Records); vk.Destroy(s.TexH);
             s.Records = vk.CreateBuffer(new BufferDesc((long)cap * DrawFloats * sizeof(float), BufferUse.Storage, MemoryKind.Upload, "vk draw records"));
-            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * sizeof(uint), BufferUse.Storage, MemoryKind.Upload, "vk handle table"));
+            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * sizeof(uint), BufferUse.Storage | BufferUse.Address, MemoryKind.Upload, "vk handle table"));
             s.TexHTable = new uint[cap * TexHandles.MaterialSlots];
             s.RecCap = cap;
             whole = true;

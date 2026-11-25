@@ -33,6 +33,9 @@ internal static unsafe class ModelFeed
     private static ExtenderLog? _log;
     private static Source? _source;
     private static long _resident, _nwsyncOff, _refused, _bytes, _ascii, _moved;
+    /// <summary>alloy.smooth's tally: meshes split, and models whose split threw and were kept as parsed.</summary>
+    private sealed class SmoothTally { public int Meshes, Refused; }
+    private static readonly SmoothTally _smooth = new();
     /// <summary>The engine-read fallback's tally: models it served, and models the engine could not find either.</summary>
     private sealed class RecoveryState { public long Reads, Misses; }
     private static RecoveryState _recovery = new();
@@ -164,8 +167,17 @@ internal static unsafe class ModelFeed
             // The name is NOT set here: the cache files the model under the resref it was asked for and
             // counts a file whose internal name disagrees (its Publish), so overwriting it here would hide
             // exactly the case the engine logs as "Model Names Differ".
-            return MdlParser.Parse(raw, t.Name, out why);
+            ModelDef? m = MdlParser.Parse(raw, t.Name, out why);
+            if (m != null && Renderer.Smooth.Boot)
+            {
+                // a refusal leaves the model as parsed: the split writes the mesh only once it has finished
+                try { System.Threading.Interlocked.Add(ref _smooth.Meshes, MdlSmooth(m)); }
+                catch (Exception) { System.Threading.Interlocked.Increment(ref _smooth.Refused); }
+            }
+            return m;
         }
+
+        private static int MdlSmooth(ModelDef m) => MeshSmooth.Run(m);
 
         private static bool Ascii(ReadOnlySpan<byte> d)
             => d.Length < 4 || System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(d) != 0;
@@ -181,6 +193,7 @@ internal static unsafe class ModelFeed
     {
         string s = $"feed {_bytes >> 20} MiB read";
         if (_ascii != 0) s += $", {_ascii} ASCII sources parsed directly";
+        if (_smooth.Meshes + _smooth.Refused != 0) s += $", {_smooth.Meshes} meshes smoothed ({_smooth.Refused} refused)";
         if (_resident != 0) s += $", {_resident} resident (engine-held)";
         if (_nwsyncOff != 0) s += $", {_nwsyncOff} nwsync-off";
         if (_refused != 0) s += $", {_refused} unlocatable";

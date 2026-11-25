@@ -215,13 +215,23 @@ internal sealed unsafe partial class VkBackend : IDevice
         var app = new VkApplicationInfo { apiVersion = ApiFloor };
         VkResult made;
         _probe.DebugUtils = InstanceHas(DebugUtilsExt);
+        // NGX's instance extensions on Windows, those the loader offers and the list does not already hold
+        byte[][] ngx = Offered(NgxExtensions(instance: true), n => InstanceHas(n), SurfaceExt.ToArray(), WindowExt.ToArray(), DebugUtilsExt.ToArray());
         fixed (byte* se = SurfaceExt) fixed (byte* we = WindowExt) fixed (byte* du = DebugUtilsExt)
         {
-            // debug-utils last: the count drops it alone when the instance does not offer it
-            byte** exts = stackalloc byte*[3] { se, we, du };
-            uint ne = _probe.DebugUtils ? 3u : 2u;
+            byte** exts = stackalloc byte*[3 + ngx.Length];
+            exts[0] = se; exts[1] = we;
+            uint ne = 2;
+            if (_probe.DebugUtils) exts[ne++] = du;
+            var pins = new System.Runtime.InteropServices.GCHandle[ngx.Length];
+            for (int k = 0; k < ngx.Length; k++)
+            {
+                pins[k] = System.Runtime.InteropServices.GCHandle.Alloc(ngx[k], System.Runtime.InteropServices.GCHandleType.Pinned);
+                exts[ne++] = (byte*)pins[k].AddrOfPinnedObject();
+            }
             var ci = new VkInstanceCreateInfo { pApplicationInfo = &app, enabledExtensionCount = ne, ppEnabledExtensionNames = exts };
             made = vkCreateInstance(&ci, null, out inst);
+            foreach (var h in pins) h.Free();
         }
         if (made != VkResult.Success) return "vkCreateInstance refused a Vulkan 1.3 instance with the window surface extensions";
         var vki = new VkInstanceApi(in inst);
@@ -367,13 +377,38 @@ internal sealed unsafe partial class VkBackend : IDevice
         return false;
     }
 
+    /// <summary><paramref name="names"/> as NUL-terminated bytes, kept only where <paramref name="has"/> offers one and none of
+    /// <paramref name="taken"/> (the list's own, NUL-terminated) already names it.</summary>
+    private static byte[][] Offered(string[] names, Func<byte[], bool> has, params byte[][] taken)
+    {
+        var keep = new List<byte[]>();
+        foreach (string s in names)
+        {
+            byte[] b = System.Text.Encoding.ASCII.GetBytes(s + "\0");
+            bool dup = false;
+            foreach (byte[] t in taken) dup |= t.AsSpan().SequenceEqual(b);
+            foreach (byte[] k in keep) dup |= k.AsSpan().SequenceEqual(b);
+            if (!dup && has(b)) keep.Add(b);
+        }
+        return keep.ToArray();
+    }
+
+    /// <summary>Does the device carry <c>bufferDeviceAddress</c>? NGX's DLSS allocates through it.</summary>
+    private bool BufferDeviceAddress(VkPhysicalDevice d)
+    {
+        var f12 = new VkPhysicalDeviceVulkan12Features();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f12 };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        return f12.bufferDeviceAddress;
+    }
+
     /// <summary>The driver lists device extension <paramref name="name"/> (NUL-terminated) for this device.</summary>
     internal bool Offers(ReadOnlySpan<byte> name) => HasExt(_vki, _phys, name);
 
     /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. <paramref name="meshShaders"/>
     /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be; <paramref name="oneQueue"/> opens no
     /// async or transfer queue, so every submit rides the graphics one; <paramref name="capMib"/> caps the device-local heaps (0 = none).</summary>
-    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false, long capMib = 0)
+    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false, long capMib = 0, bool rayTracing = false)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
         if (Open(log, out VkInstance inst, out VkPhysicalDevice phys, out uint family, out VkPhysicalDeviceFeatures feats) is string late)
@@ -382,7 +417,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             log.Always($"VkBackend: REFUSED in Alloy's context -- {late}");
             return null;
         }
-        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue, capMib); }
+        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue, capMib, rayTracing); }
         catch (InvalidOperationException e)
         {
             log.Always($"VkBackend: REFUSED -- {e.Message}");
@@ -390,7 +425,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
     }
 
-    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue, long capMib)
+    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue, long capMib, bool rayTracing)
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
@@ -412,8 +447,29 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (asyncFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)asyncFamily, queueCount = 1, pQueuePriorities = &prio };
         if (transferFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)transferFamily, queueCount = 1, pQueuePriorities = &prio };
         var f11 = new VkPhysicalDeviceVulkan11Features { shaderDrawParameters = true };
+        // NGX's device extensions on an NVIDIA GPU, those offered (NGX itself says at init if one it needs is missing);
+        // DLSS allocates by device address
+        VkPhysicalDeviceProperties vendorProps;
+        _vki.vkGetPhysicalDeviceProperties(phys, &vendorProps);
+        byte[][] ngxDev = [];
+        if (vendorProps.vendorID != NvidiaVendor) _ngxWhy = "this GPU is not NVIDIA's (DLSS needs an RTX card)";
+        else
+        {
+            string[] want = NgxExtensions(instance: false);
+            ngxDev = Offered(want, n => HasExt(_vki, phys, n), SwapchainExt.ToArray());
+            var missing = new List<string>();
+            foreach (string w in want) if (!HasExt(_vki, phys, System.Text.Encoding.ASCII.GetBytes(w + "\0"))) missing.Add(w);
+            if (missing.Count > 0) log.Always($"VkBackend: the driver does not offer NGX's {string.Join(", ", missing)}");
+            if (want.Length > 0 && ngxDev.Length == 0) _ngxWhy = "the driver offers none of NGX's device extensions -- update it";
+            else if (want.Length > 0 && !BufferDeviceAddress(phys)) { _ngxWhy = "the driver lacks bufferDeviceAddress -- update it"; ngxDev = []; }
+        }
+        _ngxOpened = ngxDev.Length > 0;
+        // alloy.raytrace: asked for, and everything ray queries need offered
+        _rt.Why = rayTracing ? RtProbe(phys, has) : "alloy.raytrace is off";
+        _rt.On = _rt.Why == null;
         var f12 = new VkPhysicalDeviceVulkan12Features
         {
+            bufferDeviceAddress = (_ngxOpened || _rt.On) && BufferDeviceAddress(phys),
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
             descriptorBindingSampledImageUpdateAfterBind = true, timelineSemaphore = true,
@@ -443,6 +499,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.robustBufferAccess = true;
         feats.features.fragmentStoresAndAtomics = has.fragmentStoresAndAtomics;
         feats.features.geometryShader = true;
+        feats.features.shaderInt64 = _rt.On;
         bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
@@ -480,13 +537,18 @@ internal sealed unsafe partial class VkBackend : IDevice
                  : _mesh ? null : "VK_EXT_mesh_shader offers no task and mesh stages";
         var meshOn = new VkPhysicalDeviceMeshShaderFeaturesEXT { pNext = f11.pNext, taskShader = true, meshShader = true };
         if (_mesh) { f11.pNext = &meshOn; _meshStages = VkPipelineStageFlags2.TaskShaderEXT | VkPipelineStageFlags2.MeshShaderEXT; }
+        var rqOn = new VkPhysicalDeviceRayQueryFeaturesKHR { pNext = f11.pNext, rayQuery = true };
+        var asOn = new VkPhysicalDeviceAccelerationStructureFeaturesKHR { pNext = &rqOn, accelerationStructure = true };
+        if (_rt.On) f11.pNext = &asOn;
         VkDevice device;
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
         fixed (byte* mx = MeshExt) fixed (byte* mp = PriorityExt)
+        fixed (byte* xas = AsExt) fixed (byte* xrq = RayQueryExt) fixed (byte* xho = HostOpsExt)
         {
-            byte** exts = stackalloc byte*[9] { sw, null, null, null, null, null, null, null, null };
+            byte** exts = stackalloc byte*[12 + ngxDev.Length];
+            exts[0] = sw;
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
@@ -494,20 +556,32 @@ internal sealed unsafe partial class VkBackend : IDevice
             if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
             if (_mesh) exts[n++] = mx;
             if (_memPriority) exts[n++] = mp;
+            if (_rt.On) { exts[n++] = xas; exts[n++] = xrq; exts[n++] = xho; }
+            var ngxPins = new System.Runtime.InteropServices.GCHandle[ngxDev.Length];
+            for (int k = 0; k < ngxDev.Length; k++)
+            {
+                ngxPins[k] = System.Runtime.InteropServices.GCHandle.Alloc(ngxDev[k], System.Runtime.InteropServices.GCHandleType.Pinned);
+                exts[n++] = (byte*)ngxPins[k].AddrOfPinnedObject();
+            }
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
                 enabledExtensionCount = n, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
+            foreach (var h in ngxPins) h.Free();
         }
+        log.Always(_ngxOpened ? $"VkBackend: opened with NGX's {ngxDev.Length} device extension(s) for DLSS"
+                              : $"VkBackend: DLSS unavailable on this device: {_ngxWhy}");
         _device = device;
         _vkd = new VkDeviceApi(_vki, in device);
         _vkd.vkGetDeviceQueue(family, 0, out _queue);
         _async = asyncFamily >= 0 ? OpenLane((uint)asyncFamily, "async") : null;
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
-        _vma = CreateAllocator(inst, capMib);
+        _vma = CreateAllocator(inst, capMib, f12.bufferDeviceAddress);
+        if (_rt.On) RtProps(phys);
+        log.Always(_rt.On ? "VkBackend: ray tracing is up (acceleration structures and ray queries)" : $"VkBackend: ray tracing is off -- {_rt.Why}");
         log.Always(_memPriority ? $"VkBackend: {PriorityOnTag} -- the driver keeps what draws every frame in VRAM before the textures"
                                 : $"VkBackend: {PriorityAbsentTag} -- the driver lacks VK_EXT_memory_priority, so it picks what leaves VRAM itself");
         _stagePool = MakeStagePool();
@@ -582,7 +656,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <inheritdoc cref="_memBudget"/>
     public bool MemoryBudget => _memBudget;
 
-    private VmaAllocator CreateAllocator(VkInstance inst, long capMib)
+    private VmaAllocator CreateAllocator(VkInstance inst, long capMib, bool addresses)
     {
         // VMA resolves the rest of Vulkan itself from the two loaders it is handed
         delegate* unmanaged<void> gipa = vkGetInstanceProcAddr(inst, "vkGetInstanceProcAddr"u8);
@@ -596,7 +670,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
             flags = (_memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None)
-                  | (_memPriority ? VmaAllocatorCreateFlags.EXTMemoryPriority : VmaAllocatorCreateFlags.None),
+                  | (_memPriority ? VmaAllocatorCreateFlags.EXTMemoryPriority : VmaAllocatorCreateFlags.None)
+                  | (addresses ? VmaAllocatorCreateFlags.BufferDeviceAddress : VmaAllocatorCreateFlags.None),
         };
         ulong* limits = stackalloc ulong[(int)VK_MAX_MEMORY_HEAPS];
         if (HeapLimits(capMib, limits)) ci.pHeapSizeLimit = limits;
@@ -642,6 +717,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         if ((d.Use & BufferUse.Index) != 0) use |= VkBufferUsageFlags.IndexBuffer;
         if ((d.Use & BufferUse.Indirect) != 0) use |= VkBufferUsageFlags.IndirectBuffer;
         if ((d.Use & BufferUse.CopySrc) != 0) use |= VkBufferUsageFlags.TransferSrc;
+        use |= RtUsage(d.Use);
         if (d.Memory == MemoryKind.Readback)
         {
             // ReadBack copies out of it into its own scratch, so a readback buffer is a copy source whatever it declared
@@ -854,6 +930,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _held.WhenDone.Clear();
         RefuseWhenDone();
         DisposeFsr();
+        DisposeDlss();
         DisposeDof();
         SavePipelineCache(wait: true);
         foreach (var d in _dead) d.Free();

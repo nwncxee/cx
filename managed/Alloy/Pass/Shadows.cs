@@ -9,10 +9,12 @@ namespace CX.Alloy;
 internal static class Shadows
 {
     internal static readonly KnobGroup G;
+    internal static readonly Knob<bool> RayTrace;
+    internal static readonly Knob<float> RaySoft;
     internal static readonly Knob<bool> Enabled, SunDyn, Casters, Gather, Receiver, Rebake, Split, RefreshAll, DynSrc,
                                         DynEvents, FlipCollect, Trace, Detail;
     internal static readonly Knob<float> Dist, Soft, Floor, DiscPx, Near, CsmBias, MaskHoles, MaskGraded, FocusDist, DynMin, CubeDist,
-                                         SunAngle;
+                                         SunAngle, Contact;
     internal static readonly Knob<int> Cascades, Size, Cubes, CubeSize, DynSize, DynCount, Cap, Fade, FadeSlots,
                                        Mask, MaskDither, StaticCap, DynHold, DynFull, SunFull, SunLatch, DynRanks,
                                        Stage, Taps, DeferredRes, PerPixel, Search;
@@ -31,6 +33,15 @@ internal static class Shadows
                         help: "How far from you the sun casts shadows. Cost does not depend on area size.",
                         changed: CasterPass.ShadowInvalidate)
                 .Ladder(Quality.Shadows, 60f, 90f, 120f, 200f);
+        Contact = G.Slider("contact", "Contact shadows", 0f, 1f, 0.05f, 0.3f, "m",
+                           help: "Small sharp sun shadows where things touch the ground or each other -- feet, props, creases -- "
+                               + "that the main shadow map is too coarse to show. The value is how far they reach. 0 is off.");
+        RayTrace = G.Toggle("raytrace", "Ray-traced sun shadows", true, Tier.Advanced,
+                            help: "On a graphics card with ray tracing, the sun and moon's shadows are traced against the real "
+                                + "scene: no blur or stair-steps at any distance, soft where they fall far from what casts them and "
+                                + "sharp where it touches. Characters keep their usual shadows. Needs Ray-traced reflections on.");
+        RaySoft = G.Slider("raysoft", "Ray-traced shadow softness", 0f, 5f, 0.1f, 1f, "deg", Tier.Advanced,
+                           help: "The sun's size as the ray-traced shadows see it: larger is softer. The real sun is about half a degree.");
         Size = G.Dropdown("size", "Sun shadow resolution", new[] { 512, 1024, 2048, 4096 }, 2048, tier: Tier.Advanced,
                           effect: Effect.Restart, help: "Per-cascade map size. Larger is sharper and slower.")
                 .Ladder(Quality.Shadows, 512, 1024, 2048, 4096);

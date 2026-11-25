@@ -122,7 +122,7 @@ public static unsafe partial class MeshArena
             if (s.High == 0) continue;
             if (v.Vbo[f].IsNull || v.Capacity[f] < s.High)
             {
-                BufferId made = Grow(vk, v, v.Vbo[f], (long)s.Mirror.Length * 4, BufferUse.Vertex, $"arena {(Fmt)f} vertices");
+                BufferId made = Grow(vk, v, v.Vbo[f], (long)s.Mirror.Length * 4, BufferUse.Vertex | BufferUse.Address, $"arena {(Fmt)f} vertices");
                 if (made.IsNull && v.Vbo[f].IsNull) continue;
                 if (!made.IsNull)
                 {
@@ -148,7 +148,7 @@ public static unsafe partial class MeshArena
         if (_idx.High == 0) return;
         if (v.Ebo.IsNull || v.ICapacity < _idx.High)
         {
-            BufferId made = Grow(vk, v, v.Ebo, (long)_idx.Mirror.Length * 2, BufferUse.Index, "arena indices");
+            BufferId made = Grow(vk, v, v.Ebo, (long)_idx.Mirror.Length * 2, BufferUse.Index | BufferUse.Address, "arena indices");
             if (made.IsNull && v.Ebo.IsNull) return;
             if (!made.IsNull)
             {

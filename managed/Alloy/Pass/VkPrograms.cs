@@ -141,12 +141,28 @@ internal static class VkPrograms
         }
     }
 
+    /// <summary>Off-device: the water stage translated and compiled to SPIR-V, its ray-traced variant when
+    /// <paramref name="rt"/>; why it fails, or null.</summary>
+    internal static string? WaterCompileCheck(bool rt, bool lit = false)
+    {
+        Id id = lit ? Id.LitDeferred : Id.Water;
+        if (GlText(id, null) is not { } t) return "no text";
+        VkProgramText p = WorldDepth.Translate(t.Vs, rt ? AlloyRenderer.RtVariant(t.Fs) : t.Fs, Units, pull: Pulled(id));
+        if (p.Error != null) return p.Error;
+        if (VulkanToolchain.Compile(VkBackend.Translate(p.Vs), "water check vs", Vortice.ShaderCompiler.ShaderKind.VertexShader, out string ve) == null) return ve;
+        return VulkanToolchain.Compile(VkBackend.Translate(p.Fs), "water check fs", Vortice.ShaderCompiler.ShaderKind.FragmentShader, out string fe) == null ? fe : null;
+    }
+
     /// <summary>The program translated for Vulkan; <see cref="VkProgramText.Error"/> says why not.</summary>
     internal static VkProgramText Text(Id id, ExtenderLog? log)
     {
         if (GlText(id, log) is not { } t)
             return new VkProgramText { Error = "its vertex stage does not put last frame's blade back (an override without the sway's velocity arm)" };
-        return WorldDepth.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units, pull: Pulled(id));
+        // alloy.raytrace: the water stage's ray-traced variant, where the device runs ray queries
+        string fs = id is Id.Water or Id.Lit or Id.LitDeferred or Id.LitGlow or Id.Decal
+                    && AlloyDevice.VulkanMade is { RayTracing: true } && Renderer.RayTrace.Boot
+                    ? AlloyRenderer.RtVariant(t.Fs) : t.Fs;
+        return WorldDepth.Translate(t.Vs, fs, IsGrass(id) ? GrassField.VkUnits : Units, pull: Pulled(id));
     }
 
     /// <summary>Does program <paramref name="id"/> draw wash batches, and so take <see cref="WorldDepth.Pull"/>? The

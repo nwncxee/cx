@@ -2,6 +2,7 @@
 layout(location = 0) in vec3 aPos;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 #include "cx_bone_v.glsl"
 uniform mat4 uVP;
 uniform int uDrawBase;
@@ -21,5 +22,5 @@ void main()
     int bb = CxBoneBase(d);
     if (bb >= 0) pos = CxSkinMat(bb) * vec4(aPos, 1.0);
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
+    else gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);
 }

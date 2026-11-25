@@ -59,7 +59,7 @@ void main()
     // An emitter that fogged toward a different colour than the terrain behind it is a smoke plume
     // that reads as a different weather.
     float f = CxFogFactor(vWorld, vViewZ);
-    if (uAdditive != 0) c.a *= 1.0 - f;
+    if (uAdditive != 0) c.a *= (1.0 - f) * CxHazeT(vWorld);
     else c.rgb = CxFog(c.rgb, vWorld, vViewZ);
     frag = c;
     fragReact = CxReactive(CxReactiveShare(c.rgb, c.a, uAdditive != 0));

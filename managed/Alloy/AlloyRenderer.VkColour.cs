@@ -495,6 +495,15 @@ public sealed unsafe partial class AlloyRenderer
                 LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
                 LooseBlock.Set(L.AoMapOff, Ao.Map.V ? 0f : 1f);
                 LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
+                // the march reads the prepass depth at full-frame texels: none without a prepass, or off a corner viewport
+                bool contact = Shadows.Enabled.V && _depthPrepass && !_capturing && viewport[0] == 0 && viewport[1] == 0;
+                LooseBlock.Set(L.Contact, [contact ? Shadows.Contact.V : 0f, ContactThickness]);
+                LooseBlock.Set(L.SynthDetail, Lighting.Detail.V);
+                LooseBlock.Set(L.Rim, Lighting.Rim.V);
+                LooseBlock.Set(L.Relief, Lighting.Relief.V);
+                LooseBlock.Set(L.TileSeam, Renderer.TileBlend.V);
+                LooseBlock.Set(L.WaterSurf, Water.Surfaces.V, Water.Ripples.V, Water.Shine.V, _capturing ? 0f : Weather.IceShown);
+                if (_vkc.Dev is { } rtDev) VkRtTerms(rtDev, L.Rt);
                 LooseBlock.Set(L.MirrorZ, _mirrorZ);
                 LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
                 LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);

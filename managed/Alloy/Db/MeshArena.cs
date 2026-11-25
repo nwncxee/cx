@@ -206,6 +206,8 @@ public static unsafe partial class MeshArena
         /// <summary>The section this range lives in has its geometry on the device.</summary>
         internal readonly bool Resident;
         internal readonly int Base, Cnt0, Cnt1, Cnt2;
+        /// <summary>Vertices in the range: what a ray-tracing build needs as its last index.</summary>
+        internal readonly int NV;
         internal readonly nint Off0, Off1, Off2;
         internal readonly Vector3 BMin, BMax, Center;
         internal readonly float Radius;
@@ -218,7 +220,7 @@ public static unsafe partial class MeshArena
         internal Pub(in Range r, bool resident)
         {
             Resident = resident; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen); Format = r.Format;
-            Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2;
+            Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2; NV = r.NV;
             Off0 = r.Off0; Off1 = r.Off1; Off2 = r.Off2;
             BMin = r.BMin; BMax = r.BMax; Center = r.Center; Radius = r.Radius;
             Live = r.Live;
@@ -740,6 +742,17 @@ public static unsafe partial class MeshArena
         if (lod >= 1 && r.Cnt1 > 0) { off = r.Off1; count = r.Cnt1; level = 1; return true; }
         off = r.Off0; count = r.Cnt0;
         return r.Cnt0 > 0;
+    }
+
+    /// <summary>Range <paramref name="range"/>'s full-detail triangles for a ray-tracing build: its layout, first vertex and
+    /// vertex count, its LOD 0 index run, and its tenant's identity. False where it is not resident.</summary>
+    internal static bool RayGeometry(int range, out Fmt format, out int baseVertex, out int verts, out nint off, out int count, out ulong sig)
+    {
+        Pub?[] pub = _pub;
+        Pub? r = (uint)range < (uint)pub.Length ? pub[range] : null;
+        format = r?.Format ?? Fmt.Static; baseVertex = r?.Base ?? 0; verts = r?.NV ?? 0; off = r?.Off0 ?? 0; count = r?.Cnt0 ?? 0;
+        sig = r?.Sig ?? 0;
+        return r is { Resident: true, Live: true } && r.NV > 0 && r.Cnt0 >= 3;
     }
 
     /// <summary>The index runs alone, for a caller that has already bound its buffers. Same LOD fallback as

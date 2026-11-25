@@ -37,6 +37,8 @@ internal static unsafe class SceneFog
     /// </summary>
     // _haveSky FIRST: ilc 10.0.11 fails codegen (recordRelocation InvalidCastException) on a Vector3 static at offset 0.
     private static bool _haveSky;
+    /// <summary>fog.haze's sun-glow tightness, the Henyey-Greenstein g: 0.6 is a hazy afternoon's forward scatter.</summary>
+    private const float HazeTightness = 0.6f;
     private static Vector3 _sky;
     private static Vector3 _acc; private static float _accW;
 
@@ -97,6 +99,11 @@ internal static unsafe class SceneFog
                                                len > 0f ? dir.Z / len : 1f, MathF.Max(SunExp, 1f)));
         LooseBlock.Set(loc.FogSunColor, FrameInputs.HasAreaDiffuse && len > 0f && useSky
             ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * SunAmount) : default);
+        // outdoors under a measured sky only: the haze's colour IS that sky, so a night sky hazes dark and an
+        // interior, a cave or a blind frame takes none (ADR 0038)
+        bool haze = Fog.Enabled.V && Fog.Haze.V > 0f && _haveSky && !capture && !FrameInputs.Blind && !FrameInputs.Interior;
+        LooseBlock.Set(loc.FogHaze, new Vector4(haze ? 1f / Fog.Haze.V : 0f, Fog.HazeSun.V, HazeTightness, 0f));
+        LooseBlock.Set(loc.FogHazeColor, _sky);
     }
 
     /// <summary>The display-space colour the skyfade gob is painted in: what fully fogged geometry converges to at the

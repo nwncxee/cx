@@ -209,6 +209,7 @@ internal sealed unsafe partial class VkBackend
                 Op.BeginLabel => Label(r.Read<LabelCmd>(), ref r),
                 Op.EndLabel => Unlabel(),
                 Op.Upscale => Upscale(r.Read<UpscaleCmd>()),
+                Op.RayBuild => RayBuild(),
                 Op.DepthOfField => DepthOfField(r.Read<DofCmd>()),
                 Op.CopyBuffer => CopyBuf(r.Read<CopyBufferCmd>()),
                 Op.DrawMeshTasks => DrawMesh(r.Read<DispatchCmd>()),

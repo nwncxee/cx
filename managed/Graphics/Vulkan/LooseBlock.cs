@@ -133,6 +133,9 @@ internal static unsafe class LooseBlock
     /// <summary>An ivec3 member, lane by lane.</summary>
     internal static void Set(int loc, int a, int b, int c) => Ints(loc, 1, 3, [a, b, c]);
 
+    /// <summary>An ivec4 or uvec4 (the bits as given).</summary>
+    internal static void Set(int loc, int a, int b, int c, int d) => Ints(loc, 1, 4, [a, b, c, d]);
+
     /// <summary>A matrix member, its sixteen lanes in the order the struct stores them. Its size comes from the
     /// type, so no caller counts lanes.</summary>
     internal static void Set(int loc, in Matrix4x4 m) => Floats(loc, 1, 16, Lanes(in m));

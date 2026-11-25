@@ -278,6 +278,10 @@ internal static unsafe partial class EmitterSim
                                        Ch1(rest, b, ChRandVel), wind, Ch1(rest, b, ChSizeStart), Ch1(rest, b, ChSizeEnd),
                                        Ch1(rest, b, ChSizeStartY), Ch1(rest, b, ChSizeEndY),
                                        Ch1(rest, b, ChSizeMid), Ch1(rest, b, ChSizeMidY));
+        // the spawn area too: a fog bank scatters its sprites metres from its origin, and a cull sphere without that
+        // drops the whole bank the moment its centre leaves the view while its fog still fills the screen
+        float sx = Ch1(rest, b, ChXSize), sy = Ch1(rest, b, ChYSize);
+        ballistic += MathF.Sqrt(sx * sx + sy * sy);
         return RadiusArm(effect, aimed, aimed ? Vector3.Distance(pos, SceneDb.ObjWorld[t.Index].Translation) : 0f,
                          ballistic, ChunkReach(part, pos));
     }

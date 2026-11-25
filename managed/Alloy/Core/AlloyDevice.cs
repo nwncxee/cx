@@ -27,7 +27,7 @@ internal static class AlloyDevice
         if (Renderer.OnVulkan && s.Vk == null && !s.VkRefused)
         {
             UserFolders.Settle(log);   // before the pipeline cache opens: it lives in the game's CACHE folder
-            s.VkRefused = (s.Vk = VkBackend.TryCreate(log, oneQueue: Renderer.OneQueue.Boot, capMib: Renderer.VramCap.Boot)) == null;
+            s.VkRefused = (s.Vk = VkBackend.TryCreate(log, oneQueue: Renderer.OneQueue.Boot, capMib: Renderer.VramCap.Boot, rayTracing: Renderer.RayTrace.Boot)) == null;
             if (s.Vk != null && !SsboSlots.CheckDevice(s.Vk.Caps, log)) { s.Vk.Dispose(); s.Vk = null; s.VkRefused = true; }
             // the seam's image copies and the translation counters against fixtures, before the first pass records one
             s.Vk?.CopyDeviceCheck(log);

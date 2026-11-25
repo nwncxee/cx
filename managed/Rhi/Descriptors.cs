@@ -40,7 +40,9 @@ public static class Formats
 
 /// <summary>What a buffer is bound as. Vulkan needs all of it at creation; GL ignores it.</summary>
 [Flags]
-public enum BufferUse : byte { None = 0, Vertex = 1, Index = 2, Storage = 4, Uniform = 8, Indirect = 16, CopySrc = 32, CopyDst = 64 }
+public enum BufferUse : byte { None = 0, Vertex = 1, Index = 2, Storage = 4, Uniform = 8, Indirect = 16, CopySrc = 32, CopyDst = 64,
+    /// <summary>Reached by device address -- a shader's buffer reference, or a ray-tracing build's input -- where ray tracing is up.</summary>
+    Address = 128 }
 
 /// <summary>Where a buffer lives: device-only, written from the CPU with <c>UpdateBuffer</c>, or host-visible for a
 /// copy the CPU reads back once its submit has finished.</summary>

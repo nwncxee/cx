@@ -248,6 +248,9 @@ internal static unsafe class AlloyLights
           && AlloyRenderer.OwnedLitFsMain.Contains("float lmLobe = CxSpecLobe(N, V, lmDir, rough, spec);"),
           "a glossy lobe carries its light's shadow whatever the cap says, in the pages' place too");
         check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("max(dot(N, uAreaDir) + uSss.x, 0.0) * uSss.y"), "...and so does the sun");
+        check.Expect(ShaderSource.Get("cx_leaf.glsl").Contains(
+                         "#define CX_LEAF_STILL " + AlloyRenderer.LeafStill.ToString("F1", CultureInfo.InvariantCulture)),
+          "the stages read a still canopy's code with the bound DbWriteLeaf writes it with");
 
         // R5: the sphere-light normalisation. A punctual GGX peak is 1/alpha^2, which on a water film's
         // 0.02 is fifteen hundred times the irradiance -- the "solar flare". The properties that make the

@@ -6,6 +6,9 @@ uniform sampler2DArrayShadow uSunShadow;
 // has one composition rule, not two. uSunDyn[i] is 1 when layer i holds a fresh dynamic bake this
 // frame and 0 otherwise.
 uniform sampler2DArrayShadow uSunDynShadow;
+/// shadow.raytrace: how much the STATIC map counts (1 = all); a stage whose rays answer for the static world takes it to 0
+/// and keeps the movers' map, so creatures -- not in the ray-traced scene -- still cast.
+float cxSunStaticW = 1.0;
 
 // CX-49: the soft sun filter -- a blocker search and a rotated disc at the penumbra it estimates -- compiles
 // ONLY into a stage whose head defines CX_SUN_SOFT. The sun lights every outdoor fragment, so the stages that
@@ -98,7 +101,7 @@ float CxSunTaps(int i, vec3 ndc, float slope, vec2 texel)
                    + texture(uSunDynShadow, vec4(uv + vec2( o.x, -o.y), layer, ref))
                    + texture(uSunDynShadow, vec4(uv + vec2(-o.x,  o.y), layer, ref))
                    + texture(uSunDynShadow, vec4(uv + vec2( o.x,  o.y), layer, ref)));
-    return min(vs, vd);
+    return min(mix(1.0, vs, cxSunStaticW), vd);
 }
 
 #ifdef CX_SUN_SOFT
@@ -204,7 +207,7 @@ float CxSunFilter(int i, vec3 ndc, vec3 worldPos, float slope, vec2 texel, float
         float rot = fract(CxShadowNoise(worldPos) + uLocalPcss.y);
         float vs = CxSunDisc(uSunShadow, uv, layer, ref, texel, rs, taps, rot);
         float vd = uSunDyn[i] > 0.5 ? CxSunDisc(uSunDynShadow, uv, layer, ref, texel, rs, taps, rot) : 1.0;
-        return min(vs, vd);
+        return min(mix(1.0, vs, cxSunStaticW), vd);
     }
 #endif
     return CxSunTaps(i, ndc, slope, texel);

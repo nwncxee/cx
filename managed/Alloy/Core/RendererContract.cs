@@ -588,7 +588,7 @@ internal static class RendererContract
                   && SlotSafe(GrassField.GrassFsHead, "uTex")
                   && !SlotSafe(PostChain.ResolveFs, "uNotASampler")
                   && !DepthSafe(OwnedVs.Replace("invariant gl_Position;", ""))
-                  && !DepthSafe(OwnedVs.Replace(ClipExpr, "gl_Position = uVP * (d.model * vec4(aPos, 1.0));"))
+                  && !DepthSafe(OwnedVs.Replace(ClipExpr, "gl_Position = uVP * (d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0));"))
                   // ...and the ownable list is the DRAW list: nothing else renders the world since #264, so
                   // a bucket missing here is a class that goes dark rather than one that stays vanilla.
                   && AlloyCensus.OwnableBucket(0) && AlloyCensus.OwnableBucket(1)

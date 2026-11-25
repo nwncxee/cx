@@ -58,7 +58,7 @@
         if (wxFilm > 0.0 && cxCoat > 0.0)
         {
             vec2 fab = CxEnvBrdf(reflNoV, sqrt(cxCoatRough));
-            reflFilm = vec3(min(cxCoat * (CX_DIELECTRIC_F0 * fab.x + fab.y)
+            reflFilm = vec3(min(cxCoat * (max(CX_DIELECTRIC_F0, cxFilmF0) * fab.x + fab.y)
                                 * CxSpecOcclusion(NoV, occl, cxCoatRough) * uProbeGain, 1.0));
         }
         wxTransmit = 1.0 - max(max(reflW.r, max(reflW.g, reflW.b)), reflFilm.r) * wxFilm;
@@ -158,6 +158,7 @@
         // (the spec's Known deviations, and the approximation CxReflOut above already takes). The REVEAL
         // factor, not the plain one: on an unexplored tile that ramp is the one the pixel actually took.
         float thru = kh * (1.0 - CxFogRevealFactor(vWorld, vDepth, d.ext2.w));
+        if (d.ext2.w <= 0.0) thru *= CxHazeT(vWorld);   // the deferred lamps take the same haze the forward ones do
         // P: pointSpec and the film statics both enter specLight times dirOcc, and specLight reaches the
         // pixel through the ghost divide and nothing else.
         g.specT = dirOcc * thru / ghost;

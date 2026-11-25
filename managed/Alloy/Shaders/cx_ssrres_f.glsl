@@ -1,4 +1,11 @@
 #version 460 core
+#ifdef CX_RT
+// alloy.raytrace: before any declaration, as an extension line must be (cx_rtlib.glsl is the rest)
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#define CX_RT_LM 1
+#endif
 // The reflection resolve, per full-res pixel: its own trace texel and three rotated neighbours', each hit weighed
 // by THIS pixel's GGX lobe toward it over the pdf the ray was drawn with (Stachowiak 2015), so a block of four
 // pixels shows four reflections. Each hit's colour comes off the frame's mip the lobe's cone covers at that
@@ -24,6 +31,7 @@ uniform float uCap;          // the roughness cap
 uniform float uProbeMips;    // the probe's mips (0 = no probe)
 uniform int uShift;          // log2 of the trace's block
 uniform int uFrame;          // the noise phase
+uniform sampler2DArray uRtLmA;   // alloy.raytrace: the lightmap's irradiance pages, which a ray's hit reads (cx_rtlib.glsl)
 
 /// How far (a share of view depth) a ray's origin may sit off this pixel's plane and its hit still stand for it,
 /// faded over the range: a neighbour on another surface saw another reflection.
@@ -47,6 +55,10 @@ const float CX_SSR_FLOOR = 0.25;
 const float CX_PLANE_LOD = 4.0;
 
 float Luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+#ifdef CX_RT
+#include "cx_rtlib.glsl"
+#endif
 
 void main()
 {
@@ -132,8 +144,17 @@ void main()
     // the lit stage's own fetch, exactly: R in world space, its roughness on the prefilter's mip ladder
     vec3 R = mat3(uInvView) * reflect(-V, N);
     vec3 env = uProbeMips > 0.0 ? CxProbeFetch(uProbe, P, R, perceptual * (uProbeMips - 1.0)) : vec3(0.0);
-    // plane over screen over probe
-    vec3 refl = max(mix(mix(env, hit, trust), pl.rgb, pa), env * CX_SSR_FLOOR);
+    // alloy.raytrace: where neither the screen nor the mirrored draw answers, a real ray stands in for the probe
+    vec3 fill = env;
+#ifdef CX_RT
+    float rtW = (1.0 - smoothstep(CX_RT_ROUGH.x, CX_RT_ROUGH.y, perceptual)) * (1.0 - trust) * (1.0 - pa);
+    vec3 rt;
+    if ((uRtA.x != 0u || uRtA.y != 0u) && rtW > 0.01
+        && CxRtTrace(P + n * CX_RT_BIAS, normalize(R), perceptual, uInvView[3].xyz, rt))
+        fill = mix(env, min(rt, vec3(CX_SSR_MAX)), rtW / max((1.0 - trust) * (1.0 - pa), 1e-3));
+#endif
+    // plane over screen over ray over probe
+    vec3 refl = max(mix(mix(fill, hit, trust), pl.rgb, pa), env * CX_SSR_FLOOR);
     // the hit's distance only where the screen's hit is most of what shows: elsewhere the surface itself reprojects
     frag = vec4((refl - env) * (gate * clamp(w, 0.0, 1.0)), trust * (1.0 - pa) > 0.5 ? hitDist : 0.0);
     if (any(isnan(frag)) || any(isinf(frag))) frag = vec4(0.0);

@@ -2,6 +2,7 @@
 layout(location = 0) in vec3 aPos;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 #include "cx_bone_v.glsl"
 layout(std430, binding = 8) readonly buffer CxBonePrevBuf { mat4 uBonePrev[]; };
 layout(std430, binding = 9) readonly buffer CxDanglyPrevBuf { float uDanglyPrev[]; };
@@ -32,7 +33,7 @@ void main()
     int bb = CxBoneBase(d);
     if (bb >= 0) pos = CxSkinMat(bb) * vec4(aPos, 1.0);
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
+    else gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);
     vCur = gl_Position;
     if (bb >= 0) vPrev = uPrevVP * d.prev * (CxPrevSkinMat(bb) * vec4(aPos, 1.0));
     else
@@ -45,6 +46,6 @@ void main()
             int o = uDangly.x + k * 3;
             p = vec3(uDanglyPrev[o], uDanglyPrev[o + 1], uDanglyPrev[o + 2]);
         }
-        vPrev = uPrevVP * d.prev * vec4(p, 1.0);
+        vPrev = uPrevVP * d.prev * vec4(p + CxLeafSway(d, p), 1.0);   // the same sway: only the part's own motion shows
     }
 }

@@ -35,7 +35,8 @@ public sealed unsafe partial class AlloyRenderer
         /// matrices past its view-projection.</summary>
         public Matrix4x4 View, Proj;
         /// <summary>The stage's own locations, past the ones a plain program's build resolves.</summary>
-        public int ViewLoc = -1, ProjLoc = -1, NearFar = -1, EnvOk = -1, CubeCount = -1, Splash = -1;
+        public int ViewLoc = -1, ProjLoc = -1, NearFar = -1, EnvOk = -1, CubeCount = -1, Splash = -1, Look = -1, Ice = -1;
+        public RtLocs? Rt;
     }
 
     private static VkWaterState _vkWater = new();
@@ -158,6 +159,9 @@ public sealed unsafe partial class AlloyRenderer
             s.NearFar = LooseBlock.Loc("uNearFar");
             s.EnvOk = LooseBlock.Loc("uEnvOk");
             s.Splash = LooseBlock.Loc("uSplash");
+            s.Look = LooseBlock.Loc("uWaterLook");
+            s.Ice = LooseBlock.Loc("uWaterIce");
+            s.Rt = RtLocs.Of(LooseBlock.Loc);
             s.CubeCount = LooseBlock.Loc("uLocalCubes");
         });
     }
@@ -175,6 +179,9 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(p.Viz, _capturing ? 0 : _lightViz);
         LooseBlock.Set(s.EnvOk, s.EnvLive ? 1 : 0);
         LooseBlock.Set(s.Splash, Weather.SplashRate(_capturing));
+        LooseBlock.Set(s.Look, [Water.Clarity.V, Water.Shore.V, Water.Ripples.V, Water.Shine.V]);
+        LooseBlock.Set(s.Ice, _capturing ? 0f : Weather.IceShown);
+        if (s.Dev is { } dev) VkRtTerms(dev, s.Rt);
         UploadFeatureTerms(p.F, viewport);
         BindPass(s.CubeCount, viewport, near, far);
     }

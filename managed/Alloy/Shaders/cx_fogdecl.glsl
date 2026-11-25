@@ -12,6 +12,8 @@ uniform vec3 uFogSky;          // #341: (sky mix, height falloff per unit, layer
 uniform vec3 uFogSkyColor;     // #341: LINEAR sky colour the fog converges toward
 uniform vec4 uFogSun;          // #341: (world direction toward the sun, in-scatter exponent)
 uniform vec3 uFogSunColor;     // #341: LINEAR sun colour, already scaled by the in-scatter strength
+uniform vec4 uFogHaze;         // fog.haze: (1 / haze distance, 0 = off; sun glow; glow tightness g; _)
+uniform vec3 uFogHazeColor;    // fog.haze: LINEAR colour the far distance hazes toward, the sky's own
 uniform vec4 uFogOrigin;       // fog origin: xyz = the player's feet, w = 1 radial from it, 0 = view depth
 // The volumetric fog (FogVolume, vfog.enabled): x = 1 where this pass reads the volume, else the ramp above draws;
 // y = depth slices; z = the volume's near distance; w = 1 / log(far / near), the slice mapping cx_vfog inverts.

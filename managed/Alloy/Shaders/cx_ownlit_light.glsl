@@ -51,6 +51,51 @@
     vec3 sunSpec;
     vec3 sun = CxSunLight(N, sunVis, sunFade, sunSpec);
     vec3 sunSss = uAreaDiffuse * (sunVis * max(dot(N, uAreaDir) + uSss.x, 0.0) * uSss.y);
+    // Foliage (DrawRecipe.LeafOf, cx_leaf.glsl): a thin cut-out card or a foliage part lets the sun through from behind;
+    // foliage also takes the sun on a normal bent out of its canopy, so a tree reads as one mass rather than flat cards,
+    // and loses ambient light toward the canopy's core, which is what gives it depth.
+#define CX_LEAF_CANOPY 0.5       // share of the canopy normal in a foliage part's sun shading
+#define CX_LEAF_THIN 0.15        // transmitted share of the sun through a thin card
+#define CX_LEAF_FOLIAGE 0.35     // ...and through a leaf
+#define CX_LEAF_FORWARD 4.0      // how tightly the glow gathers around looking into the sun
+#define CX_LEAF_CORE 0.45        // ambient left at the canopy's centre
+    float leafCode = CxLeafCode(d.occ);
+    vec3 leafC;
+    float leafR;
+    bool leafSways;
+    bool foliage = CxLeafCanopy(d.occ, leafC, leafR, leafSways);
+    if (foliage)
+    {
+        vec3 canopy = (d.model * vec4(leafC, 1.0)).xyz;
+        vec3 away = vWorld - canopy;
+        if (dot(away, away) > 1e-4)
+        {
+            vec3 Nleaf = normalize(mix(N, normalize(away), CX_LEAF_CANOPY));
+            sun = CxSunLight(Nleaf, sunVis, sunFade, sunSpec);
+            sunSss = uAreaDiffuse * (sunVis * max(dot(Nleaf, uAreaDir) + uSss.x, 0.0) * uSss.y);
+        }
+        // the record's radius is model space; the model's own scale carries it to the world
+        float rWorld = max(leafR * length(d.model[0].xyz), 0.1);
+        occl *= mix(CX_LEAF_CORE, 1.0, smoothstep(0.15, 0.85, length(away) / rWorld));
+    }
+    if (foliage || leafCode == -1.0)
+    {
+        // N faces the eye on either side of the card, so sun behind it is a negative N.L
+        float behind = max(-dot(N, uAreaDir), 0.0);
+        float toward = pow(max(dot(-V, uAreaDir), 0.0), CX_LEAF_FORWARD);
+        sunSss += uAreaDiffuse * (sunVis * behind * (0.5 + toward) * (foliage ? CX_LEAF_FOLIAGE : CX_LEAF_THIN));
+    }
+    // light.rim: a creature's silhouette catches the area's light at grazing angles, lifting it off a busy background
+    if (uRim > 0.0 && d.emi.w < 0.0 && uCapture == 0)
+        sunSss += (uAreaAmbient + uAreaDiffuse * sunVis) * (uRim * pow(1.0 - max(dot(N, V), 0.0), 4.0));
+    // 55 = the foliage class: green foliage (darker where it does not sway), yellow a thin cut-out card; an
+    //      alpha-tested part refused is red for its own content shader, blue for another reason; grey is neither
+    if (uViz == 55)
+    {
+        vec3 k = foliage ? (leafSways ? vec3(0.1, 0.9, 0.1) : vec3(0.05, 0.5, 0.05)) : leafCode == -1.0 ? vec3(0.9, 0.8, 0.1)
+               : leafCode == -2.0 ? vec3(0.9, 0.1, 0.1) : leafCode == -3.0 ? vec3(0.2, 0.3, 0.9) : vec3(0.25);
+        frag = vec4(k, 1.0); return;
+    }
     vec3 pointSpec;
     // #308 follow-up: 1 on a creature fragment (skinmesh, or the dangly marker in feat.w) -- the
     // local receiver's carrier-band gate, so a creature takes no dyn-pool self-shadow up close.
@@ -179,7 +224,7 @@
         vec3 cenv = CxProbeFetch(uProbe, vWorld, reflect(-V, N), sqrt(cxCoatRough) * (uProbeMips - 1.0));
         // CX-188 split this out of the += so the twin can carry the factor as a transfer weight; it is the
         // same product, parenthesised
-        vec3 cw = cenv * (cxCoat * (CX_DIELECTRIC_F0 * cab.x + cab.y)
+        vec3 cw = cenv * (cxCoat * (max(CX_DIELECTRIC_F0, cxFilmF0) * cab.x + cab.y)
                   * CxSpecOcclusion(NoV, occl, cxCoatRough)) * uProbeGain;
         specLight += (ambient + diffuse) * cw;
 #ifdef CX_DEFERRED

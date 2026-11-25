@@ -387,21 +387,7 @@ internal static unsafe partial class TexRegistry
             {
                 if (_resref[i] is not string name || _detached[i] || !_resetNames.Contains(name)) continue;
                 if (_refs[i] == 0) { Retire(i); continue; }
-                _imageRevision[i]++;
-                DropHandle(i);
-                if (_name[i] != 0) _graveyard.Enqueue(_name[i]);
-                _residentBytes -= _bytes[i];
-                _name[i] = 0; _bytes[i] = 0; _preview[i] = false;
-                ResetImageProperties(i);
-                _state[i] = TexState.Loading;
-                if (_pend[i] != PendWaiting)
-                {
-                    _pend[i] = PendWaiting;
-                    lock (_gate) _waiting.Enqueue(i);
-                }
-                CoverageSerial++; TableSerial++;
-                MarkDependents(i);
-                _maskWatch[i] = true;
+                Reload(i);
                 reloaded = true;
             }
             _resetApplied.Clear();
@@ -409,6 +395,27 @@ internal static unsafe partial class TexRegistry
             _resetNames.Clear();
         }
         OverrideReset.Apply(_resetApplied, reloaded);
+    }
+
+    /// <summary>Slot <paramref name="i"/>'s image dropped and read again through the normal queue, its TexId kept: a newer
+    /// revision, so a job already in flight for the old image is thrown away when it lands. Caller holds <see cref="_lock"/>.</summary>
+    private static void Reload(int i)
+    {
+        _imageRevision[i]++;
+        DropHandle(i);
+        if (_name[i] != 0) _graveyard.Enqueue(_name[i]);
+        _residentBytes -= _bytes[i];
+        _name[i] = 0; _bytes[i] = 0; _preview[i] = false;
+        ResetImageProperties(i);
+        _state[i] = TexState.Loading;
+        if (_pend[i] != PendWaiting)
+        {
+            _pend[i] = PendWaiting;
+            lock (_gate) _waiting.Enqueue(i);
+        }
+        CoverageSerial++; TableSerial++;
+        MarkDependents(i);
+        _maskWatch[i] = true;
     }
 
     /// <summary>Slots whose next landing or failure changes what a caster masks with: a reset's reloads, and the

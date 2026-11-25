@@ -65,7 +65,7 @@ internal static unsafe class PostChain
     /// <c>post.scale</c> under FSR, whose choice alone shows the slider and has a temporal upscaler to answer for it; 1
     /// under SMAA and Off. The engine's 2D UI never sees it. The knob's range is <see cref="MinScale"/>..<see cref="MaxScale"/>
     /// because a 0x0 target is a refusal, not a look.</summary>
-    private static float _scale => Post.Aa.V == Post.AaFsr ? Post.Scale.V : 1f;
+    private static float _scale => Post.Upscaler ? Post.Scale.V : 1f;
     internal const float MinScale = 0.25f, MaxScale = 2f;
 
 
@@ -141,7 +141,7 @@ internal static unsafe class PostChain
         LooseBlock.Set(l.AcesMix, g.AcesMix);
     }
 
-    internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Aa.V == Post.AaFsr && !Fsr.On;
+    internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Upscaler && !Fsr.On;
     /// <summary>The projection jitters this frame: TAA or FSR reconstructs from it.</summary>
     internal static bool Jittered => TaaOn || Fsr.On;
     internal static float TaaBlend => Post.TaaBlend.V;

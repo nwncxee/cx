@@ -3,6 +3,7 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 uniform mat4 uVP;
 uniform int uDrawBase;
 invariant gl_Position;
@@ -16,13 +17,13 @@ void main()
     int id = CxSlot(uDrawBase + gl_DrawID);
     CxDraw d = uDraw[id];
     vDraw = id;
-    vec4 pos = vec4(aPos, 1.0);
+    vec4 pos = vec4(aPos + CxLeafSway(d, aPos), 1.0);   // the swayed leaf is where it is shaded
     int bb = CxBoneBase(d);
     if (bb >= 0) pos = CxSkinMat(bb) * vec4(aPos, 1.0);
     // The skinned arm and the rigid one are the depth stage's own, character for character (#262), so the
     // prepass re-tests the same sequence of operations under `invariant`.
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
+    else gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);
     vUV = vec2(d.rot.x * aUV.x - d.rot.y * aUV.y, d.rot.y * aUV.x + d.rot.x * aUV.y);
     vAlpha = d.rot.w;
     vWorld = (d.model * pos).xyz;

@@ -27,7 +27,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The coverage and light-step pipelines per arena format, made at a format's first draw.</summary>
         public readonly PipelineId[] Cover = new PipelineId[MeshArena.Formats], Light = new PipelineId[MeshArena.Formats];
         public VkDefStage? Enc;
-        public int BLight = -1, BColor = -1, BMode = -1, BCube = -1, BCubes = -1, ERegion = -1, ELayer = -1, EBand = -1;
+        public int BLight = -1, BColor = -1, BMode = -1, BCube = -1, BCubes = -1, BBounce = -1, ERegion = -1, ELayer = -1, EBand = -1;
         public CommandList? Side;
     }
 
@@ -57,6 +57,7 @@ public sealed unsafe partial class AlloyRenderer
                 s.BLight = LooseBlock.Loc("uBakeLight"); s.BColor = LooseBlock.Loc("uBakeColor");
                 s.BMode = LooseBlock.Loc("uBakeMode"); s.BCube = LooseBlock.Loc("uBakeCube");
                 s.BCubes = LooseBlock.Loc("uLocalCubes");
+                s.BBounce = LooseBlock.Loc("uBakeBounce");
             });
         if (s.Enc != null)
             LooseBlock.Resolve(s.Enc.Names, () =>
@@ -138,6 +139,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(s.BColor, [colour.X, colour.Y, colour.Z]);
         LooseBlock.Set(s.BCube, cube);
         LooseBlock.Set(s.BCubes, cover ? 0 : cube + 1);
+        LooseBlock.Set(s.BBounce, cover ? 0f : Lightmap.Bounce.V);
         LooseBlock.EndCapture();
         int arena0 = vc.ArenaUsed;
         int loose = VkArena(p.Block);

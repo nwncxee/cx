@@ -32,6 +32,9 @@ internal static unsafe partial class Weather
     internal static Knob<bool> Arrive = null!;
     internal static Knob<float> EdgeBreak = null!, RunOff = null!, ShoreRim = null!;
     internal static Knob<int> EdgeTaps = null!;
+    /// <summary>weather.ice's knobs and the area's freeze, one holder: declared with the surface knobs, integrated with them.</summary>
+    private sealed class IceState { public Knob<float> Strength = null!, FreezeSec = null!; public float Amount; }
+    private static readonly IceState _ice = new();
     internal static Knob<float> WetStrength = null!, SnowStrength = null!, AccumSec = null!, DrySec = null!, MeltSec = null!,
                                 PuddleThreshold = null!, PuddleEdge = null!, Splash = null!,
                                 SnowAlbedo = null!, SnowSlope = null!, SnowPile = null!, SnowBump = null!, SnowSparkle = null!, SnowWrap = null!, SnowSky = null!, SnowPileWidth = null!, SnowVary = null!, SnowDepth = null!, SnowSteps = null!;
@@ -45,6 +48,12 @@ internal static unsafe partial class Weather
     internal static float WetShown => !_off && Enabled.V ? _wet * WetStrength.V : 0f;
     /// <summary>The snow cover a footfall answers to (0 while the weather is off).</summary>
     internal static float SnowShown => !_off && Enabled.V ? _snow * SnowStrength.V : 0f;
+    /// <summary>How frozen the area's water is (weather.ice), 0 while the weather is off.</summary>
+    internal static float IceShown => !_off && Enabled.V ? _ice.Amount * _ice.Strength.V : 0f;
+    /// <summary>Snow cover over which lying snow keeps the water frozen once the fall has stopped.</summary>
+    private const float IceHoldSnow = 0.5f;
+    /// <summary>How much faster rain thaws ice than a dry spell does.</summary>
+    private const float IceRainThaw = 4f;
 
     private static void DeclareSurfaceKnobs()
     {
@@ -59,6 +68,11 @@ internal static unsafe partial class Weather
                           help: "Seconds for wet ground to dry after the rain stops.");
         MeltSec = G.Slider("melt", "Melt time", 30f, 7200f, 30f, 900f, "s", Tier.Advanced,
                            help: "Seconds for snow cover to melt after the snowfall ends.");
+        _ice.Strength = G.Slider("ice", "Freezing water", 0f, 1f, 0.05f, 1f, tier: Tier.Advanced,
+                       help: "Ponds, streams and pools freeze while it snows: frost gathers along the banks, then ice creeps across "
+                           + "the water, stilling its ripples. They thaw once the snow has gone, faster in rain. 0 = off.");
+        _ice.FreezeSec = G.Slider("freeze", "Freeze time", 30f, 3600f, 30f, 300f, "s", Tier.Advanced,
+                             help: "Seconds of full snowfall to freeze water over completely; thawing takes the melt time.");
         G.Section("");
         Arrive = G.Toggle("arrive", "Arrive into settled weather", true, Tier.ChatOnly,
                           help: "Weather already running when you enter an area is fully soaked or snowed on arrival, instead of accumulating in front of you.");
@@ -118,17 +132,20 @@ internal static unsafe partial class Weather
         long now = Stopwatch.GetTimestamp();
         float dt = _surfTicks == 0 ? 0f : MathF.Min((float)(now - _surfTicks) / Stopwatch.Frequency, 0.25f);
         _surfTicks = now;
-        if (_off || !Enabled.V || FrameInputs.Interior) { _wet = _snow = _puddle = 0f; return; }
+        if (_off || !Enabled.V || FrameInputs.Interior) { _wet = _snow = _puddle = _ice.Amount = 0f; return; }
         bool rain = CurrentKind == Kind.Rain && Density > 0f, snow = CurrentKind == Kind.Snow && Density > 0f;
         if (_enterTicks != 0 && (rain || snow))
         {
             bool fresh = (float)(now - _enterTicks) / Stopwatch.Frequency < ArriveWindowSec;
             _enterTicks = 0;
             _mapArrive = fresh && Arrive.V && rain;
-            if (fresh && Arrive.V) { _wet = rain ? 1f : 0f; _snow = snow ? 1f : 0f; _puddle = rain && PuddleThreshold.V < 1f ? 1f : 0f; }
+            if (fresh && Arrive.V) { _wet = rain ? 1f : 0f; _snow = snow ? 1f : 0f; _ice.Amount = snow ? 1f : 0f; _puddle = rain && PuddleThreshold.V < 1f ? 1f : 0f; }
         }
         _wet = Math.Clamp(_wet + (rain ? Density / AccumSec.V : -1f / DrySec.V) * dt, 0f, 1f);
         _snow = Math.Clamp(_snow + (snow ? Density / AccumSec.V : -(rain ? 3f : 1f) / MeltSec.V) * dt, 0f, 1f);
+        // water freezes under falling snow, holds while snow still lies, and thaws as the snow does -- faster in rain
+        float iceRate = snow ? Density / _ice.FreezeSec.V : _snow > IceHoldSnow && !rain ? 0f : -(rain ? IceRainThaw : 1f) / MeltSec.V;
+        _ice.Amount = Math.Clamp(_ice.Amount + iceRate * dt, 0f, 1f);
         float th = PuddleThreshold.V;
         float fill = th < 1f && _wet > th ? (_wet - th) / (1f - th) / AccumSec.V : -0.5f / DrySec.V;
         _puddle = Math.Clamp(_puddle + fill * dt, 0f, 1f);
@@ -201,9 +218,9 @@ internal static unsafe partial class Weather
                                           System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : float.NaN;
     }
 
-    private static void ResetSurface() { _wet = _snow = _puddle = 0f; _enterTicks = Stopwatch.GetTimestamp(); _surfTick = new SurfaceTickState(); MapReset(); TrackReset(); }
+    private static void ResetSurface() { _wet = _snow = _puddle = _ice.Amount = 0f; _enterTicks = Stopwatch.GetTimestamp(); _surfTick = new SurfaceTickState(); MapReset(); TrackReset(); }
 
-    private static string SurfaceStats() => $" wet {_wet:F2} snow {_snow:F2} puddle {_puddle:F2}{TrackStats()}";
+    private static string SurfaceStats() => $" wet {_wet:F2} snow {_snow:F2} puddle {_puddle:F2} ice {_ice.Amount:F2}{TrackStats()}";
 
     /// <summary>The ripple library is world-sized and the pixel footprint only fades it: a text check on the
     /// library plus a real arithmetic one on its constants -- the 2x2 cell neighbourhood <see cref="RippleLib"/>

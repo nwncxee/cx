@@ -151,7 +151,7 @@ internal static unsafe partial class LightmapBake
         VkBackend vk = s.Dev!;
         if (!AlloyRenderer.VkLmReady(vk, _log!)) { s.Failed = true; return _down.Fail(_log, "the Vulkan bake or encoder program was refused", "every surface keeps the real-time loop"); }
         s.Clamp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
-        s.Chart = vk.CreateBuffer(new BufferDesc((long)_rec.Length * 4, BufferUse.Storage, MemoryKind.Upload, "vk lightmap records"));
+        s.Chart = vk.CreateBuffer(new BufferDesc((long)_rec.Length * 4, BufferUse.Storage | BufferUse.Address, MemoryKind.Upload, "vk lightmap records"));
         if (s.Clamp.IsNull || s.Chart.IsNull)
         {
             s.Failed = true;

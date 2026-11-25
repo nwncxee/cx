@@ -106,7 +106,7 @@ public sealed unsafe partial class AlloyRenderer
     /// prepass writes the depth the colour pass tests LEQUAL against, and <c>invariant gl_Position</c>
     /// guarantees a bit-identical result only for the same sequence of operations: a different association,
     /// or an override that drops the qualifier, punches ULP-sized holes in lit surfaces.</summary>
-    internal const string ClipExpr = "gl_Position = uVP * d.model * vec4(aPos, 1.0);";
+    internal const string ClipExpr = "gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);";
 
     internal static string OwnedVs => ShaderSource.Get("cx_owned_v.glsl");
     /// <summary>The unlit variant: the engine draws these parts with lighting disabled (MatStatic's flat-white

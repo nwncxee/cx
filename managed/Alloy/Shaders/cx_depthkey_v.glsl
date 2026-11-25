@@ -2,6 +2,7 @@
 layout(location = 0) in vec3 aPos;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
+#include "cx_leaf.glsl"
 #include "cx_bone_v.glsl"
 uniform mat4 uVP;
 uniform int uDrawBase;
@@ -13,11 +14,11 @@ void main()
 {
     int id = CxSlot(uDrawBase + gl_DrawID);
     CxDraw d = uDraw[id];
-    vec4 pos = vec4(aPos, 1.0);
+    vec4 pos = vec4(aPos + CxLeafSway(d, aPos), 1.0);   // the swayed leaf is where it is shaded
     int bb = CxBoneBase(d);   // #262: a dissolving skinmesh takes the same arm DepthVs does
     if (bb >= 0) pos = CxSkinMat(bb) * vec4(aPos, 1.0);
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
+    else gl_Position = uVP * d.model * vec4(aPos + CxLeafSway(d, aPos), 1.0);
     // vWorld feeds the APERTURE, and it has to be the position the colour stage discards on or the
     // two passes punch different holes. That was a ponytail note while only rigid parts reached this
     // stage -- a sub-pixel speck at the threshold. #262 let skinmeshes in and a cloak's vertices sit

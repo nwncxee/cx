@@ -360,7 +360,9 @@ internal static unsafe partial class PostStack
         // ponytail: one context and one history, so only the full-window world view; a second or orthographic view
         // draws unsmoothed. Per-view contexts if those views ever matter.
         if (fovY <= 0f || vk.FrameSize != (dw, dh)) return false;
-        if (vk.FsrReady(rw, rh, dw, dh) is string why) { if (why != VkBackend.Settling) Fsr.Refuse(why, log); return false; }
+        if (Fsr.UseDlss && vk.DlssRefusal is string late) Fsr.Refuse(late, log);   // refused at its first dispatch
+        string? why = Fsr.UseDlss ? vk.DlssReady(rw, rh, dw, dh) : vk.FsrReady(rw, rh, dw, dh);
+        if (why != null) { if (why != VkBackend.Settling) Fsr.Refuse(why, log); return false; }
         if (s.FsrOut.IsNull || s.FsrW != dw || s.FsrH != dh)
         {
             vk.Destroy(s.FsrOut);
@@ -382,7 +384,10 @@ internal static unsafe partial class PostStack
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
         s.FsrReset = Fsr.TakeReset();
-        cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
+        // DLSS's jitter sign is its own convention; post.dlssflipx/y turn it if a test shows the picture swimming
+        float jx = PostChain.JitterX * (Fsr.UseDlss && Post.DlssFlipX.V ? -1f : 1f);
+        float jy = PostChain.JitterY * (Fsr.UseDlss && Post.DlssFlipY.V ? -1f : 1f);
+        cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, jx, jy,
                                Fsr.FrameMs(), near, far, fovY, s.FsrReset, AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
         hdr = s.FsrOut;

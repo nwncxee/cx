@@ -62,6 +62,18 @@ internal static partial class DrawRecipe
          : s - 1 == FlowSlot && !ShaderFeatures.ReadsExtraSlots(feat) ? 0
          : AlloyRenderer.SlotBit(s - 1);
 
+    /// <summary>The recipe slot that holds the normal map (<c>CX_SLOT_NORMAL</c>).</summary>
+    private const int NormalRecipeSlot = 1, RoughRecipeSlot = 3, HeightRecipeSlot = 4;
+
+    /// <summary>Does recipe <paramref name="r"/> take a derived normal map: a lit mesh with a plain or PLT diffuse, no content
+    /// pair, not additive, no dangly or morphing motion, and not a head (a face would crater).</summary>
+    private static bool DerivesNormal(int r, NodeDef nd, int feat, bool additive)
+        => Lighting.AiNormals.Boot && !additive && feat == 0 && !string.IsNullOrEmpty(TexName(r, 0))
+           && nd.Kind is not (NodeKind.Dangly or NodeKind.AnimMesh) && !_declWater[r] && !IsHead(_model[r]?.Name);
+
+    /// <summary>A character's head model (<c>p??#_head###</c>): faces keep their own look, whatever armour around them takes.</summary>
+    internal static bool IsHead(string? model) => model != null && model.Contains("_head", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The resref recipe slot <paramref name="s"/> binds: the material's <c>textureN</c> where it
     /// declares one, else the MODEL's own word for that slot -- which past the diffuse only counts on a mesh
     /// that has a tangent frame (<see cref="ModelMaps"/>). The material's spec, roughness, height and
@@ -147,6 +159,8 @@ internal static partial class DrawRecipe
         public int Spilled, TwinRefused, BoxGrown, Retired, Reclassified, RetiredInUse, DoubleRetire;
         /// <summary>Models evicted this period to make room in the table, beside the memory and texture budgets'.</summary>
         public int RoomEvicted;
+        /// <summary>Recipes found as painted water (<see cref="WaterLookOf"/>) and said on cx.log, to a cap.</summary>
+        public int WaterLogged;
         public string BoxGrownFirst;
     }
 
@@ -212,6 +226,29 @@ internal static partial class DrawRecipe
     /// <summary>The material's content-program key (<see cref="GuiContent.Key"/>; 0 = none), which a GUI part draws
     /// through. Re-read with the other late material terms.</summary>
     private static readonly int[] _content = new int[Max];
+    /// <summary>Each recipe's foliage class (<see cref="LeafOf"/>), re-asked with its class in <see cref="TxiWords"/>.</summary>
+    private static readonly byte[] _leaf = new byte[Max];
+    /// <summary>Each recipe's water look (<see cref="WaterLookOf"/>), re-asked with its class in <see cref="TxiWords"/>.</summary>
+    private static readonly bool[] _waterLook = new bool[Max];
+    /// <summary>Why an alpha-tested recipe is no leaf (<see cref="LeafWhyContent"/>, <see cref="LeafWhyOther"/>), for /alloy viz 55.</summary>
+    private static readonly byte[] _leafWhy = new byte[Max];
+    /// <summary>An alpha-tested recipe refused as a leaf: not refused, drawn by a content pair's own stage, or another reason.</summary>
+    internal const byte LeafWhyNone = 0, LeafWhyContent = 1, LeafWhyOther = 2;
+
+    /// <summary>The foliage classes a recipe can carry: none, a thin cut-out card (light passes through it from
+    /// behind), or foliage proper (also shaded as one rounded canopy).</summary>
+    internal const byte LeafNone = 0, LeafThin = 1, LeafFoliage = 2;
+    /// <summary>Name fragments stock and community foliage carries in its texture, node or model name. One vote,
+    /// never the verdict alone: a name is the builder's habit, not a measurement.</summary>
+    private static readonly string[] LeafWords =
+        ["leaf", "leav", "foli", "tree", "bush", "shrub", "hedge", "ivy", "vine", "fern", "frond", "branch", "canop", "willow"];
+    /// <summary>Words that hold a <see cref="LeafWords"/> fragment and name no plant.</summary>
+    private static readonly string[] LeafFalseWords = ["street", "ravine", "divine"];
+    /// <summary>A leafy mean colour: green over red by this much, and over blue by <see cref="LeafGreenOverBlue"/>.
+    /// Measured over the whole diffuse, holes included, so the ratios matter rather than the level.</summary>
+    private const float LeafGreenOverRed = 0.95f, LeafGreenOverBlue = 1.2f, LeafWarmOverBlue = 1.5f;
+    /// <summary>Votes a thin card needs to be foliage: a dangly mesh is two, a leafy name and a leafy colour one each.</summary>
+    private const int LeafVotesDangly = 2, LeafVotesNeeded = 2;
 
     /// <summary>Recipes in use: the slots ever handed out, less the retired ones waiting or free.</summary>
     internal static int Count => _n - _own.Free.Count - _own.Retiring.Count - _own.Cooling.Count;
@@ -313,6 +350,9 @@ internal static partial class DrawRecipe
         // a real range index, which Retire would hand back out from under its owner.
         _range[r] = -1;
         _flags[r] = flags;
+        _leaf[r] = LeafNone;
+        _leafWhy[r] = LeafWhyNone;
+        _waterLook[r] = false;
         return r;
     }
 
@@ -589,11 +629,12 @@ internal static partial class DrawRecipe
                 _declWater[r] = DeclaredWater(mesh);
             }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
-            byte wasCls = _cls[r], wasDst = _dst[r];
+            byte wasCls = _cls[r], wasDst = _dst[r], wasLeaf = _leaf[r], wasWhy = _leafWhy[r];
+            bool wasWater = _waterLook[r];
             RecipeFlag wasFlags = _flags[r];
             TxiWords(r, additive, mesh.TransparencyHint > 0);
             if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
-            if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst) continue;
+            if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst && _leaf[r] == wasLeaf && _leafWhy[r] == wasWhy && _waterLook[r] == wasWater) continue;
             if (_cls[r] != wasCls) _own.Counts.Reclassified++;
             // ...and a content recipe whose state moved names pipeline keys the prewarm has not seen
             if (ShaderFeatures.IsContent(_feat[r])) System.Threading.Interlocked.Increment(ref _own.ContentSerial);
@@ -637,7 +678,121 @@ internal static partial class DrawRecipe
         // ponytail: volumetric's back-then-front is drawn as cull-off, exact under weighted OIT; alloy.oit 0 needs a front-culled draw first
         if (DrawsBackFaces(_own.FaceTerms[r], additive, (AlloyClass)_cls[r])) _flags[r] |= RecipeFlag.TwoSided;
         else _flags[r] &= ~RecipeFlag.TwoSided;
+        _leaf[r] = LeafOf(r);
+        bool wasWater = _waterLook[r];
+        _waterLook[r] = WaterLookOf(r);
+        if (_waterLook[r] && !wasWater && System.Threading.Interlocked.Increment(ref _own.Counts.WaterLogged) <= WaterLogCap)
+            Log?.Always($"DrawRecipe: painted water found -- texture '{TexName(r, 0)}' on {_model[r]?.Name} "
+                        + (WaterFaces(_mesh[r]!) ? "(water material)" : TexRegistry.TxiRipple(Tex(r, 0)) ? "(ripple .txi)" : "(by name)"));
     }
+
+    private const int WaterLogCap = 20;
+
+    /// <summary>Words in a texture or node name that say water.</summary>
+    private static readonly string[] WaterWords = ["water", "pond", "river", "stream", "lake", "swamp", "marsh", "puddle"];
+    private static readonly string[] WaterFalseWords = ["waterfall", "fall"];
+
+    /// <summary>Is recipe <paramref name="r"/> a water surface the engine draws as plain paint: a lit, upward-facing, static
+    /// part whose diffuse is an arturo ripple or whose name says water, and that the water class does not already draw.</summary>
+    private static bool WaterLookOf(int r)
+    {
+        MeshDef? mesh = _mesh[r];
+        ModelDef? model = _model[r];
+        if (mesh == null || model == null || (uint)_node[r] >= (uint)model.Nodes.Length) return false;
+        RecipeFlag f = _flags[r];
+        // a tileset's animated water mesh counts (the layer is per fragment), and a few banked faces do not disqualify it
+        if (_cls[r] == (byte)AlloyClass.Water || (f & RecipeFlag.Lit) == 0 || !MostlyUp(mesh)
+            || (f & (RecipeFlag.Skinned | RecipeFlag.Dangly)) != 0 || ShaderFeatures.IsContent(_feat[r]))
+            return false;
+        return WaterFaces(mesh) || TexRegistry.TxiRipple(Tex(r, 0)) || WaterName(TexName(r, 0)) || WaterName(model.Nodes[_node[r]].Name);
+    }
+
+    /// <summary>surfacemat.2da's water rows: Water 6, Puddles 11, Swamp 12, DeepWater 17. ponytail: stock row ids, as
+    /// TileBuild.Blank's are.</summary>
+    private const ulong WaterSurfaces = (1UL << 6) | (1UL << 11) | (1UL << 12) | (1UL << 17);
+
+    /// <summary>How far a water sheet may rise across its extent, metres, and how level its normals must be: the material
+    /// tags the bed and the shallows under real water too, and those slope.</summary>
+    private const float WaterSheetRise = 0.05f, WaterSheetUp = 0.98f;
+
+    /// <summary>Does at least half of <paramref name="mesh"/>'s faces carry a water material -- the tileset's own word --
+    /// on a level sheet, which is what a water surface is and a riverbed or beach under one is not?</summary>
+    private static bool WaterFaces(MeshDef mesh)
+    {
+        if (mesh.BMax.Z - mesh.BMin.Z > WaterSheetRise) return false;
+        foreach (Vector3 n in mesh.Normals) if (!(n.Z >= WaterSheetUp * n.Length())) return false;
+        int water = 0;
+        foreach (FaceDef f in mesh.Faces)
+            if ((uint)f.Surface < 64 && ((WaterSurfaces >> f.Surface) & 1UL) != 0) water++;
+        return mesh.Faces.Length > 0 && water * 2 >= mesh.Faces.Length;
+    }
+
+    /// <summary>The share of a water mesh's normals that must face up (within <see cref="UpCos"/>).</summary>
+    private const float WaterUpShare = 0.8f;
+
+    private static bool MostlyUp(MeshDef mesh)
+    {
+        int up = 0;
+        foreach (Vector3 n in mesh.Normals) if (n.Z >= UpCos * n.Length()) up++;
+        return mesh.Normals.Length > 0 && up >= WaterUpShare * mesh.Normals.Length;
+    }
+
+    private static bool WaterName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        foreach (string no in WaterFalseWords) if (name.Contains(no, StringComparison.OrdinalIgnoreCase)) return false;
+        foreach (string w in WaterWords) if (name.Contains(w, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>Is recipe <paramref name="r"/> a water surface drawn as paint (water.surfaces)?</summary>
+    internal static bool WaterLook(int r) => (uint)r < Max && _waterLook[r];
+
+    /// <summary>Recipe <paramref name="r"/>'s foliage class, read off what the content already says: no tag, no
+    /// edit to a model or texture. A thin card is a lit, alpha-TESTED part whose diffuse measured as a binary cutout;
+    /// foliage is a thin card that also wins <see cref="LeafVotesNeeded"/> votes (dangly, a leafy name, a leafy
+    /// colour). Creatures are filtered per record (<c>DbWriteLeaf</c>), where the attachment chain is known.</summary>
+    private static byte LeafOf(int r)
+    {
+        _leafWhy[r] = LeafWhyNone;
+        MeshDef? mesh = _mesh[r];
+        ModelDef? model = _model[r];
+        if (mesh == null || model == null || (uint)_node[r] >= (uint)model.Nodes.Length) return LeafNone;
+        if (_cls[r] != (byte)AlloyClass.Cutout) return LeafNone;
+        RecipeFlag f = _flags[r];
+        TexId diffuse = Tex(r, 0);
+        // alpha-TESTED, hard or soft edged: a graded diffuse still draws through the cutout class
+        TexCoverage cov = TexRegistry.Coverage(diffuse);
+        bool refused = cov is not (TexCoverage.Cutout or TexCoverage.Blended)
+                       || (f & RecipeFlag.Lit) == 0 || (f & (RecipeFlag.Wash | RecipeFlag.AnimMesh)) != 0
+                       // a true skin is a body; a dangly node carries Skinned too when rigged, and a tree's leaves are often that
+                       || (f & RecipeFlag.Skinned) != 0 && (f & RecipeFlag.Dangly) == 0
+                       || (model.Classification & HitTest.ClassEffect) != 0;
+        if (ShaderFeatures.IsContent(_feat[r])) { _leafWhy[r] = LeafWhyContent; return LeafNone; }
+        if (refused) { _leafWhy[r] = LeafWhyOther; return LeafNone; }
+        int votes = (f & RecipeFlag.Dangly) != 0 ? LeafVotesDangly : 0;
+        if (LeafName(TexName(r, 0)) || LeafName(model.Nodes[_node[r]].Name) || LeafName(model.Name)) votes++;
+        if (TexRegistry.TryMean(diffuse, out Vector3 m) && LeafHue(m)) votes++;
+        return votes >= LeafVotesNeeded ? LeafFoliage : LeafThin;
+    }
+
+    /// <summary>A leafy mean colour: green, or an autumn red, orange or yellow -- warm well above blue.</summary>
+    private static bool LeafHue(Vector3 m)
+        => m.Y > m.X * LeafGreenOverRed && m.Y > m.Z * LeafGreenOverBlue || MathF.Max(m.X, m.Y) > m.Z * LeafWarmOverBlue;
+
+    /// <summary>Does <paramref name="name"/> carry a foliage word that is not part of a known non-plant word?</summary>
+    private static bool LeafName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        foreach (string no in LeafFalseWords) if (name.Contains(no, StringComparison.OrdinalIgnoreCase)) return false;
+        foreach (string w in LeafWords) if (name.Contains(w, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>Recipe <paramref name="r"/>'s foliage class: <see cref="LeafNone"/>, <see cref="LeafThin"/> or <see cref="LeafFoliage"/>.</summary>
+    internal static byte Leaf(int r) => (uint)r < Max ? _leaf[r] : LeafNone;
+    /// <summary>Why recipe <paramref name="r"/> is no leaf although it is alpha-tested, or <see cref="LeafWhyNone"/>.</summary>
+    internal static byte LeafWhy(int r) => (uint)r < Max ? _leafWhy[r] : LeafWhyNone;
 
     private static int _classSerial = -1;
     private static bool _classWater;
@@ -774,6 +929,17 @@ internal static partial class DrawRecipe
             string name = SlotName(s, mtr, mesh);
             _tex[r * TexSlots + s] = name;
             TexId id = string.IsNullOrEmpty(name) ? default : TexRegistry.Acquire(name, cuts: s == 0 && !additive);
+            // light.ainormals: a map-less slot 1 takes the normal map the registry derives from the diffuse
+            bool derived = s == NormalRecipeSlot && id.IsNull && DerivesNormal(r, nd, feat, additive);
+            if (derived) { id = TexRegistry.Acquire(TexName(r, 0), cell: TexRegistry.NormalCell); mask |= MaskBitOf(s, feat); }
+            // light.relief: its height map beside it, which the lit stage's parallax march reads
+            // light.aimaterial: its roughness map, which the synthesis takes as declared content
+            if (s == RoughRecipeSlot && id.IsNull && Lighting.AiMaterial.Boot && !Tex(r, NormalRecipeSlot).IsNull
+                && string.IsNullOrEmpty(TexName(r, NormalRecipeSlot)) && SlotName(SpecRecipeSlot, mtr, mesh).Length == 0)
+            { id = TexRegistry.Acquire(TexName(r, 0), cell: TexRegistry.RoughCell); mask |= MaskBitOf(s, feat); }
+            if (s == HeightRecipeSlot && id.IsNull && Lighting.AiRelief.Boot && !Tex(r, NormalRecipeSlot).IsNull
+                && string.IsNullOrEmpty(TexName(r, NormalRecipeSlot)))
+            { id = TexRegistry.Acquire(TexName(r, 0), cell: TexRegistry.HeightCell); mask |= MaskBitOf(s, feat); }
             _texId[r * TexSlots + s] = id.Value;
             bool wait = !id.IsNull && !TexRegistry.Resident(id);
             _texWait[r * TexSlots + s] = wait ? (byte)1 : (byte)0;

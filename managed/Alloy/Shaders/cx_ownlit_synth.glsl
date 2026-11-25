@@ -25,6 +25,43 @@ bool CxCoverCut(float coverage, float alpha)
         || CxSolidCut(coverage, alpha);
 }
 
+/// Contact shadow toward the sun: a short march through the prepass depth catches the small occluders (feet, props,
+/// creases) a cascade texel is too coarse for. 1 = clear, 0 = blocked. uVP is the jittered matrix the prepass drew with.
+#define CX_CONTACT_STEPS 12
+float CxContactShadow(vec3 world, vec3 ng, float viewW)
+{
+    vec2 size = vec2(textureSize(uSceneDepth, 0));
+    // interleaved gradient noise: the steps land differently per pixel, and TAA/FSR averages the banding away
+    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    vec3 start = world + ng * (0.02 + viewW * 0.002);   // off the surface, more with distance as depth precision falls
+    for (int i = 0; i < CX_CONTACT_STEPS; i++)
+    {
+        vec4 q = uVP * vec4(start + uAreaDir * (uContact.x * (float(i) + jitter) / float(CX_CONTACT_STEPS)), 1.0);
+        if (q.w <= 0.0) break;
+        vec2 uv = q.xy / q.w * 0.5 + 0.5;
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) break;
+        float scene = CxDepthViewZ(texelFetch(uSceneDepth, ivec2(uv * size), 0).r, uDecalZ);
+        float dz = q.w - scene;
+        if (dz > 0.02 && dz < uContact.y) return 0.0;
+    }
+    return 1.0;
+}
+
+/// A cotangent frame from screen-space derivatives (Mikkelsen), for a mesh with no tangent stream; returns the scale
+/// that normalises T and B. The frame comes out as det * (dP/du, dP/dv), det the screen-space UV determinant -- so
+/// on a mirrored UV island BOTH axes come back negated, and normalizing by a magnitude alone keeps that 180-degree
+/// rotation. The engine never has it: its tangent is dP/du unconditionally (MdlNodeTriMesh::CalculateTangentSpaceBasis,
+/// nm 0x457710, divides the edge combination BY the determinant) and its handedness is sign(det), which SetupTSB
+/// spends on the bitangent alone. Carry the sign here and the two frames agree on every face.
+float CxCotangentFrame(vec3 N, vec3 dp1, vec3 dp2, vec2 du1, vec2 du2, out vec3 T, out vec3 B)
+{
+    vec3 p2 = cross(dp2, N), p1 = cross(N, dp1);
+    T = p2 * du1.x + p1 * du2.x;
+    B = p2 * du1.y + p1 * du2.y;
+    float uvDet = du1.x * du2.y - du1.y * du2.x;
+    return inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-12)) * (uvDet < 0.0 ? -1.0 : 1.0);
+}
+
 /// The colour map at a pixel: two samples a quarter pixel either side on the diagonal, each with a footprint half the
 /// area, so grain finer than a pixel stays steady as the camera moves without softening what one sample resolves.
 vec4 CxColourTap(vec2 uv, vec2 dx, vec2 dy)
@@ -113,6 +150,18 @@ void main()
     float aoSlope = fwidth(gl_FragCoord.z);
     float aaKernel = CxSpecAAKernel(normalize(vNrm));
     vec3 dp1 = dFdx(vWorld), dp2 = dFdy(vWorld);
+    // alloy.tileblend: each tile smoothed its normals over its own triangles only, so two tiles disagree at their shared
+    // edge and the light folds along the grid. Near the line a tile's ground leans toward its true face normal, which
+    // the two sides share wherever the ground itself runs on.
+    if (uTileSeam > 0.0 && uDraw[vDraw].emi.w > 0.5)
+    {
+        vec2 off = vWorld.xy / CX_TILE_M;
+        off = abs(off - floor(off + 0.5)) * CX_TILE_M;
+        vec3 nf = normalize(cross(dp1, dp2));
+        if (dot(nf, N) < 0.0) nf = -nf;
+        float wSeam = uTileSeam * CX_SEAM_LEAN * (1.0 - smoothstep(CX_SEAM_INNER, CX_SEAM_OUTER, min(off.x, off.y)));
+        if (wSeam > 0.0 && nf.z > CX_SEAM_GROUND) N = normalize(mix(N, nf, wSeam));
+    }
     vec2 du1 = dFdx(vUV), du2 = dFdy(vUV);
     CxDraw d = uDraw[vDraw];
 #ifndef CX_CAST
@@ -191,17 +240,7 @@ void main()
         }
         else
         {
-            vec3 p2 = cross(dp2, N), p1 = cross(N, dp1);
-            T = p2 * du1.x + p1 * du2.x;
-            B = p2 * du1.y + p1 * du2.y;
-            // The Mikkelsen frame comes out as det * (dP/du, dP/dv), where det is the screen-space UV
-            // determinant -- so on a mirrored UV island BOTH axes come back negated, and normalizing by
-            // a magnitude alone keeps that 180-degree rotation. The engine never has it: its tangent is
-            // dP/du unconditionally (MdlNodeTriMesh::CalculateTangentSpaceBasis, nm 0x457710, divides the
-            // edge combination BY the determinant) and its handedness is sign(det), which SetupTSB spends
-            // on the bitangent alone. Carry the sign here and the two frames agree on every face.
-            float uvDet = du1.x * du2.y - du1.y * du2.x;
-            inv = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-12)) * (uvDet < 0.0 ? -1.0 : 1.0);
+            inv = CxCotangentFrame(N, dp1, dp2, du1, du2, T, B);
         }
         if ((slots & CX_SLOT_HEIGHT) != 0)
         {
@@ -211,7 +250,7 @@ void main()
             // the gradients carry the bias a textureGrad tap cannot take
             float lodScale = pow(2.0, uLodBias);
             uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1 * lodScale, du2 * lodScale,
-                            vec2(d.amb.w, d.dif.w), CxDisplaceCap(uShaderQuality));
+                            vec2(d.amb.w, d.dif.w != 0.0 ? d.dif.w : uRelief), CxDisplaceCap(uShaderQuality));
 #endif
             // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
@@ -237,6 +276,26 @@ void main()
             // widens the more the flip matters). Which is what the RE says too -- SetupTSB's
             // bitangent works out to +dP/dv, the same axis the frame below builds.
             N = normalize(mat3(T * inv, B * inv, N) * nm);
+        }
+    }
+    // light.detail: a plain lit surface with no map of its own takes a gentle bump from its diffuse's brightness.
+    // Never a cutout (its edges would bump), a PLT or a creature's skin (faces would crater), a content pair, an
+    // env-alpha material or a capture.
+    else if (uSynthDetail > 0.0 && feat == 0 && uAlphaCut < 0.0 && uCapture == 0 && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw))
+    {
+        vec2 texel = 1.0 / vec2(textureSize(uTex, 0));
+        // texels per pixel: the bump fades out as a texel shrinks under a pixel, where it would only shimmer
+        float px = max(length(tapDx / texel), length(tapDy / texel));
+        float k = uSynthDetail * CX_DETAIL_SLOPE * clamp(CX_DETAIL_FADE - px, 0.0, 1.0);
+        if (k > 0.0)
+        {
+            vec3 T, B;
+            float inv = CxCotangentFrame(N, dp1, dp2, du1, du2, T, B);
+            const vec3 lw = vec3(0.2126, 0.7152, 0.0722);
+            float h0 = dot(textureGrad(uTex, uv, tapDx, tapDy).rgb, lw);
+            float hu = dot(textureGrad(uTex, uv + vec2(texel.x, 0.0), tapDx, tapDy).rgb, lw);
+            float hv = dot(textureGrad(uTex, uv + vec2(0.0, texel.y), tapDx, tapDy).rgb, lw);
+            N = normalize(mat3(T * inv, B * inv, N) * normalize(vec3((h0 - hu) * k, (h0 - hv) * k, 1.0)));
         }
     }
     // inc_material.shd:312: the surface fade every light takes (cx_lightfrag), on any surface of an _nm stage, which
@@ -296,8 +355,20 @@ void main()
     float sunNdl = CxWrap(dot(N, uAreaDir), uWrapN);
     // the wrapped value, not the raw one -- a fragment the wrap has just lit must still be able to
     // be in shadow, or the band the wrap opens up glows through every caster
-    float sunVis = (slots & CX_SLOT_NOSHADOW) != 0 ? 1.0 : CxSunShadow(vWorld, N, sunNdl, sunRaw);
+    float rtSun = 1.0;
+#ifdef CX_RT
+    // shadow.raytrace: rays answer for the static world; the movers' map stays for what the scene does not hold
+    if (uRtShadow.x > 0.0 && (uRtA.x != 0u || uRtA.y != 0u) && sunNdl > 0.0 && (slots & CX_SLOT_NOSHADOW) == 0)
+    {
+        rtSun = CxRtSunVis(vWorld, Ng, uAreaDir, fract(CxShadowNoise(vWorld) + uLocalPcss.y));
+        cxSunStaticW = 0.0;
+    }
+#endif
+    float sunVis = (slots & CX_SLOT_NOSHADOW) != 0 ? 1.0 : CxSunShadow(vWorld, N, sunNdl, sunRaw) * rtSun;
     if ((slots & CX_SLOT_NOSHADOW) != 0) cxRecvShadow = 0.0;
+    // cut-out cards are skipped: leaf over leaf in the prepass would speckle every canopy
+    if (uContact.x > 0.0 && uCapture == 0 && uAlphaCut < 0.0 && sunNdl > 0.0 && sunVis > 0.0 && (slots & CX_SLOT_NOSHADOW) == 0)
+        sunVis *= CxContactShadow(vWorld, Ng, vDepth);
     // 3 = sun visibility alone: white lit, black shadowed. A frame that looks unshadowed reads here
     //     as "the cascades are empty" or "nothing selected a cascade", which the composite cannot say.
     if (uViz == 3) { frag = vec4(vec3(sunVis), 1.0); return; }

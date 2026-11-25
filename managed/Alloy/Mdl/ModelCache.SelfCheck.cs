@@ -107,7 +107,7 @@ public static partial class ModelCache
             _source = had;
         }
         if (check.Ok) log.Info("ModelCache.SelfCheck: passed");
-        return check.Ok;
+        return check.Ok & MeshSmooth.SelfCheck(log);
     }
 
     private static void Run(Checker check, ExtenderLog log, Action<ModelDef>? hadEvict)

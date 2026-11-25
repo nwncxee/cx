@@ -27,6 +27,7 @@ public sealed unsafe partial class AlloyRenderer
         if ((uint)b < (uint)_boneTop && _boneOwner[b] == i) FreeBoneSlot(b);
         _oBone[i] = -1;
         SetCastOk(i, false);   // #328: a vacated slot casts nothing, and the shadow side re-collects on it
+        _rtOk[i] = false;
         LightmapBake.Vacate(i);   // #674: its bake record reads unbaked
         _ownLive--;
         _freeSlots[_freeCount++] = i;

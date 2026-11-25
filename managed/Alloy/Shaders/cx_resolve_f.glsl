@@ -25,6 +25,8 @@ uniform float uExposure;  // scene-referred gain before the tonemap; 1 = identit
 uniform float uAcesMix;   // mode 2 only: ACES mixed against the shoulder, in linear; 1 = full ACES
 uniform float uDither;   // one LSB of the output target, or 0
 uniform int uViz;        // 0 = the frame; 1 = bloom only; 2 = HDR only; 3 = bloom x20; 4 = motion vectors
+uniform float uContrast;   // post.contrast: the player's grade after the tonemap; 1 = identity
+uniform float uSaturation; // post.saturation: likewise; 1 = identity, 0 = grey
 // A native stage's overlay (cx_overlay): display-linear light added over sky and scene alike -- after the grade,
 // so a lens ghost crossing a ridgeline is one ghost and not two exposures of it.
 uniform sampler2D uOverlay;
@@ -94,6 +96,10 @@ void main()
     c += b;
     c *= uExposure;
     c = CxTonemap(c, uMode, uKnee, uAcesMix);
+    // the player's grade, skipped at its neutral values so the default frame is bit-identical
+    if (uSaturation != 1.0) c = max(mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, uSaturation), vec3(0.0));
+    // contrast pivots on 18% grey in log2, so mid-tones hold and the ends spread or gather
+    if (uContrast != 1.0) c = min(exp2((log2(max(c, vec3(1e-5))) - log2(0.18)) * uContrast + log2(0.18)), vec3(1.0));
     c += overlay;
     vec3 outc = CxEncode(c);
     outc = CxGlowOver(outc, glow);

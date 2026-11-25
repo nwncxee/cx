@@ -94,6 +94,7 @@ internal sealed unsafe partial class VkBackend
     internal string? FsrReady(int maxW, int maxH, int displayW, int displayH)
     {
         FsrState f = _fsr;
+        _dlss.Active = false;
         if (f.Refused != null) return f.Refused;
         if (f.Ctx != 0 && f.MaxW == maxW && f.MaxH == maxH && f.DisplayW == displayW && f.DisplayH == displayH) { f.Settle.Clear(); return null; }
         if (f.Ctx != 0)
@@ -133,6 +134,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (_inPass) return Fault("Upscale inside a render pass");
         if (_onAsync) return Fault("Upscale on the async compute queue");
+        if (_dlss.Active) return UpscaleDlss(c);
         if (_fsr.Ctx == 0) return Fault("Upscale with no FSR context -- FsrReady was not asked, or refused");
         if (!_images.TryGet(c.Color.Value, out VkImg color) || !_images.TryGet(c.Depth.Value, out VkImg depth)
             || !_images.TryGet(c.Motion.Value, out VkImg motion) || !_images.TryGet(c.Output.Value, out VkImg output))

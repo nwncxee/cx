@@ -261,6 +261,7 @@ internal static unsafe partial class LightmapBake
         h = Mix(h, Q(Lighting.Hot.V, 1e-3f)); h = Mix(h, Q(Lighting.HotSize.V, 1e-3f));
         h = Mix(h, Q(Lighting.Wrap.V, 1e-3f)); h = Mix(h, Q(Lighting.WrapNdl.V, 1e-3f)); h = Mix(h, Q(Lighting.Sss.V, 1e-3f));
         h = Mix(h, Q(AlloyLights.ReachUniform, 1e-3f));
+        h = Mix(h, Q(Lightmap.Bounce.V, 1e-3f));
         return h;
     }
 

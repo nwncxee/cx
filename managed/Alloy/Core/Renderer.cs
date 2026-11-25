@@ -12,7 +12,8 @@ namespace CX.Alloy;
 internal static class Renderer
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled;
+    internal static readonly Knob<bool> Enabled, UpscaleAi, Smooth, RayTrace;
+    internal static readonly Knob<float> TileBlend;
     /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028) and no engine
     /// <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla, whole: a refused Vulkan probe or a seam that stood
     /// down. The seam initializes before every other service, so they all read its verdict.</summary>
@@ -54,7 +55,7 @@ internal static class Renderer
             log.Always($"Renderer: Vulkan cannot start ({why}) -- Alloy stands down and the game runs vanilla this session");
         return why == null;
     }
-    internal static readonly Knob<float> Lod;
+    internal static readonly Knob<float> Lod, UpscaleProtect;
     /// <summary>How many layers of itself a see-through creature draws as, under the list resolve that composites it once.</summary>
     internal static readonly Knob<float> Ghost;
     internal static readonly Knob<string> Highlight, DrawHooks, DumpTex;
@@ -69,7 +70,7 @@ internal static class Renderer
     internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
                                         Gui, Movie, OneQueue;
-    internal static readonly Knob<int> Border, Oit, TexCache, BcnDrip, TexDelete, MaxElements, RasterRead,
+    internal static readonly Knob<int> Upscale, UpscaleFactor, UpscaleModel, Border, Oit, TexCache, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     /// <summary>MiB the device-local heaps are capped at, as a smaller card would be; 0 caps nothing.</summary>
     internal static readonly Knob<int> VramCap;
@@ -158,6 +159,41 @@ internal static class Renderer
                           help: "Tiles drawn past the area edge so the horizon is not empty; the stock game draws 5.");
         Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1 }, 1, new[] { "sorted", "weighted" }, tier: Tier.ChatOnly,
                          help: "How overlapping transparent surfaces are combined.", changed: AlloyRenderer.InvalidateRecords);
+        Upscale = G.Dropdown("upscale", "Upscale small textures", new[] { 0, 256, 512, 1024 }, 512,
+                             new[] { "off", "up to 256 px", "up to 512 px", "up to 1024 px" }, tier: Tier.Advanced,
+                             changed: CX.Alloy.Db.TexRegistry.UpscaleChanged,
+                             help: "Model textures this size or smaller are rebuilt at twice the resolution as they load, edges kept crisp "
+                                 + "and lightly sharpened, so stock textures hold up close. Each one takes four times the video memory, "
+                                 + "and loading takes a little longer. Changes apply at once, so it doubles as a before-and-after switch.");
+        UpscaleAi = G.Toggle("upscaleai", "AI texture upscaling", true, Tier.Advanced, changed: CX.Alloy.Db.TexRegistry.UpscaleChanged,
+                             help: "Upscale small textures with an AI model on the graphics card (Real-ESRGAN, through DirectML), which "
+                                 + "rebuilds edges and fine detail far better than the classic way. Each texture is done once, in the "
+                                 + "background, and kept on disk. Needs a Direct3D 12 GPU; elsewhere the classic way is used.");
+        UpscaleFactor = G.Dropdown("upscalefactor", "AI upscale size", new[] { 2, 4 }, 4, new[] { "2x", "4x" }, tier: Tier.Advanced,
+                                   changed: CX.Alloy.Db.TexRegistry.UpscaleChanged,
+                                   help: "How far the AI enlarges a texture of 512 px or less. 4x is the model's own scale and the sharpest, "
+                                       + "for sixteen times that texture's memory; larger textures and the classic way always take 2x.");
+        UpscaleModel = G.Dropdown("upscalemodel", "AI upscale model", new[] { 0, 1 }, 1, new[] { "compact", "full" }, tier: Tier.Advanced,
+                                  changed: CX.Alloy.Db.TexRegistry.UpscaleChanged,
+                                  help: "Which AI model rebuilds the textures. Full rebuilds fine surface grain -- stone, weave, wood -- and takes "
+                                      + "about ten times the graphics card's time per texture, once; compact is quick and smooths fine texture "
+                                      + "into clean shapes.");
+        UpscaleProtect = G.Slider("upscaleprotect", "AI upscale: keep smooth areas smooth", 0f, 1f, 0.05f, 1f, tier: Tier.Advanced,
+                                  changed: CX.Alloy.Db.TexRegistry.UpscaleChanged,
+                                  help: "How far flat gradients keep the classic upscale, where an AI model can invent ripples. 0 takes the "
+                                      + "AI everywhere, sharpest on soft textures; 1 protects every smooth area.");
+        RayTrace = G.Toggle("raytrace", "Ray-traced reflections", true, Tier.Advanced, Effect.Restart,
+                            help: "On a graphics card with ray tracing (NVIDIA RTX, recent AMD or Intel), reflections in water, wet ground "
+                                + "and polished surfaces show what is really around them -- off screen and behind the camera included -- "
+                                + "where screen-space reflection runs out. Elsewhere the reflections stay as they are.");
+        TileBlend = G.Slider("tileblend", "Blend ground across tile edges", 0f, 1f, 0.05f, 1f, tier: Tier.Advanced,
+                             help: "Where two tiles' ground textures meet on the area's 10 m grid, they blend into each other over a "
+                                 + "ragged band instead of meeting in a ruled line. Ground only: walls, props and figures keep their edges. "
+                                 + "Needs Screen-space reflections on.");
+        Smooth = G.Toggle("smooth", "Smooth rounded models", true, Tier.Advanced, Effect.Restart,
+                          help: "Low-polygon rounded shapes on tiles and placeables -- columns, barrels, rocks, arches -- are curved "
+                              + "out between their corners as they load, so their outlines stop looking faceted. Hard edges stay sharp. "
+                              + "Armour and clothing parts round off too; heads and creatures are left as they are.");
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs.State.SpliceStale = true,

@@ -136,6 +136,15 @@
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxthunk_win.obj" />
     <!-- CX-394: FSR 3.1 upscaling, AMD's upscaler and Vulkan backend behind native/ffx/cxfsr.cpp's C API. -->
     <DirectPInvoke Include="cxfsr" />
+    <!-- The AI texture upscale's loader, Windows only, where build-win.sh built it; onnxruntime.dll itself loads at runtime. -->
+    <DirectPInvoke Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxai.lib')" Include="cxai" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxai.lib')" Include="$(MSBuildThisFileDirectory)../build/cxai.lib" />
+    <!-- DLSS, Windows only and only where build-win.sh built it from NVIDIA's SDK; else the pick stands down to FSR. -->
+    <DirectPInvoke Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxdlss.lib')" Include="cxdlss" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxdlss.lib')" Include="$(MSBuildThisFileDirectory)../build/cxdlss.lib" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxdlss.lib')" Include="libcpmt.lib" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxdlss.lib')" Include="advapi32.lib" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(MSBuildThisFileDirectory)../build/cxdlss.lib')" Include="user32.lib" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxfsr.a" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxfsr.lib" />
     <!-- The pinned-OpenAL redirect lives in the proxy half (native/bootstrap_win.c); Windows only. -->

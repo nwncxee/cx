@@ -106,6 +106,13 @@ internal static unsafe class Programs
         L.LmPages = LooseBlock.Loc("uLmPages"); L.LmMovers = LooseBlock.Loc("uLmMovers");
         L.Ssao = LooseBlock.Loc("uSsao"); L.SsaoOn = LooseBlock.Loc("uSsaoOn");
         L.SsaoHalf = LooseBlock.Loc("uSsaoHalf");
+        L.Contact = LooseBlock.Loc("uContact");
+        L.SynthDetail = LooseBlock.Loc("uSynthDetail");
+        L.Rim = LooseBlock.Loc("uRim");
+        L.Relief = LooseBlock.Loc("uRelief");
+        L.TileSeam = LooseBlock.Loc("uTileSeam");
+        L.WaterSurf = LooseBlock.Loc("uWaterSurf");
+        L.Rt = RtLocs.Of(LooseBlock.Loc);
         L.LightOcc = LooseBlock.Loc("uLightOcc");
         L.Material = LooseBlock.Loc("uMaterial");
         L.AoDirect = LooseBlock.Loc("uAoDirect"); L.AoCutout = LooseBlock.Loc("uAoCutout"); L.AoMapOff = LooseBlock.Loc("uAoMapOff");
@@ -142,6 +149,8 @@ internal static unsafe class Programs
         FogSkyColor = LooseBlock.Loc("uFogSkyColor"),
         FogSun = LooseBlock.Loc("uFogSun"),
         FogSunColor = LooseBlock.Loc("uFogSunColor"),
+        FogHaze = LooseBlock.Loc("uFogHaze"),
+        FogHazeColor = LooseBlock.Loc("uFogHazeColor"),
         FogOrigin = LooseBlock.Loc("uFogOrigin"),
         VFog = LooseBlock.Loc("uVFog"),
         VFogVp = LooseBlock.Loc("uVFogVp"),

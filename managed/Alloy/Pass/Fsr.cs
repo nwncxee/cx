@@ -15,7 +15,7 @@ internal static partial class Fsr
     /// <summary>What FSR holds across frames: the session's refusal, a pending history reset and the last size said. Replaced whole on context loss.</summary>
     private sealed class FsrState
     {
-        public string? Refused;
+        public string? Refused, DlssRefused;
         public bool Reset = true, ScaleSaid;
         public (int, int, int, int) Said;
         public (int RenderW, int DisplayW, int Count) Phases;
@@ -25,7 +25,10 @@ internal static partial class Fsr
 
     /// <summary>FSR draws the world this frame: <c>post.aa</c> picks it, the render scale is at most 1, and nothing
     /// refused it.</summary>
-    internal static bool On => Post.Aa.V == Post.AaFsr && _s.Refused == null && Post.Scale.V <= 1f;
+    internal static bool On => Post.Upscaler && _s.Refused == null && Post.Scale.V <= 1f;
+
+    /// <summary>DLSS is picked and nothing refused it this session; else the upscale is FSR's.</summary>
+    internal static bool UseDlss => Post.Aa.V == Post.AaDlss && _s.DlssRefused == null;
 
     /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/> frame on a <paramref name="displayW"/>
     /// display, as its library counts it, asked once per size.</summary>
@@ -38,7 +41,10 @@ internal static partial class Fsr
 
     /// <summary>The cx.log line naming an upscale from <paramref name="rw"/> x <paramref name="rh"/> to
     /// <paramref name="dw"/> x <paramref name="dh"/>.</summary>
-    internal static string Line(int rw, int rh, int dw, int dh) => $"PostStack: FSR 3.1 upscales the world from {rw}x{rh} to {dw}x{dh}";
+    internal static string Line(int rw, int rh, int dw, int dh) => $"PostStack: {Name} upscales the world from {rw}x{rh} to {dw}x{dh}";
+
+    /// <summary>The upscaler drawing: DLSS where it is picked and standing, else FSR 3.1.</summary>
+    private static string Name => UseDlss ? "DLSS" : "FSR 3.1";
 
     /// <summary>Say the upscale once per size, and once that a render scale above 1 leaves FSR off.</summary>
     internal static void Note(int rw, int rh, int dw, int dh, ExtenderLog log)
@@ -51,7 +57,7 @@ internal static partial class Fsr
     /// <summary><c>post.aa</c> picks FSR and a render scale above 1 keeps it off: said once a session.</summary>
     internal static void NoteScale(ExtenderLog log)
     {
-        if (Post.Aa.V != Post.AaFsr || Post.Scale.V <= 1f || _s.ScaleSaid) return;
+        if (!Post.Upscaler || Post.Scale.V <= 1f || _s.ScaleSaid) return;
         _s.ScaleSaid = true;
         log.Always($"PostStack: FSR 3.1 is picked but the render scale is {Post.Scale.V:F2}; FSR only upscales, so TAA draws while it is above 1");
     }
@@ -60,6 +66,14 @@ internal static partial class Fsr
     /// the frame goes back to TAA.</summary>
     internal static void Refuse(string why, ExtenderLog log)
     {
+        if (UseDlss)
+        {
+            // DLSS stands down to FSR, not to TAA: the frame keeps an upscaler
+            _s.DlssRefused = why;
+            log.Always($"PostStack: DLSS is OFF for the session -- {why}. FSR 3.1 draws instead.");
+            _s.Reset = true;
+            return;
+        }
         if (_s.Refused != null) return;
         _s.Refused = why;
         log.Always($"PostStack: FSR 3.1 is OFF for the session -- {why}. The frame goes back to TAA.");
@@ -67,7 +81,10 @@ internal static partial class Fsr
     }
 
     /// <summary>The <c>post</c> panel's line: why FSR is off for the session, or empty.</summary>
-    internal static string PanelLine() => _s.Refused == null ? "" : $"FSR 3.1 is off for this session: {_s.Refused}.";
+    internal static string PanelLine()
+        => _s.Refused != null ? $"FSR 3.1 is off for this session: {_s.Refused}."
+         : Post.Aa.V == Post.AaDlss && _s.DlssRefused != null ? $"DLSS is off for this session ({_s.DlssRefused}); FSR 3.1 draws instead."
+         : "";
 
     /// <summary>True once after the world edge: the next dispatch starts FSR's history over.</summary>
     internal static bool TakeReset()

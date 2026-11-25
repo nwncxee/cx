@@ -14,6 +14,7 @@ internal static class Lightmap
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<int> Density, Disk, Vram, Window, Near, Tiers, HoldSeconds;
+    internal static readonly Knob<float> Bounce;
     internal static readonly Knob<bool> Movers, MoverTaps;
 
     static Lightmap()
@@ -38,6 +39,10 @@ internal static class Lightmap
                          changed: LightmapBake.RekeyAll);
         HoldSeconds = G.Slider("hold", "Loading hold", 0, 40, 1, 20, "s", Tier.ChatOnly,
                                help: "Seconds the loading screen may wait for the area's baked lighting before Escape is offered to skip ahead; the bake then finishes in the background. 0 never waits.");
+        Bounce = G.Slider("bounce", "Bounce light", 0f, 0.5f, 0.05f, 0.15f,
+                          help: "Light from placed lamps and torches bounces once off nearby surfaces, softly filling the shadows and "
+                              + "corners inside each light's reach. Never reaches past it, so dark areas stay dark. 0 is off; a change re-bakes the area.",
+                          changed: LightmapBake.RekeyAll);
         Movers = G.Toggle("movers", "Creature shadows from baked lights", true, Tier.Advanced,
                           help: "A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper: baked surfaces take no shadow from creatures under static lights.");
         MoverTaps = G.Toggle("movertaps", "movertaps", true, Tier.ChatOnly,
