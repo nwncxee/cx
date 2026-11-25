@@ -1,8 +1,8 @@
 //::///////////////////////////////////////////////
 //:: inc_take -- the Take all showcases' module (invtakeall, invtakefull; tools/live/inventory_takeall_regression.sh). The
-//:: PC's backpack is emptied, or filled with rings when nFill is set, a chest holding five small items stands 2 m ahead,
+//:: PC's backpack is emptied, or filled to its last cell with rings (6 pages of 10x6) when nFill is set, a chest holding five small items stands 2 m ahead,
 //:: and 8 s in the PC opens it. Every change of what the chest and the backpack hold is marked, so the grade reads the
-//:: server's own record of each take.
+//:: server's own record of each take; each count mark carries its tick, so a sorted marker file keeps their order.
 //:://////////////////////////////////////////////
 
 void Mark(string sStep)
@@ -22,7 +22,7 @@ void Watch(object oPC, object oChest, int nChest, int nPack, int nTick)
 {
     if (!GetIsObjectValid(oPC) || !GetIsObjectValid(oChest)) return;
     int c = Count(oChest), p = Count(oPC);
-    if (c != nChest || p != nPack) Mark("count chest=" + IntToString(c) + " pack=" + IntToString(p));
+    if (c != nChest || p != nPack) Mark("count t=" + GetStringRight("000" + IntToString(nTick), 4) + " chest=" + IntToString(c) + " pack=" + IntToString(p));
     if (nTick >= 240) { Mark("final chest=" + IntToString(c) + " pack=" + IntToString(p)); return; }
     DelayCommand(0.25, Watch(oPC, oChest, c, p, nTick + 1));
 }
@@ -55,7 +55,7 @@ void Open(object oPC)
 void Fill(object oPC)
 {
     int i;
-    for (i = 0; i < 300; i++) CreateItemOnObject("nw_it_mring001", oPC, 1, "CXSHOW_fill");
+    for (i = 0; i < 360; i++) CreateItemOnObject("nw_it_mring001", oPC, 1, "CXSHOW_fill");
     Mark("filled pack=" + IntToString(Count(oPC)));
 }
 
