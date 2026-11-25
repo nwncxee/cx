@@ -200,7 +200,7 @@ internal static partial class AirScene
     }
 
     /// <summary>A creature that stepped from <paramref name="was"/> to <paramref name="now"/> clears the dust at its feet,
-    /// which closes back over its path. Hot: allocates nothing; at Low and with the air off it parts nothing.</summary>
+    /// which closes back over its path, and swirls the motes it passes through. Hot: allocates nothing; at Low and with the air off it parts nothing.</summary>
     internal static void Part(Vector3 was, Vector3 now)
     {
         AirSceneState s = _s;
@@ -217,6 +217,7 @@ internal static partial class AirScene
                 if (reach > 0f) s.Gap[c] = MathF.Max(s.Gap[c], Parted * reach);
             }
         s.Gen++;
+        Stir(s, was, now);
     }
 
     /// <summary>Send a front along <paramref name="dir"/> for a change of <paramref name="change"/> metres a second.</summary>

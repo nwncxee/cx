@@ -33,6 +33,16 @@ internal static partial class AirScene
     /// mote waits on top of that.</summary>
     private const float CalmWait = 2f, MoteWait = 2f;
 
+    /// <summary>How long a swirl or a throw takes to die away, seconds.</summary>
+    private const float KickTau = 2f;
+
+    /// <summary>The reach and height of a walker's wake through the motes, metres, and how fast it swirls the nearest, metres a second.</summary>
+    private const float WakeRadius = 1.5f, WakeHeight = 2.2f, WakeSpeed = 2.5f;
+
+    /// <summary>How fast a wake's eddy turns a swirled mote, radians a second, so it circles about where it was rather than
+    /// being swept along.</summary>
+    private const float EddyTurn = 3f;
+
     /// <summary>Does the area's look hang motes?</summary>
     private static bool Hangs(AirSceneState s) => (s.Look.Layers(s.Night) & AirLayer.Motes) != 0;
 
@@ -71,7 +81,8 @@ internal static partial class AirScene
         float lo = m.LampFloor[l] + MoteFloorGap;
         if (p.Z < lo) p.Z = MathF.Min(2f * lo - p.Z, at.Z + core);
         m.Pos[i] = p;
-        m.Vel[i] = Vector3.Zero;
+        m.Vel[i] = m.Kick[i] = Vector3.Zero;
+        m.Spin[i] = 0f;
         m.Phase[i] = MathF.Tau * new Vector3(Hash(key, 3), Hash(key, 4), Hash(key, 5));
         m.Rate[i] = new Vector3(Rate(Hash(key, 6)), Rate(Hash(key, 7)), Rate(Hash(key, 8)));
         m.Dark[i] = false;
@@ -99,7 +110,7 @@ internal static partial class AirScene
         AirFront f = s.Front;
         m.Calm = f.Live ? 0f : m.Calm + dt;
         Vector3 air = new(s.Drift * MoteShare + (f.Live ? f.Dir * (RacePerSpeed * f.Strength) : Vector2.Zero), 0f);
-        float follow = 1f - MathF.Exp(-dt / (f.Live ? RaceTau : FollowTau));
+        float follow = 1f - MathF.Exp(-dt / (f.Live ? RaceTau : FollowTau)), fade = MathF.Exp(-dt / KickTau);
         int n = m.Lamps * PerLamp;
         for (int i = 0; i < n; i++)
         {
@@ -111,10 +122,42 @@ internal static partial class AirScene
             Vector3 w = m.Rate[i] * m.Clock + m.Phase[i];
             Vector3 own = Wander * new Vector3(MathF.Sin(w.X), MathF.Sin(w.Y), 0.5f * MathF.Sin(w.Z));
             m.Vel[i] += (air + own - m.Vel[i]) * follow;
-            m.Pos[i] += m.Vel[i] * dt;
+            m.Kick[i] = Turn(m.Kick[i], m.Spin[i] * dt) * fade;
+            m.Pos[i] += (m.Vel[i] + m.Kick[i]) * dt;
             int l = i / PerLamp;
             if (Vector3.DistanceSquared(m.Pos[i], m.LampAt[l]) > m.LampReach[l] * m.LampReach[l]) m.Dark[i] = true;
         }
+    }
+
+    /// <summary>A walker who stepped from <paramref name="was"/> to <paramref name="now"/> swirls the motes about it, round
+    /// its sides and up, the nearest fastest; a mote keeps the stronger of this and the swirl it had.</summary>
+    private static void Stir(AirSceneState s, Vector3 was, Vector3 now)
+    {
+        AirMotes m = s.Motes;
+        Vector2 step = new(now.X - was.X, now.Y - was.Y);
+        if (m.Lamps == 0 || !Hangs(s) || step == Vector2.Zero) return;
+        Vector2 ahead = Vector2.Normalize(step), side = new(-ahead.Y, ahead.X);
+        int n = m.Lamps * PerLamp;
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 p = m.Pos[i];
+            Vector2 off = new(p.X - now.X, p.Y - now.Y);
+            float d = off.Length();
+            if (m.Dark[i] || d >= WakeRadius || p.Z < now.Z || p.Z > now.Z + WakeHeight) continue;
+            Vector2 round = Vector2.Dot(off, side) < 0f ? -side : side;
+            Vector3 swirl = Vector3.Normalize(new Vector3(0.7f * ahead + 0.5f * round, 0.3f)) * (WakeSpeed * (1f - 0.5f * d / WakeRadius));
+            if (swirl.LengthSquared() <= m.Kick[i].LengthSquared()) continue;
+            m.Kick[i] = swirl;
+            m.Spin[i] = round == side ? EddyTurn : -EddyTurn;
+        }
+    }
+
+    /// <summary><paramref name="v"/> turned <paramref name="by"/> radians about the vertical.</summary>
+    private static Vector3 Turn(Vector3 v, float by)
+    {
+        if (by == 0f) return v;
+        (float sin, float cos) = MathF.SinCos(by);
+        return new Vector3(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos, v.Z);
     }
 
     /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, in a fixed order while each
@@ -126,7 +169,7 @@ internal static partial class AirScene
         AirMotes m = s.Motes;
         int n = 0;
         for (int i = 0; i < m.Lamps * PerLamp; i++)
-            if (!m.Dark[i]) m.Shown[n++] = new AirParticle(m.Pos[i], m.Vel[i]);
+            if (!m.Dark[i]) m.Shown[n++] = new AirParticle(m.Pos[i], m.Vel[i] + m.Kick[i]);
         return m.Shown.AsSpan(0, n);
     }
 }
@@ -140,9 +183,11 @@ internal sealed class AirMotes
     public readonly float[] LampFloor = new float[AirScene.MaxLamps];
     public int Lamps;
 
-    /// <summary>Per mote: where it is, how it moves, its path's phase and turn, and whether it has left the light.</summary>
+    /// <summary>Per mote: where it is, how it drifts, the swirl or throw on top and the eddy turning it, its path's phase and turn, and whether it has left the light.</summary>
     public readonly Vector3[] Pos = new Vector3[AirScene.MaxMotes];
     public readonly Vector3[] Vel = new Vector3[AirScene.MaxMotes];
+    public readonly Vector3[] Kick = new Vector3[AirScene.MaxMotes];
+    public readonly float[] Spin = new float[AirScene.MaxMotes];
     public readonly Vector3[] Phase = new Vector3[AirScene.MaxMotes];
     public readonly Vector3[] Rate = new Vector3[AirScene.MaxMotes];
     public readonly bool[] Dark = new bool[AirScene.MaxMotes];
