@@ -123,7 +123,7 @@ bash tools/ffx/build-lib.sh
 # checked in because the Windows builds compile it without running python.
 python3 tools/engine/views.py
 
-# CX-192: every rule in CLAUDE.md that a script can check is a gate under tools/gates/ (after views.py: the
+# CX-192: every rule a script can check is a gate under tools/gates/ (after views.py: the
 # engine-views gate reads the generated members). CI and the Claude Code hook run the same runner.
 # --no-gates: the release build, whose tagged tree already passed them on its pull request, and the pull-request
 # build, whose gates and approved examples run in jobs of their own beside it.

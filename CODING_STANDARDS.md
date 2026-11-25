@@ -1,7 +1,7 @@
 # Coding standards
 
 The rules every change to `managed/` follows. A rule the compiler can check is a build error (ADR 0031), and the
-rest are checked in review. `CLAUDE.md` holds the workflow, the comment rule, the engine-memory rule, the Windows
+rest are checked in review. `CLAUDE.md` holds the workflow, the hard rules and the Windows
 rule and the gates.
 
 ## A bad pattern fails the build
@@ -90,3 +90,17 @@ rule and the gates.
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).
+
+## Comments and file size
+
+
+Every declaration that needs explaining gets a concise XML `<summary>` (one--three
+lines). No prose banners. Inside method bodies, no comments EXCEPT a single terse
+line where omitting it is a footgun -- a magic offset/opcode, a non-obvious ABI
+requirement, or an ordering hazard. Prefer promoting a magic number to a named
+`const` with an XML doc over an inline comment. `ponytail:` markers are allowed and
+name a known ceiling + its upgrade path. A doc comment states the current contract, never its
+history or a ticket number; `tools/gates/comments.sh` refuses a `///` block over 4 text lines or citing a ticket.
+
+Past 1,500 lines a `.cs` file is split by responsibility -- `partial` files or sibling
+classes, one job each, the way `AlloyRenderer`'s are; `tools/gates/file-size.sh` refuses otherwise.

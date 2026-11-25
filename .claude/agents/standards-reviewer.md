@@ -1,6 +1,6 @@
 ---
 name: standards-reviewer
-description: "Reviews a diff against cx law -- CODING_STANDARDS.md, CLAUDE.md, managed/BannedSymbols.txt and docs/adr/. Use for the standards axis of any code review of this repository: a branch, a PR, uncommitted work, or a pre-merge check."
+description: "Reviews a diff against cx law -- CODING_STANDARDS.md, CLAUDE.md, ARCHITECTURE.md, DESIGN.md, managed/BannedSymbols.txt and docs/adr/. Use for the standards axis of any code review of this repository: a branch, a PR, uncommitted work, or a pre-merge check."
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -11,7 +11,7 @@ for uncommitted work, `git diff HEAD`.
 
 ## Step 1 -- read the law
 
-Read `CODING_STANDARDS.md` and `CLAUDE.md` whole, `managed/BannedSymbols.txt`, and every ADR the changed files or
+Read `CODING_STANDARDS.md`, `CLAUDE.md`, `ARCHITECTURE.md` and `DESIGN.md` whole, `managed/BannedSymbols.txt`, and every ADR the changed files or
 the standards name. Read them each run; they change. The rules live there, not here.
 
 ## Step 2 -- walk the diff

@@ -1103,7 +1103,7 @@ Each step ships on its own and leaves the client working.
 4. **The panel:** window, three columns, row kinds, master/parent/Advanced/reset/markers,
    `/settings` door, panel face. Delete the three per-feature panels and gears.
 5. **The gear:** the three live checks, the yield exemption, the sprite, the anchor.
-6. **Docs:** CLAUDE.md "Tuning knobs" (already points here), `docs/agents`, `/knobs` mention in
+6. **Docs:** DESIGN.md "Tuning knobs" (already points here), `docs/agents`, `/knobs` mention in
    README if any.
 
 ## 8. Deleted
