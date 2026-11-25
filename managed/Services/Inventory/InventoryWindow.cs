@@ -331,6 +331,15 @@ internal sealed partial class InventoryWindow
     internal static bool SellsOn(in InvAction drop, bool overStoreBox)
         => overStoreBox && drop.Mask == 0 && drop.Other == 0;
 
+    /// <summary><c>CGuiBarterInvBox::GetGuiObjType</c>'s tag: the player's own side of an open trade.</summary>
+    internal const int BarterBoxTag = 0x42617274;   // not-an-offset: 'Bart'
+
+    /// <summary>A drop released over the engine GUI box tagged <paramref name="boxTag"/> offers the item in the trade.</summary>
+    internal static bool OffersOn(in InvAction drop, int boxTag) => true;
+
+    /// <summary>One axis of the cell a drop lands in, as <c>CGuiMultiInvbox::CalculateDropPosition</c> works it.</summary>
+    internal static int DropCell(float hit, float origin, int size, int count) => 0;
+
     /// <summary>The stock grid's double-click on a backpack item: a bag is used, a cast-spell item raises its target
     /// cursor, anything else does nothing. The worn slots have no double-click in the stock panel.</summary>
     private void DoubleClick(uint oid, float px, float py)

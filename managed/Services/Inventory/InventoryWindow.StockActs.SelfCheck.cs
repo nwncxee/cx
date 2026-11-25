@@ -10,13 +10,14 @@ internal sealed partial class InventoryWindow
     private const uint Sword = 101, Helm = 105, Potion = 106, Bag = 107, Dagger = 108, Belt = 109, WornHelm = 104, WornSword = 110, Pouch = 111, Gem = 201, LootChest = 0x500;   // not-an-offset: object ids
 
     /// <summary>Off-device: the window acting as the stock panel does, one suite per behaviour: coloured names, a drop on a
-    /// worn item, the double-click and a drop from outside the backpack. Oracle: hand-written fixtures, the stock behaviour each Then names.</summary>
+    /// worn item, the double-click, a drop from outside the backpack and a trade offer. Oracle: hand-written fixtures, the stock behaviour each Then names.</summary>
     internal static void StockActsSelfCheck(ExtenderLog log)
     {
         Suite(log, "InventoryWindow.NamesSelfCheck", Names);
         Suite(log, "InventoryWindow.SwapSelfCheck", Swap);
         Suite(log, "InventoryWindow.DoubleClickSelfCheck", DoubleClicks);
         Suite(log, "InventoryWindow.DropsSelfCheck", Drops);
+        Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)
@@ -243,6 +244,44 @@ internal sealed partial class InventoryWindow
         if (acts.Count == 1) w.MarkPending(acts[0]);
         int other = m.Selected == 0 ? 1 : 0;
         check.Expect(!m.Fresh[other] && m.Fresh[m.Selected], $"an unequip to a cell the server picks makes the other pages stale (page {other} fresh {m.Fresh[other]})");
+    }
+
+    /// <summary>The 'InvM' tag of the other player's side of a trade, a plain <c>CGuiMultiPageMultiInvbox</c>.</summary>
+    private const int TheirSideTag = 0x496e764d;   // not-an-offset: 'InvM'
+
+    private static void Barter(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        List<InvAction> acts = b.Acts;
+        // Given a trade is open with another player
+        // When the player drags a backpack item from the CX window onto a free cell of their side
+        // Then the item is offered at that cell
+        b.Drag(b.Cx(2), b.Cy(0), 5000f, 5000f);
+        bool offered = acts.Count == 1 && OffersOn(acts[0], BarterBoxTag);
+        int x = DropCell(2.10f, 1.50f, 2, 3), y = DropCell(3.60f, 2.00f, 2, 10);
+        check.Expect(offered && x == 1 && y == 4,
+                     $"a 2x2 helmet released 60 by 160 pixels into the player's side is offered at (1, 4) ({Said(acts)}, at {x},{y})");
+
+        // Given a trade is open
+        // When the player drags a worn or looted item onto it
+        // Then nothing is offered, as in the stock client
+        b.Drag(b.SlotX("head"), b.SlotY("head"), 5000f, 5000f);
+        bool worn = acts.Count == 1 && OffersOn(acts[0], BarterBoxTag);
+        LootModel l = w.Loot;
+        l.Reset(LootChest, b.Now); l.Pages = 1; l.Fresh[0] = true;
+        l.Items[0] = new InvItem { Oid = Gem, X = 0, Y = 0, W = 1, H = 1, BaseId = 30 };
+        l.Count = 1;
+        b.Drag(w.X + w.W + (6f + 10f) * w.S, w.Y + (30f + 10f) * w.S, 5000f, 5000f);
+        bool looted = acts.Count == 1 && OffersOn(acts[0], BarterBoxTag);
+        l.Reset(InventoryModel.Invalid, b.Now);
+        check.Expect(!worn && !looted, $"neither a worn helmet nor a chest's gem is offered (worn {worn}, looted {looted})");
+
+        // Given a trade is open
+        // When the player drops an item on the other player's side
+        // Then nothing is offered
+        b.Drag(b.Cx(2), b.Cy(0), 5000f, 5000f);
+        bool theirs = acts.Count == 1 && OffersOn(acts[0], TheirSideTag);
+        check.Expect(acts.Count == 1 && !theirs, $"a backpack item released on the other player's side is not offered ({Said(acts)})");
     }
 
     private static int Slot(string id)
