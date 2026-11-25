@@ -44,11 +44,14 @@ public static class Settings
     }
 
     /// <summary>Keys an older CX wrote for a setting that is gone: dropped on read, so the next write leaves them out.</summary>
-    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius", "walls.fade", "walls.floor", "walls.radius", "vfog.mist"];
+    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius", "walls.fade", "walls.floor", "walls.radius", RetiredMist];
+
+    /// <summary>The ground mist's retired switch, which the Air switch carries on.</summary>
+    private const string RetiredMist = "vfog.mist";
 
     /// <summary>Retired keys whose value carries on in a live key: an older cx.cfg's ground mist switch is the Air
     /// switch now. A file that also sets the live key keeps its own value.</summary>
-    private static readonly (string From, string To)[] RetiredInto = [(RetiredKeys[^1], "air.enabled")];
+    private static readonly (string From, string To)[] RetiredInto = [(RetiredMist, "air.enabled")];
 
     /// <summary>Take every pair of <paramref name="text"/>, in <c>cx.cfg</c>'s own format, into the loaded table,
     /// less the <see cref="RetiredKeys"/>.</summary>
