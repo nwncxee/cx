@@ -181,6 +181,7 @@ internal static unsafe partial class Weather
         nint shell = Seam.Facade.ObjectShell(wolf);
         int slot = EngineLayout.CreatureGetModelSlot;
         DbId body = default;
+        bool grounded = false;
         if (shell != 0 && slot >= 0)
         {
             var creature = (StandIn*)System.Runtime.InteropServices.NativeMemory.AllocZeroed((nuint)sizeof(StandIn));
@@ -190,7 +191,9 @@ internal static unsafe partial class Weather
                 table[slot / sizeof(IntPtr)] = (IntPtr)(delegate* unmanaged<IntPtr, byte, int, IntPtr>)&StandInModel;
                 creature->Vtbl = (IntPtr)table;
                 creature->Shell = shell;
-                body = Facts((IntPtr)creature, 7, PrintAt, Vector2.UnitY, true).Body;
+                StepFacts read = Facts((IntPtr)creature, 7, PrintAt, Vector2.UnitY, true);
+                body = read.Body;
+                grounded = Grounded(in read);
             }
             finally
             {
@@ -199,6 +202,11 @@ internal static unsafe partial class Weather
             }
         }
         check.Expect(!wolf.IsNull && body == wolf, $"a footstep's facts name the creature's placed body (shell {shell != 0}, GetModel slot {slot})");
+
+        // Given a creature whose footstep tables cannot be read
+        // When its footstep's facts are read
+        // Then it steps as a normal walker, so its print is not lost
+        check.Expect(body == wolf && grounded, "unread footstep tables: the step reads as a normal walker's");
     }
 
     private static void NoFeetExamples(Checker check)
