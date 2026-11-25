@@ -145,17 +145,21 @@ for text in texts.values():
     for m in RELAY.finditer(text):
         params = [a.split() for a in m.group(2).split(',')]
         relays += [(m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
-shipped = [t for q, t in texts.items() if 'SelfCheck' not in str(q)]
+# Each relay's call sites, found in one scan of the shipped files: they stay put while the groups grow.
+calls = collections.defaultdict(list)
+if relays:
+    names = sorted({re.escape(name) for name, _, _ in relays})
+    for text in (t for q, t in texts.items() if 'SelfCheck' not in str(q)):
+        for site in re.finditer(r'(?<!\w)(' + '|'.join(names) + r')\s*\(', text):
+            calls[site.group(1)].append([a.strip() for a in balanced(text, site.end() - 1)[0].split(',')])
 for _turn in range(len(relays) + 1):
     grew = False
     for name, at, param in relays:
-        for text in shipped:
-            for site in re.finditer(r'(?<!\w)' + name + r'\s*\(', text):
-                args = [a.strip() for a in balanced(text, site.end() - 1)[0].split(',')]
-                arg = re.fullmatch(r'(?:\w+\.)*(\w+)', args[at]) if at < len(args) else None
-                if arg and not var_group[arg.group(1)] <= var_group[param]:
-                    var_group[param] |= var_group[arg.group(1)]
-                    grew = True
+        for args in calls[name]:
+            arg = re.fullmatch(r'(?:\w+\.)*(\w+)', args[at]) if at < len(args) else None
+            if arg and not var_group[arg.group(1)] <= var_group[param]:
+                var_group[param] |= var_group[arg.group(1)]
+                grew = True
     if not grew:
         break
 for m in HANDED.finditer(all_text):
