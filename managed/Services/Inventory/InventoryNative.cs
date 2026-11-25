@@ -68,7 +68,7 @@ internal static unsafe class InventoryNative
     {
         SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvHandleInvButton, SymbolMap.InvCloseForLevelup,
         SymbolMap.SendPossessFamiliar, SymbolMap.RulesetIntEntry, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
-        SymbolMap.InvGetEquipSlot,
+        SymbolMap.InvGetEquipSlot, SymbolMap.PlayGuiSound,
         SymbolMap.GetGameObject, SymbolMap.AppManager, SymbolMap.Rules, SymbolMap.GetBaseItem,
         SymbolMap.SendInvEquip, SymbolMap.SendInvUnequip, SymbolMap.SendInvRepositoryMove, SymbolMap.SendInvDrop,
         SymbolMap.SendGuiInvStatus, SymbolMap.SendGuiInvSelectPanel, SymbolMap.SendInputUseObject, SymbolMap.SendInputMergeItem,
@@ -867,4 +867,11 @@ internal static unsafe class InventoryNative
 
     /// <summary>A refusal the player must see.</summary>
     public static void Feedback(string text) => Notice.Show(_log, text);
+
+    /// <summary>Plays the interface sound <paramref name="resref"/> once, as the stock panel plays its refusals.</summary>
+    public static unsafe void GuiSound(string resref)
+    {
+        ResRef r = ResRef.Of(resref, lower: true);
+        EngineFn.PlayGuiSound(ResRefArg.Of(&r), 0);
+    }
 }

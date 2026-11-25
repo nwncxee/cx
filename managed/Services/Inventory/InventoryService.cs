@@ -229,7 +229,10 @@ public sealed unsafe partial class InventoryService : IExtenderService
         {
             case InvActKind.Close: Close(notify: true); return;
             case InvActKind.CloseLoot: InventoryNative.UseObject(a.Other); return;
-            case InvActKind.Refused: InventoryNative.Feedback(a.Text); return;
+            case InvActKind.Refused:
+                if (a.Text.Length > 0) InventoryNative.Feedback(a.Text);
+                if (a.Sound.Length > 0) InventoryNative.GuiSound(a.Sound);
+                return;
             case InvActKind.Gold: OpenGold(); return;
             case InvActKind.Drop: DropInWorld(a); return;
             case InvActKind.Target: InventoryNative.FireTarget(a.Oid); return;

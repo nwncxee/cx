@@ -507,7 +507,7 @@ internal sealed partial class InventoryWindow
     }
 
     /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take (out of
-    /// the loot) / Merge onto a like stack; a tab -> the first free cell from that page on; a slot -> Equip / Merge; a
+    /// the loot) / Merge onto a like stack; a tab -> the first free cell from that page on; a slot -> Equip (the server swaps a worn item out) / Merge; a
     /// loot cell -> <see cref="LootDrop"/>; outside the window -> Drop at the release point. The per-frame preview
     /// passes <paramref name="describe"/> false so a refusal builds no text.</summary>
     internal InvAction? Drop(InvHit h, bool inside, bool describe = true)
@@ -546,8 +546,9 @@ internal sealed partial class InventoryWindow
             InvItem held = Model.Equipped[h.Index];
             if (held.Oid != InventoryModel.Invalid && Mergeable(held, it))
                 return new InvAction(InvActKind.Merge, held.Oid, Other: oid);
-            if ((it.SlotMask & d.Mask) == 0) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {_slots[h.Index].Label.ToLowerInvariant()} slot." : "");
-            if (held.Oid != InventoryModel.Invalid) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"The {_slots[h.Index].Label.ToLowerInvariant()} slot is taken." : "");
+            if ((it.SlotMask & d.Mask) == 0)
+                return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {_slots[h.Index].Label.ToLowerInvariant()} slot." : "",
+                                     Sound: CannotEquip);
             return new InvAction(InvActKind.Equip, oid, d.Mask);
         }
         return null;
