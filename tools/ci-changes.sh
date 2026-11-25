@@ -40,6 +40,7 @@ linux=(
   tools/keep-staged.sh
   tools/ssl-by-name.sh
   tools/stub-host.sh
+  tools/demo-icu.sh
   tools/where.sh
   'tools/selfcheck/*'
   tools/live/session-log.sh
