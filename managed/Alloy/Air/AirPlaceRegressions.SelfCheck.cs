@@ -1,4 +1,5 @@
 using CX.Framework;
+using CX.Services.Sound;
 using static CX.Alloy.AirFixture;
 
 namespace CX.Alloy;
@@ -17,7 +18,7 @@ internal static class AirPlaceRegressions
         {
             HalfTrees(check); NoTilesRead(check); StreamEdgeWet(check); RowCase(check); RowNoPlace(check);
             NightPollen(check); SnowyForest(check); DryNight(check); WetDay(check); CityMist(check);
-            IndoorDry(check); NoneByWater(check); CryptLayers(check);
+            IndoorDry(check); UndergroundDry(check); FlagReads(check); NoneByWater(check); CryptLayers(check);
         }
         finally { AirPlaces.Load(null); }
         log.Info(check.Ok ? "AirPlaceRegressions.SelfCheck: passed" : "AirPlaceRegressions.SelfCheck: FAILED");
@@ -132,6 +133,36 @@ internal static class AirPlaceRegressions
         AirLook look = LookOf(Features("zcx09", Interior, 4, _ => new[] { "Water", "Floor", "Floor", "Floor" }, _ => new[] { "", "", "", "" }));
         check.Expect(!look.Water, $"an indoor area with water corners marks water {look.Water} (want false)");
     }
+
+    // Given an area flagged underground but not interior, with water among its tiles
+    // When the player enters it
+    // Then its water is not marked, as in an interior.
+    private static void UndergroundDry(Checker check)
+    {
+        AirLook look = LookOf(Features("zcx09", Underground, 4, _ => new[] { "Water", "Floor", "Floor", "Floor" }, _ => new[] { "", "", "", "" }));
+        check.Expect(!look.Water, $"an underground area with water corners marks water {look.Water} (want false)");
+    }
+
+    // Given every set of an area's interior, underground and natural flags
+    // When the air and the sound read it
+    // Then each says indoors and names the material the hand-marked row gives.
+    private static void FlagReads(Checker check)
+    {
+        foreach ((uint flags, bool indoor, int material) in Flagged)
+        {
+            bool got = SoundScene.Indoor(flags);
+            int mat = SoundScene.Material(flags);
+            check.Expect(got == indoor && mat == material, $"flags {flags} read indoor {got}, material {mat} (want {indoor}, {material})");
+        }
+    }
+
+    /// <summary>Every set of the three flags, marked by hand: indoors is interior or underground; cave rock is natural
+    /// and indoors, masonry is underground and not natural.</summary>
+    private static readonly (uint Flags, bool Indoor, int Material)[] Flagged =
+    {
+        (0, false, 0), (Interior, true, 0), (Underground, true, 1), (Interior | Underground, true, 1), (Natural, false, 0),
+        (Natural | Interior, true, 2), (Natural | Underground, true, 2), (Natural | Interior | Underground, true, 2),
+    };
 
     // Given an outdoor Sea Ships area with water among its tiles
     // When night falls
