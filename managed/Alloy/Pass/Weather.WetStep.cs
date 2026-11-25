@@ -87,7 +87,7 @@ internal static unsafe partial class Weather
         bool open = CasterPass.CoverOpen(p);
         if (!open) _stepCounts.Sheltered++;
         StepFacts s = Facts(creature, o.Id, p, new Vector2(f.X, f.Y), open);
-        StepDown(in s, TrackNow);
+        if (Shown(o)) StepDown(in s, TrackNow);
         int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at)) : -1;
         StepKind kind = ChooseStep(open, surface);
         return kind != StepKind.Engine && StepSound(creature, o, at, kind, in s);
@@ -174,6 +174,10 @@ internal static unsafe partial class Weather
 
     /// <summary>The footstepsounds.2da row a soft step plays.</summary>
     private const int SoftStepRow = 3;
+
+    /// <summary>Does the game draw this creature at all? One it has faded out (invisible to the player) leaves no
+    /// print and no splash, or the snow would show where it walks.</summary>
+    internal static bool Shown(CNWCObject o) => o.FadeAlpha > 0f;
 
     /// <summary>What a footfall on <paramref name="surface"/> sounds of. Only dry-sounding ground open to the sky
     /// changes its sound.</summary>

@@ -350,7 +350,12 @@ public sealed unsafe partial class AlloyRenderer
         _oFading[i] = OccludeFan.CasterFading(SceneDb.PartFade[part], _gate[i].OccFade);
         // ...and never a hidden .lod alternate: a swap restages the WHOLE range, the hidden tree included, and
         // its shadow over the shown one is two silhouettes fighting in the cascades
-        bool castOk = mayCast && !_oFading[i] && tint.W > 0f && !SceneDb.LodHidden(SceneDb.PartLodTree[part], SceneDb.ObjLodShown[o]) && (_oCls[i] <= (byte)AlloyClass.Cutout
+        // the object's own fade (setalpha, where invisibility lands) and its silhouette, without the tile ramp above:
+        // a creature the game has faded out casts nothing, one faded part way casts dithered at its alpha
+        float castAlpha = SceneDb.PartAlpha[part] * Unseen.Alpha(o, tint.W, lit);
+        bool faded = castAlpha < 1f && _oCls[i] <= (byte)AlloyClass.Cutout;
+        if (faded != _castFaded[i]) { _castFaded[i] = faded; c.CastChanged = true; }
+        bool castOk = mayCast && !_oFading[i] && tint.W > 0f && castAlpha > 0f && !SceneDb.LodHidden(SceneDb.PartLodTree[part], SceneDb.ObjLodShown[o]) && (_oCls[i] <= (byte)AlloyClass.Cutout
                                       || (_oCls[i] == (byte)AlloyClass.Blended && _oBone[i] < 0));
         if (castOk != _castOk[i]) System.Threading.Interlocked.Increment(ref castOk ? ref _dbCastOn : ref _dbCastOff);
         SetCastOk(i, castOk, ref c);

@@ -170,6 +170,9 @@ public sealed unsafe partial class CasterPass
     private static readonly int[] _liveContent = new int[MaxCasters];
     /// <summary>A blended-class caster; routed to the masked stage so its record alpha dithers.</summary>
     private static readonly bool[] _liveBlend = new bool[MaxCasters];
+    /// <summary>A depth-writing caster its object's fade has taken under 1 (<see cref="AlloyRenderer.CasterFacts.Faded"/>);
+    /// masked like a blended one, but it casts solid rather than nothing when the masked stage cannot take it.</summary>
+    private static readonly bool[] _liveFade = new bool[MaxCasters];
     /// <summary>Coverage casters in the standing list, counted on the period line rather than tallied per
     /// frame: the kind the collect staged is already the flag, so no second column exists to go stale.</summary>
     private static int CoverCasters()
@@ -263,12 +266,12 @@ public sealed unsafe partial class CasterPass
                 // punches holes out of a BIND pose. Same set the capture cast solid.
                 // CX-303: ...and a content pair's caster twin poses its parts itself, the colour program's own way.
                 // ...and a rigged dangly, whose palette the mask stages pose with the same arm.
-                bool maskable = !f.Skinned || f.Coverage || f.Content != 0 || AlloyRenderer.SlotIsDangly(slot);
+                bool maskable = !f.Skinned || f.Coverage || f.Faded || f.Content != 0 || AlloyRenderer.SlotIsDangly(slot);
                 _liveTex[live] = maskable && AlloyRenderer.VdoHasUv(f.Vao) ? MaskTid(in f) : 0;
                 // Review: the triage counter lost its writer in the rework -- a masked-eligible caster whose
                 // diffuse did not resolve THIS frame casts solid, and this is the number that says how often.
                 if (_liveTex[live] == 0 && maskable && AlloyRenderer.VdoHasUv(f.Vao)) _maskNoTex++;
-                _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
+                _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveFade[live] = f.Faded; _liveContent[live] = f.Content;
                 // Review: a caster ABSENT last frame is a mover on return, whatever its record says -- a
                 // transient range or VAO failure longer than the one-frame ghost+hadMover cover would
                 // otherwise re-appear into views that never re-bake its shadow back.

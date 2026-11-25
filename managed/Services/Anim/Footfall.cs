@@ -31,7 +31,8 @@ internal static unsafe class Footfall
     /// (<see cref="PoseService.Slot.Unvoiced"/>) on a frame a foot planted (<see cref="PoseService.Slot.Touchdown"/>).</summary>
     internal static void Step(ref PoseService.Slot s, IntPtr creature, bool snap, float dt)
     {
-        bool stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && s.Unvoiced && !snap && creature != IntPtr.Zero;
+        bool stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && s.Unvoiced && !snap && creature != IntPtr.Zero
+                        && CX.Alloy.Weather.Shown(new CNWCObject(creature));
         if (!stepping) { s.SinceStep = MinGap; return; }
         if (!Due(ref s.SinceStep, s.Touchdown, dt)) return;
         _ours = true;
