@@ -140,8 +140,10 @@ var_group = collections.defaultdict(set)
 for pairs in list(class_group.values()):
     for v, g in pairs:
         var_group[v].add(g)
+# Only a file that names KnobGroup can declare a relay or a handed class: the rest are never scanned for one.
+grouped = [t for t in texts.values() if 'KnobGroup' in t]
 relays = []
-for text in texts.values():
+for text in grouped:
     for m in RELAY.finditer(text):
         params = [a.split() for a in m.group(2).split(',')]
         relays += [(m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
@@ -162,10 +164,16 @@ for _turn in range(len(relays) + 1):
                 grew = True
     if not grew:
         break
-for m in HANDED.finditer(all_text):
-    cls, param = m.group(1), m.group(2)
-    for site in re.finditer(r'\b' + cls + r'\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]', all_text):
-        class_group[cls].update((param, g) for g in var_group[site.group(1)])
+handed = [(m.group(1), m.group(2)) for text in grouped for m in HANDED.finditer(text)]
+if handed:
+    declares = re.compile(r'\b(' + '|'.join(sorted({re.escape(c) for c, _ in handed})) + r')\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]')
+    passed = collections.defaultdict(list)
+    for text in (t for t in texts.values() if '.Declare(' in t):
+        for site in declares.finditer(text):
+            passed[site.group(1)].append(site.group(2))
+    for cls, param in handed:
+        for var in passed[cls]:
+            class_group[cls].update((param, g) for g in var_group[var])
 
 ARRAY = re.compile(r'\bNAME\s*=\s*(?:new\s*(?:\w+)?\[\]\s*)?\{([^}]*)\}')
 LITERAL = re.compile(r'"([A-Za-z0-9_.\-]+)"')
