@@ -42,7 +42,21 @@ CAMERA_MODES = ('chase', 'topdown', 'driving')
 
 
 _STOPS = {}
+_ARG_STOPS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[()\[\]{}]|,')
 _TAILS = {'"': re.compile(r'(?:\\.|[^"\\])*', re.S), "'": re.compile(r"(?:\\.|[^'\\])*", re.S)}
+
+
+def split_args(span):
+    """A call's arguments as (name or None, text), split only at commas outside brackets and string literals."""
+    parts, depth, last = [], 0, 0
+    for m in _ARG_STOPS.finditer(span):
+        t = m.group()
+        depth += (t in '([{') - (t in ')]}')
+        if t == ',' and depth == 0:
+            parts.append(span[last:m.start()])
+            last = m.end()
+    parts.append(span[last:])
+    return [re.fullmatch(r'\s*(?:(\w+)\s*:)?\s*(.*?)\s*', a, re.S).groups() for a in parts]
 
 
 def balanced(text, start, open_c='(', close_c=')'):
@@ -141,30 +155,35 @@ for pairs in list(class_group.values()):
     for v, g in pairs:
         var_group[v].add(g)
 # Only a file that names KnobGroup can declare a relay or a handed class, so the hook's time goes on those alone.
-grouped = [t for t in texts.values() if 'KnobGroup' in t]
+grouped = {p: t for p, t in texts.items() if 'KnobGroup' in t}
 relays = []
-for text in grouped:
+for path, text in grouped.items():
     for m in RELAY.finditer(text):
-        params = [a.split() for a in m.group(2).split(',')]
-        relays += [(m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
+        home = owner(path, m.start())
+        params = [a.split('=')[0].split() for a in m.group(2).split(',')]
+        relays += [(home, m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
 # Each relay's call sites, found in one scan of the shipped files: they stay put while the groups grow.
 calls = collections.defaultdict(list)
 if relays:
-    sites = re.compile(r'(?<!\w)(' + '|'.join({name for name, _, _ in relays}) + r')\s*\(')
+    sites = re.compile(r'(?<!\w)(?:(\w+)\.)?(' + '|'.join({name for _, name, _, _ in relays}) + r')\s*\(')
     for text in (t for q, t in texts.items() if 'SelfCheck' not in q):
         for site in sites.finditer(text):
-            calls[site.group(1)].append([a.strip() for a in balanced(text, site.end() - 1)[0].split(',')])
+            calls[site.group(2)].append((site.group(1), split_args(balanced(text, site.end() - 1)[0])))
 for _turn in range(len(relays) + 1):
     grew = False
-    for name, at, param in relays:
-        for args in calls[name]:
-            arg = re.fullmatch(r'(?:\w+\.)*(\w+)', args[at]) if at < len(args) else None
+    for home, name, at, param in relays:
+        # A site qualified by another class calls that class's method of the same name.
+        for args in (a for q, a in calls[name] if q in (None, home, 'this', 'base')):
+            given = next((v for n, v in args if n == param), None)
+            if given is None and at < len(args) and args[at][0] is None:
+                given = args[at][1]
+            arg = re.fullmatch(r'(?:\w+\.)*(\w+)', given) if given is not None else None
             if arg and not var_group[arg.group(1)] <= var_group[param]:
                 var_group[param] |= var_group[arg.group(1)]
                 grew = True
     if not grew:
         break
-handed = [m for text in grouped for m in HANDED.findall(text)]
+handed = [m for text in grouped.values() for m in HANDED.findall(text)]
 declares = re.compile(r'\b(' + '|'.join({c for c, _ in handed}) + r')\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]')
 passed = collections.defaultdict(list)
 for cls, var in (m for t in texts.values() if '.Declare(' in t for m in declares.findall(t)):

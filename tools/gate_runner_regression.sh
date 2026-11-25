@@ -109,13 +109,14 @@ EOF2
 out=$(row '| about.ping | Ping |')
 [ "$(grep -c . <<< "$out")" = 1 ] && grep -q "fen.ping is declared" <<< "$out" || fail "knob-spec-rows did not take about.ping and fen.ping from Notes' two Declare sites, fen.ping handed as Late's second argument -- $out"
 
-# A Declare site and a relay call count in a file that never names KnobGroup, and a class whose name ends in Notes is not Notes.
+# A Declare site and a relay call count in a file that never names KnobGroup, and a call to MyNotes.Declare is no call to Notes.Declare,
+# even beside a relay whose parameter shares the name of Notes.Declare's.
 cat > "$t/param/managed/A.cs" << 'EOF2'
 static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
 static class Fen { public static readonly KnobGroup Fe = KnobGroup.Declare("fen", "General", "Fen"); }
 static class Lone { public static readonly KnobGroup Lo = KnobGroup.Declare("lone", "General", "Lone"); }
 sealed class Notes { private Notes(KnobGroup g) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g) => new(g); }
-static class Outer { internal static void Pass(KnobGroup p) { Notes.Declare(p); } }
+static class Outer { internal static void Pass(KnobGroup p) { Notes.Declare(p); } static void Hand(KnobGroup g) { Notes.Declare(g); } }
 EOF2
 for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
 cat > "$t/param/managed/Z.cs" << 'EOF2'
@@ -123,6 +124,27 @@ sealed class MyNotes { public static MyNotes Declare(object o) => new(); }
 sealed class Wire { void Init() { Notes.Declare(General.About); Outer.Pass(Fen.Fe); MyNotes.Declare(Lone.Lo); } }
 EOF2
 out=$(row "$(printf '| about.ping | Ping |\n| fen.ping | Ping |')"); [ -z "$out" ] || fail "knob-spec-rows did not take about.ping and fen.ping from sites in a file that names no KnobGroup, or credited MyNotes' lone group to Notes -- $out"
+
+# A relay or Declare argument counts whole: qualified, spaced, split over lines, after a comma inside a call or string, named,
+# or for a parameter with a default.
+for i in $(seq 11); do echo "static class K$i { public static readonly KnobGroup G$i = KnobGroup.Declare(\"k$i\", \"General\", \"K$i\"); }"; done > "$t/param/managed/A.cs"
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+cat > "$t/param/managed/Z.cs" << 'EOF2'
+sealed class Notes { private Notes(KnobGroup g) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup x) => new(x); }
+static class W {
+  static void Pass(KnobGroup p) { Notes.Declare(p); }
+  static void Late(int a, KnobGroup h) { Notes.Declare(h); }
+  static void Opt(KnobGroup h = null, KnobGroup x = null) { Notes.Declare(h); }
+  void I() {
+    Opt(x: K2.G2); Opt(K11.G11);
+    Pass(Cx.K1.G1); Pass(K2.G2 ?? K1.G1); Late(Pick(), K3.G3);
+    Notes.Declare(K4.G4 ?? K1.G1); Notes.Declare(K5.G5 ); Notes.Declare(
+      K6.G6); Notes.Declare(Cx.K7.G7);
+    Late(Max(1, 2), K8.G8); Late("a,b", K9.G9); Late(h: K10.G10, a: 0);
+  }
+}
+EOF2
+out=$(row "$(for i in 1 3 5 6 7 8 9 10 11; do echo "| k$i.ping | Ping |"; done)"); [ -z "$out" ] || fail "knob-spec-rows misread a relay or Declare argument (k2 and k4 take no ping, every other k does) -- $out"
 
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
