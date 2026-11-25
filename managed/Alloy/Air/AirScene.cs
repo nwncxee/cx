@@ -21,6 +21,9 @@ internal static class AirScene
     /// <summary>How fast a front runs, metres a second, and how far either side of the player it runs.</summary>
     private const float FrontSpeed = 10f, FrontReach = 10f;
 
+    /// <summary>How strong a drop in the wind's speed sends its front, against a rise of the same size.</summary>
+    private const float DropShare = 0.5f;
+
     /// <summary>The share of a column's dust a front tears per metre a second of change.</summary>
     private const float TearPerSpeed = 0.25f;
 
@@ -92,7 +95,7 @@ internal static class AirScene
     /// <summary>Send a front along <paramref name="dir"/> for a change of <paramref name="change"/> metres a second.</summary>
     private static void Launch(AirSceneState s, float change, Vector2 dir)
     {
-        s.Front = new AirFront(true, MathF.Abs(change), dir);
+        s.Front = new AirFront(true, change > 0f ? change : -change * DropShare, dir);
         s.Line = -FrontReach;
     }
 
