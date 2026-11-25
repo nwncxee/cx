@@ -7,10 +7,11 @@ rc=0
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# A fresh tree under $tmp/<case> holding the files given as path=text pairs.
+# A fresh tree under $tmp/<case> holding the mote main as shipped, then the files given as path=text pairs.
 plant() {
   local root=$tmp/$1; shift
   mkdir -p "$root/managed/Alloy/Shaders"
+  printf '%b' '#include "cx_air.glsl"\nvoid main() { vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0); }\n' > "$root/managed/Alloy/Shaders/cx_airmote_cs.glsl"
   while [ $# -gt 0 ]; do
     printf '%b' "${1#*=}" > "$root/${1%%=*}"
     shift

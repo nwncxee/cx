@@ -123,6 +123,7 @@ public sealed unsafe partial class AlloyRenderer
         var wind = new Vector2(AlloyWind.Base.X, AlloyWind.Base.Y);
         GroundMist.Frame(scene, DbFeed.FrameSeq, PlayerPos, FrameInputs.FogOn && h.HaveArea, h.FogAmount, dt, wind);
         AirScene.Frame(scene, DbFeed.FrameSeq, h.Interior, h.Night, dt, wind);
+        AirScene.Lamps(FrameInputs.AreaLightPosRange, FrameInputs.AreaLightStatic, FrameInputs.LightCount);
         Beams.EnrollDb(scene);
         Halos.EnrollDb(scene, h.RadiusMult);
         // CX-120 bring-up: the whole drawn set's world extent against the camera, once, after the order is

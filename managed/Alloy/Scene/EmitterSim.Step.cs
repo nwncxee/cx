@@ -227,7 +227,7 @@ internal static unsafe partial class EmitterSim
             if (n > 0 && e.M.ModeClock < 1f)
             {
                 float gust = e.WindStrength;
-                if (gust != 0f) { Gust(in e, scene, gust, e.WindFalloff); GroundMist.Blast(e.M.Pos, gust); }
+                if (gust != 0f) { Gust(in e, scene, gust, e.WindFalloff); GroundMist.Blast(e.M.Pos, gust); AirScene.Blast(e.M.Pos, gust); }
                 n = Room(ref slot, n);
                 for (int i = 0; i < n; i++) Spawn(ref slot, ref e, dt, 1f);
             }

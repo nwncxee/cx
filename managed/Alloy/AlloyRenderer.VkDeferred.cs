@@ -76,6 +76,12 @@ public sealed unsafe partial class AlloyRenderer
         public BufferId Air;
         public readonly byte[] AirBytes = new byte[GroundMist.PackedBytes];
         public int AirGen = int.MinValue;
+        /// <summary>The stage that lays the lamplight's motes over the lit frame, built the first frame motes float, and
+        /// whether it was refused; the motes as that stage reads them, and the records packed for it.</summary>
+        public VkDefStage? Motes;
+        public bool MotesFailed;
+        public BufferId MoteBuf;
+        public readonly Vector4[] MoteData = new Vector4[AirScene.MotesPacked];
     }
 
     private static VkDeferredState _vkdef = new();
@@ -85,6 +91,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Invocations per group per axis, each stage's own <c>local_size</c>.</summary>
     private const int VkDefGroup = 16, VkShGroup = 8;
+    /// <summary>Motes per group of the mote stage, its <c>local_size_x</c>.</summary>
+    private const int VkMoteGroup = 64;
     /// <summary>The code in a light record's last float at and past which the light is static.</summary>
     private const int StaticLightMin = 128;
 
@@ -136,13 +144,15 @@ public sealed unsafe partial class AlloyRenderer
         bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
         bool debt = VkDefSlotLights(rig);
         bool dust = AirScene.Lies && VkDefDust(vk, log);
-        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0;
+        bool motes = AirScene.Floats && VkDefMotes(vk, log);
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseMotes = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
             || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass)
             || debt && !VkDefBlocks(d.Debt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDebt, ref pass)
             || debt && !VkDefBlocks(d.DebtApply!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseApply, ref pass)
-            || dust && !VkDefBlocks(d.Dust!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDust, ref pass))
+            || dust && !VkDefBlocks(d.Dust!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDust, ref pass)
+            || motes && !VkDefBlocks(d.Motes!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseMotes, ref pass))
             return;
 
         ref DeferredBlock b = ref d.Blk;
@@ -207,6 +217,16 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
             cl.EndLabel();
         }
+        int packed = motes ? AirScene.PackMotes(d.MoteData) : 0;
+        if (packed > 1)
+        {
+            cl.UpdateBuffer(d.MoteBuf, 0, MemoryMarshal.AsBytes(d.MoteData.AsSpan(0, packed)));
+            cl.BeginLabel("air motes"u8);
+            cl.SetPipeline(d.Motes!.Pipe);
+            VkDefBindSet(cl, d.Motes, s.Hdr, default, looseMotes, pass, slots);
+            cl.Dispatch((packed - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
+            cl.EndLabel();
+        }
         if (sample)
         {
             cl.CopyBuffer(new CopyBufferCmd(d.Stats, 0, d.StatsRead, 0, VkDefStatsWords * sizeof(uint)));
@@ -238,6 +258,22 @@ public sealed unsafe partial class AlloyRenderer
         d.Dust = null;
         d.DustFailed = true;
         log.Always("AlloyRenderer: the air's dust stage did NOT build (logged above) -- no dust shows on this device");
+        return false;
+    }
+
+    /// <summary>The mote stage and the buffer it reads on this device, built the first frame motes float. False, logged
+    /// once, when either was refused: the frame then shows no motes.</summary>
+    private static bool VkDefMotes(VkBackend vk, ExtenderLog log)
+    {
+        VkDeferredState d = _vkdef;
+        if (d.Motes != null) return true;
+        if (d.MotesFailed) return false;
+        d.Motes = VkDefBuild(vk, AirScene.MoteCs, null, "vk air motes", log);
+        d.MoteBuf = vk.CreateBuffer(new BufferDesc(AirScene.MotesPacked * 16, BufferUse.Storage, MemoryKind.Device, "vk air motes"));
+        if (d.Motes != null && !d.MoteBuf.IsNull) return true;
+        d.Motes = null;
+        d.MotesFailed = true;
+        log.Always("AlloyRenderer: the air's mote stage did NOT build (logged above) -- no motes show on this device");
         return false;
     }
 
@@ -498,6 +534,7 @@ public sealed unsafe partial class AlloyRenderer
                         SsboSlots.Movers when !VkMovers.IsNull => VkMovers,
                         SsboSlots.Chart when !LightmapBake.VkChart.IsNull => LightmapBake.VkChart,
                         SsboSlots.Air when !d.Air.IsNull => d.Air,
+                        SsboSlots.AirMotes when !d.MoteBuf.IsNull => d.MoteBuf,
                         _ => s.ZeroSsbo,
                     });
                     break;

@@ -47,6 +47,8 @@ internal static class SsboSlots
     /// claims it, and every content program's bind -- colour, depth or caster -- rebinds it rather than trusting an
     /// earlier one, which is the rule for every tenant of this point.</summary>
     internal const uint Content = 15;
+    /// <summary>The lamplight's motes, above the rig the mote stage lights them by.</summary>
+    internal const uint AirMotes = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
@@ -61,7 +63,7 @@ internal static class SsboSlots
         ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
-        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air,
+        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air, ["CxAirMotes"] = AirMotes,
         ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,

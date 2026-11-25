@@ -10,8 +10,12 @@ internal static partial class AirScene
     /// <summary>The most lamps that hold motes at once, and the motes each holds.</summary>
     internal const int MaxLamps = 16, PerLamp = 40, MaxMotes = MaxLamps * PerLamp;
 
-    /// <summary>A lamp reaching less than this, metres, holds no motes.</summary>
-    private const float MinLampReach = 1f;
+    /// <summary>The stage that draws the motes, and the records <see cref="PackMotes"/> writes at most: a head and one a mote.</summary>
+    internal const string MoteCs = "cx_airmote_cs";
+    internal const int MotesPacked = MaxMotes + 1;
+
+    /// <summary>How long a mote takes to show once set afloat, seconds, and the share of its lamp's reach it fades out over at the edge.</summary>
+    private const float MoteFadeIn = 1f, MoteEdge = 0.2f;
 
     /// <summary>Two lamps closer than this, metres, are one lamp.</summary>
     private const float SameLamp = 0.25f;
@@ -55,7 +59,7 @@ internal static partial class AirScene
     {
         AirSceneState s = _s;
         AirMotes m = s.Motes;
-        if (!s.Laid || !(reach >= MinLampReach)) return;
+        if (!s.Laid || !(reach > 0f)) return;
         for (int l = 0; l < m.Lamps; l++)
             if (Vector3.DistanceSquared(m.LampAt[l], at) < SameLamp * SameLamp) { m.LampReach[l] = reach; return; }
         if (m.Lamps == MaxLamps) return;
@@ -181,6 +185,39 @@ internal static partial class AirScene
         if (by == 0f) return v;
         (float sin, float cos) = MathF.SinCos(by);
         return new Vector3(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos, v.Z);
+    }
+
+    /// <summary>The area's static lights as lamps: each of the first <paramref name="count"/> that is static seats its
+    /// motes, the first <see cref="MaxLamps"/> of them.</summary>
+    internal static void Lamps(Vector4[] posRange, bool[] isStatic, int count)
+    {
+        // ponytail: the walk's first static lights hold the motes; the lamps nearest the player once an area has more than MaxLamps
+        if (posRange == null || isStatic == null) return;
+        int n = Math.Min(count, Math.Min(posRange.Length, isStatic.Length));
+        for (int i = 0; i < n && _s.Motes.Lamps < MaxLamps; i++)
+            if (isStatic[i]) Lamp(new Vector3(posRange[i].X, posRange[i].Y, posRange[i].Z), posRange[i].W);
+    }
+
+    /// <summary>Do motes float this frame: the air on, in a place that hangs them, with a lamp seated?</summary>
+    internal static bool Floats => _s.Laid && On(_s) && Hangs(_s) && _s.Motes.Lamps > 0;
+
+    /// <summary>Write the lit motes into <paramref name="into"/> as the mote stage reads them: a head holding their count,
+    /// then each one's place and how brightly it shows. Returns the records written, 0 when none float. Hot: allocates nothing.</summary>
+    internal static int PackMotes(Span<Vector4> into)
+    {
+        if (!Floats || into.Length < 1) return 0;
+        AirMotes m = _s.Motes;
+        int n = 0;
+        for (int i = 0; i < m.Lamps * PerLamp && n + 1 < into.Length; i++)
+        {
+            if (m.Dark[i]) continue;
+            int l = i / PerLamp;
+            float edge = (m.LampReach[l] - Vector3.Distance(m.Pos[i], m.LampAt[l])) / (MoteEdge * m.LampReach[l]);
+            float glow = Math.Clamp(MathF.Min((m.Clock - m.Born[i]) / MoteFadeIn, edge), 0f, 1f);
+            into[++n] = new Vector4(m.Pos[i], glow);
+        }
+        into[0] = new Vector4(n, 0f, 0f, 0f);
+        return n + 1;
     }
 
     /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, in a fixed order while each
