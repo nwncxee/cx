@@ -100,8 +100,16 @@ sha256sum -c --ignore-missing SHA256SUMS
 
 The first line must print `Good "file" signature for cx-releases`, and the second must print `OK` for
 your zip. The fingerprint the first line prints after `with ED25519 key` must be one of those under
-*Copy release key*. On Windows, run the first line in PowerShell (OpenSSH ships with Windows 10 and 11), then
-compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's line in `SHA256SUMS`.
+*Copy release key*.
+
+On Windows, OpenSSH ships with Windows 10 and 11. PowerShell can't run the first line as written, so run
+it through `cmd` in PowerShell:
+
+```powershell
+cmd /c "ssh-keygen -Y verify -f allowed_signers -I cx-releases -n file -s SHA256SUMS.sig < SHA256SUMS"
+```
+
+Then compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's line in `SHA256SUMS`.
 
 Releases after v0.9.1 also have a build attestation, which proves this repository's release workflow
 built the zip on GitHub from the tag. With the [GitHub CLI](https://cli.github.com/) installed:

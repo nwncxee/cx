@@ -40,6 +40,8 @@ fi
 # The verify line README.md tells players to run, as it prints it.
 verify=$(grep -m1 '^ssh-keygen -Y verify .*SHA256SUMS' README.md)
 [ -n "$verify" ] || fail "README.md has no ssh-keygen verify line for SHA256SUMS"
+# PowerShell refuses `<`, so the Windows steps run the same line through cmd.
+grep -qxF "cmd /c \"$verify\"" README.md || fail "README.md has no Windows line running [$verify] through cmd /c"
 # A folder as a player keeps it: the release's SHA256SUMS, its signature $2, and the copied key as allowed_signers.
 player() {
   local dir=$tmp/$1
