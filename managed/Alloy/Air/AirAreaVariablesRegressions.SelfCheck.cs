@@ -110,9 +110,9 @@ internal static class AirAreaVariablesRegressions
     private static void AutoReadsArea(Checker check)
     {
         Air.Place.Set("crypt");
-        AirPlace own = LookOf(Plain("ttr01", 0, "Grass")).Place;
+        AirPlace own = LookOf(Plain("tin01", Interior, "Livingroom")).Place;
         Hold((Air.Place.Key, "auto"));
-        AirPlace auto = LookOf(Plain("ttr01", 0, "Grass")).Place;
+        AirPlace auto = LookOf(Plain("tin01", Interior, "Livingroom")).Place;
         check.Expect(own == AirPlace.None && auto == AirPlace.None, $"the player's crypt takes {own}, a held auto {auto} (want None both)");
     }
 

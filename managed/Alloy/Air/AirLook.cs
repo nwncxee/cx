@@ -17,8 +17,20 @@ internal enum AirPlace { None, Crypt, City, Forest, Meadow }
 /// <summary>An area's air: its place and what about it changes the layers (snow, water close by, a cave).</summary>
 internal readonly record struct AirLook(AirPlace Place, bool Winter, bool Water, bool Cave)
 {
-    /// <summary>The layers this look hangs in the air by day or by night.</summary>
-    internal AirLayer Layers(bool night) => Place == AirPlace.Crypt ? AirLayer.Dust : AirLayer.None;
+    /// <summary>The layers this look hangs in the air by day or by night: night mist gathers by water outdoors, pollen
+    /// floats over a meadow by day and leaves fall in a forest, and snow stops both.</summary>
+    internal AirLayer Layers(bool night)
+    {
+        AirLayer own = Place switch
+        {
+            AirPlace.Crypt => AirLayer.Dust | AirLayer.Motes,
+            AirPlace.Meadow => AirLayer.Wisps | (night || Winter ? AirLayer.None : AirLayer.Pollen),
+            AirPlace.Forest => AirLayer.Haze | (Winter ? AirLayer.None : AirLayer.Leaves),
+            _ => AirLayer.None,
+        };
+        bool open = Place is AirPlace.Meadow or AirPlace.Forest or AirPlace.City;
+        return own | (night && Water && open ? AirLayer.NightMist : AirLayer.None);
+    }
 }
 
 /// <summary>One particle of a layer: where it is and how it moves, in metres and metres a second.</summary>

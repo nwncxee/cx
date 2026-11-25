@@ -259,8 +259,8 @@ internal static class AirDustRegressions
     {
         Still();
         bool was = AirScene.Lies;
-        AirScene.Frame(new DbId(0x7a2u), 1, true, false, Frame, Vector2.Zero);
-        AirScene.Frame(new DbId(0x7a2u), 2, true, false, Frame, Vector2.Zero);
+        AirScene.Frame(new DbId(0x7a2u), 1, false, false, Frame, Vector2.Zero);
+        AirScene.Frame(new DbId(0x7a2u), 2, false, false, Frame, Vector2.Zero);
         check.Expect(was && !AirScene.Lies && AirScene.Shown(0.5f, 0.5f).Depth == 0f,
             $"the last area's dust lay {was}; framing a new scene it lies {AirScene.Lies} (want true, then none)");
     }
