@@ -94,13 +94,29 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>One footfall's print and splash: the one entry the hook and the self-checks share.</summary>
-    internal static void StepDown(in StepFacts s, float now) => FootDown(s.At, s.Facing, s.Id, now, s.Open);
+    internal static void StepDown(in StepFacts s, float now)
+    {
+        if (!Grounded(in s)) return;
+        FootDown(s.At, s.Facing, s.Id, now, s.Open);
+    }
 
-    /// <summary>The creature's step facts, its type and size read where <c>PlayFootstep</c> reads them; unset while
-    /// the step's tables are not reachable.</summary>
+    /// <summary>footstepsounds.2da types whose creature has no feet on the ground: none, the two wing rows and the
+    /// invisible horse.</summary>
+    private const int FootNone = 12, FootWingA = 9, FootWingB = 10, FootInvisibleHorse = 30;
+
+    /// <summary>The footstepsounds.2da row an appearance reads as when the tables cannot be read: a normal walker.</summary>
+    private const int FootUnread = 0;
+
+    /// <summary>True when the creature's footstep type, its own over its appearance's, puts feet on the ground: unset
+    /// (-1 both) and the no-feet rows press nothing.</summary>
+    private static bool Grounded(in StepFacts s)
+        => (s.OwnType != -1 ? s.OwnType : s.AppearanceType) is not (-1 or FootNone or FootWingA or FootWingB or FootInvisibleHorse);
+
+    /// <summary>The creature's step facts, its type and size read where <c>PlayFootstep</c> reads them; a normal
+    /// walker's while the step's tables are not reachable.</summary>
     private static StepFacts Facts(IntPtr creature, uint id, Vector3 p, Vector2 facing, bool open)
     {
-        int own = -1, app = -1, size = 0;
+        int own = -1, app = FootUnread, size = 0;
         bool soft = false;
         IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
         IntPtr tables = !_wetArmed || rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
