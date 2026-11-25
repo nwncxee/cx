@@ -152,7 +152,7 @@ architecture and how to add a feature.
 
 ## Contributing
 
-Talk to us before you build a feature: on a GitHub issue or on the CX Discord. [`CONTRIBUTING.md`](CONTRIBUTING.md)
+Talk to us before you build a feature, on a GitHub issue or on the CX Discord. [`CONTRIBUTING.md`](CONTRIBUTING.md)
 says what a pull request needs, from that agreement to its proof and its performance numbers.
 
 ## Contact

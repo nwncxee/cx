@@ -1,4 +1,4 @@
-<!-- Read CONTRIBUTING.md first. A pull request with an empty section is not reviewed. -->
+<!-- Read CONTRIBUTING.md first. -->
 
 ## Agreed
 
@@ -10,12 +10,11 @@
 
 ## Proof
 
-<!-- What you ran and what it showed. -->
+<!-- What you ran and what it showed. Name the system you tested on: Linux, Windows, or both. -->
 
-- [ ] `./build.sh` and `./run-demo.sh` pass
-- [ ] `nix develop .#win -c ./build-win.sh` passes
-- [ ] Screenshots or a clip, Linux and Windows, for a change the player sees or hears
-- [ ] `tools/live/run-live.sh` PASS, for a change only the game can show
+- [ ] It builds and its self-checks pass (`./build.sh` and `./run-demo.sh` on Linux, `./build-win-native.sh` on Windows)
+- [ ] Screenshots or a clip, for a change the player sees or hears
+- [ ] How I tested it in the game, for a change only the game can show
 
 ## Performance
 
@@ -24,4 +23,4 @@
 
 ## Understanding
 
-- [ ] I understand every line of this change and can explain it on request
+- [ ] I understand this change and can explain how it works
