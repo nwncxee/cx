@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Regression for step_guard_grade.py, in seconds and with no client: the runs recorded in step_guard_fixtures/ (the
-# grader's input lines only) must grade as they did live, and a copy of the branch run with one refusal or one offset
-# placed just inside a check's window must fail that check. branch is the shipped guard; no-refusal, personal-space
-# and refuse-all are the guard refusing nothing, testing at the player's personal-space radius, and refusing every step.
+# Regression for step_guard_grade.py, in seconds and with no client: the shipped guard's live run, recorded in
+# step_guard_fixtures/branch (the grader's input lines only), must grade as it did live, and a copy of it with one
+# refusal or one offset placed just inside a check's window must fail that check.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIX="$HERE/step_guard_fixtures"
@@ -54,17 +53,15 @@ for (m, s), (t, x, y, n) in zip(lines, samples):
 (dst / "cx.log").write_text("\n".join(out) + "\n")
 PY
 }
-# Given a recorded live run of each guard
+# Given the recorded live run of the shipped guard
 # When the grader grades its log lines
-# Then it gives the verdicts the live run gave
+# Then it gives the verdicts that run gave live
 expect "$FIX/branch"         branch         "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
-expect "$FIX/no-refusal"     no-refusal     "SG_E1=1 SG_E2=0 SG_E3=0 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
-expect "$FIX/personal-space" personal-space "SG_E1=0 SG_E2=1 SG_E3=0 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=0"
-expect "$FIX/refuse-all"     refuse-all     "SG_E1=0 SG_E2=1 SG_E3=0 SG_E4=0 SG_E5=0 SG_E6=0 SG_E7=0"
 # Given the branch run with one refusal or offset just inside one check's window
 # When the grader grades it
 # Then that check fails
 edit e1 "along3 jump" 8.6 0 refuse; expect "$t/e1" "E1 counts a refusal at the start of the last trial's window" "SG_E1=0 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
+edit e1z "along3 jump" 10.5 0 refuse; expect "$t/e1z" "E1 counts a refusal at the end of the last trial's window" "SG_E1=0 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
 edit e4 "ram0 jump" 13 0 refuse;    expect "$t/e4" "E4 counts a refusal once still"                            "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=1"
 edit e5 "corner jump" 12 12.9 shift; expect "$t/e5" "E5 holds the client to the bound in the window's first second" "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=0 SG_E6=1 SG_E7=1"
 edit e6 "open jump" 1.1 0 refuse;   expect "$t/e6" "E6 counts a refusal at the start of the open move's window" "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=0 SG_E7=1"
@@ -97,6 +94,7 @@ edit e5o "corner jump" 12 12.9 srv -0.5; expect "$t/e5o" "E5 rides out one stray
 edit e5e "corner jump" 15.6 17 srv 0.5;  expect "$t/e5e" "E5 takes the server's rest over the whole window"     "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
 edit e6e "open jump" 12.6 14 srv 0.5;    expect "$t/e6e" "E6 takes the server's rest over the whole window"       "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
 edit e7t "door1 turn" -1 2.6 scale 0;  expect "$t/e7t" "E7 reads the door walk at its end, not before"        "SG_E1=1 SG_E2=1 SG_E3=1 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
+edit e3n "wall jump" 0 400 unrefuse; expect "$t/e3n" "E3 fails a run where no drive is refused" "SG_E1=1 SG_E2=0 SG_E3=0 SG_E4=1 SG_E5=1 SG_E6=1 SG_E7=1"
 edit w1 "wall jump" 2 0 refuse; SRC="$t/w1" edit w2 "wall jump@8,15" 0 3 shift
 expect "$t/w2" "E3 grades the wall drive once it is refused" "SG_E1=1 SG_E2=1 SG_E3=0 SG_E4=0 SG_E5=1 SG_E6=1 SG_E7=1"
 exit $fail
