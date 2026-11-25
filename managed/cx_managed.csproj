@@ -130,8 +130,8 @@
     <DirectPInvoke Include="cxaudio" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxaudio.a" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxaudio.lib" />
-    <!-- Linux: every dlopen in this library goes through native/cxssl.c, which opens .NET's libssl in a link
-         namespace of its own, out of reach of the OpenSSL 1.1.1 nwmain-linux exports. Windows TLS is Schannel. -->
+    <!-- Linux: every dlopen in this library goes through native/cxssl.c, which opens .NET's libssl with
+         RTLD_DEEPBIND, out of reach of the OpenSSL 1.1.1 nwmain-linux exports. Windows TLS is Schannel. -->
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxssl.a" />
     <LinkerArg Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="-Wl,--wrap=dlopen" />
     <!-- Monocypher (third_party/monocypher): Ed25519 and SHA-512 for the signed release notice. -->
