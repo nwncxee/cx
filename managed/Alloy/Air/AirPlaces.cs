@@ -11,12 +11,6 @@ internal readonly struct AreaFeatures
     internal readonly uint Flags;
     internal readonly List<string[]> Corners, Edges;
 
-    /// <summary>The area flag an interior sets, as an area's ARE file holds it.</summary>
-    internal const uint Interior = 1;
-
-    /// <summary>The flags <c>GetIsAreaInterior</c> reads: interior or underground.</summary>
-    internal const uint Indoor = 3;
-
     private AreaFeatures(string tileset, uint flags, List<string[]> corners, List<string[]> edges)
     { Tileset = tileset; Flags = flags; Corners = corners; Edges = edges; }
 
@@ -56,7 +50,7 @@ internal static class AirPlaces
     /// table's row for its tileset, else the place its features give it.</summary>
     internal static AirLook Resolve(in AreaFeatures f)
     {
-        bool indoor = (f.Flags & AreaFeatures.Indoor) != 0;
+        bool indoor = SoundScene.Indoor(f.Flags);
         bool cave = SoundScene.Material(f.Flags) == SoundScene.CaveRock;
         bool water = !indoor && (Any(f.Corners, "water") || AnyOf(f.Edges, WaterEdges));
         string? row = _table.Rows.TryGetValue(f.Tileset, out string? r) ? r : null;

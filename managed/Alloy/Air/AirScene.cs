@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Collections.Generic;
 using CX.Alloy.Db;
+using CX.Services.Sound;
 
 namespace CX.Alloy;
 
@@ -117,7 +118,7 @@ internal static class AirScene
     private static AreaFeatures Loaded(bool interior)
     {
         AreaFeatures f = AirArea.Features;
-        return f.Tileset.Length > 0 || f.Corners.Count > 0 ? f : AreaFeatures.Of(string.Empty, interior ? AreaFeatures.Interior : 0u, NoTiles, NoTiles);
+        return f.Tileset.Length > 0 || f.Corners.Count > 0 ? f : AreaFeatures.Of(string.Empty, interior ? SoundScene.FlagInterior : 0u, NoTiles, NoTiles);
     }
 
     /// <summary>Frame <paramref name="frame"/> of <paramref name="scene"/>: a new area drops the last one's dust and takes
