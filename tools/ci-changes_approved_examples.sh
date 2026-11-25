@@ -31,6 +31,9 @@ row .github/actions/ffx-cache/action.yml true false
 row run-demo.sh true false
 row tools/live/run-live.sh true false
 row tools/live/revisit.py true false
+row tools/live/step_guard_grade.py true false
+row tools/live/step_guard_fixtures/branch/cx.log true false
+row tools/live/step_guard_grade_regression.sh true false
 row tools/selfcheck/run.sh true false
 row tools/release/sign.sh true false
 row tools/gates/comments.sh true false

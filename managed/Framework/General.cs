@@ -22,6 +22,9 @@ public static partial class General
     /// (<c>SDL_SetWindowSize</c> -&gt; <c>SDL_WINDOWEVENT_SIZE_CHANGED</c> -&gt; <c>CGuiMan::SetGuiSize</c>), because
     /// the live harness runs in a headless compositor with no window edge to drag.</summary>
     public static readonly Knob<int> ResizeAt;
+    /// <summary>Debug: log the player's position and the step guard's refusal count once a second, the lines the
+    /// live step-guard examples read.</summary>
+    public static readonly Knob<bool> StepLog;
 
     public static readonly KnobGroup About;
 
@@ -40,6 +43,8 @@ public static partial class General
             tier: Tier.ChatOnly, effect: Effect.Restart,
             help: "Debug: halve the window's width this many seconds in, and restore it at twice that, through "
                 + "SDL and the engine's own panel re-layout. 0 = off.");
+        StepLog = G.Toggle("steplog", "steplog", false, Tier.ChatOnly,
+            help: "Debug: log the step guard's refusals and the player's position once a second.");
         CommandRegistry.Global.Gate = () => Commands.V;
 
         About = KnobGroup.Declare("about", "General", "About", order: 110,

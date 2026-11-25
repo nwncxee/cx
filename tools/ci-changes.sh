@@ -49,6 +49,8 @@ linux=(
   tools/live/xtool.py
   tools/live/run-live.sh
   tools/live/revisit.py
+  tools/live/step_guard_grade.py
+  'tools/live/step_guard_fixtures/*'
   tools/vk/report.py
   tools/vk/mutants.sh
   tools/vk/mutate.py

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -23,9 +24,20 @@ public sealed unsafe class StepGuardService : IExtenderService
     private const float MaxStep = 4f;
     /// <summary>TestDirectLine's bCheckCreatures: doors are always solid to it; creatures in the way are not a wall.</summary>
     private const int NoCreatures = 0;
+    /// <summary>The swept test's radius. A walk leaves the player 0.1 m from a wall, and the tile test clamps any radius
+    /// up to 0.65 to 0.1, so personal space would refuse every step there that is not straight away from the wall.</summary>
+    private const float LineRadius = 0f;
 
     private static bool _live, _probeOk;
     private static int _steps, _walkRefusals, _driveRefusals;
+
+    /// <summary>The <see cref="General.StepLog"/> trace's books: the next sample's time.</summary>
+    private sealed class StepTraceState
+    {
+        public long NextSample;
+    }
+
+    private static StepTraceState _trace = new();
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -35,10 +47,11 @@ public sealed unsafe class StepGuardService : IExtenderService
         if (!EngineLayout.Require(log, "StepGuard", "CClientExoApp", "CClientExoAppInternal", "CNWCObject", "CNWCCreature", "CNWCModule", "CPathfindInformation")) return;
         if (!SymbolMap.Require(log, "StepGuard", SymbolMap.WalkUpdateLocation, SymbolMap.TestDirectLine, SymbolMap.AppManager, SymbolMap.GetModule)) return;
         _testLine = EngineFn.TestDirectLine;
-        // chained, not installed: the pose layer's keyboard weight sets the step's rate just outside it (priority 60)
+        // chained, not installed: another layer may wrap the walk step outside the guard
         _next = hooks.ChainWalkUpdateLocation(&OnWalkUpdateLocation, 50);
         if (_next == null) { log.Info("StepGuard: standing down (WalkUpdateLocation chain refused)"); return; }
         KnobSurface.Note(Report);
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 52, Sample, "StepGuard.trace", log);
         log.Info("StepGuard: chained CNWCCreature::WalkUpdateLocation");
     }
 
@@ -66,15 +79,27 @@ public sealed unsafe class StepGuardService : IExtenderService
         int r = (*_next)(cre);
         Vector3 after = desired;
         if (!IsStep(before, after) || new CNWCModule(module).CurrentArea.Ptr != area.Ptr) return r;
-        Span<float> space = pathfind.SpaceArgs;
         // TestDirectLine takes both Vectors BY VALUE: the copies are what VectorArg points Win64 at.
         Vec3 from = Vec(before), to = Vec(after);
-        int clear = _testLine(area.Ptr, cre, VectorArg.Of(&from), VectorArg.Of(&to), space[0], space[1], NoCreatures);
+        int clear = _testLine(area.Ptr, cre, VectorArg.Of(&from), VectorArg.Of(&to), LineRadius, pathfind.SpaceArgs[1], NoCreatures);
         if (clear == 1) { _steps++; return r; }
         desired = before;
         creature.SetPosition(VectorArg.Of(&from));
         if (creature.Driving != 0) _driveRefusals++; else _walkRefusals++;
         return r;
+    }
+
+    /// <summary>Once a second under <see cref="General.StepLog"/>: where the client has the player and the refusals so far.</summary>
+    private static void Sample()
+    {
+        if (!General.StepLog.V) return;
+        long now = Stopwatch.GetTimestamp();
+        if (now < _trace.NextSample) return;
+        _trace.NextSample = now + Stopwatch.Frequency;
+        IntPtr cre = CameraService.PlayerCreature();
+        if (cre == IntPtr.Zero) return;
+        Vector3 v = new CNWCObject(cre).Position;
+        _log?.Info(FormattableString.Invariant($"StepGuard: at ({v.X:F2},{v.Y:F2},{v.Z:F2}) refused={_walkRefusals + _driveRefusals}"));
     }
 
     /// <summary>The engine's own <c>Vector</c> shape, which the by-value call arguments need.</summary>
