@@ -96,8 +96,16 @@ internal static unsafe partial class Weather
     /// <summary>One footfall's print and splash: the one entry the hook and the self-checks share.</summary>
     internal static void StepDown(in StepFacts s, float now)
     {
-        if (!Grounded(in s)) return;
+        if (!Grounded(in s) && !Mounted(s.Body)) return;
         if (!OwnFeet(in s, now)) FootDown(s.At, s.Facing, s.Id, now, s.Open, Stamp(in s));
+    }
+
+    /// <summary>Whether <paramref name="body"/> carries its horse's hooves, which stand on the ground whatever footstep
+    /// type the rider's appearance gives.</summary>
+    private static bool Mounted(DbId body)
+    {
+        Span<int> hooves = stackalloc int[MountHoofNodes.Length];
+        return !body.IsNull && MountHooves(body, hooves);
     }
 
     /// <summary>footstepsounds.2da types whose creature has no feet on the ground: none, the two wing rows and the

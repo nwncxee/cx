@@ -222,8 +222,8 @@ internal static unsafe partial class Weather
     private static readonly string[] HoofNodes = ["lhand_h", "rhand_h", "lfoot_h", "rfoot_h"];
 
     /// <summary>A biped whose right and left soles stand on <paramref name="right"/> and <paramref name="left"/>,
-    /// named <paramref name="legs"/>; with a hem hanging to <see cref="HemLow"/>, and with a horse's hoof nodes.</summary>
-    private static ModelDef Biped(string name, BipedNames legs, Vector3 right, Vector3 left, bool hem = false, bool hooves = false)
+    /// named <paramref name="legs"/>; with a hem hanging to <see cref="HemLow"/>, with a horse's hoof nodes, or with one stray.</summary>
+    private static ModelDef Biped(string name, BipedNames legs, Vector3 right, Vector3 left, bool hem = false, bool hooves = false, bool strayHoof = false)
     {
         var b = new FixBody();
         float hip = hooves ? 1.6f : 1f;
@@ -239,6 +239,7 @@ internal static unsafe partial class Weather
         if (hem) b.Node("robe_g", pelvis, new Vector3(0f, 0f, HemLow), new FixMesh().Ring(Vector3.Zero, HemAcross, HemAlong, 0.6f, 16).Mesh());
         if (hooves)
             for (int k = 0; k < 4; k++) b.Node(HoofNodes[k], 0, Hooves[k]);
+        if (strayHoof) b.Node(HoofNodes[0], 0, Hooves[0]);
         return b.Model(name);
     }
 

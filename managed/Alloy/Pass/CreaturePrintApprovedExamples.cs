@@ -677,5 +677,24 @@ internal static unsafe partial class Weather
         FreshGround(snow: false, wet: true);
         StepDown(in mounted, PrintNow);
         check.Expect(SplashNear(PrintAt, hooves[0], 0.1f) || SplashNear(PrintAt, hooves[3], 0.1f), "a mounted rider on wet ground: the splash rises at a planted hoof");
+
+        // Given lying snow and a walking biped whose footstep type is a wing row (9), its own feet planted
+        // When a footstep event fires
+        // Then nothing prints: a body is let past the feetless rows only when it carries a horse's hooves
+        FreshGround(snow: true, wet: false);
+        StepFacts winged = OpenStep(afoot, -1, TypeWingA, SizeMedium, PrintAt, 905);
+        StepDown(in winged, PrintNow);
+        check.Expect(!SoleUnder(PrintAt, new Vector2(LeftDown.X, LeftDown.Y)) && !SoleAhead(PrintAt),
+                     "an unmounted body on a wing row presses nothing: only a mounted body passes the feetless rows");
+
+        // Given lying snow and a walking biped whose model names one hoof node of the four
+        // When a footstep event fires
+        // Then its own sole prints and no hoof: one stray node is no mount
+        DbId stray = Keep(placed, Place(Biped("cx_pr_stray", StockLegs, RightUp, LeftDown, strayHoof: true), PrintAt));
+        FreshGround(snow: true, wet: false);
+        StepFacts st = OpenStep(stray, -1, TypeNormal, SizeMedium, PrintAt, 904);
+        StepDown(in st, PrintNow);
+        check.Expect(!stray.IsNull && SoleUnder(PrintAt, new Vector2(LeftDown.X, LeftDown.Y)) && !Pressed(PrintAt, hooves[0]),
+                     "a biped naming one hoof node of the four prints its own sole, no hoof");
     }
 }

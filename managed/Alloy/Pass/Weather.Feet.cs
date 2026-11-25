@@ -23,6 +23,10 @@ internal static unsafe partial class Weather
     private const float GradeRunMin = 0.05f;
     /// <summary>The smallest half-size a pad is pressed at, so a leg tip still shows at the field's texel.</summary>
     private const float PadMinHalf = 0.03f;
+    /// <summary>A mounted body's hoof nodes, front left, front right, hind left, hind right: its horse's feet.</summary>
+    private static readonly string[] MountHoofNodes = ["lhand_h", "rhand_h", "lfoot_h", "rfoot_h"];
+    /// <summary>A horse hoof's half-sizes, along and across the heading: the hoof nodes are dummies with no mesh to measure.</summary>
+    private const float HoofHalfLen = 0.07f, HoofHalfWide = 0.05f;
 
     /// <summary>Points gathered in the heading's frame: their lowest height and their spans along and across.</summary>
     private struct Span3
@@ -85,10 +89,18 @@ internal static unsafe partial class Weather
         return true;
     }
 
-    /// <summary>The body's feet into <paramref name="feet"/>: its rig's two foot parts when the rig names both, else
-    /// every unskinned mesh part none of whose children carries a mesh, and each skinned part's bone slots. Returns how many.</summary>
+    /// <summary>The body's feet into <paramref name="feet"/>: a mounted body's four hooves, else its rig's two foot parts
+    /// when the rig names both, else every unskinned leaf mesh part and each skinned part's bone slots. Returns how many.</summary>
     private static int ReadFeet(DbId body, Vector2 h, Span<Foot> feet)
     {
+        Span<int> hooves = stackalloc int[MountHoofNodes.Length];
+        if (MountHooves(body, hooves))
+        {
+            int k = 0;
+            foreach (int p in hooves)
+                if (Hoof(p, h, out feet[k])) k++;
+            return k;
+        }
         nint shell = Seam.Facade.ObjectShell(body);
         var bones = default(PoseService.Bones);
         if (shell != 0) PoseRig.FindBones(body, RigMap.Of(shell, -1), ref bones);
@@ -105,6 +117,27 @@ internal static unsafe partial class Weather
             if (IsLeafMesh(p)) { if (Measure(p, h, out feet[n])) n++; }
             else n += MeasureSkin(p, h, feet[n..]);
         return n;
+    }
+
+    /// <summary>Whether <paramref name="body"/> is a mounted body, naming all four of its horse's hoof nodes; their parts
+    /// into <paramref name="hooves"/>.</summary>
+    private static bool MountHooves(DbId body, Span<int> hooves)
+    {
+        for (int k = 0; k < MountHoofNodes.Length; k++)
+            if ((hooves[k] = DbAnim.PartByName(body, MountHoofNodes[k])) < 0) return false;
+        return true;
+    }
+
+    /// <summary>Hoof part <paramref name="p"/> as a foot: a hoof-sized pad on its node's place in the world.
+    /// ponytail: the dummy's pivot is taken as the hoof's sole; read the horse mesh's hoof bounds if a live look shows it high.</summary>
+    private static bool Hoof(int p, Vector2 h, out Foot f)
+    {
+        Span3 s = Span3.Empty;
+        s.Add(DbAnim.PartWorld(p).Translation, h);
+        if (!s.ToFoot(out f)) return false;
+        f.Len = HoofHalfLen;
+        f.Wide = HoofHalfWide;
+        return true;
     }
 
     /// <summary>Part <paramref name="p"/>'s skin as feet: each bone slot's vertices, those it weighs most, posed by the
