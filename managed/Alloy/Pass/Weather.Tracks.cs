@@ -21,7 +21,7 @@ internal static unsafe partial class Weather
     internal const uint TrackUnit = 27;
     /// <summary>The sole, in metres along the heading: a toe lobe ahead of the foot's centre and a heel lobe
     /// behind it, each an ellipse (half-length along, half-width across).</summary>
-    private const float ToeAt = 0.05f, ToeLen = 0.085f, ToeWide = 0.05f, HeelAt = -0.08f, HeelLen = 0.05f, HeelWide = 0.04f;
+    private const float ToeAt = 0.05f, ToeLen = 0.085f, ToeWide = 0.05f, HeelAt = -0.07f, HeelLen = 0.05f, HeelWide = 0.04f;
     /// <summary>Where the planted foot sits off the creature's centre: to one side, alternating per creature, and
     /// ahead, since a footfall is the leading foot coming down.</summary>
     private const float FootSide = 0.1f, FootAhead = 0.15f;
@@ -82,13 +82,13 @@ internal static unsafe partial class Weather
     /// <summary>A foot coming down at a creature at <paramref name="p"/> facing <paramref name="facing"/>: a print
     /// while snow lies and a splash while the ground is wet, both only under open sky: a print has no height, so one
     /// pressed under a roof would show on the roof's snow. Split from the engine read so the self-check can drive it.</summary>
-    private static void FootDown(Vector3 p, Vector2 facing, uint id, float now, bool open)
+    private static void FootDown(Vector3 p, Vector2 facing, uint id, float now, bool open, in PrintShape shape)
     {
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z)) return;
         Vector2 h = Heading(facing);
         if (!Footfall(id, now, out bool right)) return;
         Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * (right ? FootSide : -FootSide);
-        if (open && PressInto(at, h, now, in HumanSole)) _prints++;
+        if (open && PressInto(at, h, now, in shape)) _prints++;
         if (open) ThrowSplash(new Vector3(at, p.Z), now);
     }
 
@@ -136,10 +136,30 @@ internal static unsafe partial class Weather
         public float Reach => MathF.Max(MathF.Max(ToeAt + ToeLen, HeelLen - HeelAt), MathF.Max(ToeWide, HeelWide));
         /// <summary>A pad <paramref name="len"/> long and <paramref name="wide"/> across (half-sizes), on the foot's centre.</summary>
         public static PrintShape Pad(float len, float wide) => new(0f, len, wide, 0f, len, wide);
+        /// <summary>This shape <paramref name="k"/> times its size, about the same centre.</summary>
+        public PrintShape Scaled(float k) => new(ToeAt * k, ToeLen * k, ToeWide * k, HeelAt * k, HeelLen * k, HeelWide * k);
     }
 
     /// <summary>A human sole, toe and heel: the stamp a creature with no foot geometry presses.</summary>
     private static readonly PrintShape HumanSole = new(ToeAt, ToeLen, ToeWide, HeelAt, HeelLen, HeelWide);
+    /// <summary>A medium creature's hoof mark: a short pad a little longer than it is wide.</summary>
+    private static readonly PrintShape HoofMark = PrintShape.Pad(0.06f, 0.05f);
+    /// <summary>A medium creature's round pad, the stamp of a footstep type that is neither hoof nor normal.</summary>
+    private static readonly PrintShape RoundPadMark = PrintShape.Pad(0.09f, 0.09f);
+    /// <summary>footstepsounds.2da rows whose stand-in stamp is a sole, and those whose stamp is a hoof mark.</summary>
+    private const int FootNormal = 0, FootHoof = 4, FootHorse = 17;
+    /// <summary>A stamp's scale per appearance.2da SIZECATEGORY, tiny (1) to huge (5); an unread size (0) is medium.</summary>
+    private static ReadOnlySpan<float> SizeScale => [1f, 0.6f, 0.8f, 1f, 1.25f, 1.5f];
+
+    /// <summary>The stand-in stamp of a creature whose body gives no feet: chosen by its footstep type, sized by its
+    /// size category.</summary>
+    private static PrintShape Stamp(in StepFacts s)
+    {
+        int type = s.OwnType != -1 ? s.OwnType : s.AppearanceType;
+        float k = SizeScale[Math.Clamp(s.Size, 0, SizeScale.Length - 1)];
+        PrintShape shape = type switch { FootNormal => HumanSole, FootHoof or FootHorse => HoofMark, _ => RoundPadMark };
+        return shape.Scaled(k);
+    }
 
     /// <summary><paramref name="shape"/>'s depth, 0..1, at <paramref name="rel"/> metres from the foot's centre along heading
     /// <paramref name="h"/> (unit): the deeper of the toe and heel lobes, soft over their outer half.</summary>
@@ -247,6 +267,16 @@ internal static unsafe partial class Weather
         check.Expect(PrintDepth(new Vector2(ToeAt, 0f), h, in HumanSole) > 0.99f && PrintDepth(new Vector2(HeelAt, 0f), h, in HumanSole) > 0.99f
           && PrintDepth(side * 0.08f, h, in HumanSole) == 0f && PrintDepth(h * 0.12f, h, in HumanSole) > 0f,
           "a print is a sole: deep at toe and heel, longer along the heading than across it");
+        float arch = 1f;
+        for (float a = HeelAt; a <= ToeAt; a += 0.001f) arch = MathF.Min(arch, PrintDepth(h * a, h, in HumanSole));
+        check.Expect(arch > 0.1f, $"a sole is one print: its arch between heel and toe is pressed ({arch:F3} at its shallowest)");
+        check.Expect(Stamp(new StepFacts(default, h, 1, true, FootNormal, FootHoof, 3, false, default)) == HumanSole,
+          "a creature's own footstep type picks its stamp over its appearance's");
+        check.Expect(Stamp(new StepFacts(default, h, 1, true, -1, FootHoof, 3, false, default)) == HoofMark
+          && Stamp(new StepFacts(default, h, 1, true, -1, FootHorse, 3, false, default)) == HoofMark,
+          "a medium hoof or horse type stamps the hoof mark, not the round pad");
+        check.Expect(Stamp(new StepFacts(default, h, 1, true, -1, FootNormal, 3, false, default)) == HumanSole,
+          "a medium normal walker stamps today's sole at its own size");
         var t = new TrackTexel[TrackSize * TrackSize];
         int lo = int.MaxValue, hi = int.MinValue;
         Vector2 at = new(5.03f, 7.01f);
@@ -285,23 +315,23 @@ internal static unsafe partial class Weather
         Tracks.V = true; TrackFill.V = TrackFill.Default; FootSplash.V = FootSplash.Default; WetStrength.V = 1f; SnowStrength.V = 1f;
         _track = null; Enabled.V = true; _side = new FootSideState(); _snow = 0f; _wet = 0f; Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
         _track = new TrackTexel[TrackSize * TrackSize];
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 0.5f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 0.5f, true, in HumanSole);
         check.Expect(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f) == 0f
           && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f) == 0f && FootLive(0.6f) == 0,
           "a footfall on dry, bare ground leaves no print and throws no water");
         _snow = 1f;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true, in HumanSole);
         Vector2 first = Vector2.Zero;
         for (float y = -0.2f; y <= 0.2f; y += 0.025f)
             if (_track != null && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + y), 1f, 0.01f) > 0.5f) first = new Vector2(0f, y);
-        FootDown(new Vector3(20f, 22f, 0f), h, 7, 1.5f, true);
+        FootDown(new Vector3(20f, 22f, 0f), h, 7, 1.5f, true, in HumanSole);
         Vector2 second = Vector2.Zero;
         for (float y = -0.2f; y <= 0.2f; y += 0.025f)
             if (_track != null && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 22f + y), 1.5f, 0.01f) > 0.5f) second = new Vector2(0f, y);
         check.Expect(first.Y * second.Y < 0f, $"one creature's steps alternate feet (offsets {first.Y:F3} then {second.Y:F3})");
-        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true);
-        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true);
-        FootDown(new Vector3(24f, 22f, 0f), h, 7, 3f, true);
+        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true, in HumanSole);
+        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true, in HumanSole);
+        FootDown(new Vector3(24f, 22f, 0f), h, 7, 3f, true, in HumanSole);
         int doubledSides = 0;
         float doubled = 0f, after = 0f;
         for (float y = -0.2f; y <= 0.2f; y += 0.025f)
@@ -317,9 +347,9 @@ internal static unsafe partial class Weather
         check.Expect(doubledSides == 1 && doubled * after < 0f,
           $"a footstep event the animation carries twice is one footfall: one foot down ({doubledSides} sides), and the next step on the other ({doubled:F3} then {after:F3})");
         _snow = 0f; _wet = 1f;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 4f, false);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 4f, false, in HumanSole);
         check.Expect(FootLive(4.1f) == 0, "a wet footfall under shelter throws nothing");
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 5f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 5f, true, in HumanSole);
         int live = FootLive(5.1f), gone = FootLive(5f + FootLifeSec + FootStaggerSec + 0.01f);
         check.Expect(live == 1 && gone == 0, $"a wet footfall throws one splash for its life and then none ({live}, {gone})");
         _track = track; _snow = snow; _wet = wet; Enabled.V = en; _side = sides; _footNext = next; _prints = prints;

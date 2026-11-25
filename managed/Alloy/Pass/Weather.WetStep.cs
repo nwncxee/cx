@@ -97,7 +97,7 @@ internal static unsafe partial class Weather
     internal static void StepDown(in StepFacts s, float now)
     {
         if (!Grounded(in s)) return;
-        if (!OwnFeet(in s, now)) FootDown(s.At, s.Facing, s.Id, now, s.Open);
+        if (!OwnFeet(in s, now)) FootDown(s.At, s.Facing, s.Id, now, s.Open, Stamp(in s));
     }
 
     /// <summary>footstepsounds.2da types whose creature has no feet on the ground: none, the two wing rows and the
@@ -298,7 +298,7 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
         _snow = 1f;
-        FootDown(new Vector3(20f, 20f, 0f), Vector2.UnitX, 9, 1f, false);
+        FootDown(new Vector3(20f, 20f, 0f), Vector2.UnitX, 9, 1f, false, in HumanSole);
         check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
                                TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) == 0f,
           "a sheltered foot presses no print, so none shows on the roof above it");
@@ -350,7 +350,7 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
         Vector2 h = Vector2.UnitX;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true, in HumanSole);
         check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
                                TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) > 0.5f,
           "the setting off: footprints still press");
