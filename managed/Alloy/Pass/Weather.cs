@@ -191,7 +191,7 @@ internal static unsafe partial class Weather
         int lo = int.MaxValue, hi = int.MinValue;
         _area = one; weather(one, 2, 100f); _snow = 0.8f; _wet = 0.2f; _puddle = 0f;
         _track = new TrackTexel[TrackSize * TrackSize];
-        Print(_track, at, h, 10f, 0.01f, at, ref lo, ref hi);
+        Print(_track, at, h, 10f, 0.01f, at, ref lo, ref hi, in HumanSole);
         check.Expect(TrackAt(_track, at + h * ToeAt, 10f, 0.01f) > 0.5f, "the pressed print shows before the area load");
         int got = load(one, IntPtr.Zero, IntPtr.Zero);
         check.Expect(got == 7, $"the area load reaches the next layer and returns its answer ({got})");

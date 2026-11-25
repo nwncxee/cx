@@ -93,4 +93,14 @@ public static unsafe partial class DbAnim
     /// (<c>64 * 16</c> floats, column-major affine per bone -- see <c>Db/DbPose.LAYOUT.md</c>). False = the
     /// part is not skinned or its bind pose is missing, and it must not be drawn skinned.</summary>
     internal static bool SkinPalette(int part, BonePalette* dst) => SkinSolve(part, dst);
+
+    /// <summary>The skin table <see cref="SkinPalette"/> solves part <paramref name="part"/> by, its stitched one first;
+    /// null for an unskinned or dead part.</summary>
+    internal static SkinDef? PartSkin(int part)
+    {
+        if ((uint)part >= (uint)SceneDb.MaxParts || !SceneDb.Parts.LiveAt(part)) return null;
+        ModelDef? m = SceneDb.PartModel[part];
+        int node = SceneDb.PartNode[part];
+        return m == null || (uint)node >= (uint)m.Nodes.Length ? null : StitchSkin(part) ?? m.Nodes[node].Skin;
+    }
 }

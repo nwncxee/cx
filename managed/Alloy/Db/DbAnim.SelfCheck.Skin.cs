@@ -585,6 +585,8 @@ public static unsafe partial class DbAnim
                          "a tree change owes the composition a stitch, and the step's tail runs it");
             check.Expect(StitchSkin(lone) == null,
                          "...and a skinned part with no partner is left exactly as its file states");
+            check.Expect(ReferenceEquals(PartSkin(skinA), StitchSkin(skinA)),
+                         "a stitched part's skin, as its feet are read, is the stitch its palette poses");
 
             a0 = PosedVertex(skinA, 0, dst); b0 = PosedVertex(skinB, 0, dst);
             check.Expect((a0 - b0).Length() < 1e-3f,

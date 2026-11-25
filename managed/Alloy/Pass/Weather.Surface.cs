@@ -281,6 +281,10 @@ internal static unsafe partial class Weather
         SplashSelfCheck(check);
         TrackSelfCheck(check);
         SnowStepApprovedExamples(check);
+        ExtenderLog? wasLog = _log;
+        _log ??= log;
+        try { CreaturePrintApprovedExamples(check); }
+        finally { _log = wasLog; }
         AreaEdgeSelfCheck(check);
         StepSelfCheck(check);
         float d = Density; Kind k = CurrentKind; bool en = Enabled.V;
