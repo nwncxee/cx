@@ -8,7 +8,7 @@ namespace CX.Alloy;
 
 /// <summary>The area's air over the ground mist grid: the layers its look hangs, the fronts a wind change sends and
 /// what stirs it. Cold on area load, stepped once a frame on the game thread.</summary>
-internal static class AirScene
+internal static partial class AirScene
 {
     private static AirSceneState _s = new();
 
@@ -73,7 +73,7 @@ internal static class AirScene
     /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial.</summary>
     internal static void Enter(AirLook look, bool night)
     {
-        var s = new AirSceneState { Look = look, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
+        var s = new AirSceneState { Look = look, Night = night, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
         _s = s;
         if (!GroundMist.Corner(out s.Ox, out s.Oy, out s.Feet)) return;
         s.Laid = true;
@@ -145,9 +145,6 @@ internal static class AirScene
     /// <summary>A tree trunk standing at <paramref name="at"/>.</summary>
     internal static void Trunk(Vector2 at) { }
 
-    /// <summary>A lamp at <paramref name="at"/> reaching <paramref name="reach"/> metres.</summary>
-    internal static void Lamp(Vector3 at, float reach) { }
-
     /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres.</summary>
     internal static void Blast(Vector3 at, float radius) { }
 
@@ -172,6 +169,7 @@ internal static class AirScene
         s.Speed = speed;
         if (speed > 0f) s.Dir = wind / speed;
         s.Drift = wind * DriftShare;
+        StepMotes(s, dt);
         if (still) return;
         s.Gen++;
         s.Clock += dt;
@@ -306,9 +304,6 @@ internal static class AirScene
         return c < 0 || float.IsNaN(s.Floor[c]) ? -1 : c;
     }
 
-    /// <summary>The particles of <paramref name="layer"/>.</summary>
-    internal static ReadOnlySpan<AirParticle> Particles(AirLayer layer) => ReadOnlySpan<AirParticle>.Empty;
-
     /// <summary>The gust front crossing the air now.</summary>
     internal static AirFront Front => _s.Front;
 
@@ -325,8 +320,10 @@ internal static class AirScene
 /// <summary>Everything the air holds for one area: its look, its columns over the mist grid and the front crossing it.</summary>
 internal sealed class AirSceneState
 {
-    /// <summary>The look the area took.</summary>
+    /// <summary>The look the area took, by night or by day, and the motes in its lamps' light.</summary>
     public AirLook Look;
+    public bool Night;
+    public readonly AirMotes Motes = new();
 
     /// <summary>The grid's corner in whole metres and the player's feet across the ground, and whether a floor is laid.</summary>
     public int Ox, Oy;
