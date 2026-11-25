@@ -34,7 +34,7 @@ internal static partial class AirScene
     internal static AirWisps Wisps => new(_s.Sheet.Stretch, _s.Sheet.Carried);
 
     /// <summary>Carry and stretch the wisps <paramref name="dt"/> on under <paramref name="wind"/>, and fill back what a
-    /// front tore. Every step the air takes, at Low too.</summary>
+    /// front tore behind its line. Every step the air takes, at Low too.</summary>
     private static void StepWisps(AirSceneState s, float dt, Vector2 wind, float speed)
     {
         AirWispSheet w = s.Sheet;
@@ -43,7 +43,6 @@ internal static partial class AirScene
         w.Carried += w.Vel * dt;
         w.Stretch += (s.Dir * (1f + WispPull * speed) - w.Stretch) * ease;
         w.Fill += (1f - w.Fill) * back;
-        w.Ahead += (1f - w.Ahead) * back;
     }
 
     /// <summary>A front of <paramref name="strength"/> sets out: the wisps behind its line are torn, those ahead stay whole
