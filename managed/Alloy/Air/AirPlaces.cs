@@ -66,9 +66,12 @@ internal static class AirPlaces
         if (indoor) return AirPlace.Crypt;
         int trees = 0;
         foreach (string[] tile in f.Corners)
-            if (Holds(tile, TreeCorners)) trees++;
+            if (Treed(tile)) trees++;
         return f.Corners.Count > 0 && trees * 2 >= f.Corners.Count ? AirPlace.Forest : AirPlace.Meadow;
     }
+
+    /// <summary>Does a tile whose corners are <paramref name="corners"/> hold trees?</summary>
+    internal static bool Treed(string[] corners) => Holds(corners, TreeCorners);
 
     /// <summary>Does any tile in <paramref name="tiles"/> hold <paramref name="terrain"/>?</summary>
     private static bool Any(List<string[]> tiles, string terrain)

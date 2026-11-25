@@ -47,8 +47,9 @@ internal static partial class AirScene
     /// being swept along.</summary>
     private const float EddyTurn = 3f;
 
-    /// <summary>How fast a blast throws a mote at its heart, metres a second, falling to nothing at its edge.</summary>
-    private const float BlastSpeed = 4f;
+    /// <summary>How fast a blast throws a mote at its heart, metres a second, falling to nothing at its edge, and a leaf,
+    /// whose broad face the blast catches.</summary>
+    private const float BlastSpeed = 4f, LeafBlast = 10f;
 
     /// <summary>Does the area's look hang motes?</summary>
     private static bool Hangs(AirSceneState s) => (s.Look.Layers(s.Night) & AirLayer.Motes) != 0;
@@ -160,6 +161,7 @@ internal static partial class AirScene
         Vector2 ahead = Vector2.Normalize(step), side = new(-ahead.Y, ahead.X);
         if (m.Lamps > 0 && Hangs(s)) Swirl(m, m.Lamps * PerLamp, ahead, side, now);
         if (Glints(s)) Swirl(s.Pollen, MaxPollen, ahead, side, now);
+        if (Falls(s)) Swirl(s.Leaves, MaxLeaves, ahead, side, now);
     }
 
     /// <summary>Swirl the first <paramref name="n"/> grains of <paramref name="g"/> about a walker at <paramref name="now"/>
@@ -180,26 +182,46 @@ internal static partial class AirScene
         }
     }
 
-    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres throws the motes and the pollen in it
-    /// outward, the nearest fastest; at Low and with the air off it throws none.</summary>
+    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres throws the motes, the pollen and the
+    /// leaves in it outward, the nearest fastest, and clears a forest's haze, which rolls back as a parting closes; at
+    /// Low and with the air off it throws none.</summary>
     internal static void Blast(Vector3 at, float radius)
     {
         AirSceneState s = _s;
         AirMotes m = s.Motes;
         if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || !(radius > 0f)) return;
-        if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius);
-        if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius);
+        if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius, BlastSpeed, false);
+        if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius, BlastSpeed, false);
+        if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, LeafBlast, true);
+        if (s.Columns == AirLayer.Haze) Clear(s, at, radius);
     }
 
-    /// <summary>Throw the first <paramref name="n"/> grains of <paramref name="g"/> out from a blast at <paramref name="at"/>.</summary>
-    private static void Throw(AirGrains g, int n, Vector3 at, float radius)
+    /// <summary>Clear the haze of each column within <paramref name="radius"/> of <paramref name="at"/>, most at its heart.</summary>
+    private static void Clear(AirSceneState s, Vector3 at, float radius)
+    {
+        int r = (int)MathF.Ceiling(radius);
+        int cx = (int)MathF.Floor(at.X) - s.Ox, cy = (int)MathF.Floor(at.Y) - s.Oy;
+        for (int y = Math.Max(cy - r, 0); y <= Math.Min(cy + r, GroundMist.Side - 1); y++)
+            for (int x = Math.Max(cx - r, 0); x <= Math.Min(cx + r, GroundMist.Side - 1); x++)
+            {
+                float d = Vector2.Distance(new Vector2(s.Ox + x + 0.5f, s.Oy + y + 0.5f), new Vector2(at.X, at.Y));
+                int c = y * GroundMist.Side + x;
+                if (d < radius) s.Gap[c] = MathF.Max(s.Gap[c], BlastClears * (1f - d / radius));
+            }
+        s.Gen++;
+    }
+
+    /// <summary>Throw the first <paramref name="n"/> grains of <paramref name="g"/> out from a blast at <paramref name="at"/>,
+    /// at <paramref name="speed"/> at its heart; a <paramref name="floored"/> grain the ground keeps from being thrown down into it.</summary>
+    private static void Throw(AirGrains g, int n, Vector3 at, float radius, float speed, bool floored)
     {
         for (int i = 0; i < n; i++)
         {
             Vector3 off = g.Pos[i] - at;
             float d = off.Length();
             if (g.Dark[i] || d >= radius || d == 0f) continue;
-            Vector3 thrown = off * (BlastSpeed * (1f - d / radius) / d);
+            Vector3 thrown = off * (speed * (1f - d / radius) / d);
+            if (floored) thrown.Z = MathF.Max(thrown.Z, 0f);
             if (thrown.LengthSquared() <= g.Kick[i].LengthSquared()) continue;
             g.Kick[i] = thrown;
             g.Spin[i] = 0f;
@@ -247,7 +269,7 @@ internal static partial class AirScene
         return n + 1;
     }
 
-    /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, or the pollen about the player,
+    /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, the pollen or a forest's leaves about the player,
     /// in a fixed order while each stays lit. None with the air off or in a place that hangs none.</summary>
     internal static ReadOnlySpan<AirParticle> Particles(AirLayer layer)
     {
@@ -255,6 +277,7 @@ internal static partial class AirScene
         if (!s.Laid || !On(s)) return ReadOnlySpan<AirParticle>.Empty;
         if (layer == AirLayer.Motes && Hangs(s)) return Hand(s.Motes, s.Motes.Lamps * PerLamp);
         if (layer == AirLayer.Pollen && Glints(s)) return Hand(s.Pollen, MaxPollen);
+        if (layer == AirLayer.Leaves && Falls(s)) return Hand(s.Leaves, MaxLeaves);
         return ReadOnlySpan<AirParticle>.Empty;
     }
 

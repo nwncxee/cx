@@ -21,6 +21,15 @@ internal static partial class AirScene
     /// <summary>How tall the dust stands at rest, metres: below a standing character's knee.</summary>
     private const float RestHeight = 0.4f;
 
+    /// <summary>Haze a column among the trunks holds, metres of full density, and how tall it stands, metres: over the crowns' undersides.</summary>
+    private const float BaseHaze = 0.03f, HazeHeight = 6f;
+
+    /// <summary>How far a trunk's haze reaches, metres, and the span at its edge it thins out over.</summary>
+    private const float HazeReach = 4f, HazeFeather = 2f;
+
+    /// <summary>The share of a column's haze a blast clears at its heart, falling to nothing at its edge.</summary>
+    private const float BlastClears = 0.9f;
+
     /// <summary>A change in the wind's speed smaller than this, metres a second, sends no front.</summary>
     private const float Calm = 0.05f;
 
@@ -70,7 +79,8 @@ internal static partial class AirScene
     private const float MaxPartStep = 3f;
 
     /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day; its dust lies whole, gathered
-    /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial.</summary>
+    /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial. A forest's
+    /// columns hold haze, which each <see cref="Trunk"/> lays.</summary>
     internal static void Enter(AirLook look, bool night)
     {
         var s = new AirSceneState { Look = look, Night = night, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
@@ -79,8 +89,9 @@ internal static partial class AirScene
         s.Laid = true;
         float amount = MathF.Max(GroundMist.FogAmount, 0f);
         s.Hold = 1f + AmountGain * amount;
-        bool dust = (look.Layers(night) & AirLayer.Dust) != 0;
-        s.Any = dust;
+        AirLayer layers = look.Layers(night);
+        bool dust = (layers & AirLayer.Dust) != 0;
+        s.Columns = dust ? AirLayer.Dust : layers & AirLayer.Haze;
         float lay = BaseDust * s.Hold;
         for (int y = 0; y < GroundMist.Side; y++)
             for (int x = 0; x < GroundMist.Side; x++)
@@ -133,6 +144,7 @@ internal static partial class AirScene
         if (!s.Laid && GroundMist.Corner(out _, out _, out _))
         {
             Enter(AirPlaces.Resolve(Loaded(interior)), night);
+            foreach (Vector2 t in AirArea.Trunks) Trunk(t);
             s = _s;
         }
         s.Scene = scene.Value;
@@ -143,8 +155,29 @@ internal static partial class AirScene
     /// <summary>Day turns to night or back.</summary>
     internal static void Night(bool night) { }
 
-    /// <summary>A tree trunk standing at <paramref name="at"/>.</summary>
-    internal static void Trunk(Vector2 at) { }
+    /// <summary>A tree trunk standing at <paramref name="at"/>: in a forest it hazes the columns about it, whole within
+    /// <see cref="HazeReach"/> less <see cref="HazeFeather"/>, and sheds leaves while the player is near it.</summary>
+    internal static void Trunk(Vector2 at)
+    {
+        AirSceneState s = _s;
+        if (!s.Laid || s.Columns != AirLayer.Haze) return;
+        AddTrunk(s.Leaves, at);
+        float lay = BaseHaze * s.Hold;
+        int r = (int)MathF.Ceiling(HazeReach);
+        int cx = (int)MathF.Floor(at.X) - s.Ox, cy = (int)MathF.Floor(at.Y) - s.Oy;
+        for (int y = Math.Max(cy - r, 0); y <= Math.Min(cy + r, GroundMist.Side - 1); y++)
+            for (int x = Math.Max(cx - r, 0); x <= Math.Min(cx + r, GroundMist.Side - 1); x++)
+            {
+                int c = y * GroundMist.Side + x;
+                float d = Vector2.Distance(new Vector2(s.Ox + x + 0.5f, s.Oy + y + 0.5f), at);
+                float w = Math.Clamp((HazeReach - d) / HazeFeather, 0f, 1f);
+                if (w <= 0f || float.IsNaN(s.Floor[c])) continue;
+                float was = s.Rest[c];
+                s.Rest[c] = MathF.Min(was + lay * w, lay);
+                s.Dust[c] += s.Rest[c] - was;
+            }
+        s.Gen++;
+    }
 
     /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, with the air off nothing moves.</summary>
     internal static void Step(float dt, Vector2 wind)
@@ -170,6 +203,7 @@ internal static partial class AirScene
         StepMotes(s, dt);
         StepPollen(s, dt);
         StepWisps(s, dt, wind, speed);
+        StepLeaves(s, dt);
         if (still) return;
         s.Gen++;
         s.Clock += dt;
@@ -257,21 +291,23 @@ internal static partial class AirScene
     private static float Uneven(float across)
         => (MathF.Sin(2.1f * across + 0.7f) + 0.7f * MathF.Sin(3.7f * across + 2.3f) + 0.5f * MathF.Sin(1.3f * across + 4.1f)) / 2.2f;
 
-    /// <summary>How much of <paramref name="layer"/> hangs at <paramref name="at"/>: the dust thickest on the floor and
-    /// thinning to nothing at its top, stirred slowly where it lies, or the wisps high overhead. None with the air off.</summary>
+    /// <summary>How much of <paramref name="layer"/> hangs at <paramref name="at"/>: the dust or a forest's haze
+    /// thickest on the floor and thinning to nothing at its top, stirred slowly where it lies, or the wisps high
+    /// overhead. None with the air off.</summary>
     internal static float Density(AirLayer layer, Vector3 at)
     {
         AirSceneState s = _s;
         if (layer == AirLayer.Wisps) return On(s) ? WispAt(s, at) : 0f;
         int c = Column(s, at.X, at.Y);
-        if (c < 0 || layer != AirLayer.Dust || !On(s)) return 0f;
-        float h = RestHeight + s.Lift[c], z = at.Z - s.Floor[c];
+        if (c < 0 || layer == AirLayer.None || layer != s.Columns || !On(s)) return 0f;
+        (float depth, float h) = Shown(s, c, at.X, at.Y);
+        float z = at.Z - s.Floor[c];
         if (z < 0f || z >= h) return 0f;
-        return 2f * s.Dial * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(at.X, at.Y, s.Clock)) * (1f - z / h) / h;
+        return 2f * depth * (1f - z / h) / h;
     }
 
-    /// <summary>Does the area's dust lie, to be drawn? False with the air off or in a place with none.</summary>
-    internal static bool Lies => _s.Laid && _s.Any && On(_s);
+    /// <summary>Does the area's dust or haze lie, to be drawn? False with the air off or in a place with neither.</summary>
+    internal static bool Lies => _s.Laid && _s.Columns != AirLayer.None && On(_s);
 
     /// <summary>Is the air on in this area? A hold reads as it stood when the area was entered, so a later change waits
     /// for the next entry; the player's own switch reads live.</summary>
@@ -282,15 +318,22 @@ internal static partial class AirScene
     /// <summary>Runs on each time the dust's columns change, across areas, so an upload knows to send.</summary>
     internal static int Gen => _s.Gen;
 
-    /// <summary>The dust shown on the column holding world (<paramref name="x"/>, <paramref name="y"/>), metres of full
-    /// density, and the height it reaches over its floor; both 0 off the air's floor.</summary>
+    /// <summary>The dust or haze shown on the column holding world (<paramref name="x"/>, <paramref name="y"/>), metres
+    /// of full density, and the height it reaches over its floor; both 0 off the air's floor.</summary>
     internal static (float Depth, float Top) Shown(float x, float y)
     {
         AirSceneState s = _s;
         int c = Column(s, x, y);
-        if (c < 0) return (0f, 0f);
-        float cx = MathF.Floor(x) + 0.5f, cy = MathF.Floor(y) + 0.5f;
-        return (s.Dial * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(cx, cy, s.Clock)), RestHeight + s.Lift[c]);
+        return c < 0 ? (0f, 0f) : Shown(s, c, MathF.Floor(x) + 0.5f, MathF.Floor(y) + 0.5f);
+    }
+
+    /// <summary>Column <paramref name="c"/>'s depth stirred at (<paramref name="x"/>, <paramref name="y"/>) and its top: the
+    /// dust at the Dust dial below the knee, the haze whole up past the crowns' undersides.</summary>
+    private static (float Depth, float Top) Shown(AirSceneState s, int c, float x, float y)
+    {
+        bool haze = s.Columns == AirLayer.Haze;
+        float depth = (haze ? 1f : s.Dial) * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(x, y, s.Clock));
+        return (depth, (haze ? HazeHeight : RestHeight) + s.Lift[c]);
     }
 
     /// <summary>The still air's slow stir at world (<paramref name="x"/>, <paramref name="y"/>) after <paramref name="t"/>
@@ -329,6 +372,9 @@ internal sealed class AirSceneState
     public readonly AirPollen Pollen = new();
     public readonly AirWispSheet Sheet = new();
 
+    /// <summary>A forest's trunks and the leaves they shed.</summary>
+    public readonly AirLeaves Leaves = new();
+
     /// <summary>The grid's corner in whole metres and the player's feet across the ground, and whether a floor is laid.</summary>
     public int Ox, Oy;
     public Vector2 Feet;
@@ -362,8 +408,9 @@ internal sealed class AirSceneState
     /// <summary>Whether a hold set the Air switch when the area was entered, and what it held it at.</summary>
     public bool Held, HeldOn;
 
-    /// <summary>Whether the area's look lays dust, and the upload generation its columns are at.</summary>
-    public bool Any;
+    /// <summary>The layer the columns hold, dust or a forest's haze, none in a place with neither; and the upload
+    /// generation its columns are at.</summary>
+    public AirLayer Columns;
     public int Gen;
 
     /// <summary>How the air drifts over the floor, metres a second.</summary>

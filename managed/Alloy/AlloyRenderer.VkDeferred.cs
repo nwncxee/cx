@@ -87,6 +87,10 @@ public sealed unsafe partial class AlloyRenderer
         public VkDefStage? Pollen;
         public bool PollenFailed;
         public readonly Vector4[] PollenData = new Vector4[AirScene.PollenPacked];
+        /// <summary>The mote stage's sky-lit build that lays a forest's falling leaves, whether it was refused, and the records packed for it.</summary>
+        public VkDefStage? Leaves;
+        public bool LeavesFailed;
+        public readonly Vector4[] LeafData = new Vector4[AirScene.LeavesPacked];
         /// <summary>The stage that veils the lit frame with a meadow's wisps, whether it was refused, and the records packed for it.</summary>
         public VkDefStage? Wisps;
         public bool WispsFailed;
@@ -155,8 +159,9 @@ public sealed unsafe partial class AlloyRenderer
         bool dust = AirScene.Lies && VkDefDust(vk, log);
         bool motes = AirScene.Floats && VkDefAir(vk, ref d.Motes, ref d.MotesFailed, AirScene.MoteCs, null, AirScene.MotesPacked, "vk air motes", "motes", log);
         bool pollen = AirScene.Glinting && VkDefAir(vk, ref d.Pollen, ref d.PollenFailed, AirScene.MoteCs, VkAirSky, AirScene.PollenPacked, "vk air pollen", "pollen", log);
+        bool leaves = AirScene.Falling && VkDefAir(vk, ref d.Leaves, ref d.LeavesFailed, AirScene.MoteCs, VkAirSky, AirScene.LeavesPacked, "vk air leaves", "leaves", log);
         bool wisps = AirScene.Hung && VkDefAir(vk, ref d.Wisps, ref d.WispsFailed, AirScene.WispCs, null, AirScene.WispsPacked, "vk air wisps", "wisps", log);
-        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseMotes = 0, loosePollen = 0, looseWisps = 0;
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseMotes = 0, loosePollen = 0, looseLeaves = 0, looseWisps = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
             || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass)
@@ -165,6 +170,7 @@ public sealed unsafe partial class AlloyRenderer
             || dust && !VkDefBlocks(d.Dust!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDust, ref pass)
             || motes && !VkDefBlocks(d.Motes!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseMotes, ref pass)
             || pollen && !VkDefBlocks(d.Pollen!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out loosePollen, ref pass)
+            || leaves && !VkDefBlocks(d.Leaves!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseLeaves, ref pass)
             || wisps && !VkDefBlocks(d.Wisps!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseWisps, ref pass))
             return;
 
@@ -240,7 +246,7 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((packed - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
             cl.EndLabel();
         }
-        Vector3 sky = pollen || wisps ? FogLinear() : default;
+        Vector3 sky = pollen || leaves || wisps ? FogLinear() : default;
         int grains = pollen ? AirScene.PackPollen(d.PollenData, sky) : 0;
         if (grains > 1)
         {
@@ -249,6 +255,16 @@ public sealed unsafe partial class AlloyRenderer
             cl.SetPipeline(d.Pollen!.Pipe);
             VkDefBindSet(cl, d.Pollen, s.Hdr, default, loosePollen, pass, slots);
             cl.Dispatch((grains - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
+            cl.EndLabel();
+        }
+        int fallen = leaves ? AirScene.PackLeaves(d.LeafData, sky) : 0;
+        if (fallen > 1)
+        {
+            cl.UpdateBuffer(d.Leaves!.Own, 0, MemoryMarshal.AsBytes(d.LeafData.AsSpan(0, fallen)));
+            cl.BeginLabel("air leaves"u8);
+            cl.SetPipeline(d.Leaves!.Pipe);
+            VkDefBindSet(cl, d.Leaves, s.Hdr, default, looseLeaves, pass, slots);
+            cl.Dispatch((fallen - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
             cl.EndLabel();
         }
         int sheet = wisps ? AirScene.PackWisps(d.WispData, sky) : 0;

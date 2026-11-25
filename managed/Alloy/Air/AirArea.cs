@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -22,8 +23,14 @@ public sealed unsafe class AirArea : IExtenderService
     /// <summary>The place table's resref and its two columns.</summary>
     private const string Table = "cx_airplace", TilesetColumn = "Tileset", PlaceColumn = "Place";
 
+    /// <summary>How wide a tile is, metres, and where its trunks stand within it, metres from its low corner.</summary>
+    private const float TileMetres = 10f, TrunkNear = 2.5f, TrunkFar = 7.5f;
+
     /// <summary>The features of the area loaded last; empty until one loads.</summary>
     internal static AreaFeatures Features => _s.Features;
+
+    /// <summary>Where the trunks of the area loaded last stand on the ground: four on each tile whose corners hold trees.</summary>
+    internal static ReadOnlySpan<Vector2> Trunks => _s.Trunks;
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -71,6 +78,7 @@ public sealed unsafe class AirArea : IExtenderService
         string tileset = set != IntPtr.Zero && set == s.SetPtr ? s.SetName : string.Empty;
         var corners = new List<string[]>();
         var edges = new List<string[]>();
+        var trunks = new List<Vector2>();
         int count = area.TileWidth * area.TileHeight;
         CNWTile tiles = area.Tiles;
         if (set != IntPtr.Zero && tiles.Ptr != IntPtr.Zero && count > 0)
@@ -78,13 +86,27 @@ public sealed unsafe class AirArea : IExtenderService
             {
                 IntPtr data = new CNWTileSet(set).TileSetGetTileData(tiles[i].Id);
                 if (data == IntPtr.Zero) continue;
-                corners.Add(Names(new CNWTileData(data).Corners));
+                string[] named = Names(new CNWTileData(data).Corners);
+                corners.Add(named);
                 edges.Add(Names(new CNWTileData(data).Edges));
+                if (AirPlaces.Treed(named)) Seat(trunks, i % area.TileWidth, i / area.TileWidth);
             }
+        s.Trunks = trunks.ToArray();
         s.Features = AreaFeatures.Of(tileset, area.Flags, corners, edges);
         List<(string, string)>? rows = Rows();
         AirPlaces.Load(rows);
         s.Log?.Info($"AirArea: '{tileset}' flags {area.Flags}, {corners.Count} tile(s), {(rows == null ? "no cx_airplace.2da" : $"cx_airplace.2da with {rows.Count} row(s)")}");
+    }
+
+    // ponytail: a tile with one tree corner seats all four whatever its rotation; seat by corner once the tile's orientation is read.
+    /// <summary>Seat four trunks on the tile in column <paramref name="x"/>, row <paramref name="y"/>, one in each quarter.</summary>
+    private static void Seat(List<Vector2> trunks, int x, int y)
+    {
+        Vector2 low = new(x * TileMetres, y * TileMetres);
+        trunks.Add(low + new Vector2(TrunkNear, TrunkNear));
+        trunks.Add(low + new Vector2(TrunkFar, TrunkNear));
+        trunks.Add(low + new Vector2(TrunkNear, TrunkFar));
+        trunks.Add(low + new Vector2(TrunkFar, TrunkFar));
     }
 
     /// <summary>The text of each of <paramref name="strings"/>.</summary>
@@ -118,7 +140,7 @@ public sealed unsafe class AirArea : IExtenderService
     }
 }
 
-/// <summary>The lifetime owner: the chain slots, the last tileset the load named and the last area's features.</summary>
+/// <summary>The lifetime owner: the chain slots, the last tileset the load named and the last area's features and trunks.</summary>
 internal sealed unsafe class AirAreaState
 {
     internal ExtenderLog? Log;
@@ -128,4 +150,5 @@ internal sealed unsafe class AirAreaState
     internal bool TableReady;
     internal string SetName = string.Empty;
     internal AreaFeatures Features = AreaFeatures.Of(string.Empty, 0, [], []);
+    internal Vector2[] Trunks = [];
 }
