@@ -3,9 +3,9 @@ using static CX.Alloy.AirFixture;
 
 namespace CX.Alloy;
 
-/// <summary>The place resolver's plain regressions: the forest's half-share edge, an edge's water, a table row's case
-/// and a row naming no place, and which layers a look hangs by night and in snow. Oracle, by hand: the place rules the
-/// council settled and the tile counts each case builds.</summary>
+/// <summary>The place resolver's plain regressions: the forest's half-share edge, an edge's water and an indoor one's, a
+/// table row's case and a row naming no place, and which layers a look hangs by night, in snow, by water and in a crypt.
+/// Oracle, by hand: the place rules the council settled and the tile counts each case builds.</summary>
 internal static class AirPlaceRegressions
 {
     [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
@@ -17,6 +17,7 @@ internal static class AirPlaceRegressions
         {
             HalfTrees(check); NoTilesRead(check); StreamEdgeWet(check); RowCase(check); RowNoPlace(check);
             NightPollen(check); SnowyForest(check); DryNight(check); WetDay(check); CityMist(check);
+            IndoorDry(check); NoneByWater(check); CryptLayers(check);
         }
         finally { AirPlaces.Load(null); }
         log.Info(check.Ok ? "AirPlaceRegressions.SelfCheck: passed" : "AirPlaceRegressions.SelfCheck: FAILED");
@@ -121,5 +122,34 @@ internal static class AirPlaceRegressions
         var city = new AirLook(AirPlace.City, false, true, false);
         check.Expect(city.Layers(true) == AirLayer.NightMist && city.Layers(false) == AirLayer.None,
             $"a city by water lays {city.Layers(true)} at night, {city.Layers(false)} by day (want night mist, then nothing)");
+    }
+
+    // Given an indoor area with water among its tiles
+    // When the player enters it
+    // Then its water is not marked.
+    private static void IndoorDry(Checker check)
+    {
+        AirLook look = LookOf(Features("zcx09", Interior, 4, _ => new[] { "Water", "Floor", "Floor", "Floor" }, _ => new[] { "", "", "", "" }));
+        check.Expect(!look.Water, $"an indoor area with water corners marks water {look.Water} (want false)");
+    }
+
+    // Given an outdoor Sea Ships area with water among its tiles
+    // When night falls
+    // Then its water is marked and no night mist gathers.
+    private static void NoneByWater(Checker check)
+    {
+        AirLook look = LookOf(Plain("tss13", 0, "Water"));
+        AirLayer night = look.Layers(true);
+        check.Expect(look.Place == AirPlace.None && look.Water && night == AirLayer.None,
+            $"a Sea Ships area by water takes {look.Place}, water {look.Water}, and lays {night} at night (want None, true, nothing)");
+    }
+
+    // Given a crypt
+    // When the player stands in it
+    // Then dust lies and motes hang.
+    private static void CryptLayers(Checker check)
+    {
+        AirLayer day = new AirLook(AirPlace.Crypt, false, false, false).Layers(false);
+        check.Expect(day == (AirLayer.Dust | AirLayer.Motes), $"a crypt lays {day} (want Dust, Motes)");
     }
 }
