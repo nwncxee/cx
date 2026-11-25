@@ -15,7 +15,8 @@ was written down:
   - `Quality.Area("x", ...)` declares `quality.x`.
   - a class whose constructor takes a `KnobGroup` declares its rows on that parameter, and takes the group each
     `<Class>.Declare(<group var>, ...)` site passes (the release notice's knobs on General's About), and a
-    `static ... Declare(KnobGroup <p>, ...)` that hands `<p>` on takes the group each of its own sites passes.
+    method of any name with a `KnobGroup <p>` parameter gives `<p>` every group its shipped sites pass, through
+    any number of hops.
 A group declared with `master:` also declares `<group>.enabled`. A `new KnobGroup(...)` is a self-check's
 throwaway, registered nowhere, so an unattributed factory call is reported only under `-v` and fails nothing.
 
@@ -35,7 +36,7 @@ FACT = re.compile(r'\b(\w++)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 NEWOF = re.compile(r'new\s+(\w+)\s*\(\s*"([a-z0-9]+)"')
 HANDED = re.compile(r'\b(?:private|public|internal)\s+(\w+)\s*\(\s*KnobGroup\s+(\w+)\s*[,)]')
-RELAY = re.compile(r'\bstatic\s+\w+\s+Declare\s*\(\s*KnobGroup\s+(\w+)\s*[,)]')
+RELAY = re.compile(r'\b(\w+)\s*\(([^()]*\bKnobGroup\s+\w+[^()]*)\)\s*(?:=>|\{)')
 TEXTSTYLE = re.compile(r'new\s+(?:[\w.]+\.)?TextStyle\s*(\()\s*(\w+)\s*,')
 CAMERA_MODES = ('chase', 'topdown', 'driving')
 
@@ -135,21 +136,32 @@ for cls, var in dynamic.items():
     for newcls, name in NEWOF.findall(all_text):
         if newcls == cls:
             class_group[cls].add((var, name))
-var_group = {v: g for pairs in list(class_group.values()) for v, g in pairs}
-for path, text in texts.items():
+var_group = collections.defaultdict(set)
+for pairs in list(class_group.values()):
+    for v, g in pairs:
+        var_group[v].add(g)
+relays = []
+for text in texts.values():
     for m in RELAY.finditer(text):
-        relay = owner(path, m.start())
-        shipped = '\n'.join(t for q, t in texts.items() if 'SelfCheck' not in str(q))
-        sites = [*re.finditer(r'\b' + str(relay) + r'\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]', shipped),
-                 *re.finditer(r'(?<![\w.])Declare\(\s*(?:\w+\.)+(\w+)\s*[,)]', text)]
-        for site in sites:
-            if site.group(1) in var_group:
-                var_group.setdefault(m.group(1), var_group[site.group(1)])
+        params = [a.split() for a in m.group(2).split(',')]
+        relays += [(m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
+shipped = [t for q, t in texts.items() if 'SelfCheck' not in str(q)]
+for _turn in range(len(relays) + 1):
+    grew = False
+    for name, at, param in relays:
+        for text in shipped:
+            for site in re.finditer(r'(?<!\w)' + name + r'\s*\(', text):
+                args = [a.strip() for a in balanced(text, site.end() - 1)[0].split(',')]
+                arg = re.fullmatch(r'(?:\w+\.)*(\w+)', args[at]) if at < len(args) else None
+                if arg and not var_group[arg.group(1)] <= var_group[param]:
+                    var_group[param] |= var_group[arg.group(1)]
+                    grew = True
+    if not grew:
+        break
 for m in HANDED.finditer(all_text):
     cls, param = m.group(1), m.group(2)
     for site in re.finditer(r'\b' + cls + r'\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]', all_text):
-        if site.group(1) in var_group:
-            class_group[cls].add((param, var_group[site.group(1)]))
+        class_group[cls].update((param, g) for g in var_group[site.group(1)])
 
 ARRAY = re.compile(r'\bNAME\s*=\s*(?:new\s*(?:\w+)?\[\]\s*)?\{([^}]*)\}')
 LITERAL = re.compile(r'"([A-Za-z0-9_.\-]+)"')

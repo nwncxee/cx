@@ -80,6 +80,21 @@ printf 'class W { void T(KnobGroup g) { Wire.Declare(g, "y"); } }\n' > "$t/param
 for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
 out=$(row '| about.ping | Ping |'); [ -z "$out" ] || fail "knob-spec-rows refused about.ping, declared through Wire.Declare(General.About, ...), with a self-check passing a g that names another group -- $out"
 
+# A method of any name that takes a KnobGroup passes on every group its sites name, through any number of hops.
+cat > "$t/param/managed/A.cs" << 'EOF2'
+static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
+static class Fen { public static readonly KnobGroup Fe = KnobGroup.Declare("fen", "General", "Fen"); }
+sealed class Notes { private Notes(KnobGroup g, string s) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g, string s) => new(g, s); }
+sealed class Wire { void Init() { Hand(General.About, "x"); Outer.Pass(Fen.Fe); } internal static Notes Hand(KnobGroup about, string s) => Notes.Declare(about, s); }
+static class Outer { internal static void Pass(KnobGroup g) { Wire.Hand(g, "z"); } }
+static class Lone { static readonly KnobGroup Lo = KnobGroup.Declare("lone", "General", "Lone"); void I() { UnHand(Lo, "q"); } static void UnHand(KnobGroup x, string s) { } }
+EOF2
+rm "$t/param/managed/W.SelfCheck.cs"
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+out=$(row '| about.ping | Ping |')
+grep -q "fen.ping is declared" <<< "$out" || fail "knob-spec-rows did not name fen.ping, handed Fen.Fe through Outer.Pass and Wire.Hand with no row -- $out"
+out=$(row "$(printf '| about.ping | Ping |\n| fen.ping | Ping |')"); [ -z "$out" ] || fail "knob-spec-rows refused about.ping and fen.ping, each declared through Wire.Hand, beside a call to UnHand -- $out"
+
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
 lines '# Given a' '# When b' && fail "approved-lines passed a script with no Then"
