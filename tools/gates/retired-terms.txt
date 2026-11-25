@@ -321,3 +321,6 @@ nameplate\.(healthbar|barwidth)\b	CX-740
 health ?bar	CX-740	no health bar|went with the health bar
 # The froxel ground mist's switch: the air's own switch took its place, and an older cx.cfg's value carries into it.
 \bvfog\.mist\b	CX-705	RetiredKeys|RetiredMist|Given a cx\.cfg holding|no longer lists vfog\.mist|writes no vfog\.mist
+# The froxel ground mist: the air's dust, drawn in a pass of its own, took its place in the fog volume.
+\b(cx_mist|CxVfMist|CxVfMistAmbient|CxMistDepth|CxMistBuf|uVfMistSky|uMistFlow)\b	CX-705
+\bMist(Depth|Profile|Shape|Lamp|Light)(Approved)?SelfCheck\b	CX-705

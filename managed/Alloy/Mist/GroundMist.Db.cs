@@ -61,10 +61,6 @@ internal static partial class GroundMist
         return PackedBytes;
     }
 
-    /// <summary>How far the wind has carried the mist's patches (x, y, metres) and the field's clock (z, seconds), as the fog
-    /// stage drifts and boils them.</summary>
-    internal static Vector3 Carried() => new((float)_s.CarriedX, (float)_s.CarriedY, (float)_s.Clock);
-
     /// <summary>The bytes of the field's head, and of the whole field as <see cref="Pack"/> writes it.</summary>
     internal const int Head = sizeof(float) * 4, PackedBytes = Head + Side * Side * sizeof(float) * 2;
 }

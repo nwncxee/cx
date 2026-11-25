@@ -20,7 +20,6 @@ vec2 cxClusterXY;
 #include "cx_sunshadow.glsl"
 #include "cx_noise.glsl"
 #include "cx_vfogmed.glsl"
-#include "cx_mist.glsl"
 
 layout(rgba16f, binding = 0) uniform writeonly image3D uVfOut;
 uniform sampler3D uVfHist;  // last frame's output of this pass
@@ -28,7 +27,6 @@ uniform vec2 uVfHeight;     // (haze floor world Z, haze falloff per metre above
 uniform vec2 uVfNoise;      // (patchiness 0..1, 1 / patch size)
 uniform vec3 uVfDrift;      // how far the patches have travelled, metres
 uniform vec3 uVfAmbient;    // LINEAR light the medium scatters, over every direction and shade: the area's fog colour
-uniform vec3 uVfMistSky;    // LINEAR light area mist scatters: the area's sun by day, its moon by night, black indoors
 uniform vec4 uVfSun;        // w: the share of it the sun's beam brings, through the cascades and the phase; rgb: the sun's hue times w
 uniform vec3 uVfLocal;      // (point-light strength, 1 = their cube shadows reach the fog, how far reach sets strength)
 uniform float uVfPhase;     // forward lobe's anisotropy g
@@ -148,13 +146,6 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
     return acc * uDayDim;
 }
 
-/// The ambient light a froxel holding `hazeD` of haze and `mistD` of mist scatters: the haze's, lifted toward the sky's by the mist's share.
-vec3 CxVfMistAmbient(vec3 haze, vec3 sky, float hazeD, float mistD)
-{
-    float share = mistD > 0.0 ? mistD / (hazeD + mistD) : 0.0;
-    return mix(haze, max(haze, sky), share);
-}
-
 /// The light the medium at `world` scatters toward the eye, per unit of extinction, from ambient `amb`.
 vec3 CxVfLight(vec3 world, vec3 V, float depth, vec3 amb)
 {
@@ -180,10 +171,8 @@ void main()
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
     // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
     float rain = uVfRain.x * CxVfBank(world);
-    float haze = CxVfDensity(world, dist, open, rain, uVfRain.y), mist = CxVfMist(world);
-    vec3 amb = CxVfMistAmbient(uVfAmbient, uVfMistSky, haze, mist);
-    // the mist lifts the light here but cx_vfogsum_cs integrates its extinction exactly, slice by slice
-    vec4 v = vec4(CxVfLight(world, V, depth, amb) * CxVfSeen(world), haze);
+    float haze = CxVfDensity(world, dist, open, rain, uVfRain.y);
+    vec4 v = vec4(CxVfLight(world, V, depth, uVfAmbient) * CxVfSeen(world), haze);
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel

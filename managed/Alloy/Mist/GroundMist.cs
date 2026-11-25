@@ -186,7 +186,6 @@ internal static partial class GroundMist
         }
         if (!s.Laid || dt <= 0f) return;
         s.Stepped = true;
-        s.CarriedX += wind.X * dt; s.CarriedY += wind.Y * dt; s.Clock += dt;
         Array.Fill(s.Target, s.AreaLevel);
         for (int i = 0; i < sources; i++)
         {
@@ -525,10 +524,6 @@ internal sealed class GroundMistState
     public bool Air, Lifted;
     public int Ax0, Ax1, Ay0, Ay1;
     public float AirTop;
-
-    /// <summary>How far the wind has carried the mist's patches, metres, and how long the field has stepped, seconds;
-    /// double, since both grow all session.</summary>
-    public double CarriedX, CarriedY, Clock;
 
     /// <summary>The columns a push reached, nearest first, how many, and the stamp marking them reached.</summary>
     public int[] Queue = new int[GroundMist.Side * GroundMist.Side];

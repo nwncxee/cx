@@ -21,8 +21,8 @@ internal static class SsboSlots
     /// draw or dispatch, so a compute pass may take any of them in between.</summary>
     internal const uint Shared = 8;
 
-    /// <summary>The light rig and the ground mist's field: the fog volume's light stage reads all six, so they are distinct.</summary>
-    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Mist = 12, Chart = 13;
+    /// <summary>The light rig, the lightmap chart and the air's dust field: a stage reading the rig may read them beside it, so they are distinct.</summary>
+    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Air = 12, Chart = 13;
     /// <summary>Above the rig, for a pass whose program also reads it.</summary>
     internal const uint LightStats = 14, DeferredStats = 14, GrassMats = 14,
                         ParticleRecs = 14, ParticleIdx = 15;
@@ -61,7 +61,7 @@ internal static class SsboSlots
         ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
-        ["CxChartBuf"] = Chart, ["CxMistBuf"] = Mist,
+        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air,
         ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,

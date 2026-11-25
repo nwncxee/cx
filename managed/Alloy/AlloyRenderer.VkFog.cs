@@ -36,11 +36,6 @@ public sealed unsafe partial class AlloyRenderer
         public bool Built;
         /// <summary>The four volumes' move-backs as last seen.</summary>
         public int Moves;
-        /// <summary>The ground mist's field as the light stage reads it, the bytes packed for it, and the
-        /// change count it was last packed at.</summary>
-        public BufferId Mist;
-        public byte[] MistBytes = new byte[GroundMist.PackedBytes];
-        public int MistGen = int.MinValue;
     }
 
     private static VkFogState _vkFog = new();
@@ -92,9 +87,6 @@ public sealed unsafe partial class AlloyRenderer
         if (loose < 0 || pass < 0 || looseSum < 0) return;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
-        // ponytail: the whole field goes up whenever a column moves; a dirty-rect upload once settling mist costs a frame
-        int mist = GroundMist.Pack(ref s.MistGen, s.MistBytes);
-        if (mist > 0 && !s.Mist.IsNull) cl.UpdateBuffer(s.Mist, 0, s.MistBytes.AsSpan(0, mist));
 
         ReadOnlySpan<ImageId> hist = [prev];
         cl.ReadImages(hist);
@@ -138,7 +130,6 @@ public sealed unsafe partial class AlloyRenderer
             f.LocalMedia = LooseBlock.Loc("uLocalMedia");
         });
         LooseBlock.Resolve(s.Sum.Names, () => f.S = FogVolume.GridLocsOf());
-        s.Mist = vk.CreateBuffer(new BufferDesc(GroundMist.PackedBytes, BufferUse.Storage, MemoryKind.Device, "vk ground mist"));
         return true;
     }
 

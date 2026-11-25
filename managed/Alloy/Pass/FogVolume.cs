@@ -52,11 +52,11 @@ internal static unsafe partial class FogVolume
     {
         internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
-        internal int Rain, CoverVp, CoverLayer, Hidden, Tiles, MistSky;
+        internal int Rain, CoverVp, CoverLayer, Hidden, Tiles;
     }
 
-    /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>, <c>cx_mist.glsl</c>).</summary>
-    internal struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin, Top, MistFlow; }
+    /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
+    internal struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin, Top; }
 
     /// <summary>The build's own state, replaced whole on a device edge: which of the ping-pong pair this frame
     /// writes, the history it may filter against, and the volume this frame's readers sample.</summary>
@@ -145,8 +145,6 @@ internal static unsafe partial class FogVolume
         return haveSky ? Vector3.Lerp(a, sky, skyMix) : a;
     }
 
-    /// <summary>The share of the area's sun or moon that mist, thick and low, scatters as the light it glows with.</summary>
-    private const float MistSkyShare = 0.5f;
 
     /// <summary>The share (w) of the medium's light that arrives as the sun's beam, and the sun's hue times it (xyz): the
     /// fog colour is the lit fog averaged over view directions, so a beam gains what its shade loses. Scales with <paramref name="day"/> (0 = the
@@ -192,10 +190,6 @@ internal static unsafe partial class FogVolume
         public int TilesW, TilesH;
         /// <summary>The air past the grid's edge is dark too.</summary>
         public bool OutsideDark;
-        /// <summary>The light area mist scatters away from lamps: the area's sun by day, its moon by night, none indoors.</summary>
-        public Vector3 MistSky;
-        /// <summary>How far the wind has carried the ground mist's patches, metres, and its clock, seconds.</summary>
-        public Vector3 MistFlow;
     }
 
     /// <summary>This frame's terms for the main view, the drift and the dawn stepped, carrying <paramref name="rain"/>
@@ -235,8 +229,6 @@ internal static unsafe partial class FogVolume
         _s.Day += ((FrameInputs.Night ? 0f : 1f) - _s.Day) * MathF.Min(dt / DayEase, 1f);
         t.Sun = SunShare(FrameInputs.Interior, FrameInputs.Blind, FrameInputs.HasAreaDiffuse, FrameInputs.AreaDiffuse,
                          _s.Day, VolumetricFog.Sun.V);
-        t.MistFlow = GroundMist.Carried();
-        t.MistSky = outdoors && FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * MistSkyShare) : default;
         _s.Last = t.M; _s.LastAmbient = t.Ambient; _s.LastSun = t.Sun;
         Vector2 wind = AlloyRenderer.AreaWind();
         Vector2 dir = wind.LengthSquared() > 1e-6f ? Vector2.Normalize(wind) : new Vector2(0.8f, 0.6f);
@@ -263,7 +255,6 @@ internal static unsafe partial class FogVolume
         LooseBlock.Set(l.Noise, t.Noise.X, t.Noise.Y);
         LooseBlock.Set(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
         LooseBlock.Set(l.Ambient, t.Ambient.X, t.Ambient.Y, t.Ambient.Z);
-        LooseBlock.Set(l.MistSky, t.MistSky.X, t.MistSky.Y, t.MistSky.Z);
         LooseBlock.Set(l.Sun, t.Sun.X, t.Sun.Y, t.Sun.Z, t.Sun.W);
         LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
         LooseBlock.Set(l.Phase, t.Phase);
@@ -304,7 +295,7 @@ internal static unsafe partial class FogVolume
     internal static LightLocs LightLocsOf() => new()
     {
         Grid = TakeGrid(), Height = LooseBlock.Loc("uVfHeight"), Noise = LooseBlock.Loc("uVfNoise"),
-        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), MistSky = LooseBlock.Loc("uVfMistSky"), Sun = LooseBlock.Loc("uVfSun"),
+        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), Sun = LooseBlock.Loc("uVfSun"),
         Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
         PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
         Rain = LooseBlock.Loc("uVfRain"), CoverVp = LooseBlock.Loc("uVfCoverVp"), CoverLayer = LooseBlock.Loc("uVfCoverLayer"),
@@ -327,7 +318,6 @@ internal static unsafe partial class FogVolume
         LooseBlock.Set(g.Fwd, t.Fwd.X, t.Fwd.Y, t.Fwd.Z);
         LooseBlock.Set(g.Med, t.M.Haze, t.M.Wall, t.M.Start, t.M.End);
         LooseBlock.Set(g.Origin, t.Origin.X, t.Origin.Y, t.Origin.Z);
-        LooseBlock.Set(g.MistFlow, t.MistFlow.X, t.MistFlow.Y, t.MistFlow.Z, 0f);
         LooseBlock.Set(g.Top, VolumetricFog.Top.V);
     }
 
@@ -371,7 +361,7 @@ internal static unsafe partial class FogVolume
     {
         Size = LooseBlock.Loc("uVfGrid"), Z = LooseBlock.Loc("uVfZ"), InvVp = LooseBlock.Loc("uVfInvVp"),
         Eye = LooseBlock.Loc("uVfEye"), Fwd = LooseBlock.Loc("uVfFwd"), Med = LooseBlock.Loc("uVfMed"),
-        Origin = LooseBlock.Loc("uVfOrigin"), Top = LooseBlock.Loc("uVfTop"), MistFlow = LooseBlock.Loc("uMistFlow"),
+        Origin = LooseBlock.Loc("uVfOrigin"), Top = LooseBlock.Loc("uVfTop"),
     };
 
     /// <summary>A new area: last frame's medium is another place's air.</summary>
