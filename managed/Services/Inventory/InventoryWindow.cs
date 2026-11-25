@@ -23,7 +23,7 @@ internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Ma
 internal readonly record struct InvIcon(uint Oid, float X, float Y, float W, float H, float Alpha, int CellsW, int CellsH, int Clip);
 
 /// <summary>What a point in the window is. The <c>Loot*</c> kinds are the loot pane's.</summary>
-internal enum InvHitKind { None, Title, Close, Search, Tab, Scroll, Cell, Slot, Gold, Chrome, Loot, LootTitle, LootClose, LootCell, LootScroll }
+internal enum InvHitKind { None, Title, Close, Search, Tab, Scroll, Cell, Slot, Gold, Chrome, Loot, LootTitle, LootClose, LootTakeAll, LootCell, LootScroll }
 
 internal readonly record struct InvHit(InvHitKind Kind, int Index = -1, int X = -1, int Y = -1);
 
@@ -143,6 +143,7 @@ internal sealed partial class InventoryWindow
     public void Hide()
     {
         Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Cut();
+        _takeFrom = _takeOid = InventoryModel.Invalid;
         Hovered(InventoryModel.Invalid);
     }
 
@@ -166,6 +167,7 @@ internal sealed partial class InventoryWindow
         Scrolled = scrolled && PageLimit > 1;
         ReadOnly = ServerPolicy.Bool("inventory.readonly", false);
         SearchOn = search && ServerPolicy.Bool("inventory.search.visible", true);
+        TakeAllOn = InventoryKnobs.TakeAll.V && !ReadOnly;
         if (!SearchOn) { Search = ""; SearchFocused = false; }
 
         float gridW = Cell * InventoryModel.Cols, gridH = ViewRows * Cell;
@@ -315,6 +317,7 @@ internal sealed partial class InventoryWindow
         float dt = _tickAt == 0 ? 0f : Math.Min(0.1f, (now - _tickAt) / (float)Stopwatch.Frequency);
         _tickAt = now;
         if (!Open) return;
+        TakeAllTick(now);
         LootTick(dt);
         if (!Scrolled) return;
         if (_drag && _mx >= Sx(_grid.X0) && _mx < Sx(_grid.X1))
@@ -372,6 +375,7 @@ internal sealed partial class InventoryWindow
         _tip.Cut();
         InvHit h = HitTest(px, py);
         if (h.Kind != InvHitKind.Search) SearchFocused = false;
+        if (h.Kind != InvHitKind.LootTakeAll) _takeFrom = InventoryModel.Invalid;
         uint oid = ItemUnder(h);
 
         if (Targeting())
@@ -395,6 +399,7 @@ internal sealed partial class InventoryWindow
         {
             case InvHitKind.Close: Act?.Invoke(new InvAction(InvActKind.Close)); return true;
             case InvHitKind.LootClose: Act?.Invoke(new InvAction(InvActKind.CloseLoot, Other: Loot.Oid)); return true;
+            case InvHitKind.LootTakeAll: StartTakeAll(); return true;
             case InvHitKind.Search: SearchFocused = true; return true;
             case InvHitKind.Tab: SetPage(h.Index); return true;
             case InvHitKind.Scroll:

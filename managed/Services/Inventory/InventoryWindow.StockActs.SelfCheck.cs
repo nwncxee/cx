@@ -434,7 +434,8 @@ internal sealed partial class InventoryWindow
         InventoryModel m = w.Model;
         bool knob = InventoryKnobs.TakeAll.V;
         var sent = new List<(long At, InvAction A)>();
-        w.Act = a => { sent.Add((b.Now, a)); b.Acts.Add(a); };
+        void Capture() => w.Act = a => { sent.Add((b.Now, a)); b.Acts.Add(a); };
+        Capture();
         long step = Stopwatch.Frequency / 20, half = Stopwatch.Frequency / 2;
 
         void Chest(int n, int pages = 1)
@@ -480,6 +481,7 @@ internal sealed partial class InventoryWindow
             // faster than one every half second
             Chest(5);
             Press();
+            Press();
             Run(0.1f);
             int first = Takes().Count;
             Run(1f);
@@ -509,8 +511,17 @@ internal sealed partial class InventoryWindow
             List<(long At, InvAction A)> lines = Lines();
             check.Expect(Takes().Count == 2 && l.Count == 2 && lines.Count == 1 && lines[0].A.Text.Contains("2 taken"),
                          $"a backpack with room for two takes two, leaves two in the chest and says so ({Said(b.Acts)})");
+            ServerPolicy.Apply("inventory.backpack.pages=2");
+            w.Layout(1f, false, true, 4000, 4000);
+            m.Fresh[1] = false;
+            Chest(2);
+            Press();
+            Run(0.1f);
+            int unknown = Takes().Count;
+            check.Expect(unknown == 1, $"a full first page with the second not sent yet still takes, leaving the room to the server ({Said(b.Acts)})");
             ServerPolicy.Clear();
             b.Build();
+            Capture();
 
             // Given Take all is running
             // When a take goes unconfirmed for 3 seconds
@@ -539,9 +550,59 @@ internal sealed partial class InventoryWindow
             Press();
             Run(0.1f);
             Confirm(Loot0);
+            w.Hide(); w.Show();
+            Run(2f);
+            closed += Takes().Count;
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            b.Now += step;
+            Chest(3);
+            Run(2f);
+            closed += Takes().Count;
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
             w.MouseButton(true, 1, b.Cx(2), b.Cy(0), 0); w.MouseButton(false, 1, b.Cx(2), b.Cy(0), 0);
             Run(2f);
-            check.Expect(closed == 1 && Takes().Count == 1, $"a closed chest or another press in the window stops Take all ({closed} after the close, {Takes().Count} after the press)");
+            check.Expect(closed == 2 && Takes().Count == 1, $"a closed chest or window, the same chest closed and opened again, or another press in it, stops Take all ({closed} over the three closes, {Takes().Count} after the press)");
+
+            // Given Take all is running
+            // When inventory.takeall is switched off, or another container opens in the pane
+            // Then no further take is sent
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            InventoryKnobs.TakeAll.Set(false);
+            w.Layout(1f, false, true, 4000, 4000);
+            Run(2f);
+            int knobbed = Takes().Count;
+            InventoryKnobs.TakeAll.Set(true);
+            w.Layout(1f, false, true, 4000, 4000);
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            uint other = LootChest + 1;
+            l.Reset(other, b.Now); l.Fresh[0] = true;
+            l.Items[0] = new InvItem { Oid = Loot0 + 7, X = 0, Y = 4, W = 1, H = 1, BaseId = 30 }; l.Count = 1;
+            Run(2f);
+            check.Expect(knobbed == 1 && Takes().Count == 1, $"switching inventory.takeall off or opening another container stops Take all ({knobbed} with the knob off, {Takes().Count} after the swap)");
+
+            // Given a read-only window (inventory.readonly)
+            // When the player presses where Take all would be
+            // Then nothing is taken and no line says it stopped
+            ServerPolicy.Apply("inventory.readonly=1");
+            w.Layout(1f, false, true, 4000, 4000);
+            Chest(2);
+            Press();
+            Run(4f);
+            check.Expect(Takes().Count == 0 && Lines().Count == 0, $"a read-only window shows no Take all ({Said(b.Acts)})");
+            ServerPolicy.Clear();
+            w.Layout(1f, false, true, 4000, 4000);
 
             // Given a chest whose later pages have not arrived yet
             // When Take all reaches the end of a page
@@ -565,16 +626,19 @@ internal sealed partial class InventoryWindow
             InventoryKnobs.TakeAll.Set(false);
             w.Layout(1f, false, true, 4000, 4000);
             Chest(2);
-            Press();
+            float wx = w.X, px = w.X + w.W + 203f * w.S, py = w.Y + 12f * w.S;
+            w.MouseButton(true, 1, px, py, 0); w.MouseMove(px + 20f, py); w.MouseButton(false, 1, px + 20f, py, 0);
             Run(1f);
             int off = Takes().Count;
+            bool dragged = w.X != wx;
+            w.X = wx;
             w.Hide(); w.Show();
             InventoryKnobs.TakeAll.Set(true);
             w.Layout(1f, false, true, 4000, 4000);
             Chest(2);
             Press();
             Run(0.1f);
-            check.Expect(off == 0 && Takes().Count == 1, $"with inventory.takeall off nothing is taken, and on again it takes ({off} off, {Takes().Count} on)");
+            check.Expect(off == 0 && dragged && Takes().Count == 1, $"with inventory.takeall off the spot is the title bar and nothing is taken, and on again it takes ({off} off, dragged {dragged}, {Takes().Count} on)");
         }
         finally { InventoryKnobs.TakeAll.Set(knob); w.Act = b.Acts.Add; }
     }
