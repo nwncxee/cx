@@ -66,7 +66,7 @@ internal static partial class GroundMist
                 int c = y * Side + x;
                 float wx = s.Ox + x + 0.5f, wy = s.Oy + y + 0.5f;
                 (float lies, float top) = dust ? AirScene.Shown(wx, wy) : (0f, 0f);
-                float wet = dust ? AirScene.MistAt(wx, wy) : mist ? Laid(wx, wy) : 0f;
+                float wet = dust ? AirScene.MistAt(wx, wy) : 0f;
                 cells[c] = new Cell(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], wet, lies, top);
             }
         return PackedBytes;

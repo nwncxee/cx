@@ -28,6 +28,8 @@ internal static class AirWaterMistRegressions
         PlacedDrawn(check);
         PlacedRefilled(check);
         SkyGoesUp(check);
+        MistGoesUp(check);
+        FogLaysNoFloor(check);
         log.Info(check.Ok ? "AirWaterMistRegressions.SelfCheck: passed" : "AirWaterMistRegressions.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -94,6 +96,43 @@ internal static class AirWaterMistRegressions
         GroundMist.Place(new Vector3(0.5f, 0.5f, 0f), 2f, 1f);
         GroundMist.AreaFog(true, 0f);
         check.Expect(!AirScene.Lies, "a meadow's placed mist filled over by its fog still runs the dust stage (want it idle)");
+    }
+
+    // Given the city by the water at night, the mist gathered
+    // When the fog stage takes its upload
+    // Then the column over the water carries the mist the air holds there, and a street far from the water carries none.
+    private static void MistGoesUp(Checker check)
+    {
+        Enter(City, Quay(), 0f, true);
+        Go(Gather, Vector2.Zero);
+        int gen = int.MinValue;
+        GroundMist.Pack(ref gen, Sent);
+        Vector4 head = MemoryMarshal.Read<Vector4>(Sent);
+        float water = Carried(head, 10.5f, 0.5f), street = Carried(head, -15.5f, 0.5f), held = AirScene.MistAt(10.5f, 0.5f);
+        check.Expect(held > 0f && water == held && street == 0f,
+            $"the upload carries {water:F4} m over the water where the air holds {held:F4} m, and {street:F4} m on the street (want the same, some, none)");
+    }
+
+    /// <summary>The mist depth the upload in <see cref="Sent"/> carries for the column at (<paramref name="x"/>, <paramref name="y"/>).</summary>
+    private static float Carried(Vector4 head, float x, float y)
+    {
+        int c = ((int)MathF.Floor(y - head.Y)) * GroundMist.Side + (int)MathF.Floor(x - head.X);
+        return MemoryMarshal.Cast<byte, GroundMist.Cell>(Sent.AsSpan(GroundMist.Head))[c].Mist;
+    }
+
+    // Given a meadow by day at fog amount 10
+    // When the field steps, and then mist is placed beside the player
+    // Then the dust stage idles before the placement, and after it the mist lies only where it was placed.
+    private static void FogLaysNoFloor(Checker check)
+    {
+        Enter(Meadow, Flat(), 10f, false);
+        for (int n = 0; n < 60; n++) GroundMist.Step(Frame, Vector2.Zero);
+        bool idle = !AirScene.Lies;
+        GroundMist.Place(new Vector3(0.5f, 0.5f, 0f), 2f, 1f);
+        Go(1f, Vector2.Zero);
+        float beside = Near(AirLayer.NightMist, 0.5f, 0.5f, 1f), far = Near(AirLayer.NightMist, 30f, 0f, 4f);
+        check.Expect(idle && beside > 0f && far == 0f,
+            $"at fog amount 10 the stage idles {idle} before any placement; the placement lays {beside:F4} m beside it and {far:F4} m 30 m off (want true, some, none)");
     }
 
     // Given the night mist uploaded under one fog colour
