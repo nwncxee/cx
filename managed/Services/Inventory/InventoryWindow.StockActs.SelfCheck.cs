@@ -7,10 +7,10 @@ namespace CX.Services.Inventory;
 
 internal sealed partial class InventoryWindow
 {
-    private const uint Sword = 101, Helm = 105, Potion = 106, Bag = 107, Dagger = 108, Belt = 109, WornHelm = 104, WornSword = 110, Pouch = 111, Gem = 201, LootChest = 0x500;   // not-an-offset: object ids
+    private const uint Sword = 101, Helm = 105, Potion = 106, Bag = 107, Dagger = 108, Belt = 109, WornHelm = 104, WornSword = 110, Pouch = 111, StoreHelm = 301, StoreRing = 302, Gem = 201, LootChest = 0x500;   // not-an-offset: object ids
 
     /// <summary>Off-device: the window acting as the stock panel does, one suite per behaviour: coloured names, a drop on a
-    /// worn item, the double-click, a drop from outside the backpack and a trade offer. Oracle: hand-written fixtures, the stock behaviour each Then names.</summary>
+    /// worn item, the double-click, a drop from outside the backpack, a trade offer and a store drag. Oracle: hand-written fixtures, the stock behaviour each Then names.</summary>
     internal static void StockActsSelfCheck(ExtenderLog log)
     {
         Suite(log, "InventoryWindow.NamesSelfCheck", Names);
@@ -18,6 +18,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.DoubleClickSelfCheck", DoubleClicks);
         Suite(log, "InventoryWindow.DropsSelfCheck", Drops);
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
+        Suite(log, "InventoryWindow.BuySelfCheck", Buy);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)
@@ -289,6 +290,64 @@ internal sealed partial class InventoryWindow
         int right = DropCell(2.76f, 1.50f, 2, 3), left = DropCell(1.00f, 1.50f, 2, 3), cell = DropCell(3.78f, 2.00f, 2, 10);
         check.Expect(right == 1 && left == 0 && cell == 4,
                      $"a helmet past either edge stays in the grid and rounds at 33-pixel cells (right {right}, left {left}, 146 px {cell})");
+    }
+
+    private static void Buy(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        List<InvAction> acts = b.Acts;
+        (uint, int, int) drag = default;
+        w.StoreDrag = () => drag;
+
+        // Given a store is open and the CX inventory is showing
+        // When the player drags a store item onto a free backpack cell
+        // Then the item is bought with no confirm and lands in that cell
+        drag = (StoreHelm, 2, 2);
+        bool passed = Release(b, b.Cx(4), b.Cy(5));
+        check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Buy, StoreHelm, X: 3, Y: 4),
+                     $"a 2x2 store helmet released over cell (4, 5) is bought into (3, 4), the footprint centred on the pointer ({Said(acts)})");
+
+        // Given a store is open
+        // When the player drags a store item onto an occupied cell or the window frame
+        // Then the item is bought and the server picks its cell
+        drag = (StoreRing, 1, 1);
+        Release(b, b.Cx(0), b.Cy(1));
+        string onSword = Said(acts);
+        Release(b, w.X + w.W / 2f, w.Y + 10f * w.S);
+        string onTitle = Said(acts);
+        drag = (StoreHelm, 2, 2);
+        Release(b, b.Cx(1), b.Cy(0));
+        string overlaps = Said(acts);
+        string auto = Said([new InvAction(InvActKind.Buy, StoreRing, X: AutoCell, Y: AutoCell)]);
+        check.Expect(onSword == auto && onTitle == auto && overlaps == Said([new InvAction(InvActKind.Buy, StoreHelm, X: AutoCell, Y: AutoCell)]),
+                     $"a store item on the sword, on the title bar, or a helmet whose footprint covers the sword, is bought for the server to place (sword {onSword}, title {onTitle}, helmet {overlaps})");
+
+        // Given a store is open
+        // When the player drags a store item and lets go over the world
+        // Then nothing is bought, as in the stock client
+        drag = (StoreRing, 1, 1);
+        bool worldPassed = Release(b, w.X + w.W + 200f, w.Y + 10f);
+        check.Expect(acts.Count == 0 && !worldPassed, $"a store item let go over the world buys nothing ({Said(acts)})");
+
+        // Given the engine's store drag ends on a release over the window
+        // When the release is handed back
+        // Then the engine sees it, so its drag ends rather than sticking to the pointer
+        check.Expect(!passed, "a release over the window during a store drag passes on to the engine");
+
+        // Given no store drag is live
+        // When the player releases the button over a free cell
+        // Then nothing is bought
+        drag = default;
+        Release(b, b.Cx(4), b.Cy(5));
+        check.Expect(acts.Count == 0, $"a bare release over the window buys nothing ({Said(acts)})");
+    }
+
+    /// <summary>A release at (<paramref name="x"/>, <paramref name="y"/>) with no press of the window's own; whether it was consumed.</summary>
+    private static bool Release(Bench b, float x, float y)
+    {
+        b.Acts.Clear();
+        b.W.MouseMove(x, y);
+        return b.W.MouseButton(false, 1, x, y, 0);
     }
 
     private static int Slot(string id)

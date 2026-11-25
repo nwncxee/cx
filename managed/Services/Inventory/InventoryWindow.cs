@@ -9,7 +9,7 @@ namespace CX.Services.Inventory;
 
 /// <summary>What the player asked the inventory to do; the service turns each into an engine send (or a
 /// <see cref="ServerPolicy"/> route).</summary>
-internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target, Aim }
+internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target, Aim, Buy }
 
 /// <summary>One request out of the window. <see cref="Mask"/>: an equip-slot bitmask (a Drop's source slot, 0 from the
 /// backpack); <see cref="X"/>/<see cref="Y"/>: a cell (global row; <see cref="InventoryWindow.AutoCell"/> when the server
@@ -66,6 +66,9 @@ internal sealed partial class InventoryWindow
     /// <summary>Whether the engine's target cursor is up (a spell, power or item waiting for its target). The service asks the
     /// engine; the self-check sets its own.</summary>
     public Func<bool> Targeting = static () => false;
+    /// <summary>The store item the engine is dragging and its size in cells (<c>W</c> 0 when none). The service asks the
+    /// engine's mouse captor; the self-check sets its own.</summary>
+    public Func<(uint Oid, int W, int H)> StoreDrag = static () => default;
     /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
     /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
     public Action<uint>? HoverItem;
@@ -518,7 +521,7 @@ internal sealed partial class InventoryWindow
         if (_moving) { _moving = false; return true; }
         if (_scrolling) { _scrolling = false; return true; }
         if (_lootScrolling) { _lootScrolling = false; return true; }
-        if (!_press) return Contains(px, py);
+        if (!_press) return StoreRelease(px, py);
         bool wasDrag = _drag;
         _press = _drag = false;
         if (!wasDrag) { _lastClickOid = _dragOid; return true; }
@@ -526,6 +529,10 @@ internal sealed partial class InventoryWindow
         if (a is { } act) Act?.Invoke(act);
         return true;
     }
+
+    /// <summary>A release with no press of the window's own: over the window during the engine's store drag, a Buy at the
+    /// free cell under the centred footprint, or for the server to place. The release passes on, so the engine's drag ends.</summary>
+    private bool StoreRelease(float px, float py) => Contains(px, py);
 
     /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take / Merge / into a
     /// bag, to a cell the server picks when a slot or loot item does not fit there; a tab -> the first free cell from that
