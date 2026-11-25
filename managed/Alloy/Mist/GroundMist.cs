@@ -455,8 +455,8 @@ internal static partial class GroundMist
         return over > Trace ? over : 0f;
     }
 
-    /// <summary>Does any column hold mist an emitter or a placement laid, with the air on?</summary>
-    internal static bool Placed => On() && _s.Over;
+    /// <summary>Does any column hold mist an emitter or a placement laid?</summary>
+    internal static bool Placed => _s.Over;
 
     /// <summary>Is the floor of the column at (<paramref name="x"/>, <paramref name="y"/>) open water?</summary>
     internal static bool WetAt(float x, float y)
