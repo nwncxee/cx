@@ -496,6 +496,16 @@ internal sealed partial class InventoryWindow
             check.Expect(all.Count == 5 && oids.Count == 5 && l.Count == 0 && gap >= half,
                          $"the five items are taken one each, no two within half a second ({all.Count} takes, {oids.Count} items, {l.Count} left, closest {gap / (double)Stopwatch.Frequency:0.00} s)");
 
+            // Given a chest with one item low on the left and one a row higher on the right
+            // When the player presses Take all
+            // Then the higher row is taken first, reading order as the eye scans the pane
+            Chest(2);
+            l.Items[0].X = 0; l.Items[0].Y = 5; l.Items[1].X = 3; l.Items[1].Y = 4;
+            Press();
+            Run(0.1f);
+            check.Expect(Takes().Count == 1 && Takes()[0].A.Oid == Loot0 + 1, $"Take all takes the top row first ({Said(b.Acts)})");
+            w.Hide(); w.Show();
+
             // Given Take all is running
             // When the backpack fills
             // Then it stops, the rest stay in the chest, and a line says how many were taken
