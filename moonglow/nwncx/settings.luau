@@ -29,4 +29,14 @@ return {
             { key = "lightshadows", label = "Lamp shadows in fog", kind = "check", default = true },
         },
     },
+    {
+        id = "air",
+        title = "Air",
+        off = "No air (no dust, mist or motes)",
+        settings = {
+            { key = "enabled", label = "Air", kind = "check", default = true, master = true },
+            { key = "place", label = "Place", kind = "choice", choices = { "auto", "none", "crypt", "city", "forest", "meadow" }, default = "auto" },
+            { key = "dust", label = "Dust", kind = "number", min = 0, max = 2, default = 1 },
+        },
+    },
 }

@@ -134,7 +134,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 | line | meaning |
 |---|---|
-| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look`, `ui.palette`, `vfog.*`, and the font rows: `ui.typeface`, `ui.weight`, `ui.style` and every element's `<prefix>typeface`, `<prefix>weight` and `<prefix>style`) can be held -- the rest of the renderer, audio and the hotkeys consent stay the player's. A typeface is held only at a name the client lists, so a font your hak or NWSync supplies is held once that content has loaded (see [Fonts](#fonts)) |
+| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input, and a slider's value outside its range is refused rather than clamped; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look`, `ui.palette`, `vfog.*`, `air.*`, and the font rows: `ui.typeface`, `ui.weight`, `ui.style` and every element's `<prefix>typeface`, `<prefix>weight` and `<prefix>style`) can be held -- the rest of the renderer, audio and the hotkeys consent stay the player's. A typeface is held only at a name the client lists, so a font your hak or NWSync supplies is held once that content has loaded (see [Fonts](#fonts)) |
 | `inventory.gold.visible=0` | any other key is a component property |
 | `inventory.gold.visible=` | an empty value releases the key |
 | `inventory.*=` | releases every key under the prefix |
