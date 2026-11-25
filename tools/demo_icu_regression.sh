@@ -11,8 +11,7 @@ bash tools/stub-host.sh "$t/nwmain-demo" >/dev/null || exit 2
 # Given a machine whose loader finds no ICU of its own
 ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so' && { echo "demo-icu regression: the system holds ICU, nothing to prove"; exit 0; }
 # When the demo host boots the extender with the library path ./run-demo.sh gives it
-icu=$(bash tools/demo-icu.sh)
-HOME="$t" XDG_DATA_HOME="$t/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B${icu:+:$icu}" \
+HOME="$t" XDG_DATA_HOME="$t/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B${ICU_LIB:+:$ICU_LIB}" \
   LD_PRELOAD="$B/libcx.so" "$t/nwmain-demo" >"$t/out" 2>&1
 code=$?
 # Then the runtime finds ICU and the host runs to its end

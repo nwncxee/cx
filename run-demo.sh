@@ -37,10 +37,6 @@ LOG="$(logs_of "$DEMOHOME")/cx.log"
 STUB="$DEMOHOME/nwmain-demo"
 bash tools/stub-host.sh "$STUB" || exit 1
 
-# The runtime opens ICU by its bare name; on a machine whose loader holds none, the demo's path carries it.
-ICU=$(bash tools/demo-icu.sh)
-LIBS="$B${ICU:+:$ICU}"
-
 echo ">> launching the demo host with the extender preloaded..."
 HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$LIBS" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 
