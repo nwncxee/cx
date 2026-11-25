@@ -144,7 +144,7 @@ internal static class Lighting
         AiMaterial = G.Toggle("aimaterial", "AI material response on plain textures", true, Tier.Advanced, effect: Effect.Restart,
                               help: "Where AI surface relief gives a texture a normal map it also gets a roughness map, so worn, creviced "
                                   + "stone and plaster stay matte while smooth flagstones, tiles and fittings catch a soft gloss.");
-        Relief = G.Slider("relief", "Relief depth", 0f, 2f, 0.05f, 1f, tier: Tier.Advanced,
+        Relief = G.Slider("relief", "Relief depth", 0f, 2f, 0.05f, 0.6f, tier: Tier.Advanced,
                           help: "How deep relief from height maps looks, where the material does not say. 1 is the stock depth; 0 is flat.");
         LeafWind = G.Toggle("leafwind", "Leaves move in the wind", true, Tier.Advanced,
                             help: "Foliage found by Light through leaves sways gently, more at the edge of each canopy and more in a "
