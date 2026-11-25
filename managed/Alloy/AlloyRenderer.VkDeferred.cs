@@ -69,6 +69,13 @@ public sealed unsafe partial class AlloyRenderer
         public ImageId LightRec, ShVis, ShKey, MoverOcc;
         public int W, H, ShW, ShH, OccW, OccH;
         public DeferredBlock Blk;
+        /// <summary>The stage that lays the air's dust over the lit frame, built the first frame dust lies, and whether
+        /// it was refused; the air's field as that stage reads it, the bytes packed for it and the change it is at.</summary>
+        public VkDefStage? Dust;
+        public bool DustFailed;
+        public BufferId Air;
+        public readonly byte[] AirBytes = new byte[GroundMist.PackedBytes];
+        public int AirGen = int.MinValue;
     }
 
     private static VkDeferredState _vkdef = new();
@@ -128,12 +135,14 @@ public sealed unsafe partial class AlloyRenderer
         // one frame in VkDefStatsPeriod counts from zero and is copied out for the period line
         bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
         bool debt = VkDefSlotLights(rig);
-        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0;
+        bool dust = AirScene.Lies && VkDefDust(vk, log);
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
             || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass)
             || debt && !VkDefBlocks(d.Debt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDebt, ref pass)
-            || debt && !VkDefBlocks(d.DebtApply!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseApply, ref pass))
+            || debt && !VkDefBlocks(d.DebtApply!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseApply, ref pass)
+            || dust && !VkDefBlocks(d.Dust!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDust, ref pass))
             return;
 
         ref DeferredBlock b = ref d.Blk;
@@ -187,6 +196,17 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
             cl.EndLabel();
         }
+        if (dust)
+        {
+            // ponytail: the whole field goes up each frame the air steps; a dirty-rect upload once a still crypt costs a frame
+            int air = GroundMist.Pack(ref d.AirGen, d.AirBytes);
+            if (air > 0) cl.UpdateBuffer(d.Air, 0, d.AirBytes.AsSpan(0, air));
+            cl.BeginLabel("air dust"u8);
+            cl.SetPipeline(d.Dust!.Pipe);
+            VkDefBindSet(cl, d.Dust, s.Hdr, default, looseDust, pass, slots);
+            cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+            cl.EndLabel();
+        }
         if (sample)
         {
             cl.CopyBuffer(new CopyBufferCmd(d.Stats, 0, d.StatsRead, 0, VkDefStatsWords * sizeof(uint)));
@@ -203,6 +223,22 @@ public sealed unsafe partial class AlloyRenderer
                      + (cubes > 0 ? $"; {cubes} shadow cube(s) on the record's lanes"
                                   : "; no cube map was baked for this frame, so every light here is unshadowed"));
         }
+    }
+
+    /// <summary>The dust stage and the air's field on this device, built the first frame dust lies. False, logged once,
+    /// when either was refused: the frame then shows no dust.</summary>
+    private static bool VkDefDust(VkBackend vk, ExtenderLog log)
+    {
+        VkDeferredState d = _vkdef;
+        if (d.Dust != null) return true;
+        if (d.DustFailed) return false;
+        d.Dust = VkDefBuild(vk, AirScene.ShdCs, null, "vk air dust", log);
+        d.Air = vk.CreateBuffer(new BufferDesc(GroundMist.PackedBytes, BufferUse.Storage, MemoryKind.Device, "vk air field"));
+        if (d.Dust != null && !d.Air.IsNull) return true;
+        d.Dust = null;
+        d.DustFailed = true;
+        log.Always("AlloyRenderer: the air's dust stage did NOT build (logged above) -- no dust shows on this device");
+        return false;
     }
 
     /// <summary>The walk and film pass this frame: the shipped pair, or the pair with wave lockstep while
@@ -461,6 +497,7 @@ public sealed unsafe partial class AlloyRenderer
                         SsboSlots.ClusterIdx when !VkClusterIdx.IsNull => VkClusterIdx,
                         SsboSlots.Movers when !VkMovers.IsNull => VkMovers,
                         SsboSlots.Chart when !LightmapBake.VkChart.IsNull => LightmapBake.VkChart,
+                        SsboSlots.Air when !d.Air.IsNull => d.Air,
                         _ => s.ZeroSsbo,
                     });
                     break;

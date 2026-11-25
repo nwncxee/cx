@@ -39,6 +39,7 @@ row tools/live/step_guard_grade_regression.sh true false
 row tools/selfcheck/run.sh true false
 row tools/release/sign.sh true false
 row tools/gates/comments.sh true false
+row tools/gates/air-mains.py true false
 row packaging/cx-launch true false
 row docs/spec/unified-settings.md true false
 row README.md true false

@@ -98,6 +98,7 @@ internal static partial class GpuGolden
         FsrResolveApprovedSelfCheck(vk, check, log);
         FsrSkyRegressionSelfCheck(vk, check, log);
         WetSelfCheck(vk, check, log);
+        AirApprovedSelfCheck(vk, check, log);
         WetNearLamp(vk, check, log);
         HaloFadeSelfCheck(vk, check, log);
         PipelineTallySelfCheck(vk, check, log);
