@@ -20,6 +20,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
         Suite(log, "InventoryWindow.BuySelfCheck", Buy);
         Suite(log, "InventoryWindow.AimSelfCheck", Aim);
+        Suite(log, "InventoryWindow.TakeAllSelfCheck", TakeAll);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)
@@ -421,6 +422,161 @@ internal sealed partial class InventoryWindow
         targeting = false;
         w.MouseMove(b.Cx(2), b.Cy(0));
         check.Expect(!w.Aim(out _), "with no target cursor up the window grades nothing");
+    }
+
+    /// <summary>The chest's first item; the rest follow it, one id each.</summary>
+    private const uint Loot0 = 401;   // not-an-offset: an object id
+
+    private static void TakeAll(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        LootModel l = w.Loot;
+        InventoryModel m = w.Model;
+        bool knob = InventoryKnobs.TakeAll.V;
+        var sent = new List<(long At, InvAction A)>();
+        w.Act = a => { sent.Add((b.Now, a)); b.Acts.Add(a); };
+        long step = Stopwatch.Frequency / 20, half = Stopwatch.Frequency / 2;
+
+        void Chest(int n, int pages = 1)
+        {
+            l.Reset(LootChest, b.Now); l.Pages = pages; l.Fresh[0] = true;
+            for (int i = 0; i < n; i++) l.Items[i] = new InvItem { Oid = Loot0 + (uint)i, X = i, Y = 4, W = 1, H = 1, BaseId = 30 };
+            l.Count = n;
+            sent.Clear();
+        }
+        void Press()
+        {
+            float x = w.X + w.W + 203f * w.S, y = w.Y + 12f * w.S;
+            w.MouseButton(true, 1, x, y, 0); w.MouseButton(false, 1, x, y, 0);
+        }
+        void Run(float sec, Action? each = null)
+        {
+            for (int i = 0; i < (int)MathF.Round(sec * 20f); i++) { b.Now += step; w.Tick(); each?.Invoke(); }
+        }
+        List<(long At, InvAction A)> Takes() => sent.FindAll(s => s.A.Kind == InvActKind.Take);
+        List<(long At, InvAction A)> Lines() => sent.FindAll(s => s.A.Kind == InvActKind.Refused && s.A.Text.Length > 0);
+        bool Confirm(uint oid)
+        {
+            int i = l.Find(oid);
+            if (i < 0) return false;
+            l.Items[i] = l.Items[--l.Count];
+            return true;
+        }
+        void Serve() { List<(long At, InvAction A)> t = Takes(); if (t.Count > 0) Confirm(t[^1].A.Oid); }
+        void ServeToPack()
+        {
+            List<(long At, InvAction A)> t = Takes();
+            if (t.Count > 0 && Confirm(t[^1].A.Oid) && m.FirstFree(1, 1, 0, w.PageLimit, out int x, out int y))
+                m.Items[m.Count++] = new InvItem { Oid = t[^1].A.Oid, X = x, Y = y, W = 1, H = 1, BaseId = 30 };
+        }
+        try
+        {
+            InventoryKnobs.TakeAll.Set(true);
+            w.Layout(1f, false, true, 4000, 4000);
+
+            // Given an open chest with five items
+            // When the player presses Take all in the loot pane's title bar
+            // Then the items move to the backpack one at a time, each only after the server confirms the last, and never
+            // faster than one every half second
+            Chest(5);
+            Press();
+            Run(0.1f);
+            int first = Takes().Count;
+            Run(1f);
+            List<(long At, InvAction A)> held = Takes();
+            check.Expect(first == 1 && held.Count == 1 && held[0].A == new InvAction(InvActKind.Take, Loot0, X: InventoryWindow.AutoCell, Y: InventoryWindow.AutoCell, Other: LootChest),
+                         $"Take all sends one take of the first item and holds it until the server confirms ({Said(b.Acts)})");
+            Run(4f, Serve);
+            List<(long At, InvAction A)> all = Takes();
+            long gap = long.MaxValue;
+            var oids = new HashSet<uint>();
+            for (int i = 0; i < all.Count; i++) { oids.Add(all[i].A.Oid); if (i > 0) gap = Math.Min(gap, all[i].At - all[i - 1].At); }
+            check.Expect(all.Count == 5 && oids.Count == 5 && l.Count == 0 && gap >= half,
+                         $"the five items are taken one each, no two within half a second ({all.Count} takes, {oids.Count} items, {l.Count} left, closest {gap / (double)Stopwatch.Frequency:0.00} s)");
+
+            // Given Take all is running
+            // When the backpack fills
+            // Then it stops, the rest stay in the chest, and a line says how many were taken
+            ServerPolicy.Apply("inventory.backpack.pages=1");
+            w.Layout(1f, false, true, 4000, 4000);
+            m.Count = 0;
+            for (int y = 0; y < InventoryModel.Rows; y++)
+                for (int x = 0; x < InventoryModel.Cols; x++)
+                    if (y != 0 || x < InventoryModel.Cols - 2) m.Items[m.Count++] = new InvItem { Oid = 600 + (uint)m.Count, X = x, Y = y, W = 1, H = 1, BaseId = 30 };
+            Chest(4);
+            Press();
+            Run(5f, ServeToPack);
+            List<(long At, InvAction A)> lines = Lines();
+            check.Expect(Takes().Count == 2 && l.Count == 2 && lines.Count == 1 && lines[0].A.Text.Contains("2 taken"),
+                         $"a backpack with room for two takes two, leaves two in the chest and says so ({Said(b.Acts)})");
+            ServerPolicy.Clear();
+            b.Build();
+
+            // Given Take all is running
+            // When a take goes unconfirmed for 3 seconds
+            // Then it stops, the rest stay in the chest, and a line says how many were taken
+            Chest(3);
+            Press();
+            Run(2.9f);
+            int early = Lines().Count;
+            Run(0.3f);
+            lines = Lines();
+            Run(2f);
+            check.Expect(early == 0 && lines.Count == 1 && lines[0].A.Text.Contains("0 taken") && Takes().Count == 1 && l.Count == 3,
+                         $"a take unconfirmed for 3 s stops Take all with a line ({early} early, {Said(b.Acts)})");
+
+            // Given Take all is running
+            // When the chest closes, the player walks away, or the player starts any other inventory action
+            // Then no further take is sent
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            l.Reset(InventoryModel.Invalid, b.Now);
+            Run(2f);
+            int closed = Takes().Count;
+            Chest(3);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            w.MouseButton(true, 1, b.Cx(2), b.Cy(0), 0); w.MouseButton(false, 1, b.Cx(2), b.Cy(0), 0);
+            Run(2f);
+            check.Expect(closed == 1 && Takes().Count == 1, $"a closed chest or another press in the window stops Take all ({closed} after the close, {Takes().Count} after the press)");
+
+            // Given a chest whose later pages have not arrived yet
+            // When Take all reaches the end of a page
+            // Then it turns to the next page and goes on
+            Chest(1, pages: 2);
+            Press();
+            Run(0.1f);
+            Confirm(Loot0);
+            Run(1f);
+            int turned = l.Want(0, 0, b.Now, long.MaxValue / 4);
+            l.Ask(1, b.Now); l.Arrived(1);
+            l.Items[l.Count++] = new InvItem { Oid = Loot0 + 9, X = 0, Y = 9, W = 1, H = 1, BaseId = 30 };
+            Run(1f);
+            List<(long At, InvAction A)> paged = Takes();
+            check.Expect(turned == 1 && paged.Count == 2 && paged[1].A.Oid == Loot0 + 9,
+                         $"page 0 emptied, Take all asks for page 1 and takes from it once it arrives (asked {turned}, {Said(b.Acts)})");
+
+            // Given the Take all button is switched off
+            // When the player presses where it would be, closes and reopens the window, and switches it back on
+            // Then nothing is taken while it is off, and the button takes again once it is on
+            InventoryKnobs.TakeAll.Set(false);
+            w.Layout(1f, false, true, 4000, 4000);
+            Chest(2);
+            Press();
+            Run(1f);
+            int off = Takes().Count;
+            w.Hide(); w.Show();
+            InventoryKnobs.TakeAll.Set(true);
+            w.Layout(1f, false, true, 4000, 4000);
+            Chest(2);
+            Press();
+            Run(0.1f);
+            check.Expect(off == 0 && Takes().Count == 1, $"with inventory.takeall off nothing is taken, and on again it takes ({off} off, {Takes().Count} on)");
+        }
+        finally { InventoryKnobs.TakeAll.Set(knob); w.Act = b.Acts.Add; }
     }
 
     /// <summary>A release at (<paramref name="x"/>, <paramref name="y"/>) with no press of the window's own; whether it was consumed.</summary>
