@@ -18,17 +18,19 @@ internal sealed class UpdateNotice
 
     private readonly UpdateKnobs _k;
     private readonly string _running;
+    private readonly string _os;
     private readonly ExtenderLog _log;
     private readonly ReleaseKey[] _keys;
     private readonly Func<string, byte[]?> _fetch;
     private readonly Func<string, bool> _copy;
     private readonly GearAttention _gear;
 
-    public UpdateNotice(UpdateKnobs k, string running, ReleaseKey[] keys, ExtenderLog log, Func<string, byte[]?> fetch,
+    public UpdateNotice(UpdateKnobs k, string running, string os, ReleaseKey[] keys, ExtenderLog log, Func<string, byte[]?> fetch,
                         Func<string, bool> copy, GearAttention gear)
     {
         _k = k;
         _running = running;
+        _os = os;
         _log = log;
         _keys = keys;
         _fetch = fetch;
@@ -36,9 +38,6 @@ internal sealed class UpdateNotice
         _gear = gear;
         k.Owner = this;
     }
-
-    /// <summary>The OS whose zip this install is, <c>linux</c> or <c>windows</c>: the checksum About shows is that zip's.</summary>
-    public string Os { get; init; } = "";
 
     /// <summary>The newer release this launch found, or null.</summary>
     public UpdateManifest? Notice { get; private set; }
@@ -49,7 +48,7 @@ internal sealed class UpdateNotice
         get
         {
             if (Notice is not { } n) return null;
-            string zip = $"cx-{Os}-x64-{n.Version}.zip";
+            string zip = $"cx-{_os}-x64-{n.Version}.zip";
             return n.Sums.TryGetValue(zip, out string? s) ? (zip, s) : null;
         }
     }

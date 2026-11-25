@@ -39,7 +39,7 @@ internal static class UpdateNoticeApprovedExamples
 
     /// <summary>One launch: a throwaway About group's knobs answered Yes, a notice over a fixture source.</summary>
     internal static UpdateNotice Launch(UpdateKnobs k, Source src, ExtenderLog log, GearAttention gear, Func<string, bool>? copy = null)
-        => new(k, Running, Keys(), log, src.Fetch, copy ?? (_ => true), gear);
+        => new(k, Running, "linux", Keys(), log, src.Fetch, copy ?? (_ => true), gear);
 
     /// <summary>A knob panel open at 1080p over a test face, for reading what a group's rows show.</summary>
     internal static KnobPanel Panel()

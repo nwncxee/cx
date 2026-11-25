@@ -17,7 +17,7 @@ internal static class UpdateNoticeSelfCheck
         k.Consent.Set(UpdateKnobs.Yes);
         var gear = new GearAttention();
         int asked = 0;
-        new UpdateNotice(k, Running, Keys(), new ExtenderLog { Tap = lines.Add }, _ => { asked++; return null; }, _ => true, gear).Check();
+        new UpdateNotice(k, Running, "linux", Keys(), new ExtenderLog { Tap = lines.Add }, _ => { asked++; return null; }, _ => true, gear).Check();
         check.Expect(asked > 0 && !gear.BadgeShown(true) && lines.Count == 0, $"offline: asked, no badge, nothing logged ({asked}, {string.Join(" | ", lines)})");
 
         check.Expect(!UpdateNotice.Newer("v0.14.0", "v0.14.0"), "the same version is not newer");
@@ -40,15 +40,11 @@ internal static class UpdateNoticeSelfCheck
                      && UpdateNotice.CrashLine("v0.14.0", "v0.14.0") == "" && UpdateNotice.CrashLine("v0.14.0", null) == "",
                      $"the crash report names a newer release, and only a newer one ({UpdateNotice.CrashLine("v0.13.2", "v0.14.0")})");
 
-        var face = new GlyphAtlas { LineHeight = 19, Ascent = 15, SpaceAdvance = 5f };
-        for (int cp = 0x20; cp < 0x2200; cp++) face.SetTestGlyph(cp, cp == ' ' ? 5f : 8f);
-        var p = new KnobPanel();
-        p.OpenAt(1920f, 1080f, KnobPanel.FacePx, face, face);
-        string About(KnobGroup g)
-        {
-            p._subs = [new KnobPanel.SubMenu(g)]; p.Sub = 0; p.LayoutRows();
-            return string.Join(" | ", p.Rows.Select(r => r.Text + " " + string.Join(" ", r.Help ?? [])));
-        }
+        check.Expect(UpdateService.OsName(true) == "windows" && UpdateService.OsName(false) == "linux",
+                     $"a Windows install reads the windows zip's checksum, any other the linux one ({UpdateService.OsName(true)}, {UpdateService.OsName(false)})");
+
+        KnobPanel p = Panel();
+        string About(KnobGroup g) => Shown(p, g);
 
         k = Knobs("cx-upd-mutenow");
         k.Consent.Set(UpdateKnobs.Yes);

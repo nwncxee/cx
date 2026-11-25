@@ -16,10 +16,13 @@ public sealed class UpdateService : IExtenderService
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
-        UpdateAbout a = Declare(General.About, Product.Version, OperatingSystem.IsWindows() ? "windows" : "linux", AllowedSigners(), log,
+        UpdateAbout a = Declare(General.About, Product.Version, OsName(OperatingSystem.IsWindows()), AllowedSigners(), log,
                                 Fetch, SelectableText.Copy, GearAttention.Menu);
         new Thread(a.Notice.Check) { IsBackground = true, Name = "cx-update" }.Start();
     }
+
+    /// <summary>The OS a release zip is named for: <c>windows</c> on Windows, else <c>linux</c>.</summary>
+    internal static string OsName(bool windows) => windows ? "windows" : "linux";
 
     /// <summary>Declare the notice's knobs and the release key row on <paramref name="about"/>, over the build's
     /// <paramref name="allowedSigners"/> text, for an install of <paramref name="os"/>'s zip.</summary>
@@ -27,7 +30,7 @@ public sealed class UpdateService : IExtenderService
                                         Func<string, byte[]?> fetch, Func<string, bool> copy, GearAttention gear)
     {
         UpdateKnobs k = UpdateKnobs.Declare(about);
-        var notice = new UpdateNotice(k, running, ReleaseKeys.Parse(allowedSigners), log, fetch, copy, gear) { Os = os };
+        var notice = new UpdateNotice(k, running, os, ReleaseKeys.Parse(allowedSigners), log, fetch, copy, gear);
         return new UpdateAbout(k, notice, ReleaseKeyRow.Declare(about, allowedSigners, copy));
     }
 
