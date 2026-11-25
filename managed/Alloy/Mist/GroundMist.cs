@@ -6,8 +6,9 @@ using CX.Alloy.Mdl;
 
 namespace CX.Alloy;
 
-/// <summary>Ground mist: a depth of mist per metre column over the walkmesh around the player, which the volumetric
-/// fog reads as a density on the floor. Area fog lays an even floor of it and each mist emitter a disc.</summary>
+/// <summary>Ground mist: a depth of mist per metre column over the walkmesh around the player, and the floor heights
+/// the air's dust lies on; <see cref="Pack"/> hands both to the dust stage. Area fog lays an even floor of mist and each
+/// mist emitter a disc.</summary>
 internal static partial class GroundMist
 {
     /// <summary>The field's lifetime owner: replaced whole at an area edge.</summary>
@@ -462,7 +463,8 @@ internal static partial class GroundMist
     /// <summary>Is the air switched on, which the mist and the dust it carries follow?</summary>
     internal static bool On() => AirScene.On();
 
-    /// <summary>Does the fog volume draw mist this frame?</summary>
+    /// <summary>Does the field hold mist this frame: the air on and an area that lays some? It marks the packed field as
+    /// showing and fills each column's mist depth there.</summary>
     internal static bool Shows() => On() && _s.Any;
 
     /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
