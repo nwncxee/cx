@@ -26,3 +26,15 @@ tools/*/obj/
 local.env
 *.spv
 /managed/Core/Tests/bin/
+
+# Third-party binaries kept out of the repository by licence: NVIDIA's DLSS SDK (NGX licence),
+# ONNX Runtime + DirectML, and the AI models (DeepBump is GPL-3). build-win.sh reads them from here.
+build/deps/AI/
+build/deps/DLSS/
+*.onnx
+*.pth
+*.nupkg
+nvngx_*.dll
+nvsdk_ngx*.lib
+onnxruntime*.dll
+DirectML.dll
