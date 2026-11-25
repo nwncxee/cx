@@ -22,8 +22,8 @@ internal static partial class AirScene
     /// <summary>Turns the pollen's draws from the motes', so a grain and a mote of one index take different paths.</summary>
     private const uint PollenSalt = 0x5BD1E995u;
 
-    /// <summary>Does the area's look float pollen?</summary>
-    private static bool Glints(AirSceneState s) => s.Pollen.Seeded && (s.Look.Layers(s.Night) & AirLayer.Pollen) != 0;
+    /// <summary>Does the area float pollen: was it seeded on entry, which only a look that floats it does?</summary>
+    private static bool Glints(AirSceneState s) => s.Pollen.Seeded;
 
     /// <summary>Set every grain afloat about <paramref name="feet"/>, each at its own height over the floor under it; a place
     /// with no pollen seeds none.</summary>
