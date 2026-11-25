@@ -18,17 +18,19 @@ internal sealed class UpdateNotice
 
     private readonly UpdateKnobs _k;
     private readonly string _running;
+    private readonly string _os;
     private readonly ExtenderLog _log;
     private readonly ReleaseKey[] _keys;
     private readonly Func<string, byte[]?> _fetch;
     private readonly Func<string, bool> _copy;
     private readonly GearAttention _gear;
 
-    public UpdateNotice(UpdateKnobs k, string running, ReleaseKey[] keys, ExtenderLog log, Func<string, byte[]?> fetch,
+    public UpdateNotice(UpdateKnobs k, string running, string os, ReleaseKey[] keys, ExtenderLog log, Func<string, byte[]?> fetch,
                         Func<string, bool> copy, GearAttention gear)
     {
         _k = k;
         _running = running;
+        _os = os;
         _log = log;
         _keys = keys;
         _fetch = fetch;
@@ -39,6 +41,17 @@ internal sealed class UpdateNotice
 
     /// <summary>The newer release this launch found, or null.</summary>
     public UpdateManifest? Notice { get; private set; }
+
+    /// <summary>The found release's zip for this install's OS and its SHA-256, or null when the notice names none.</summary>
+    public (string Zip, string Sum)? Sum
+    {
+        get
+        {
+            if (Notice is not { } n) return null;
+            string zip = $"cx-{_os}-x64-{n.Version}.zip";
+            return n.Sums.TryGetValue(zip, out string? s) ? (zip, s) : null;
+        }
+    }
 
     /// <summary>Ask the source, judge what it returns, and publish the badge. Blocking: off the game thread.</summary>
     public void Check()
@@ -70,6 +83,9 @@ internal sealed class UpdateNotice
 
     /// <summary>Copy the releases page's address.</summary>
     public void Copy() => _copy(Product.Url);
+
+    /// <summary>Copy the SHA-256 of this OS's zip, when the notice names it.</summary>
+    public void CopySum() { if (Sum is { } s) _copy(s.Sum); }
 
     /// <summary>Stop telling the player about the release this launch found.</summary>
     public void Mute()

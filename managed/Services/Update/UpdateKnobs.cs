@@ -13,7 +13,7 @@ internal sealed class UpdateKnobs
 
     public readonly KnobGroup Group;
     public readonly Knob<string> Consent, Found, Seen, Muted;
-    public readonly KnobButton Copy, Mute;
+    public readonly KnobButton Copy, CopySum, Mute;
     /// <summary>The notice the buttons act on; set by the notice that owns these knobs this launch.</summary>
     public UpdateNotice? Owner;
 
@@ -28,6 +28,9 @@ internal sealed class UpdateKnobs
         Muted = g.Text("updatemute", "updatemute", "", Tier.Hidden);
         Copy = g.Button("updatecopy", "Copy download link", () => Owner?.Copy(), help: "Copies the CX releases page's address.");
         Copy.Note = () => Owner?.Notice is { } n ? n.Version + " is out." + Knob.NoteBreak + string.Join(Knob.NoteBreak, n.Changes) : null;
+        CopySum = g.Button("updatesum", "Copy checksum", () => Owner?.CopySum(), help: "Copies the SHA-256 of this release's zip for your OS.");
+        CopySum.Note = () => Owner?.Sum is { } s ? s.Zip + Knob.NoteBreak + s.Sum : null;
+        CopySum.ShowIf = () => Owner?.Sum != null;
         Mute = g.Button("updatemute1", "Don't tell me about this release", () => Owner?.Mute(),
                         help: "Hides the badge and this release until a newer one is out.");
         Mute.Caption = () => Owner?.Notice is { } n ? "Don't tell me about " + n.Version : Mute.Label;

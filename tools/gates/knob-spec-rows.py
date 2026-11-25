@@ -14,7 +14,9 @@ was written down:
   - `new TextStyle(G, ..., prefix: "p")` declares `<group>.<p>font` / `typeface` / `outline`;
   - `Quality.Area("x", ...)` declares `quality.x`.
   - a class whose constructor takes a `KnobGroup` declares its rows on that parameter, and takes the group each
-    `<Class>.Declare(<group var>)` site passes (the release notice's knobs on General's About).
+    `<Class>.Declare(<group var>, ...)` site passes (the release notice's knobs on General's About), and a
+    method of any name with a `KnobGroup <p>` parameter gives `<p>` every group its shipped sites pass, through
+    any number of hops.
 A group declared with `master:` also declares `<group>.enabled`. A `new KnobGroup(...)` is a self-check's
 throwaway, registered nowhere, so an unattributed factory call is reported only under `-v` and fails nothing.
 
@@ -33,13 +35,28 @@ DECL = re.compile(r'(?:\b(\w++)\s*=\s*)?KnobGroup\.Declare\(\s*(?:"([A-Za-z0-9_.
 FACT = re.compile(r'\b(\w++)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*\(')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 NEWOF = re.compile(r'new\s+(\w+)\s*\(\s*"([a-z0-9]+)"')
-HANDED = re.compile(r'\b(?:private|public|internal)\s+(\w+)\s*\(\s*KnobGroup\s+(\w+)\s*\)')
+HANDED = re.compile(r'\b(?:private|public|internal)\s+(\w+)\s*\(\s*KnobGroup\s+(\w+)\s*[,)]')
+RELAY = re.compile(r'\b(\w+)\s*\(([^()]*\bKnobGroup\s+\w+[^()]*)\)\s*(?:=>|\{)')
 TEXTSTYLE = re.compile(r'new\s+(?:[\w.]+\.)?TextStyle\s*(\()\s*(\w+)\s*,')
 CAMERA_MODES = ('chase', 'topdown', 'driving')
 
 
 _STOPS = {}
+_ARG_STOPS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[()\[\]{}]|,')
 _TAILS = {'"': re.compile(r'(?:\\.|[^"\\])*', re.S), "'": re.compile(r"(?:\\.|[^'\\])*", re.S)}
+
+
+def split_args(span):
+    """A call's arguments as (name or None, text), split only at commas outside brackets and string literals."""
+    parts, depth, last = [], 0, 0
+    for m in _ARG_STOPS.finditer(span):
+        t = m.group()
+        depth += (t in '([{') - (t in ')]}')
+        if t == ',' and depth == 0:
+            parts.append(span[last:m.start()])
+            last = m.end()
+    parts.append(span[last:])
+    return [re.fullmatch(r'\s*(?:(\w+)\s*:)?\s*(.*?)\s*', a, re.S).groups() for a in parts]
 
 
 def balanced(text, start, open_c='(', close_c=')'):
@@ -133,12 +150,47 @@ for cls, var in dynamic.items():
     for newcls, name in NEWOF.findall(all_text):
         if newcls == cls:
             class_group[cls].add((var, name))
-var_group = {v: g for pairs in list(class_group.values()) for v, g in pairs}
-for m in HANDED.finditer(all_text):
-    cls, param = m.group(1), m.group(2)
-    for site in re.finditer(r'\b' + cls + r'\.Declare\(\s*(?:\w+\.)*(\w+)\s*\)', all_text):
-        if site.group(1) in var_group:
-            class_group[cls].add((param, var_group[site.group(1)]))
+var_group = collections.defaultdict(set)
+for pairs in list(class_group.values()):
+    for v, g in pairs:
+        var_group[v].add(g)
+# Only a file that names KnobGroup can declare a relay or a handed class, so the hook's time goes on those alone.
+grouped = {p: t for p, t in texts.items() if 'KnobGroup' in t}
+relays = []
+for path, text in grouped.items():
+    for m in RELAY.finditer(text):
+        home = owner(path, m.start())
+        params = [a.split('=')[0].split() for a in m.group(2).split(',')]
+        relays += [(home, m.group(1), i, a[-1]) for i, a in enumerate(params) if len(a) >= 2]
+# Each relay's call sites, found in one scan of the shipped files: they stay put while the groups grow.
+calls = collections.defaultdict(list)
+if relays:
+    sites = re.compile(r'(?<!\w)(?:(\w+)\.)?(' + '|'.join({name for _, name, _, _ in relays}) + r')\s*\(')
+    for text in (t for q, t in texts.items() if 'SelfCheck' not in q):
+        for site in sites.finditer(text):
+            calls[site.group(2)].append((site.group(1), split_args(balanced(text, site.end() - 1)[0])))
+for _turn in range(len(relays) + 1):
+    grew = False
+    for home, name, at, param in relays:
+        # A site qualified by another class calls that class's method of the same name.
+        for args in (a for q, a in calls[name] if q in (None, home, 'this', 'base')):
+            given = next((v for n, v in args if n == param), None)
+            if given is None and at < len(args) and args[at][0] is None:
+                given = args[at][1]
+            arg = re.fullmatch(r'(?:\w+\.)*(\w+)', given) if given is not None else None
+            if arg and not var_group[arg.group(1)] <= var_group[param]:
+                var_group[param] |= var_group[arg.group(1)]
+                grew = True
+    if not grew:
+        break
+handed = [m for text in grouped.values() for m in HANDED.findall(text)]
+declares = re.compile(r'\b(' + '|'.join({c for c, _ in handed}) + r')\.Declare\(\s*(?:\w+\.)*(\w+)\s*[,)]')
+passed = collections.defaultdict(list)
+for cls, var in (m for t in texts.values() if '.Declare(' in t for m in declares.findall(t)):
+    passed[cls].append(var)
+for cls, param in handed:
+    for var in passed[cls]:
+        class_group[cls].update((param, g) for g in var_group[var])
 
 ARRAY = re.compile(r'\bNAME\s*=\s*(?:new\s*(?:\w+)?\[\]\s*)?\{([^}]*)\}')
 LITERAL = re.compile(r'"([A-Za-z0-9_.\-]+)"')

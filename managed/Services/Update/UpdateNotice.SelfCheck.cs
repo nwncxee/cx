@@ -17,7 +17,7 @@ internal static class UpdateNoticeSelfCheck
         k.Consent.Set(UpdateKnobs.Yes);
         var gear = new GearAttention();
         int asked = 0;
-        new UpdateNotice(k, Running, Keys(), new ExtenderLog { Tap = lines.Add }, _ => { asked++; return null; }, _ => true, gear).Check();
+        new UpdateNotice(k, Running, "linux", Keys(), new ExtenderLog { Tap = lines.Add }, _ => { asked++; return null; }, _ => true, gear).Check();
         check.Expect(asked > 0 && !gear.BadgeShown(true) && lines.Count == 0, $"offline: asked, no badge, nothing logged ({asked}, {string.Join(" | ", lines)})");
 
         check.Expect(!UpdateNotice.Newer("v0.14.0", "v0.14.0"), "the same version is not newer");
@@ -26,21 +26,25 @@ internal static class UpdateNoticeSelfCheck
         check.Expect(UpdateNotice.Newer("v1.0.0", "v0.99.99") && !UpdateNotice.Newer("v0.99.99", "v1.0.0"), "the major part comes first");
         check.Expect(!UpdateNotice.Newer("v9.9.9", "unknown"), "a running build with no version is told nothing");
 
+        const string Good = "caf90169eefa5f807d577486b9f795ab86ae2983c5c20806cff959117e90af18";
+        foreach (string bad in new[] { Good[1..], Good.ToUpperInvariant(), "g" + Good[1..] })
+        {
+            UpdateManifest? m = UpdateManifest.Parse($"cx-update 1\nversion v0.14.0\nsha256 {bad} cx-linux-x64-v0.14.0.zip\nsha256 {Good} cx-windows-x64-v0.14.0.zip\n");
+            check.Expect(m != null && !m.Sums.ContainsKey("cx-linux-x64-v0.14.0.zip") && m.Sums["cx-windows-x64-v0.14.0.zip"] == Good,
+                         $"a sha256 line that is not 64 lowercase hex digits names no checksum, and the notice still reads ({bad})");
+        }
+
         check.Expect(UpdateNotice.BuildLine("v0.14.0", "v0.14.0") == "NWNCX:EE build v0.14.0" && UpdateNotice.BuildLine("v0.14.0", null) == "NWNCX:EE build v0.14.0",
                      "the first line names no release the running build has caught up with");
         check.Expect(UpdateNotice.CrashLine("v0.13.2", "v0.14.0") == $"A newer release, v0.14.0, is out: {Product.Url}\n"
                      && UpdateNotice.CrashLine("v0.14.0", "v0.14.0") == "" && UpdateNotice.CrashLine("v0.14.0", null) == "",
                      $"the crash report names a newer release, and only a newer one ({UpdateNotice.CrashLine("v0.13.2", "v0.14.0")})");
 
-        var face = new GlyphAtlas { LineHeight = 19, Ascent = 15, SpaceAdvance = 5f };
-        for (int cp = 0x20; cp < 0x2200; cp++) face.SetTestGlyph(cp, cp == ' ' ? 5f : 8f);
-        var p = new KnobPanel();
-        p.OpenAt(1920f, 1080f, KnobPanel.FacePx, face, face);
-        string About(KnobGroup g)
-        {
-            p._subs = [new KnobPanel.SubMenu(g)]; p.Sub = 0; p.LayoutRows();
-            return string.Join(" | ", p.Rows.Select(r => r.Text + " " + string.Join(" ", r.Help ?? [])));
-        }
+        check.Expect(UpdateService.OsName(true) == "windows" && UpdateService.OsName(false) == "linux",
+                     $"a Windows install reads the windows zip's checksum, any other the linux one ({UpdateService.OsName(true)}, {UpdateService.OsName(false)})");
+
+        KnobPanel p = Panel();
+        string About(KnobGroup g) => Shown(p, g);
 
         k = Knobs("cx-upd-mutenow");
         k.Consent.Set(UpdateKnobs.Yes);

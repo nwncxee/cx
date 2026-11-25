@@ -39,7 +39,24 @@ internal static class UpdateNoticeApprovedExamples
 
     /// <summary>One launch: a throwaway About group's knobs answered Yes, a notice over a fixture source.</summary>
     internal static UpdateNotice Launch(UpdateKnobs k, Source src, ExtenderLog log, GearAttention gear, Func<string, bool>? copy = null)
-        => new(k, Running, Keys(), log, src.Fetch, copy ?? (_ => true), gear);
+        => new(k, Running, "linux", Keys(), log, src.Fetch, copy ?? (_ => true), gear);
+
+    /// <summary>A knob panel open at 1080p over a test face, for reading what a group's rows show.</summary>
+    internal static KnobPanel Panel()
+    {
+        var face = new GlyphAtlas { LineHeight = 19, Ascent = 15, SpaceAdvance = 5f };
+        for (int cp = 0x20; cp < 0x2200; cp++) face.SetTestGlyph(cp, cp == ' ' ? 5f : 8f);
+        var p = new KnobPanel();
+        p.OpenAt(1920f, 1080f, KnobPanel.FacePx, face, face);
+        return p;
+    }
+
+    /// <summary>Open <paramref name="g"/> on <paramref name="p"/>; each row's text, label and help, rows split by " | ".</summary>
+    internal static string Shown(KnobPanel p, KnobGroup g)
+    {
+        p._subs = [new KnobPanel.SubMenu(g)]; p.Sub = 0; p.LayoutRows();
+        return string.Join(" | ", p.Rows.Select(r => r.Text + " " + string.Join(" ", r.Label ?? []) + " " + string.Join(" ", r.Help ?? [])));
+    }
 
     /// <summary>A throwaway group, never registered, with the notice's knobs on it.</summary>
     internal static UpdateKnobs Knobs(string name)

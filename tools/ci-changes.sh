@@ -22,8 +22,8 @@ both=(
   .github/workflows/ci.yml
   tools/ci-changes.sh
 )
-# Read only by the Linux build. LICENSE and third_party/ are above because packaging/licenses.sh copies their
-# notices into LICENSES.txt, and the settings spec is here because the knob-spec-rows gate reads its rows.
+# Read only by the Linux build. LICENSE and third_party/ are above because licenses.sh copies their notices; the
+# settings spec is here for the knob-spec-rows gate, and README.md for notice_approved_examples.sh's verify lines.
 linux=(
   build.sh
   .github/actions/ffx-cache/action.yml
@@ -59,6 +59,7 @@ linux=(
   docs/spec/unified-settings.md
   packaging/cx-launch
   packaging/README.txt
+  README.md
 )
 matches() { # <path> <pattern>...
   local f=$1 p; shift

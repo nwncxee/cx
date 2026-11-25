@@ -50,7 +50,7 @@ internal static class UpdateBadgeApprovedExamples
         k = Knobs("cx-upd-e4");
         k.Consent.Set(UpdateKnobs.Yes);
         gear = new GearAttention();
-        new UpdateNotice(k, "v0.14.0", Keys(), ear, new Source("v0140.txt").Fetch, _ => true, gear).Check();
+        new UpdateNotice(k, "v0.14.0", "linux", Keys(), ear, new Source("v0140.txt").Fetch, _ => true, gear).Check();
         check.Expect(!gear.BadgeShown(atMainMenu: true), $"E4 no badge on the newest release ({gear.Tip})");
 
         // Given the badge shows for v0.14.0

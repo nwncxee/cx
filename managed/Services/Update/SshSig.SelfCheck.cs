@@ -39,6 +39,9 @@ internal static class SshSigSelfCheck
         check.Expect(Who("sha256.txt", out why) == null && why.Contains("is not sha512", StringComparison.Ordinal), $"a SHA-256 signature is refused ({why})");
         string current = Encoding.UTF8.GetString(Fixture("allowed_signers")).Split('\n')[0].Split(' ')[2];
         check.Expect(ReleaseKeys.Parse("x ssh-rsa " + current).Length == 0, "an Ed25519 blob under another kind's name is skipped");
+        string[] prints = [.. ReleaseKeys.Parse(Encoding.UTF8.GetString(Fixture("allowed_signers"))).Select(k => k.Fingerprint)];
+        check.Expect(prints.SequenceEqual(new[] { "SHA256:oeiAe2Ez3GXZrj5b9d5ADo7NOYqSrBHTxTZlK0a8JlM", "SHA256:GErPRaZGR8m3+ocu5WbM+vSEagS5QKpf2E+B5BSwWgA" }),
+                     $"each key's fingerprint is the text ssh-keygen -lf prints for it ({string.Join(", ", prints)})");
         check.Expect(SshSig.Verify(Fixture("url.txt"), "", keys, out why) == null && why == "not an SSH signature", $"no armor is refused ({why})");
 
         UpdateManifest? m = UpdateManifest.Parse(Encoding.UTF8.GetString(Fixture("v0140.txt")));
