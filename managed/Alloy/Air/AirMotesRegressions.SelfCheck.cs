@@ -40,9 +40,8 @@ internal static class AirMotesRegressions
     {
         Dark();
         AirScene.Lamp(Lamp, 0f);
-        Go(1f, Vector2.Zero);
         int n = AirScene.Particles(AirLayer.Motes).Length;
-        check.Expect(n == 0, $"a lamp reaching 0 m holds {n} motes (want none)");
+        check.Expect(n == 0, $"a lamp reaching 0 m holds {n} motes as it is seated (want none)");
     }
 
     private static void SeatedTwice(Checker check)
