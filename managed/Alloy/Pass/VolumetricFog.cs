@@ -8,7 +8,7 @@ namespace CX.Alloy;
 internal static class VolumetricFog
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Mist, LightShadows;
+    internal static readonly Knob<bool> Enabled, LightShadows;
     internal static readonly Knob<string> Quality;
     internal static readonly Knob<float> Haze, Sun, Lights, Reach, Sky, Aniso, Height, Floor, Noise, NoiseSize, Wind, Top, Temporal;
 
@@ -27,12 +27,8 @@ internal static class VolumetricFog
         Enabled = G.Master!;
         G.Status = FogVolume.Describe;
         Quality = G.Dropdown("quality", "Fog detail", Levels, "medium", new[] { "Low", "Medium", "High", "Ultra" },
-                             tier: Tier.Advanced, help: "How finely the fog volume is divided. Higher shows sharper light shafts and costs more. "
-                                   + "At Low the ground mist lies still.")
+                             tier: Tier.Advanced, help: "How finely the fog volume is divided. Higher shows sharper light shafts and costs more.")
                    .Ladder(CX.Alloy.Quality.Effects, "low", "low", "medium", "high");
-        Mist = G.Toggle("mist", "Ground mist", true, Tier.Advanced,
-                        help: "Mist that lies on the ground, pools in low ground, drifts on the wind and parts around walkers and blasts, "
-                              + "in place of fog models' flat sprites. Needs Volumetric fog.");
 
         G.Section("Look");
         Haze = G.Slider("haze", "Haze in the air", 0f, 0.9f, 0.01f, 0f, tier: Tier.Advanced,

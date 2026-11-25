@@ -456,8 +456,8 @@ internal static partial class GroundMist
         return s.Laid;
     }
 
-    /// <summary>Is the mist switched on: Ground mist, under Volumetric fog?</summary>
-    internal static bool On() => VolumetricFog.Enabled.V && VolumetricFog.Mist.V;
+    /// <summary>Is the air switched on, which the mist and the dust it carries follow?</summary>
+    internal static bool On() => CX.Alloy.Air.Enabled.V;
 
     /// <summary>Does the fog volume draw mist this frame?</summary>
     internal static bool Shows() => On() && _s.Any;

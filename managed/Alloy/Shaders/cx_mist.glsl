@@ -1,4 +1,4 @@
-// The ground mist (GroundMist, vfog.mist): its field, its shape and its extinction, shared by the volumetric fog's two
+// The ground mist (GroundMist): its field, its shape and its extinction, shared by the volumetric fog's two
 // passes. cx_vfog_cs reads the mist at a point to light it; cx_vfogsum_cs integrates it along each slice of a ray.
 // Needs cx_noise ahead of it.
 #ifndef CX_MIST_LIB

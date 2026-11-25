@@ -154,7 +154,7 @@ internal static partial class GroundMistSelfCheck
     }
 
     /// <summary>A walker parts by its travel and keeps the mist it moves, onto no wall, and only a walker in the box around
-    /// the player that walks rather than teleports, under Volumetric fog, and is a creature.</summary>
+    /// the player that walks rather than teleports, with the air on, and is a creature.</summary>
     private static void Parting(Checker check)
     {
         Vector3 at = new(0.25f, 0.25f, 0f);
@@ -174,12 +174,12 @@ internal static partial class GroundMistSelfCheck
         GroundMist.Part(Vector3.Zero, new Vector3(10.25f, 0.25f, 0f));
         GroundMist.Part(new Vector3(40.2f, 0.25f, 0f), new Vector3(40.25f, 0.25f, 0f));
         GroundMist.Part(new Vector3(0.2f, 40.25f, 0f), new Vector3(0.25f, 40.25f, 0f));
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         GroundMist.Part(at - new Vector3(0.2f, 0f, 0f), at);
-        VolumetricFog.Enabled.V = true;
+        CX.Alloy.Air.Enabled.V = true;
         float jump = GroundMist.At(10.25f, 0.25f), east = GroundMist.At(40.25f, 0.25f), north = GroundMist.At(0.25f, 40.25f), off = GroundMist.At(at.X, at.Y);
         check.Expect(jump == floor && east == floor && north == floor && off == floor,
-            $"a 10 m jump leaves {jump:F4} m, a walker 40 m east {east:F4}, 40 m north {north:F4}, one with fog off {off:F4} (want the {floor:F4} m floor in each)");
+            $"a 10 m jump leaves {jump:F4} m, a walker 40 m east {east:F4}, 40 m north {north:F4}, one with the air off {off:F4} (want the {floor:F4} m floor in each)");
 
         GroundMist.Follow(new Vector3(100f, 0f, 0f));
         GroundMist.Part(new Vector3(100.05f, 0.25f, 0f), new Vector3(100.25f, 0.25f, 0f));
@@ -225,20 +225,20 @@ internal static partial class GroundMistSelfCheck
     }
 
     /// <summary>A blast clears its whole radius onto a 2 m rim past it and keeps the mass, onto no wall, and only under
-    /// Volumetric fog.</summary>
+    /// the air switch.</summary>
     private static void Blasts(Checker check)
     {
         Fogged(Flat(), Vector3.Zero);
         Run(1f, Vector2.Zero);
         float floor = GroundMist.At(0.5f, 0.5f), mass = Mass(-10f, -10f, 10f, 10f);
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         GroundMist.Blast(Vector3.Zero, 4f);
-        VolumetricFog.Enabled.V = true;
+        CX.Alloy.Air.Enabled.V = true;
         float off = GroundMist.At(0.5f, 0.5f);
         GroundMist.Blast(Vector3.Zero, 4f);
         float centre = GroundMist.At(0.5f, 0.5f), inside = GroundMist.At(3.5f, 0.5f), rim = GroundMist.At(5.5f, 0.5f);
         float past = GroundMist.At(7.5f, 0.5f), kept = Mass(-10f, -10f, 10f, 10f);
-        check.Expect(off == floor, $"a blast with Volumetric fog off leaves {off:F4} m (want the {floor:F4} m floor)");
+        check.Expect(off == floor, $"a blast with the air off leaves {off:F4} m (want the {floor:F4} m floor)");
         check.Expect(centre == 0f && inside == 0f && rim > floor && past == floor,
             $"a 4 m blast leaves {centre:F4} m at its point, {inside:F4} at 3.5 m, {rim:F4} at 5.5 m, {past:F4} at 7.5 m (want 0, 0, over the {floor:F4} m floor, the floor)");
         check.Expect(MathF.Abs(kept - mass) <= mass * 1e-5f, $"the blast leaves {kept:F4} m^3 of {mass:F4} around it (want all of it)");
@@ -271,15 +271,15 @@ internal static partial class GroundMistSelfCheck
         check.Expect(float.IsNaN(old), $"after the area edge the old area's ground floors (20.5, 20.5) at {old} (want none)");
     }
 
-    /// <summary>Volumetric fog turned off empties the field, and turned on again the field starts from the area's fog, none of the old mist kept.</summary>
+    /// <summary>The air turned off empties the field, and turned on again the field starts from the area's fog, none of the old mist kept.</summary>
     private static void Frozen(Checker check)
     {
         Lay(Flat(), Vector3.Zero, false, 0f);
         GroundMist.Place(Vector3.Zero, 3f, 1f);
         Run(0.1f, Vector2.Zero);
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         Run(1f, Vector2.Zero);
-        VolumetricFog.Enabled.V = true;
+        CX.Alloy.Air.Enabled.V = true;
         GroundMist.AreaFog(false, 0f);
         Run(Frame, Vector2.Zero);
         float dry = GroundMist.At(0.5f, 0.5f);
@@ -287,14 +287,14 @@ internal static partial class GroundMistSelfCheck
         Fogged(Flat(), Vector3.Zero);
         GroundMist.Place(Vector3.Zero, 3f, 1f);
         Run(0.1f, Vector2.Zero);
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         Run(1f, Vector2.Zero);
-        VolumetricFog.Enabled.V = true;
+        CX.Alloy.Air.Enabled.V = true;
         GroundMist.AreaFog(true, AreaAmount);
         Run(Frame, Vector2.Zero);
         float fogged = GroundMist.At(0.5f, 0.5f), far = GroundMist.At(60.5f, 0.5f);
         check.Expect(dry == 0f && fogged == far && far == AreaDepth,
-            $"fog off and on again leaves {dry} m of a disc on dry ground, and {fogged} m of a disc in area fog beside {far} m away from it (want none, then the area's {AreaDepth} m at both)");
+            $"the air off and on again leaves {dry} m of a disc on dry ground, and {fogged} m of a disc in area fog beside {far} m away from it (want none, then the area's {AreaDepth} m at both)");
     }
 
     /// <summary>Running down a slope moves mist and makes none: each frame the field holds e^(-dt/20) of the last, as settling alone would leave.</summary>

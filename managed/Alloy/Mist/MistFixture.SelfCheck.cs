@@ -137,12 +137,12 @@ internal static class MistFixture
 
         private Switches(bool on, bool mist, string quality) { _on = on; _mist = mist; _quality = quality; }
 
-        /// <summary>Saves the player's switches and turns fog and mist on at Medium.</summary>
+        /// <summary>Saves the player's switches and turns fog and the air on at Medium.</summary>
         internal static Switches Force()
         {
-            var was = new Switches(VolumetricFog.Enabled.V, VolumetricFog.Mist.V, VolumetricFog.Quality.V);
+            var was = new Switches(VolumetricFog.Enabled.V, Air.Enabled.V, VolumetricFog.Quality.V);
             VolumetricFog.Enabled.V = true;
-            VolumetricFog.Mist.V = true;
+            Air.Enabled.V = true;
             VolumetricFog.Quality.V = "medium";
             return was;
         }
@@ -151,7 +151,7 @@ internal static class MistFixture
         public void Dispose()
         {
             VolumetricFog.Enabled.V = _on;
-            VolumetricFog.Mist.V = _mist;
+            Air.Enabled.V = _mist;
             VolumetricFog.Quality.V = _quality;
             GroundMist.Reset();
         }

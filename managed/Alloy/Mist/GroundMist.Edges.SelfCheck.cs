@@ -50,17 +50,17 @@ internal static partial class GroundMistSelfCheck
         Vector2 ground = row[-ox], wall = row[4 - ox];
         int hidden;
         float shows;
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         try
         {
             GroundMist.Step(Frame, Vector2.Zero);
             hidden = GroundMist.Pack(ref gen, into);
             shows = MemoryMarshal.Read<Vector4>(into).W;
         }
-        finally { VolumetricFog.Enabled.V = true; }
+        finally { CX.Alloy.Air.Enabled.V = true; }
         check.Expect(sent == GroundMist.PackedBytes && head == new Vector4(GroundMist.CornerFor(0f), GroundMist.CornerFor(0f), side, 1f)
                 && ground == new Vector2(0f, AreaDepth) && wall.X < -1e8f && wall.Y == 0f && hidden == GroundMist.Head && shows == 0f,
-            $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with fog off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
+            $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with the air off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
     }
 
     /// <summary>At the lowest fog detail the mist lies still: a walker and a blast leave it as it was.</summary>
@@ -152,18 +152,18 @@ internal static partial class GroundMistSelfCheck
         }
     }
 
-    /// <summary>A fog emitter's sprites already in the air go when Volumetric fog turns on and the mist takes it.</summary>
+    /// <summary>A fog emitter's sprites already in the air go when the air turns on and the mist takes it.</summary>
     private static void Sprites(Checker check)
     {
-        VolumetricFog.Enabled.V = false;
+        CX.Alloy.Air.Enabled.V = false;
         try
         {
             Lay(Flat(), Vector3.Zero, false, 0f);
             int[,] live = EmitterSim.MistEmit("silm_fog_50_lo", new[] { "AuroraEmitter01" }, new[] { new Vector3(3f, 0f, 0.5f) }, 300,
-                f => { if (f == 150) VolumetricFog.Enabled.V = true; });
+                f => { if (f == 150) CX.Alloy.Air.Enabled.V = true; });
             int before = live[0, 149], after = live[0, 299];
-            check.Expect(before > 0 && after == 0, $"a fog emitter holds {before} sprites with Volumetric fog off, then {after} once it turns on (want some, then none)");
+            check.Expect(before > 0 && after == 0, $"a fog emitter holds {before} sprites with the air off, then {after} once it turns on (want some, then none)");
         }
-        finally { VolumetricFog.Enabled.V = true; }
+        finally { CX.Alloy.Air.Enabled.V = true; }
     }
 }

@@ -44,14 +44,31 @@ public static class Settings
     }
 
     /// <summary>Keys an older CX wrote for a setting that is gone: dropped on read, so the next write leaves them out.</summary>
-    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius", "walls.fade", "walls.floor", "walls.radius"];
+    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius", "walls.fade", "walls.floor", "walls.radius", "vfog.mist"];
+
+    /// <summary>Retired keys whose value carries on in a live key: an older cx.cfg's ground mist switch is the Air
+    /// switch now. A file that also sets the live key keeps its own value.</summary>
+    private static readonly (string From, string To)[] RetiredInto = [(RetiredKeys[^1], "air.enabled")];
 
     /// <summary>Take every pair of <paramref name="text"/>, in <c>cx.cfg</c>'s own format, into the loaded table,
     /// less the <see cref="RetiredKeys"/>.</summary>
-    internal static void Read(string text) => ConfigFile.ForEachPair(text, (k, v) =>
+    internal static void Read(string text)
     {
-        if (Array.FindIndex(RetiredKeys, r => string.Equals(r, k, StringComparison.OrdinalIgnoreCase)) < 0) _values[k] = v;
-    });
+        var carried = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ConfigFile.ForEachPair(text, (k, v) =>
+        {
+            int into = Array.FindIndex(RetiredInto, r => string.Equals(r.From, k, StringComparison.OrdinalIgnoreCase));
+            if (into >= 0) carried[RetiredInto[into].To] = v;
+            else if (Array.FindIndex(RetiredKeys, r => string.Equals(r, k, StringComparison.OrdinalIgnoreCase)) < 0)
+            {
+                _values[k] = v;
+                set.Add(k);
+            }
+        });
+        foreach (var (key, v) in carried)
+            if (!set.Contains(key)) _values[key] = v;
+    }
 
     /// <summary>Drop <paramref name="key"/> from the loaded table: a self-check takes back what it fed <see cref="Read"/>.</summary>
     internal static void Forget(string key) => _values.Remove(key);
