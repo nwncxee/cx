@@ -30,6 +30,12 @@ internal static class AirScene
     /// <summary>How high a front throws the dust it tears, metres per share torn, and how fast that falls, seconds.</summary>
     private const float LiftPerTear = 1f, LiftTau = 3f;
 
+    /// <summary>How fast dust settles back toward what the floor holds at rest, per second.</summary>
+    private const float Refill = 0.05f;
+
+    /// <summary>How fast a steady wind scours dust, per second per metre a second of wind.</summary>
+    private const float Scour = 0.029f;
+
     /// <summary>The share of the wind's speed the air drifts at over the floor.</summary>
     private const float DriftShare = 0.5f;
 
@@ -47,7 +53,7 @@ internal static class AirScene
                 int c = y * GroundMist.Side + x;
                 float f = GroundMist.FloorAt(s.Ox + x + 0.5f, s.Oy + y + 0.5f);
                 s.Floor[c] = f;
-                s.Dust[c] = dust && !float.IsNaN(f) ? BaseDust * Air.Dust.V : 0f;
+                s.Rest[c] = s.Dust[c] = dust && !float.IsNaN(f) ? BaseDust * Air.Dust.V : 0f;
             }
     }
 
@@ -75,8 +81,12 @@ internal static class AirScene
         if (speed > 0f) s.Dir = wind / speed;
         s.Drift = wind * DriftShare;
         Sweep(s, dt);
-        float fall = MathF.Exp(-dt / LiftTau);
-        for (int c = 0; c < s.Lift.Length; c++) s.Lift[c] *= fall;
+        float fall = MathF.Exp(-dt / LiftTau), back = Refill * dt, off = Scour * speed * dt;
+        for (int c = 0; c < s.Lift.Length; c++)
+        {
+            s.Lift[c] *= fall;
+            s.Dust[c] += back * (s.Rest[c] - s.Dust[c]) - off * s.Dust[c];
+        }
     }
 
     /// <summary>Send a front along <paramref name="dir"/> for a change of <paramref name="change"/> metres a second.</summary>
@@ -160,8 +170,10 @@ internal sealed class AirSceneState
     public Vector2 Feet;
     public bool Laid;
 
-    /// <summary>Per column, row-major from the corner: its floor (NaN for none), its dust and how high a front threw it.</summary>
+    /// <summary>Per column, row-major from the corner: its floor (NaN for none), the dust it holds at rest, its dust now
+    /// and how high a front threw it.</summary>
     public readonly float[] Floor = new float[GroundMist.Side * GroundMist.Side];
+    public readonly float[] Rest = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Dust = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Lift = new float[GroundMist.Side * GroundMist.Side];
 
