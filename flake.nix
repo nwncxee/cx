@@ -70,6 +70,8 @@
         pkgs.alsa-lib
         pkgs.sqlite
         pkgs.zstd
+        # tools/ssl_namespace_regression.sh opens a real libssl.so.3.
+        pkgs.openssl
       ];
 
       # build-win.sh (clang-cl comes with llvm.clang), check-shaders.py, check-win-symbols.py, the release
@@ -142,6 +144,8 @@
 
       shellEnv = {
         OPENAL_LIB = "${openal}/lib/libopenal.so.1";
+        # run-demo.sh's host: cx_managed.so opens libicu by name, as the release build does, and NixOS has none.
+        ICU_LIB = "${pkgs.icu}/lib";
         DOTNET_ROOT = "${pkgs.dotnet-sdk_10}/share/dotnet";
         DOTNET_CLI_TELEMETRY_OPTOUT = "1";
         DOTNET_NOLOGO = "1";

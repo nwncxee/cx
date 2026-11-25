@@ -61,6 +61,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The slot's tile is mid-fade this frame, written by <c>RouteParts</c> where the fade is
     /// chased for the colour route anyway. Read on the record write edge into <see cref="_castOk"/>.</summary>
     private static readonly bool[] _oFading = new bool[MaxOwned];
+    /// <summary>A depth-writing slot whose object the game has faded under 1 (invisibility, a fade in or out): it casts
+    /// through the masked stage at its record alpha, so its shadow fades with it. Written on the record write edge.</summary>
+    private static readonly bool[] _castFaded = new bool[MaxOwned];
 
     /// <summary>The caster WORLD generation -- bumped whenever the set of castable slots, or a fact the bake
     /// caches about one (its class, material slots, VDO item, tenant), changes. <see cref="CasterPass"/> keeps
@@ -226,6 +229,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>A blended part -- it casts at its record alpha (<c>rot.w</c>), so it takes the masked
         /// stage whatever its diffuse says.</summary>
         public bool Blended;
+        /// <summary>An opaque or cutout part its object's fade has taken under 1: it casts dithered at its record
+        /// alpha through the masked stage, so a half see-through creature casts a half-strength shadow.</summary>
+        public bool Faded;
         /// <summary>A declared coverage part whose coverage the mask stage can READ (the diffuse alpha): it
         /// casts at the layer's own cut, dithered, so the shadow follows the coverage the draw uses.</summary>
         public bool Coverage;
@@ -265,6 +271,7 @@ public sealed unsafe partial class AlloyRenderer
         f = default;
         if (_oTri[slot] == IntPtr.Zero || _oCls[slot] > (byte)AlloyClass.Blended) return false;
         f.Blended = _oCls[slot] == (byte)AlloyClass.Blended;
+        f.Faded = !f.Blended && _castFaded[slot];
         f.Slot = slot;
         // CX-120: the DENSE caster VAO id (see DbVaoBase), not _oVao -- a DB slot has no VDO slot, and its
         // arena section is what the bake must group and bind by. Every engine table this value still indexes

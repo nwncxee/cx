@@ -279,7 +279,7 @@ public sealed unsafe partial class CasterPass
             // #363: a translucent diffuse (glass) has no holes at all; it qualifies on its graded fraction
             // instead and skips the mode-2 hole gate, which would hand it straight back to the solid stage.
             bool glass = drawTex != 0 && _maskDither > 0
-                         && (_liveBlend[i] || (db ? dbGraded : TexGraded(drawTex)) >= _maskGraded);
+                         && (_liveBlend[i] || _liveFade[i] || (db ? dbGraded : TexGraded(drawTex)) >= _maskGraded);
             // CX-227: a declared coverage part is admitted on the DECLARATION, not on what its diffuse
             // measures -- the author already said the alpha is coverage, so no hole or graded fraction has
             // to vouch for it. Carried on the cut kind, which the collect set from the facts.

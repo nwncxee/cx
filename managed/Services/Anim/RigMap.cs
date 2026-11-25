@@ -12,7 +12,7 @@ namespace CX.Services.Anim;
 /// content names none the stock biped names stand. A rig is lowercase NUL-terminated names in
 /// <see cref="PoseService.BoneIndex"/> order, empty where it has no such bone; each resolves once per module.
 /// </summary>
-internal static unsafe class RigMap
+internal static unsafe partial class RigMap
 {
     /// <summary>The rig map's resref, loaded as a script's <c>Get2DAString</c> loads a 2DA, so a hak or NWSync copy wins.</summary>
     private static ReadOnlySpan<byte> Resref => "cx_rig\0"u8;

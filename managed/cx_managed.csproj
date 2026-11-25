@@ -17,6 +17,10 @@
     <!-- `dotnet publish -r win-x64` cross-compiles the .dll on Linux (unsupported by
          Microsoft, works): see the win-x64 block below and build-win.sh. -->
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">linux-x64</RuntimeIdentifier>
+    <!-- Packs come from nuget.org, as in the release build, never from the SDK's own packs/ folder: a distro's
+         SDK may patch the OpenSSL shim there to open libssl at one fixed path (tools/ssl-by-name.sh refuses it). -->
+    <PrunePackageTargetingPackRoots>$(NetCoreTargetingPackRoot)</PrunePackageTargetingPackRoots>
+    <NetCoreTargetingPackRoot>$(MSBuildThisFileDirectory)obj/no-sdk-packs</NetCoreTargetingPackRoot>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Keep the symbol table in the .so: a NativeAOT crash report is a list of module offsets, and
          without this addr2line resolves every one of them to the nearest EXPORT (i.e. CxInit) and the
@@ -126,6 +130,10 @@
     <DirectPInvoke Include="cxaudio" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxaudio.a" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxaudio.lib" />
+    <!-- Linux: every dlopen in this library goes through native/cxssl.c, which opens .NET's libssl with
+         RTLD_DEEPBIND, out of reach of the OpenSSL 1.1.1 nwmain-linux exports. Windows TLS is Schannel. -->
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxssl.a" />
+    <LinkerArg Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="-Wl,--wrap=dlopen" />
     <!-- Monocypher (third_party/monocypher): Ed25519 and SHA-512 for the signed release notice. -->
     <DirectPInvoke Include="cxsig" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxsig.a" />

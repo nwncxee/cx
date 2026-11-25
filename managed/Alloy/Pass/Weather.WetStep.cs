@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
+using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 
@@ -69,6 +70,11 @@ internal static unsafe partial class Weather
         }
     }
 
+    /// <summary>What a footfall knows of the creature that took it: where and which way, its own and its appearance's
+    /// footstep type (-1 unset), size category (0 unread), soft step, and its body's scene object (default: none).</summary>
+    internal readonly record struct StepFacts(Vector3 At, Vector2 Facing, uint Id, bool Open, int OwnType, int AppearanceType,
+                                              int Size, bool Soft, DbId Body);
+
     /// <summary>A footfall, from <see cref="Services.Anim.Footfall"/>'s <c>PlayFootstep</c> forward: the print and the
     /// splash, and the weather sound. True = the weather sound played, so the caller skips the engine's dry one. Cold: a
     /// few per second per walking creature.</summary>
@@ -80,11 +86,98 @@ internal static unsafe partial class Weather
         Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
         bool open = CasterPass.CoverOpen(p);
         if (!open) _stepCounts.Sheltered++;
-        FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
+        StepFacts s = Facts(creature, o.Id, p, new Vector2(f.X, f.Y), open);
+        if (Shown(o)) StepDown(in s, TrackNow);
         int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at)) : -1;
         StepKind kind = ChooseStep(open, surface);
-        return kind != StepKind.Engine && StepSound(creature, o, at, kind);
+        return kind != StepKind.Engine && StepSound(creature, o, at, kind, in s);
     }
+
+    /// <summary>One footfall's print and splash: the one entry the hook and the self-checks share.</summary>
+    internal static void StepDown(in StepFacts s, float now)
+    {
+        if (!Grounded(in s) && !Mounted(s.Body)) return;
+        if (!OwnFeet(in s, now)) FootDown(s.At, s.Facing, s.Id, now, s.Open, Stamp(in s));
+    }
+
+    /// <summary>Whether <paramref name="body"/> carries its horse's hooves, which stand on the ground whatever footstep
+    /// type the rider's appearance gives.</summary>
+    private static bool Mounted(DbId body)
+    {
+        Span<int> hooves = stackalloc int[MountHoofNodes.Length];
+        return !body.IsNull && MountHooves(body, hooves);
+    }
+
+    /// <summary>footstepsounds.2da types whose creature has no feet on the ground: none, the two wing rows and the
+    /// invisible horse.</summary>
+    private const int FootNone = 12, FootWingA = 9, FootWingB = 10, FootInvisibleHorse = 30;
+
+    /// <summary>The footstepsounds.2da row an appearance reads as when the tables cannot be read: a normal walker.</summary>
+    private const int FootUnread = 0;
+
+    /// <summary>True when the creature's footstep type, its own over its appearance's, puts feet on the ground: unset
+    /// (-1 both) and the no-feet rows press nothing.</summary>
+    private static bool Grounded(in StepFacts s)
+        => (s.OwnType != -1 ? s.OwnType : s.AppearanceType) is not (-1 or FootNone or FootWingA or FootWingB or FootInvisibleHorse);
+
+    /// <summary>The creature's step facts, its type and size read where <c>PlayFootstep</c> reads them; a normal
+    /// walker's while the step's tables are not reachable.</summary>
+    private static StepFacts Facts(IntPtr creature, uint id, Vector3 p, Vector2 facing, bool open)
+    {
+        int own = -1, app = FootUnread, size = 0;
+        bool soft = false;
+        IntPtr tables = _wetArmed ? StepTables() : IntPtr.Zero;
+        if (tables != IntPtr.Zero)
+        {
+            var t = new CTwoDimArrays(tables);
+            var c = new CNWCCreature(creature);
+            CPathfindInformation pf = c.Pathfind;
+            int row = pf.IsNull ? -1 : pf.Appearance;
+            own = c.FootstepType;
+            soft = c.SoftStep == 1;
+            if (row < 0) app = -1;
+            else
+            {
+                if (EngineFn.C2DAGetINTEntry(t.Appearance, row, _colType, &app) == 0) app = -1;
+                EngineFn.C2DAGetINTEntry(t.Appearance, row, _colSize, &size);
+            }
+        }
+        return new StepFacts(p, facing, id, open, own, app, size, soft, BodyOf(creature));
+    }
+
+    /// <summary>The rules' 2DA tables a step reads; zero while the rules are not reachable.</summary>
+    private static IntPtr StepTables()
+    {
+        IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
+        return rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+    }
+
+    /// <summary>The scene object behind a creature's model, reached as the pose layer reaches it (its Gob, then the
+    /// record behind that shell); none off the scene database's path.</summary>
+    private static DbId BodyOf(IntPtr creature)
+    {
+        if (!Services.Anim.PoseRig.Db || creature == IntPtr.Zero) return default;
+        IntPtr gob = Services.Anim.PoseService.GobOf(creature);
+        return gob == IntPtr.Zero ? default : Services.Anim.PoseRig.Obj(gob);
+    }
+
+    /// <summary>The footstepsounds.2da row a step plays: the creature's own type over its appearance's, a soft step's
+    /// row 3, and -1 when neither names one.</summary>
+    internal static int StepRow(in StepFacts s)
+    {
+        int row = s.OwnType != -1 ? s.OwnType : s.AppearanceType;
+        return row == -1 ? -1 : s.Soft ? SoftStepRow : row;
+    }
+
+    /// <summary>The sound priority group a step plays in: the player's own, small for size categories 1 to 3, else large.</summary>
+    internal static byte StepGroup(in StepFacts s, bool player) => player ? GroupPlayer : (uint)(s.Size - 1) < 3 ? GroupSmall : GroupLarge;
+
+    /// <summary>The footstepsounds.2da row a soft step plays.</summary>
+    private const int SoftStepRow = 3;
+
+    /// <summary>Does the game draw this creature at all? One it has faded out (invisible to the player) leaves no
+    /// print and no splash, or the snow would show where it walks.</summary>
+    internal static bool Shown(CNWCObject o) => o.FadeAlpha > 0f;
 
     /// <summary>What a footfall on <paramref name="surface"/> sounds of. Only dry-sounding ground open to the sky
     /// changes its sound.</summary>
@@ -103,29 +196,17 @@ internal static unsafe partial class Weather
 
     /// <summary>Play this creature's <paramref name="kind"/> step, as <c>PlayFootstep</c> would play its surface's.
     /// False = nothing to play: the engine's own step goes ahead.</summary>
-    private static bool StepSound(IntPtr creature, CNWCObject o, Vec3 at, StepKind kind)
+    private static bool StepSound(IntPtr creature, CNWCObject o, Vec3 at, StepKind kind, in StepFacts s)
     {
         if (o.FootstepSkip != 0) return false;
-        IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
         IntPtr sound = _soundSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_soundSym;
-        IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+        IntPtr tables = StepTables();
         if (sound == IntPtr.Zero || tables == IntPtr.Zero) return false;
         var t = new CTwoDimArrays(tables);
-        var c = new CNWCCreature(creature);
-        CPathfindInformation pf = c.Pathfind;
-        int app = pf.IsNull ? -1 : pf.Appearance;
-        int row = c.FootstepType;
-        if (row == -1 && (app < 0 || EngineFn.C2DAGetINTEntry(t.Appearance, app, _colType, &row) == 0)) return false;
-        if (c.SoftStep == 1) row = 3;
+        int row = StepRow(in s);
+        if (row == -1) return false;
         if (!Cell(t.FootstepSounds, row, (kind == StepKind.Snow ? _colSnow : _colPud)[Random.Shared.Next(3)], out ResRef res)) return false;
-        byte group = GroupPlayer;
-        if (creature != PlayerIdentity.Creature())
-        {
-            int size = 0;
-            if (app >= 0) EngineFn.C2DAGetINTEntry(t.Appearance, app, _colSize, &size);
-            group = (uint)(size - 1) < 3 ? GroupSmall : GroupLarge;
-        }
-        EngineFn.SoundPlay3DOneShot(sound, &res, VectorArg.Of(&at), 0f, group, 0, 0);
+        EngineFn.SoundPlay3DOneShot(sound, &res, VectorArg.Of(&at), 0f, StepGroup(in s, creature == PlayerIdentity.Creature()), 0, 0);
         if (kind == StepKind.Snow) _stepCounts.Snow++; else _stepCounts.Wet++;
         return true;
     }
@@ -157,6 +238,9 @@ internal static unsafe partial class Weather
 
     /// <summary>The approved snow-step examples; implemented in <c>SnowStepApprovedExamples.cs</c>.</summary>
     static partial void SnowStepApprovedExamples(Checker check);
+
+    /// <summary>The approved creature-print examples; implemented in <c>CreaturePrintApprovedExamples.cs</c>.</summary>
+    static partial void CreaturePrintApprovedExamples(Checker check);
 
     /// <summary>surfacemat.2da rows the step checks stand on; oracle: the stock table.</summary>
     private const int StoneRow = 4, WaterRow = 6, CarpetRow = 9, SnowRow = 19;
@@ -226,7 +310,7 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
         _snow = 1f;
-        FootDown(new Vector3(20f, 20f, 0f), Vector2.UnitX, 9, 1f, false);
+        FootDown(new Vector3(20f, 20f, 0f), Vector2.UnitX, 9, 1f, false, in HumanSole);
         check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
                                TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) == 0f,
           "a sheltered foot presses no print, so none shows on the roof above it");
@@ -278,7 +362,7 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
         Vector2 h = Vector2.UnitX;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true, in HumanSole);
         check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
                                TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) > 0.5f,
           "the setting off: footprints still press");

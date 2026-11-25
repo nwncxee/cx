@@ -5,6 +5,9 @@
 set -e
 cd "$(dirname "$0")"
 B="$PWD/cx-linux-x64"
+# cx_managed.so opens libicu by name, as the release build does; the game's runtime carries it, a bare host
+# may not, and the dev shell names one (ICU_LIB).
+LIBS="$B${ICU_LIB:+:$ICU_LIB}"
 
 # A build and a boot take the machine from whoever is measuring or playing there, a session in another checkout included.
 if pgrep -x nwmain-linux >/dev/null; then
@@ -35,7 +38,7 @@ STUB="$DEMOHOME/nwmain-demo"
 bash tools/stub-host.sh "$STUB" || exit 1
 
 echo ">> launching the demo host with the extender preloaded..."
-HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
+HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$LIBS" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 
 echo
 echo ">> $LOG (written from C#):"
@@ -53,7 +56,7 @@ sh tools/selfcheck/verdict.sh "$LOG" || exit 1
 ROTHOME="${TMPDIR:-/tmp}/cx-demo-rot"
 rm -rf "$ROTHOME"; mkdir -p "$ROTHOME"
 cp "$(readlink -f "$(command -v sh)")" "$ROTHOME/nwmain-rot"
-HOME="$ROTHOME" XDG_DATA_HOME="$ROTHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$ROTHOME/nwmain-rot" -c true >/dev/null
+HOME="$ROTHOME" XDG_DATA_HOME="$ROTHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$LIBS" LD_PRELOAD="$B/libcx.so" "$ROTHOME/nwmain-rot" -c true >/dev/null
 echo
 ROTLOG="$(logs_of "$ROTHOME")/cx.log"
 echo ">> rot case ($ROTLOG):"
@@ -75,7 +78,7 @@ echo "general.logs=0" > "$OFFHOME/.local/share/Neverwinter Nights/cx.cfg"
 OFFLOGS="$(logs_of "$OFFHOME")"
 mkdir -p "$OFFLOGS"
 echo "the last launch" > "$OFFLOGS/cx.log"
-HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
+HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$LIBS" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 echo
 if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || ! grep -q 'KnobFile.SelfCheck: passed' "$OFFLOGS/cx.log"; then
   echo ">> FAIL: with an old general.logs=0, a launch did not write cx.log and rotate the last one into cx.1.log ($OFFLOGS)"; exit 1
