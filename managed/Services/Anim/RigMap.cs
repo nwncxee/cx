@@ -15,7 +15,7 @@ namespace CX.Services.Anim;
 internal static unsafe partial class RigMap
 {
     /// <summary>The rig map's resref, loaded as a script's <c>Get2DAString</c> loads a 2DA, so a hak or NWSync copy wins.</summary>
-    private static ReadOnlySpan<byte> Resref => "cx_rig\0"u8;
+    private const string Table = "cx_rig";
     /// <summary>The column naming the skeleton model a row is for.</summary>
     private const string ModelColumn = "MODEL";
     /// <summary>The head's place in a rig: <c>appearance.2da</c> names it, so the map has no column for it.</summary>
@@ -170,13 +170,7 @@ internal static unsafe partial class RigMap
         if (_s.Rows != null) return _s.Rows;
         if (!_s.Ready) return _s.Rows = new(StringComparer.OrdinalIgnoreCase);
         if (Arrays() is not { } arrays) return null;
-        ExoStringRec name = default;
-        fixed (byte* n = Resref) EngineFn.ExoStringInit((IntPtr)(&name), n, uint.MaxValue);
-        IntPtr table = EngineFn.TwoDimGetCached2DA(arrays.Ptr, (IntPtr)(&name), 0);
-#if WINDOWS
-        name = default;   // the Win64 callee destroyed its by-value CExoString
-#endif
-        EngineFn.ExoStringDtor((IntPtr)(&name));
+        IntPtr table = arrays.Cached(ResRef.Of(Table));
         var rows = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         int count = table == IntPtr.Zero ? 0 : new C2DA(table).Rows;
         for (int r = 0; r < count; r++)

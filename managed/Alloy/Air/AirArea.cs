@@ -110,13 +110,7 @@ public sealed unsafe class AirArea : IExtenderService
         if (EngineFn.ResManExists(resMan, &name, ResTypes.TwoDa, null) == 0) return null;
         IntPtr arrays = new CNWRules(rules).TwoDimArrays;
         if (arrays == IntPtr.Zero) return null;
-        ExoStringRec exo = default;
-        fixed (byte* n = "cx_airplace\0"u8) EngineFn.ExoStringInit((IntPtr)(&exo), n, uint.MaxValue);
-        IntPtr table = EngineFn.TwoDimGetCached2DA(arrays, (IntPtr)(&exo), 0);
-#if WINDOWS
-        exo = default;   // the Win64 callee destroyed its by-value CExoString
-#endif
-        EngineFn.ExoStringDtor((IntPtr)(&exo));
+        IntPtr table = new CTwoDimArrays(arrays).Cached(name);
         if (table == IntPtr.Zero) return null;
         var rows = new List<(string, string)>();
         int count = new C2DA(table).Rows;
