@@ -72,13 +72,20 @@ internal static class AirScene
     /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres.</summary>
     internal static void Blast(Vector3 at, float radius) { }
 
-    /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>.</summary>
+    /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, and with the air off nothing moves.</summary>
     internal static void Step(float dt, Vector2 wind)
     {
         AirSceneState s = _s;
         if (!s.Laid) return;
+        if (!Air.Enabled.V)
+        {
+            s.Stepped = false;
+            s.Front = default;
+            return;
+        }
         float speed = wind.Length();
-        if (s.Stepped && MathF.Abs(speed - s.Speed) > Calm) Launch(s, speed - s.Speed, speed > 0f ? wind / speed : s.Dir);
+        if (s.Stepped && Air.Quality.V != Air.Levels[0] && MathF.Abs(speed - s.Speed) > Calm) Launch(s, speed - s.Speed, speed > 0f ? wind / speed : s.Dir);
+        if (!s.Stepped) Settle(s, speed);
         s.Stepped = true;
         s.Speed = speed;
         if (speed > 0f) s.Dir = wind / speed;
@@ -90,6 +97,13 @@ internal static class AirScene
             s.Lift[c] *= fall;
             s.Dust[c] += back * (s.Rest[c] - s.Dust[c]) - off * s.Dust[c];
         }
+    }
+
+    /// <summary>Lay each column's dust as a steady <paramref name="speed"/> leaves it, where scour and refill balance.</summary>
+    private static void Settle(AirSceneState s, float speed)
+    {
+        float keep = Refill / (Refill + Scour * speed);
+        for (int c = 0; c < s.Dust.Length; c++) s.Dust[c] = s.Rest[c] * keep;
     }
 
     /// <summary>Send a front along <paramref name="dir"/> for a change of <paramref name="change"/> metres a second.</summary>

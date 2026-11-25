@@ -6,8 +6,8 @@ using static CX.Alloy.MistFixture;
 
 namespace CX.Alloy;
 
-/// <summary>A gust front's plain regressions: it runs the way the wind blows or blew, crosses the whole floor, lets the dust settle
-/// and never tears more than lies. Oracle, by hand: the wind each case sets and a still crypt room's dust.</summary>
+/// <summary>A gust front's plain regressions: it runs the way the wind blows or blew, crosses the whole floor, lets the dust settle,
+/// never tears more than lies, stays away at Low and goes with the air. Oracle, by hand: the wind each case sets and a still crypt room's dust.</summary>
 internal static class AirGustRegressions
 {
     [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
@@ -20,6 +20,10 @@ internal static class AirGustRegressions
         Settles(check);
         Upwind(check);
         Storm(check);
+        AirOff(check);
+        LowStill(check);
+        OffMidFront(check);
+        OffThenOn(check);
         log.Info(check.Ok ? "AirGustRegressions.SelfCheck: passed" : "AirGustRegressions.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -98,5 +102,68 @@ internal static class AirGustRegressions
         for (float x = -RoomHalf + 0.5f; x < RoomHalf; x += 1f)
             for (float y = -RoomHalf + 0.5f; y < RoomHalf; y += 1f) least = MathF.Min(least, Column(AirLayer.Dust, x, y));
         check.Expect(least >= 0f, $"after a storm's front the thinnest column holds {least:F4} m (want none below zero)");
+    }
+    /// <summary>Whether a front was live on any frame of <paramref name="seconds"/> under <paramref name="wind"/>.</summary>
+    private static bool AnyFront(float seconds, Vector2 wind)
+    {
+        bool any = false;
+        for (int n = Frames(seconds); n > 0; n--)
+        {
+            AirScene.Step(Frame, wind);
+            any |= AirScene.Front.Live;
+        }
+        return any;
+    }
+
+    // Given a still crypt with the Air switch off
+    // When a script raises the wind from none to strong
+    // Then no front crosses it.
+    private static void AirOff(Checker check)
+    {
+        Still();
+        Air.Enabled.V = false;
+        bool any = AnyFront(2f, Strong);
+        Air.Enabled.V = true;
+        check.Expect(!any, "with the air off a rise in the wind sends no front");
+    }
+
+    // Given a still crypt at Air detail Low
+    // When a script raises the wind from none to strong
+    // Then no front crosses it, and the dust still drifts downwind.
+    private static void LowStill(Checker check)
+    {
+        Still();
+        string was = Air.Quality.V;
+        Air.Quality.V = "low";
+        bool any = AnyFront(2f, Strong);
+        Vector2 flow = AirScene.Motion(0.5f, 0.5f);
+        Air.Quality.V = was;
+        check.Expect(!any && flow.X > 0f, $"at Low a rise sends {(any ? "a front" : "no front")} and the air moves {flow} (want no front, drifting along {Strong})");
+    }
+    // Given a front crossing a still crypt
+    // When the player switches the air off
+    // Then the front is gone at once.
+    private static void OffMidFront(Checker check)
+    {
+        Still();
+        Go(0.5f, Strong);
+        bool was = AirScene.Front.Live;
+        Air.Enabled.V = false;
+        AirScene.Step(Frame, Strong);
+        bool after = AirScene.Front.Live;
+        Air.Enabled.V = true;
+        check.Expect(was && !after, $"a front live {was} is live {after} once the air is off (want live, then gone)");
+    }
+
+    // Given a still crypt with the air off while the wind rises to strong
+    // When the player switches the air back on
+    // Then no front starts for the change made while it was off.
+    private static void OffThenOn(Checker check)
+    {
+        Still();
+        Air.Enabled.V = false;
+        Go(1f, Strong);
+        Air.Enabled.V = true;
+        check.Expect(!AnyFront(1f, Strong), "switching the air on after the wind rose sends no front");
     }
 }
