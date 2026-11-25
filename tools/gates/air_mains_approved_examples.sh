@@ -38,9 +38,9 @@ passes() {
   out=$(bash "$repo/tools/gates/air-mains.sh" "$1" 2>&1) || { echo "!! $2: air-mains.sh refused it -- $out"; rc=1; }
 }
 
-dust='managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0); }\n'
+dust='managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n'
 
-# Given the dust main includes cx_air and calls both its looks
+# Given the dust main includes cx_air and calls its looks and its sky light
 # When the build runs its gates
 # Then the gate passes
 passes "$(plant ok "$dust")" "the shipped shape"
@@ -48,13 +48,13 @@ passes "$(plant ok "$dust")" "the shipped shape"
 # Given the dust main lays its own profile instead of calling CxAirDust
 # When the build runs its gates
 # Then the build fails, naming that main and CxAirDust
-r=$(plant own 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\nvoid main() { float d = 2.0 * (1.0 - 0.1 / 0.3) / 0.3; vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0); }\n')
+r=$(plant own 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\nvoid main() { float d = 2.0 * (1.0 - 0.1 / 0.3) / 0.3; vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
 refuses "$r" "own profile" "cx_airdust_cs.glsl" "CxAirDust"
 
 # Given the dust main names CxAirLit only in a comment
 # When the build runs its gates
 # Then the build fails, naming CxAirLit
-r=$(plant comment 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n// CxAirLit(ambient, lamp, d, r) would light it\nvoid main() { float d = CxAirDust(0.1, 0.3); }\n')
+r=$(plant comment 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n// CxAirLit(ambient, lamp, d, r) would light it\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirSky(vec3(0.5), vec3(1.0)); }\n')
 refuses "$r" "a call in a comment" "CxAirLit"
 
 # Given a new air main the gate's list does not name
@@ -66,7 +66,7 @@ refuses "$r" "an unlisted main" "cx_airmist_cs.glsl"
 # Given the dust main calls both looks but copies them in rather than including cx_air
 # When the build runs its gates
 # Then the build fails, naming that main and cx_air.glsl
-r=$(plant copied 'managed/Alloy/Shaders/cx_airdust_cs.glsl=float CxAirDust(float z, float t) { return 0.0; }\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0); }\n')
+r=$(plant copied 'managed/Alloy/Shaders/cx_airdust_cs.glsl=float CxAirDust(float z, float t) { return 0.0; }\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
 refuses "$r" "a copied library" "cx_airdust_cs.glsl" "cx_air.glsl"
 
 # Given the gate's list names the dust main and no such stage is in the tree
@@ -78,7 +78,7 @@ refuses "$r" "a listed main that is gone" "cx_airdust_cs.glsl" "not in the tree"
 # Given the dust main names CxAirDust only inside a block comment
 # When the build runs its gates
 # Then the build fails, naming CxAirDust
-r=$(plant block 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n/* CxAirDust(z, top) would lay it */\nvoid main() { vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0); }\n')
+r=$(plant block 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n/* CxAirDust(z, top) would lay it */\nvoid main() { vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
 refuses "$r" "a call in a block comment" "CxAirDust"
 
 # Given a tree with no shader folder to read, as from a wrong root
