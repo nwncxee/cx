@@ -70,10 +70,10 @@ internal static class AirScene
     private const float MaxPartStep = 3f;
 
     /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day; its dust lies whole, gathered
-    /// along the walls and thicker as the area's fog amount rises.</summary>
+    /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial.</summary>
     internal static void Enter(AirLook look, bool night)
     {
-        var s = new AirSceneState { Look = look, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V };
+        var s = new AirSceneState { Look = look, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
         _s = s;
         if (!GroundMist.Corner(out s.Ox, out s.Oy, out s.Feet)) return;
         s.Laid = true;
@@ -81,7 +81,7 @@ internal static class AirScene
         s.Hold = 1f + AmountGain * amount;
         bool dust = (look.Layers(night) & AirLayer.Dust) != 0;
         s.Any = dust;
-        float lay = BaseDust * Air.Dust.V * s.Hold;
+        float lay = BaseDust * s.Hold;
         for (int y = 0; y < GroundMist.Side; y++)
             for (int x = 0; x < GroundMist.Side; x++)
                 s.Floor[y * GroundMist.Side + x] = GroundMist.FloorAt(s.Ox + x + 0.5f, s.Oy + y + 0.5f);
@@ -156,6 +156,7 @@ internal static class AirScene
     {
         AirSceneState s = _s;
         if (!s.Laid) return;
+        Dial(s);
         if (!On(s))
         {
             s.Stepped = s.Fresh = false;
@@ -182,6 +183,15 @@ internal static class AirScene
             s.Gap[c] *= close;
             s.Dust[c] += back * (s.Rest[c] - s.Dust[c]) - off * s.Dust[c];
         }
+    }
+
+    /// <summary>Take the Dust dial as it stands, a hold's value while one is in force; a change shows at the next upload.</summary>
+    private static void Dial(AirSceneState s)
+    {
+        float dial = Air.Dust.V;
+        if (dial == s.Dial) return;
+        s.Dial = dial;
+        s.Gen++;
     }
 
     /// <summary>Lay each column's dust as a steady <paramref name="speed"/> leaves it, where scour and refill balance.</summary>
@@ -256,7 +266,7 @@ internal static class AirScene
         if (c < 0 || layer != AirLayer.Dust || !On(s)) return 0f;
         float h = RestHeight + s.Lift[c], z = at.Z - s.Floor[c];
         if (z < 0f || z >= h) return 0f;
-        return 2f * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(at.X, at.Y, s.Clock)) * (1f - z / h) / h;
+        return 2f * s.Dial * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(at.X, at.Y, s.Clock)) * (1f - z / h) / h;
     }
 
     /// <summary>Does the area's dust lie, to be drawn? False with the air off or in a place with none.</summary>
@@ -279,7 +289,7 @@ internal static class AirScene
         int c = Column(s, x, y);
         if (c < 0) return (0f, 0f);
         float cx = MathF.Floor(x) + 0.5f, cy = MathF.Floor(y) + 0.5f;
-        return (s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(cx, cy, s.Clock)), RestHeight + s.Lift[c]);
+        return (s.Dial * s.Dust[c] * (1f - s.Gap[c]) * (1f + StirShare * Stir(cx, cy, s.Clock)), RestHeight + s.Lift[c]);
     }
 
     /// <summary>The still air's slow stir at world (<paramref name="x"/>, <paramref name="y"/>) after <paramref name="t"/>
@@ -323,8 +333,8 @@ internal sealed class AirSceneState
     public Vector2 Feet;
     public bool Laid;
 
-    /// <summary>Per column, row-major from the corner: its floor (NaN for none), the dust it holds at rest, its dust now
-    /// and how high a front threw it.</summary>
+    /// <summary>Per column, row-major from the corner: its floor (NaN for none), the dust it holds at rest and its dust
+    /// now, both at Dust 1, and how high a front threw it.</summary>
     public readonly float[] Floor = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Rest = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Dust = new float[GroundMist.Side * GroundMist.Side];
@@ -332,6 +342,9 @@ internal sealed class AirSceneState
 
     /// <summary>Per column, how much of its dust a passer has cleared, 0 to 1.</summary>
     public readonly float[] Gap = new float[GroundMist.Side * GroundMist.Side];
+
+    /// <summary>The Dust dial the columns show at, as the last step read it.</summary>
+    public float Dial = 1f;
 
     /// <summary>How strongly the area's fog amount holds its dust: more at rest, torn less, back sooner. 1 at amount 0.</summary>
     public float Hold = 1f;

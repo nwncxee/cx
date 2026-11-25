@@ -9,7 +9,8 @@ using static CX.Alloy.MistFixture;
 namespace CX.Alloy;
 
 /// <summary>The crypt dust's plain regressions: a passer's gap closes, Low and a teleport part nothing, a new area lies
-/// whole and sends no front, the air off shows none, the upload carries each column's dust and a new area's anew. Oracle, by hand: a still crypt room's dust.</summary>
+/// whole and sends no front, the air off shows none, the upload carries each column's dust and a new area's anew, the
+/// Dust dial moves the lying dust at once unless a hold set it. Oracle, by hand: a still crypt room's dust.</summary>
 internal static class AirDustRegressions
 {
     [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
@@ -36,6 +37,8 @@ internal static class AirDustRegressions
         RefillsFaster(check);
         SettleHolds(check);
         GapEdge(check);
+        DialLive(check);
+        DialHeld(check);
         log.Info(check.Ok ? "AirDustRegressions.SelfCheck: passed" : "AirDustRegressions.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -342,5 +345,40 @@ internal static class AirDustRegressions
         float inside = AirScene.Shown(0.5f, 0.5f).Depth / inBefore, beside = AirScene.Shown(0.5f, -0.5f).Depth / byBefore;
         MistPartingApprovedExamples.Drop(world, who);
         check.Expect(inside < 0.5f && beside > inside + 0.1f, $"the walker's row keeps {inside:P0} of its dust, the row 0.3 m off {beside:P0} (want less where it walks)");
+    }
+
+    /// <summary>The dust by the player a still crypt shows, then a few frames after the player sets the Dust dial to
+    /// <paramref name="dial"/> without leaving.</summary>
+    private static (float Before, float After) Dialled(float dial)
+    {
+        Still();
+        float before = Near(AirLayer.Dust, 0f, 0f, 4f);
+        Air.Dust.Set(dial);
+        Go(3f * Frame, Vector2.Zero);
+        return (before, Near(AirLayer.Dust, 0f, 0f, 4f));
+    }
+
+    // Given a crypt entered at the default Dust
+    // When the player moves Dust to 0.2 without leaving
+    // Then less dust shows within a few steps.
+    private static void DialLive(Checker check)
+    {
+        (float before, float after) = Dialled(0.2f);
+        Air.Dust.V = Air.Dust.Default;
+        check.Expect(before > 0f && MathF.Abs(after - 0.2f * before) <= 0.02f * before,
+            $"Dust 0.2 in the room leaves {after:F4} m of the {before:F4} m at 1 (want a fifth of it)");
+    }
+
+    // Given a crypt whose area holds its air, entered at the default Dust
+    // When the player moves Dust to 0.2 without leaving
+    // Then the dust lies as it did: the hold wins over the player's dial.
+    private static void DialHeld(Checker check)
+    {
+        Hold((Air.Place.Key, "crypt"));
+        (float before, float after) = Dialled(0.2f);
+        Unhold();
+        Air.Dust.V = Air.Dust.Default;
+        check.Expect(before > 0f && MathF.Abs(after - before) <= 0.02f * before,
+            $"under the hold Dust 0.2 leaves {after:F4} m of {before:F4} m (want all of it)");
     }
 }
