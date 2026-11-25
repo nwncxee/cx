@@ -44,10 +44,10 @@ internal static partial class GroundMistSelfCheck
         Fogged(Ground(20f, 1f, (_, _) => 0f, (x, _) => x >= 4f && x < 6f ? Nonwalk : Stone), Vector3.Zero);
         int sent = GroundMist.Pack(ref gen, into);
         Vector4 head = MemoryMarshal.Read<Vector4>(into);
-        Span<Vector2> cells = MemoryMarshal.Cast<byte, Vector2>(into.AsSpan(GroundMist.Head));
+        Span<GroundMist.Cell> cells = MemoryMarshal.Cast<byte, GroundMist.Cell>(into.AsSpan(GroundMist.Head));
         int side = GroundMist.Side, ox = (int)head.X, oy = (int)head.Y;
-        Span<Vector2> row = cells.Slice(-oy * side, side);
-        Vector2 ground = row[-ox], wall = row[4 - ox];
+        Span<GroundMist.Cell> row = cells.Slice(-oy * side, side);
+        GroundMist.Cell ground = row[-ox], wall = row[4 - ox];
         int hidden;
         float shows;
         CX.Alloy.Air.Enabled.V = false;
@@ -59,7 +59,7 @@ internal static partial class GroundMistSelfCheck
         }
         finally { CX.Alloy.Air.Enabled.V = true; }
         check.Expect(sent == GroundMist.PackedBytes && head == new Vector4(GroundMist.CornerFor(0f), GroundMist.CornerFor(0f), side, 1f)
-                && ground == new Vector2(0f, AreaDepth) && wall.X < -1e8f && wall.Y == 0f && hidden == GroundMist.Head && shows == 0f,
+                && ground.Floor == 0f && ground.Mist == AreaDepth && wall.Floor < -1e8f && wall.Mist == 0f && hidden == GroundMist.Head && shows == 0f,
             $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with the air off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
     }
 

@@ -46,12 +46,15 @@ internal static class AirGustApprovedExamples
         return n > 0 ? sum / n : Vector2.Zero;
     }
 
-    /// <summary>The spread of the dust's depth across the wind, along x = 0: how streaked it lies.</summary>
+    /// <summary>How far in from the walls the streak line starts, metres: the dust gathered along them is no streak.</summary>
+    private const float ClearOfWalls = 3f;
+
+    /// <summary>The spread of the dust's depth across the wind, along x = 0 away from the walls: how streaked it lies.</summary>
     private static float Streaks()
     {
         float sum = 0f, sq = 0f;
         int n = 0;
-        for (float y = -RoomHalf + 0.25f; y < RoomHalf; y += 0.25f) { float d = Column(AirLayer.Dust, 0f, y); sum += d; sq += d * d; n++; }
+        for (float y = -RoomHalf + ClearOfWalls + 0.25f; y < RoomHalf - ClearOfWalls; y += 0.25f) { float d = Column(AirLayer.Dust, 0f, y); sum += d; sq += d * d; n++; }
         float mean = sum / n;
         return MathF.Sqrt(MathF.Max(sq / n - mean * mean, 0f));
     }

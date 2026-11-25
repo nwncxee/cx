@@ -129,6 +129,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         s.AreaLevel = on ? Math.Clamp(amount * DepthPerAmount, 0f, MaxArea) : 0f;
+        s.Amount = on ? amount : 0f;
         if (s.Stepped || !On()) return;
         for (int c = 0; c < s.Depth.Length; c++) s.Depth[c] = float.IsNaN(s.Floor[c]) ? 0f : s.AreaLevel;
         s.Any = s.AreaLevel > Trace;
@@ -447,6 +448,9 @@ internal static partial class GroundMist
         return c < 0 ? float.NaN : s.Floor[c];
     }
 
+    /// <summary>The area's fog amount, 0 with its fog off.</summary>
+    internal static float FogAmount => _s.Amount;
+
     /// <summary>The field's corner in whole metres and the player's feet across the ground; false while no floor is laid.</summary>
     internal static bool Corner(out int ox, out int oy, out Vector2 feet)
     {
@@ -507,6 +511,12 @@ internal sealed class GroundMistState
     /// <summary>The depth the area's fog lays, whether the field has stepped since the area began or Volumetric fog came
     /// back on, and whether any column holds mist.</summary>
     public float AreaLevel;
+
+    /// <summary>The area's fog amount as its palette sets it, 0 with the area's fog off.</summary>
+    public float Amount;
+
+    /// <summary>The air's upload generation the field last folded into its own.</summary>
+    public int AirGen = int.MinValue;
     public bool Stepped, Any;
 
     /// <summary>This frame's emitters.</summary>

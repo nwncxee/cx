@@ -7,7 +7,7 @@ namespace CX.Alloy;
 
 internal static partial class GroundMist
 {
-    /// <summary>A column with no floor, as the fog stage reads it: far below anything, so no froxel stands over it.</summary>
+    /// <summary>A column with no floor, as the fog stage reads it: far below anything, so nothing stands over it.</summary>
     private const float NoFloor = -1e9f;
 
     /// <summary>Frame <paramref name="frame"/> of the live field in <paramref name="scene"/>: the tile walkmeshes seated
@@ -43,24 +43,35 @@ internal static partial class GroundMist
         Step(dt, wind);
     }
 
-    /// <summary>The field as the fog stage reads it, into <paramref name="into"/>, when it changed since
-    /// <paramref name="gen"/>: a head (corner x, corner y, side, 1 when mist shows), then each column's floor and
-    /// depth while it shows. Returns the bytes written, 0 when nothing changed.</summary>
+    /// <summary>Write the field and the air's dust for the fog stage into <paramref name="into"/>: a head (the corner,
+    /// the side, 1 while either shows), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when
+    /// <paramref name="gen"/> says the stage already has them; with nothing showing, the head alone.</summary>
     internal static int Pack(ref int gen, Span<byte> into)
     {
         GroundMistState s = _s;
-        bool shows = Shows() && s.Laid;
+        bool mist = Shows() && s.Laid, dust = AirScene.Lies && s.Laid, shows = mist || dust;
+        if (dust && s.AirGen != AirScene.Gen) { s.AirGen = AirScene.Gen; s.Gen++; }
         int now = shows ? s.Gen : -1;
         if (now == gen) return 0;
         gen = now;
         MemoryMarshal.Write(into, new Vector4(s.Ox, s.Oy, Side, shows ? 1f : 0f));
         if (!shows) return Head;
-        Span<Vector2> cells = MemoryMarshal.Cast<byte, Vector2>(into[Head..]);
-        for (int c = 0; c < s.Floor.Length; c++)
-            cells[c] = new Vector2(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], s.Depth[c] + s.Lift[c]);
+        Span<Cell> cells = MemoryMarshal.Cast<byte, Cell>(into[Head..]);
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+            {
+                int c = y * Side + x;
+                (float lies, float top) = dust ? AirScene.Shown(s.Ox + x + 0.5f, s.Oy + y + 0.5f) : (0f, 0f);
+                cells[c] = new Cell(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], mist ? s.Depth[c] + s.Lift[c] : 0f, lies, top);
+            }
         return PackedBytes;
     }
 
-    /// <summary>The bytes of the field's head, and of the whole field as <see cref="Pack"/> writes it.</summary>
-    internal const int Head = sizeof(float) * 4, PackedBytes = Head + Side * Side * sizeof(float) * 2;
+    /// <summary>One column as the fog stage reads it: its floor, its mist's depth, and its dust's depth and the height
+    /// that dust reaches over the floor, metres.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly record struct Cell(float Floor, float Mist, float Dust, float Top);
+
+    /// <summary>The bytes of the field's head, of one <see cref="Cell"/>, and of the whole field as <see cref="Pack"/> writes it.</summary>
+    internal const int Head = sizeof(float) * 4, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
 }

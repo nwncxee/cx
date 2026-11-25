@@ -9,6 +9,9 @@ internal readonly struct AreaFeatures
     internal readonly uint Flags;
     internal readonly List<string[]> Corners, Edges;
 
+    /// <summary>The area flag an interior sets, as an area's ARE file holds it.</summary>
+    internal const uint Interior = 1;
+
     private AreaFeatures(string tileset, uint flags, List<string[]> corners, List<string[]> edges)
     { Tileset = tileset; Flags = flags; Corners = corners; Edges = edges; }
 
