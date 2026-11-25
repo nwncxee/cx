@@ -87,13 +87,20 @@ internal static partial class AirScene
         Vector3 p = at + r * new Vector3(flat * MathF.Cos(round), flat * MathF.Sin(round), up);
         float lo = m.LampFloor[l] + MoteFloorGap;
         if (p.Z < lo) p.Z = MathF.Min(2f * lo - p.Z, at.Z + core);
-        m.Pos[i] = p;
-        m.Vel[i] = m.Kick[i] = Vector3.Zero;
-        m.Spin[i] = 0f;
-        m.Phase[i] = MathF.Tau * new Vector3(Hash(key, 3), Hash(key, 4), Hash(key, 5));
-        m.Rate[i] = new Vector3(Rate(Hash(key, 6)), Rate(Hash(key, 7)), Rate(Hash(key, 8)));
-        m.Dark[i] = false;
-        m.Born[i] = m.Clock;
+        Afloat(m, i, key, p);
+    }
+
+    /// <summary>Set grain <paramref name="i"/> of <paramref name="g"/> afloat at <paramref name="p"/>, still, on the path
+    /// <paramref name="key"/> draws for it.</summary>
+    private static void Afloat(AirGrains g, int i, uint key, Vector3 p)
+    {
+        g.Pos[i] = p;
+        g.Vel[i] = g.Kick[i] = Vector3.Zero;
+        g.Spin[i] = 0f;
+        g.Phase[i] = MathF.Tau * new Vector3(Hash(key, 3), Hash(key, 4), Hash(key, 5));
+        g.Rate[i] = new Vector3(Rate(Hash(key, 6)), Rate(Hash(key, 7)), Rate(Hash(key, 8)));
+        g.Dark[i] = false;
+        g.Born[i] = g.Clock;
     }
 
     /// <summary>A path's turn for <paramref name="h"/> from 0 to 1.</summary>
@@ -126,56 +133,76 @@ internal static partial class AirScene
                 if (m.Calm >= CalmWait + MoteWait * Hash((uint)i * 0x9E3779B1u, m.Births[i] + 9u)) Seed(m, i);
                 continue;
             }
-            Vector3 w = m.Rate[i] * m.Clock + m.Phase[i];
-            Vector3 own = Wander * new Vector3(MathF.Sin(w.X), MathF.Sin(w.Y), 0.5f * MathF.Sin(w.Z));
-            m.Vel[i] += (air + own - m.Vel[i]) * follow;
-            m.Kick[i] = Turn(m.Kick[i], m.Spin[i] * dt) * fade;
-            m.Pos[i] += (m.Vel[i] + m.Kick[i]) * dt;
+            Float(m, i, air, follow, fade, dt);
             int l = i / PerLamp;
             if (Vector3.DistanceSquared(m.Pos[i], m.LampAt[l]) > m.LampReach[l] * m.LampReach[l]) m.Dark[i] = true;
         }
     }
 
-    /// <summary>A walker who stepped from <paramref name="was"/> to <paramref name="now"/> swirls the motes about it, round
-    /// its sides and up, the nearest fastest; a mote keeps the stronger of this and the swirl it had.</summary>
+    /// <summary>Move grain <paramref name="i"/> of <paramref name="g"/> on by <paramref name="dt"/>: its own wander on top of
+    /// <paramref name="air"/>, taken at <paramref name="follow"/>, and its swirl or throw turning and dying by <paramref name="fade"/>.</summary>
+    private static void Float(AirGrains g, int i, Vector3 air, float follow, float fade, float dt)
+    {
+        Vector3 w = g.Rate[i] * g.Clock + g.Phase[i];
+        Vector3 own = Wander * new Vector3(MathF.Sin(w.X), MathF.Sin(w.Y), 0.5f * MathF.Sin(w.Z));
+        g.Vel[i] += (air + own - g.Vel[i]) * follow;
+        g.Kick[i] = Turn(g.Kick[i], g.Spin[i] * dt) * fade;
+        g.Pos[i] += (g.Vel[i] + g.Kick[i]) * dt;
+    }
+
+    /// <summary>A walker who stepped from <paramref name="was"/> to <paramref name="now"/> swirls the motes and the pollen
+    /// about it, round its sides and up, the nearest fastest; a grain keeps the stronger of this and the swirl it had.</summary>
     private static void Stir(AirSceneState s, Vector3 was, Vector3 now)
     {
         AirMotes m = s.Motes;
         Vector2 step = new(now.X - was.X, now.Y - was.Y);
-        if (m.Lamps == 0 || !Hangs(s) || step == Vector2.Zero) return;
+        if (step == Vector2.Zero) return;
         Vector2 ahead = Vector2.Normalize(step), side = new(-ahead.Y, ahead.X);
-        int n = m.Lamps * PerLamp;
+        if (m.Lamps > 0 && Hangs(s)) Swirl(m, m.Lamps * PerLamp, ahead, side, now);
+        if (Glints(s)) Swirl(s.Pollen, MaxPollen, ahead, side, now);
+    }
+
+    /// <summary>Swirl the first <paramref name="n"/> grains of <paramref name="g"/> about a walker at <paramref name="now"/>
+    /// heading <paramref name="ahead"/>.</summary>
+    private static void Swirl(AirGrains g, int n, Vector2 ahead, Vector2 side, Vector3 now)
+    {
         for (int i = 0; i < n; i++)
         {
-            Vector3 p = m.Pos[i];
+            Vector3 p = g.Pos[i];
             Vector2 off = new(p.X - now.X, p.Y - now.Y);
             float d = off.Length();
-            if (m.Dark[i] || d >= WakeRadius || p.Z < now.Z || p.Z > now.Z + WakeHeight) continue;
+            if (g.Dark[i] || d >= WakeRadius || p.Z < now.Z || p.Z > now.Z + WakeHeight) continue;
             Vector2 round = Vector2.Dot(off, side) < 0f ? -side : side;
             Vector3 swirl = Vector3.Normalize(new Vector3(0.7f * ahead + 0.5f * round, 0.3f)) * (WakeSpeed * (1f - 0.5f * d / WakeRadius));
-            if (swirl.LengthSquared() <= m.Kick[i].LengthSquared()) continue;
-            m.Kick[i] = swirl;
-            m.Spin[i] = round == side ? EddyTurn : -EddyTurn;
+            if (swirl.LengthSquared() <= g.Kick[i].LengthSquared()) continue;
+            g.Kick[i] = swirl;
+            g.Spin[i] = round == side ? EddyTurn : -EddyTurn;
         }
     }
 
-    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres throws the motes in it outward, the
-    /// nearest fastest; at Low and with the air off it throws none.</summary>
+    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres throws the motes and the pollen in it
+    /// outward, the nearest fastest; at Low and with the air off it throws none.</summary>
     internal static void Blast(Vector3 at, float radius)
     {
         AirSceneState s = _s;
         AirMotes m = s.Motes;
-        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || m.Lamps == 0 || !Hangs(s) || !(radius > 0f)) return;
-        int n = m.Lamps * PerLamp;
+        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || !(radius > 0f)) return;
+        if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius);
+        if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius);
+    }
+
+    /// <summary>Throw the first <paramref name="n"/> grains of <paramref name="g"/> out from a blast at <paramref name="at"/>.</summary>
+    private static void Throw(AirGrains g, int n, Vector3 at, float radius)
+    {
         for (int i = 0; i < n; i++)
         {
-            Vector3 off = m.Pos[i] - at;
+            Vector3 off = g.Pos[i] - at;
             float d = off.Length();
-            if (m.Dark[i] || d >= radius || d == 0f) continue;
+            if (g.Dark[i] || d >= radius || d == 0f) continue;
             Vector3 thrown = off * (BlastSpeed * (1f - d / radius) / d);
-            if (thrown.LengthSquared() <= m.Kick[i].LengthSquared()) continue;
-            m.Kick[i] = thrown;
-            m.Spin[i] = 0f;
+            if (thrown.LengthSquared() <= g.Kick[i].LengthSquared()) continue;
+            g.Kick[i] = thrown;
+            g.Spin[i] = 0f;
         }
     }
 
@@ -220,45 +247,56 @@ internal static partial class AirScene
         return n + 1;
     }
 
-    /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, in a fixed order while each
-    /// stays lit. None with the air off or in a place that hangs none.</summary>
+    /// <summary>The particles of <paramref name="layer"/>: the motes in their lamps' light, or the pollen about the player,
+    /// in a fixed order while each stays lit. None with the air off or in a place that hangs none.</summary>
     internal static ReadOnlySpan<AirParticle> Particles(AirLayer layer)
     {
         AirSceneState s = _s;
-        if (layer != AirLayer.Motes || !s.Laid || !On(s) || !Hangs(s)) return ReadOnlySpan<AirParticle>.Empty;
-        AirMotes m = s.Motes;
-        int n = 0;
-        for (int i = 0; i < m.Lamps * PerLamp; i++)
-            if (!m.Dark[i]) m.Shown[n++] = new AirParticle(m.Pos[i], m.Vel[i] + m.Kick[i]);
-        return m.Shown.AsSpan(0, n);
+        if (!s.Laid || !On(s)) return ReadOnlySpan<AirParticle>.Empty;
+        if (layer == AirLayer.Motes && Hangs(s)) return Hand(s.Motes, s.Motes.Lamps * PerLamp);
+        if (layer == AirLayer.Pollen && Glints(s)) return Hand(s.Pollen, MaxPollen);
+        return ReadOnlySpan<AirParticle>.Empty;
+    }
+
+    /// <summary>The lit grains of the first <paramref name="n"/> of <paramref name="g"/>, each moving as it drifts and is swirled.</summary>
+    private static ReadOnlySpan<AirParticle> Hand(AirGrains g, int n)
+    {
+        int k = 0;
+        for (int i = 0; i < n; i++)
+            if (!g.Dark[i]) g.Shown[k++] = new AirParticle(g.Pos[i], g.Vel[i] + g.Kick[i]);
+        return g.Shown.AsSpan(0, k);
     }
 }
 
+/// <summary>Grains that float in the air, each on a path of its own: where it is, how it drifts, what swirls it.</summary>
+internal class AirGrains(int capacity)
+{
+    /// <summary>Per grain: where it is, how it drifts, the swirl or throw on top and the eddy turning it, its path's phase and turn, and whether it is out of sight.</summary>
+    public readonly Vector3[] Pos = new Vector3[capacity];
+    public readonly Vector3[] Vel = new Vector3[capacity];
+    public readonly Vector3[] Kick = new Vector3[capacity];
+    public readonly float[] Spin = new float[capacity];
+    public readonly Vector3[] Phase = new Vector3[capacity];
+    public readonly Vector3[] Rate = new Vector3[capacity];
+    public readonly bool[] Dark = new bool[capacity];
+
+    /// <summary>Per grain: how many times it was set afloat, and the grains' clock when it last was.</summary>
+    public readonly uint[] Births = new uint[capacity];
+    public readonly float[] Born = new float[capacity];
+
+    /// <summary>How long the grains have floated, and how long since a front last blew, seconds.</summary>
+    public float Clock, Calm;
+
+    /// <summary>The lit grains as <see cref="AirScene.Particles"/> hands them out.</summary>
+    public readonly AirParticle[] Shown = new AirParticle[capacity];
+}
+
 /// <summary>One area's lamps and the motes in their light, mote i held by lamp i / <see cref="AirScene.PerLamp"/>.</summary>
-internal sealed class AirMotes
+internal sealed class AirMotes() : AirGrains(AirScene.MaxMotes)
 {
     /// <summary>Each seated lamp's place, reach and the floor under it, and how many are seated.</summary>
     public readonly Vector3[] LampAt = new Vector3[AirScene.MaxLamps];
     public readonly float[] LampReach = new float[AirScene.MaxLamps];
     public readonly float[] LampFloor = new float[AirScene.MaxLamps];
     public int Lamps;
-
-    /// <summary>Per mote: where it is, how it drifts, the swirl or throw on top and the eddy turning it, its path's phase and turn, and whether it has left the light.</summary>
-    public readonly Vector3[] Pos = new Vector3[AirScene.MaxMotes];
-    public readonly Vector3[] Vel = new Vector3[AirScene.MaxMotes];
-    public readonly Vector3[] Kick = new Vector3[AirScene.MaxMotes];
-    public readonly float[] Spin = new float[AirScene.MaxMotes];
-    public readonly Vector3[] Phase = new Vector3[AirScene.MaxMotes];
-    public readonly Vector3[] Rate = new Vector3[AirScene.MaxMotes];
-    public readonly bool[] Dark = new bool[AirScene.MaxMotes];
-
-    /// <summary>Per mote: how many times it was set afloat, and the motes' clock when it last was.</summary>
-    public readonly uint[] Births = new uint[AirScene.MaxMotes];
-    public readonly float[] Born = new float[AirScene.MaxMotes];
-
-    /// <summary>How long the motes have floated, and how long since a front last blew, seconds.</summary>
-    public float Clock, Calm;
-
-    /// <summary>The lit motes as <see cref="AirScene.Particles"/> hands them out.</summary>
-    public readonly AirParticle[] Shown = new AirParticle[AirScene.MaxMotes];
 }

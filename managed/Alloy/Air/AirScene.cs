@@ -92,6 +92,7 @@ internal static partial class AirScene
                 bool floor = dust && !float.IsNaN(s.Floor[c]);
                 s.Rest[c] = s.Dust[c] = floor ? lay * (1f + WallGather * MathF.Exp(-ToWall(s, x, y) / GatherFall)) : 0f;
             }
+        SeedPollen(s, s.Feet);
     }
 
     /// <summary>How far column (<paramref name="x"/>, <paramref name="y"/>) stands from the nearest column with no floor,
@@ -167,6 +168,8 @@ internal static partial class AirScene
         if (speed > 0f) s.Dir = wind / speed;
         s.Drift = wind * DriftShare;
         StepMotes(s, dt);
+        StepPollen(s, dt);
+        StepWisps(s, dt, wind, speed);
         if (still) return;
         s.Gen++;
         s.Clock += dt;
@@ -222,6 +225,7 @@ internal static partial class AirScene
     {
         s.Front = new AirFront(true, change > 0f ? change : -change * DropShare, dir);
         s.Line = -FrontReach;
+        TearWisps(s, s.Front.Strength);
     }
 
     /// <summary>Run the live front on by <paramref name="dt"/>, tearing and lifting the dust of each column it crosses.</summary>
@@ -254,10 +258,11 @@ internal static partial class AirScene
         => (MathF.Sin(2.1f * across + 0.7f) + 0.7f * MathF.Sin(3.7f * across + 2.3f) + 0.5f * MathF.Sin(1.3f * across + 4.1f)) / 2.2f;
 
     /// <summary>How much of <paramref name="layer"/> hangs at <paramref name="at"/>: the dust thickest on the floor and
-    /// thinning to nothing at its top, stirred slowly where it lies. None with the air off.</summary>
+    /// thinning to nothing at its top, stirred slowly where it lies, or the wisps high overhead. None with the air off.</summary>
     internal static float Density(AirLayer layer, Vector3 at)
     {
         AirSceneState s = _s;
+        if (layer == AirLayer.Wisps) return On(s) ? WispAt(s, at) : 0f;
         int c = Column(s, at.X, at.Y);
         if (c < 0 || layer != AirLayer.Dust || !On(s)) return 0f;
         float h = RestHeight + s.Lift[c], z = at.Z - s.Floor[c];
@@ -305,9 +310,6 @@ internal static partial class AirScene
     /// <summary>The gust front crossing the air now.</summary>
     internal static AirFront Front => _s.Front;
 
-    /// <summary>The wisps' shape now.</summary>
-    internal static AirWisps Wisps => default;
-
     /// <summary>The air's own motion at a ground point, in metres a second.</summary>
     internal static Vector2 Motion(float x, float y) => _s.Drift;
 
@@ -322,6 +324,10 @@ internal sealed class AirSceneState
     public AirLook Look;
     public bool Night;
     public readonly AirMotes Motes = new();
+
+    /// <summary>The pollen about the player, and the wisps high overhead.</summary>
+    public readonly AirPollen Pollen = new();
+    public readonly AirWispSheet Sheet = new();
 
     /// <summary>The grid's corner in whole metres and the player's feet across the ground, and whether a floor is laid.</summary>
     public int Ox, Oy;
