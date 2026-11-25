@@ -72,7 +72,7 @@ internal static class AirScene
     /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres.</summary>
     internal static void Blast(Vector3 at, float radius) { }
 
-    /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, and with the air off nothing moves.</summary>
+    /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, with the air off nothing moves.</summary>
     internal static void Step(float dt, Vector2 wind)
     {
         AirSceneState s = _s;
@@ -84,8 +84,8 @@ internal static class AirScene
             return;
         }
         float speed = wind.Length();
-        if (s.Stepped && Air.Quality.V != Air.Levels[0] && MathF.Abs(speed - s.Speed) > Calm) Launch(s, speed - s.Speed, speed > 0f ? wind / speed : s.Dir);
         if (!s.Stepped) Settle(s, speed);
+        else if (Air.Quality.V != Air.Levels[0] && MathF.Abs(speed - s.Speed) > Calm) Launch(s, speed - s.Speed, speed > 0f ? wind / speed : s.Dir);
         s.Stepped = true;
         s.Speed = speed;
         if (speed > 0f) s.Dir = wind / speed;
