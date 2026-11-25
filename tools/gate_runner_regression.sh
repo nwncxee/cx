@@ -109,6 +109,21 @@ EOF2
 out=$(row '| about.ping | Ping |')
 [ "$(grep -c . <<< "$out")" = 1 ] && grep -q "fen.ping is declared" <<< "$out" || fail "knob-spec-rows did not take about.ping and fen.ping from Notes' two Declare sites, fen.ping handed as Late's second argument -- $out"
 
+# A Declare site and a relay call count in a file that never names KnobGroup, and a class whose name ends in Notes is not Notes.
+cat > "$t/param/managed/A.cs" << 'EOF2'
+static class General { public static readonly KnobGroup About = KnobGroup.Declare("about", "General", "About"); }
+static class Fen { public static readonly KnobGroup Fe = KnobGroup.Declare("fen", "General", "Fen"); }
+static class Lone { public static readonly KnobGroup Lo = KnobGroup.Declare("lone", "General", "Lone"); }
+sealed class Notes { private Notes(KnobGroup g) { g.Toggle("ping", "Ping", false, help: "h"); } public static Notes Declare(KnobGroup g) => new(g); }
+static class Outer { internal static void Pass(KnobGroup p) { Notes.Declare(p); } }
+EOF2
+for i in $(seq 100); do echo "static class F$i { static readonly KnobGroup G = KnobGroup.Declare(\"f$i\"); static void I() { G.Toggle(\"k\", \"K\", false); } }"; done >> "$t/param/managed/A.cs"
+cat > "$t/param/managed/Z.cs" << 'EOF2'
+sealed class MyNotes { public static MyNotes Declare(object o) => new(); }
+sealed class Wire { void Init() { Notes.Declare(General.About); Outer.Pass(Fen.Fe); MyNotes.Declare(Lone.Lo); } }
+EOF2
+out=$(row "$(printf '| about.ping | Ping |\n| fen.ping | Ping |')"); [ -z "$out" ] || fail "knob-spec-rows did not take about.ping and fen.ping from sites in a file that names no KnobGroup, or credited MyNotes' lone group to Notes -- $out"
+
 lines() { (cd "$t" && git init -q 2>/dev/null; printf '%s\n' "$@" > tools/x_approved_examples.sh; bash tools/gates/approved-lines.sh) > /dev/null 2>&1; }
 lines '# Given a' '# When b' '# Then c' || fail "approved-lines refused an ordered Given, When and Then"
 lines '# Given a' '# When b' && fail "approved-lines passed a script with no Then"
