@@ -38,6 +38,7 @@ linux=(
   tools/no-loaded-runtime.sh
   tools/codehash.py
   tools/keep-staged.sh
+  tools/ssl-by-name.sh
   tools/stub-host.sh
   tools/where.sh
   'tools/selfcheck/*'

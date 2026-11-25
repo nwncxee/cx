@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Ui;
 
@@ -16,8 +17,9 @@ public sealed class UpdateService : IExtenderService
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
+        Func<string, byte[]?> source = Source(OperatingSystem.IsLinux(), name => NativeLibrary.TryLoad(name, out _), Fetch, log);
         UpdateAbout a = Declare(General.About, Product.Version, OsName(OperatingSystem.IsWindows()), AllowedSigners(), log,
-                                Fetch, SelectableText.Copy, GearAttention.Menu);
+                                source, SelectableText.Copy, GearAttention.Menu);
         new Thread(a.Notice.Check) { IsBackground = true, Name = "cx-update" }.Start();
     }
 
@@ -32,6 +34,18 @@ public sealed class UpdateService : IExtenderService
         UpdateKnobs k = UpdateKnobs.Declare(about);
         var notice = new UpdateNotice(k, running, os, ReleaseKeys.Parse(allowedSigners), log, fetch, copy, gear);
         return new UpdateAbout(k, notice, ReleaseKeyRow.Declare(about, allowedSigners, copy));
+    }
+
+    /// <summary>The OpenSSL libraries .NET's TLS accepts on Linux, newest first.</summary>
+    internal static readonly string[] SslNames = ["libssl.so.3", "libssl.so.1.1"];
+
+    /// <summary>The fetch the notice asks through: <paramref name="fetch"/>, or on a Linux machine where no
+    /// <see cref="SslNames"/> library loads, one that answers nothing, since .NET aborts the process there.</summary>
+    internal static Func<string, byte[]?> Source(bool linux, Func<string, bool> tryLoad, Func<string, byte[]?> fetch, ExtenderLog log)
+    {
+        if (!linux || SslNames.Any(tryLoad)) return fetch;
+        log.Info("update check: off, no libssl.so.3 or libssl.so.1.1 loads on this machine");
+        return _ => null;
     }
 
     /// <summary>The release keys built into this extender: <c>packaging/allowed_signers</c>, embedded.</summary>

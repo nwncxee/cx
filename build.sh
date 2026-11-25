@@ -114,6 +114,12 @@ if [ ! -f build/libcxaudio.a ] || [ native/cxaudio.cpp -nt build/libcxaudio.a ];
     -c native/cxaudio.cpp -o build/cxaudio.o
   rm -f build/libcxaudio.a && ar rcs build/libcxaudio.a build/cxaudio.o
 fi
+# The dlopen cx_managed.so links (native/cxssl.c, -Wl,--wrap=dlopen): libssl deep-binds, out of the engine's OpenSSL.
+if [ ! -f build/libcxssl.a ] || [ native/cxssl.c -nt build/libcxssl.a ]; then
+  echo ">> building the libssl wrapper (libcxssl.a)..."
+  cc -O2 -fPIC -c native/cxssl.c -o build/cxssl.o
+  rm -f build/libcxssl.a && ar rcs build/libcxssl.a build/cxssl.o
+fi
 
 # FSR 3.1 upscaling: AMD's FidelityFX SDK fetched, patched and its shaders generated, then libcxfsr.a built from it.
 bash tools/ffx/prepare.sh python3 glslang
@@ -163,6 +169,7 @@ if ! dotnet publish managed/cx_managed.csproj -c Release -o build --disable-buil
      -p:InformationalVersion="$CX_VERSION" -p:IlcMaxParallelism="$IlcMaxParallelism" > build-managed.log 2>&1; then
   echo ">> managed build FAILED:"; grep -E "error|rror" build-managed.log | head -20; exit 1
 fi
+bash tools/ssl-by-name.sh build/cx_managed.so || exit 1
 
 echo ">> building native bootstrap (libcx.so)..."
 cc -shared -fPIC -O2 -o build/libcx.so native/bootstrap.c -ldl
