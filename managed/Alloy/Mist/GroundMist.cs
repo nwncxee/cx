@@ -65,7 +65,7 @@ internal static partial class GroundMist
             if ((uint)f.V0 >= (uint)walk.Positions.Length || (uint)f.V1 >= (uint)walk.Positions.Length
                 || (uint)f.V2 >= (uint)walk.Positions.Length) continue;
             s.Tri.Add(new MistFace(Vector3.Transform(walk.Positions[f.V0], world), Vector3.Transform(walk.Positions[f.V1], world),
-                                    Vector3.Transform(walk.Positions[f.V2], world)));
+                                    Vector3.Transform(walk.Positions[f.V2], world), TileBuild.Water(f.Surface)));
         }
         s.Stale = true;
     }
@@ -95,12 +95,14 @@ internal static partial class GroundMist
         s.Gen++;
     }
 
-    /// <summary>Each column's floor: the highest face over its centre at or below the feet plus the headroom.</summary>
+    /// <summary>Each column's floor: the highest face over its centre at or below the feet plus the headroom, and
+    /// whether that face is water.</summary>
     private static void LayFloors(GroundMistState s)
     {
         Array.Fill(s.Floor, float.NaN);
+        Array.Clear(s.Wet);
         float top = s.FeetZ + Headroom;
-        foreach ((Vector3 a, Vector3 b, Vector3 c) in s.Tri)
+        foreach ((Vector3 a, Vector3 b, Vector3 c, bool wet) in s.Tri)
         {
             int x0 = Math.Max((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))) - s.Ox, 0);
             int x1 = Math.Min((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))) - s.Ox, Side - 1);
@@ -119,7 +121,7 @@ internal static partial class GroundMist
                     if (u < Edge || v < Edge || u + v > 1f - Edge) continue;
                     float z = a.Z + u * (b.Z - a.Z) + v * (c.Z - a.Z);
                     int at = y * Side + x;
-                    if (z <= top && (float.IsNaN(s.Floor[at]) || z > s.Floor[at])) s.Floor[at] = z;
+                    if (z <= top && (float.IsNaN(s.Floor[at]) || z > s.Floor[at])) (s.Floor[at], s.Wet[at]) = (z, wet);
                 }
         }
     }
@@ -134,6 +136,7 @@ internal static partial class GroundMist
         if (s.Stepped || !On()) return;
         for (int c = 0; c < s.Depth.Length; c++) s.Depth[c] = float.IsNaN(s.Floor[c]) ? 0f : s.AreaLevel;
         s.Any = s.AreaLevel > Trace;
+        s.Over = false;
         s.Gen++;
     }
 
@@ -144,7 +147,7 @@ internal static partial class GroundMist
         GroundMistState s = _s;
         if (!s.Laid || depth <= 0f) return;
         Disc(s, at, radius, s.Depth, depth, true);
-        s.Any = true;
+        s.Any = s.Over = true;
         s.Gen++;
     }
 
@@ -207,13 +210,14 @@ internal static partial class GroundMist
         moved |= Flow(s, dt);
         moved |= Drift(s, dt, wind);
         moved |= Air(s, dt);
-        bool any = false;
+        bool any = false, over = false;
         for (int c = 0; c < s.Depth.Length; c++)
         {
             if (s.Depth[c] < Trace) s.Depth[c] = 0f;
             any |= s.Depth[c] > 0f;
+            over |= s.Depth[c] > s.AreaLevel + Trace;
         }
-        s.Any = any;
+        (s.Any, s.Over) = (any, over);
         if (moved) s.Gen++;
     }
 
@@ -441,6 +445,27 @@ internal static partial class GroundMist
         return c < 0 ? Vector2.Zero : new Vector2(s.Vx[c], s.Vy[c]);
     }
 
+    /// <summary>The mist an emitter or a placement laid over the world column at (<paramref name="x"/>, <paramref name="y"/>),
+    /// metres over the area's own floor of it: the area's fog lays none the air shows.</summary>
+    internal static float Laid(float x, float y)
+    {
+        GroundMistState s = _s;
+        int c = Column(s, x, y);
+        float over = c < 0 || !s.Over ? 0f : s.Depth[c] - s.AreaLevel;
+        return over > Trace ? over : 0f;
+    }
+
+    /// <summary>Does any column hold mist an emitter or a placement laid, with the air on?</summary>
+    internal static bool Placed => On() && _s.Over;
+
+    /// <summary>Is the floor of the column at (<paramref name="x"/>, <paramref name="y"/>) open water?</summary>
+    internal static bool WetAt(float x, float y)
+    {
+        GroundMistState s = _s;
+        int c = Column(s, x, y);
+        return c >= 0 && s.Wet[c];
+    }
+
     /// <summary>The floor height the column at (<paramref name="x"/>, <paramref name="y"/>) lays its mist on; NaN for none.</summary>
     internal static float FloorAt(float x, float y)
     {
@@ -510,6 +535,9 @@ internal sealed class GroundMistState
     public float[] Spare = new float[GroundMist.Side * GroundMist.Side];
     public float[] Target = new float[GroundMist.Side * GroundMist.Side];
 
+    /// <summary>Per column, whether its floor is open water.</summary>
+    public readonly bool[] Wet = new bool[GroundMist.Side * GroundMist.Side];
+
     /// <summary>The depth the area's fog lays, whether the field has stepped since the area began or Volumetric fog came
     /// back on, and whether any column holds mist.</summary>
     public float AreaLevel;
@@ -520,6 +548,10 @@ internal sealed class GroundMistState
     /// <summary>The air's upload generation the field last folded into its own.</summary>
     public int AirGen = int.MinValue;
     public bool Stepped, Any;
+
+    /// <summary>Whether any column holds mist over the area's floor of it, and the sky colour the stage last took.</summary>
+    public bool Over;
+    public Vector3 Sky;
 
     /// <summary>This frame's emitters.</summary>
     public MistSource[] Source = new MistSource[GroundMist.MaxSources];
@@ -543,5 +575,5 @@ internal sealed class GroundMistState
     public int Reached, Stamp;
 }
 
-/// <summary>One floor face of the walkmesh, its three corners in world space.</summary>
-internal readonly record struct MistFace(Vector3 A, Vector3 B, Vector3 C);
+/// <summary>One floor face of the walkmesh, its three corners in world space, and whether it is open water.</summary>
+internal readonly record struct MistFace(Vector3 A, Vector3 B, Vector3 C, bool Wet);

@@ -59,8 +59,8 @@ internal static partial class GroundMistSelfCheck
         }
         finally { CX.Alloy.Air.Enabled.V = true; }
         check.Expect(sent == GroundMist.PackedBytes && head == new Vector4(GroundMist.CornerFor(0f), GroundMist.CornerFor(0f), side, 1f)
-                && ground.Floor == 0f && ground.Mist == AreaDepth && wall.Floor < -1e8f && wall.Mist == 0f && hidden == GroundMist.Head && shows == 0f,
-            $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with the air off (want the whole field, a shown head at the corner, the area's floor at 0 m, no floor and no mist on the wall, then the head alone showing 0)");
+                && ground.Floor == 0f && ground.Mist == 0f && wall.Floor < -1e8f && wall.Mist == 0f && hidden == GroundMist.Head && shows == 0f,
+            $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with the air off (want the whole field, a shown head at the corner, the area's floor at 0 m with no mist the area's fog laid, no floor and no mist on the wall, then the head alone showing 0)");
     }
 
     /// <summary>At the lowest fog detail the mist lies still: a walker and a blast leave it as it was.</summary>

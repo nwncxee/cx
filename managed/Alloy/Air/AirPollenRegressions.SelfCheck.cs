@@ -8,7 +8,7 @@ using static CX.Alloy.MistFixture;
 namespace CX.Alloy;
 
 /// <summary>The meadow pollen's plain regressions: a steady wind's drift, a front's quick rush, the settle back to its
-/// height after a blast, and none shown over ground that is no floor. Oracle, by hand: the flat meadow, the strong wind
+/// height after a blast, none shown over ground that is no floor, and none by night. Oracle, by hand: the flat meadow, the strong wind
 /// of 2 m/s along x whose drift is half of it, and a wall east of x = 4.</summary>
 internal static class AirPollenRegressions
 {
@@ -27,8 +27,23 @@ internal static class AirPollenRegressions
         RushesQuickly(check);
         SettlesBack(check);
         WallHides(check);
+        NightStops(check);
         log.Info(check.Ok ? "AirPollenRegressions.SelfCheck: passed" : "AirPollenRegressions.SelfCheck: FAILED");
         return check.Ok;
+    }
+
+    /// <summary>A meadow entered by day stops its pollen when night falls there and floats it again when day breaks.</summary>
+    private static void NightStops(Checker check)
+    {
+        Calm(Flat());
+        bool day = AirScene.Glinting;
+        AirScene.Night(true);
+        Go(1f, Vector2.Zero);
+        bool night = AirScene.Glinting;
+        AirScene.Night(false);
+        Go(1f, Vector2.Zero);
+        check.Expect(day && !night && AirScene.Glinting,
+            $"a meadow's pollen glints {day} by day, {night} once night falls, {AirScene.Glinting} once day breaks (want true, false, true)");
     }
 
     /// <summary>A meadow by day, five still seconds after entry.</summary>

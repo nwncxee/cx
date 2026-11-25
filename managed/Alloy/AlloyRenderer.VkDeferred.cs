@@ -228,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
         if (dust)
         {
             // ponytail: the whole field goes up each frame the air steps; a dirty-rect upload once a still crypt costs a frame
-            int air = GroundMist.Pack(ref d.AirGen, d.AirBytes);
+            int air = GroundMist.Pack(ref d.AirGen, d.AirBytes, FogLinear());
             if (air > 0) cl.UpdateBuffer(d.Air, 0, d.AirBytes.AsSpan(0, air));
             cl.BeginLabel("air dust"u8);
             cl.SetPipeline(d.Dust!.Pipe);

@@ -80,7 +80,7 @@ internal static partial class AirScene
 
     /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day; its dust lies whole, gathered
     /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial. A forest's
-    /// columns hold haze, which each <see cref="Trunk"/> lays.</summary>
+    /// columns hold haze, which each <see cref="Trunk"/> lays; water outdoors holds night mist, whole by night.</summary>
     internal static void Enter(AirLook look, bool night)
     {
         var s = new AirSceneState { Look = look, Night = night, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
@@ -103,6 +103,9 @@ internal static partial class AirScene
                 bool floor = dust && !float.IsNaN(s.Floor[c]);
                 s.Rest[c] = s.Dust[c] = floor ? lay * (1f + WallGather * MathF.Exp(-ToWall(s, x, y) / GatherFall)) : 0f;
             }
+        s.Wets = (look.Layers(true) & AirLayer.NightMist) != 0;
+        s.Dusk = night && s.Wets ? 1f : 0f;
+        if (s.Wets) LayMist(s);
         SeedPollen(s, s.Feet);
     }
 
@@ -147,13 +150,11 @@ internal static partial class AirScene
             foreach (Vector2 t in AirArea.Trunks) Trunk(t);
             s = _s;
         }
+        if (night != s.Night) Night(night);
         s.Scene = scene.Value;
         s.Seq = frame;
         Step(dt, wind);
     }
-
-    /// <summary>Day turns to night or back.</summary>
-    internal static void Night(bool night) { }
 
     /// <summary>A tree trunk standing at <paramref name="at"/>: in a forest it hazes the columns about it, whole within
     /// <see cref="HazeReach"/> less <see cref="HazeFeather"/>, and sheds leaves while the player is near it.</summary>
@@ -204,6 +205,7 @@ internal static partial class AirScene
         StepPollen(s, dt);
         StepWisps(s, dt, wind, speed);
         StepLeaves(s, dt);
+        Dusk(s, dt);
         if (still) return;
         s.Gen++;
         s.Clock += dt;
@@ -214,7 +216,9 @@ internal static partial class AirScene
             s.Lift[c] *= fall;
             s.Gap[c] *= close;
             s.Dust[c] += back * (s.Rest[c] - s.Dust[c]) - off * s.Dust[c];
+            s.Mist[c] += back * (s.MistRest[c] - s.Mist[c]) - off * s.Mist[c];
         }
+        Carry(s, dt);
     }
 
     /// <summary>Take the Dust dial as it stands, a hold's value while one is in force; a change shows at the next upload.</summary>
@@ -226,11 +230,11 @@ internal static partial class AirScene
         s.Gen++;
     }
 
-    /// <summary>Lay each column's dust as a steady <paramref name="speed"/> leaves it, where scour and refill balance.</summary>
+    /// <summary>Lay each column's dust and mist as a steady <paramref name="speed"/> leaves it, where scour and refill balance.</summary>
     private static void Settle(AirSceneState s, float speed)
     {
         float keep = Refill * s.Hold / (Refill * s.Hold + Scour * speed / s.Hold);
-        for (int c = 0; c < s.Dust.Length; c++) s.Dust[c] = s.Rest[c] * keep;
+        for (int c = 0; c < s.Dust.Length; c++) (s.Dust[c], s.Mist[c]) = (s.Rest[c] * keep, s.MistRest[c] * keep);
     }
 
     /// <summary>A creature that stepped from <paramref name="was"/> to <paramref name="now"/> clears the dust at its feet,
@@ -262,7 +266,8 @@ internal static partial class AirScene
         TearWisps(s, s.Front.Strength);
     }
 
-    /// <summary>Run the live front on by <paramref name="dt"/>, tearing and lifting the dust of each column it crosses.</summary>
+    /// <summary>Run the live front on by <paramref name="dt"/>, tearing the dust and mist of each column it crosses and
+    /// lifting the dust.</summary>
     private static void Sweep(AirSceneState s, float dt)
     {
         AirFront f = s.Front;
@@ -277,13 +282,15 @@ internal static partial class AirScene
             for (int x = 0; x < GroundMist.Side; x++)
             {
                 int c = y * GroundMist.Side + x;
-                if (s.Dust[c] <= 0f) continue;
+                bool dust = s.Dust[c] > 0f;
+                if (!dust && s.Mist[c] <= 0f) continue;
                 Vector2 at = new Vector2(s.Ox + x + 0.5f, s.Oy + y + 0.5f) - s.Feet;
                 float along = Vector2.Dot(at, f.Dir);
                 if (along <= from || along > to) continue;
                 float torn = MathF.Min(tear * (1f + Streak * Uneven(Vector2.Dot(at, across))), 1f);
                 s.Dust[c] *= 1f - torn;
-                s.Lift[c] += LiftPerTear * torn;
+                s.Mist[c] *= 1f - torn;
+                if (dust) s.Lift[c] += LiftPerTear * torn;
             }
     }
 
@@ -291,23 +298,27 @@ internal static partial class AirScene
     private static float Uneven(float across)
         => (MathF.Sin(2.1f * across + 0.7f) + 0.7f * MathF.Sin(3.7f * across + 2.3f) + 0.5f * MathF.Sin(1.3f * across + 4.1f)) / 2.2f;
 
-    /// <summary>How much of <paramref name="layer"/> hangs at <paramref name="at"/>: the dust or a forest's haze
-    /// thickest on the floor and thinning to nothing at its top, stirred slowly where it lies, or the wisps high
-    /// overhead. None with the air off.</summary>
+    /// <summary>How much of <paramref name="layer"/> hangs at <paramref name="at"/>: the dust, a forest's haze or the
+    /// mist thickest on the floor and thinning to nothing at its top, the dust stirred slowly where it lies, or the
+    /// wisps high overhead. None with the air off.</summary>
     internal static float Density(AirLayer layer, Vector3 at)
     {
         AirSceneState s = _s;
         if (layer == AirLayer.Wisps) return On(s) ? WispAt(s, at) : 0f;
         int c = Column(s, at.X, at.Y);
-        if (c < 0 || layer == AirLayer.None || layer != s.Columns || !On(s)) return 0f;
+        if (c < 0 || !On(s)) return 0f;
+        if (layer == AirLayer.NightMist) return Profile(MistShown(s, c, at.X, at.Y), at.Z - s.Floor[c], MistTop);
+        if (layer == AirLayer.None || layer != s.Columns) return 0f;
         (float depth, float h) = Shown(s, c, at.X, at.Y);
-        float z = at.Z - s.Floor[c];
-        if (z < 0f || z >= h) return 0f;
-        return 2f * depth * (1f - z / h) / h;
+        return Profile(depth, at.Z - s.Floor[c], h);
     }
 
-    /// <summary>Does the area's dust or haze lie, to be drawn? False with the air off or in a place with neither.</summary>
-    internal static bool Lies => _s.Laid && _s.Columns != AirLayer.None && On(_s);
+    /// <summary>The density <paramref name="z"/> metres over its floor of a layer <paramref name="depth"/> metres deep
+    /// standing <paramref name="h"/> tall: thickest on the floor, nothing at its top, integrating to its depth.</summary>
+    private static float Profile(float depth, float z, float h) => z < 0f || z >= h ? 0f : 2f * depth * (1f - z / h) / h;
+
+    /// <summary>Does the area's dust, haze or mist lie, to be drawn? False with the air off or in a place with none.</summary>
+    internal static bool Lies => _s.Laid && On(_s) && (_s.Columns != AirLayer.None || Misty(_s));
 
     /// <summary>Is the air on in this area? A hold reads as it stood when the area was entered, so a later change waits
     /// for the next entry; the player's own switch reads live.</summary>
@@ -386,6 +397,15 @@ internal sealed class AirSceneState
     public readonly float[] Rest = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Dust = new float[GroundMist.Side * GroundMist.Side];
     public readonly float[] Lift = new float[GroundMist.Side * GroundMist.Side];
+
+    /// <summary>Per column, the night mist it holds at rest and now, before the night's share; and a scratch column set.</summary>
+    public readonly float[] MistRest = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Mist = new float[GroundMist.Side * GroundMist.Side];
+    public float[] Spare = new float[GroundMist.Side * GroundMist.Side];
+
+    /// <summary>Whether the area's water can gather night mist, and the night's share of it shown now, 0 to 1.</summary>
+    public bool Wets;
+    public float Dusk;
 
     /// <summary>Per column, how much of its dust a passer has cleared, 0 to 1.</summary>
     public readonly float[] Gap = new float[GroundMist.Side * GroundMist.Side];

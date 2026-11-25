@@ -43,26 +43,31 @@ internal static partial class GroundMist
         Step(dt, wind);
     }
 
-    /// <summary>Write the field and the air's dust for the fog stage into <paramref name="into"/>: a head (the corner,
-    /// the side, 1 while either shows), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when
-    /// <paramref name="gen"/> says the stage already has them; with nothing showing, the head alone.</summary>
-    internal static int Pack(ref int gen, Span<byte> into)
+    /// <summary>Write the field and the air's dust and mist for the fog stage into <paramref name="into"/>: a head (the
+    /// corner, the side, 1 while either shows; the <paramref name="sky"/>'s fog colour and the mist's height), then a
+    /// <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/> says the stage already
+    /// has them; with nothing showing, the head alone.</summary>
+    internal static int Pack(ref int gen, Span<byte> into, Vector3 sky = default)
     {
         GroundMistState s = _s;
         bool mist = Shows() && s.Laid, dust = AirScene.Lies && s.Laid, shows = mist || dust;
         if (dust && s.AirGen != AirScene.Gen) { s.AirGen = AirScene.Gen; s.Gen++; }
+        if (sky != s.Sky) { s.Sky = sky; s.Gen++; }
         int now = shows ? s.Gen : -1;
         if (now == gen) return 0;
         gen = now;
         MemoryMarshal.Write(into, new Vector4(s.Ox, s.Oy, Side, shows ? 1f : 0f));
+        MemoryMarshal.Write(into[(Head / 2)..], new Vector4(sky, AirScene.MistTop));
         if (!shows) return Head;
         Span<Cell> cells = MemoryMarshal.Cast<byte, Cell>(into[Head..]);
         for (int y = 0; y < Side; y++)
             for (int x = 0; x < Side; x++)
             {
                 int c = y * Side + x;
-                (float lies, float top) = dust ? AirScene.Shown(s.Ox + x + 0.5f, s.Oy + y + 0.5f) : (0f, 0f);
-                cells[c] = new Cell(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], mist ? s.Depth[c] + s.Lift[c] : 0f, lies, top);
+                float wx = s.Ox + x + 0.5f, wy = s.Oy + y + 0.5f;
+                (float lies, float top) = dust ? AirScene.Shown(wx, wy) : (0f, 0f);
+                float wet = dust ? AirScene.MistAt(wx, wy) : mist ? Laid(wx, wy) : 0f;
+                cells[c] = new Cell(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], wet, lies, top);
             }
         return PackedBytes;
     }
@@ -73,5 +78,5 @@ internal static partial class GroundMist
     internal readonly record struct Cell(float Floor, float Mist, float Dust, float Top);
 
     /// <summary>The bytes of the field's head, of one <see cref="Cell"/>, and of the whole field as <see cref="Pack"/> writes it.</summary>
-    internal const int Head = sizeof(float) * 4, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
+    internal const int Head = sizeof(float) * 8, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
 }
