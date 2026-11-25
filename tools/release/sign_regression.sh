@@ -26,9 +26,8 @@ else
   fail "sums: sign.sh failed -- $(tail -3 "$c/out")"
 fi
 
-# The draft gains cx-update, the release notice CX reads: the tag, each line under the notes' Changes heading and
-# each published zip's SHA-256, signed by the release key under the cx-update namespace, which a SHA256SUMS
-# signature can't stand in for.
+# The draft gains cx-update: the tag, the Changes lines and each published zip's SHA-256, signed under the
+# cx-update namespace, which a SHA256SUMS signature can't stand in for.
 c=$(plant notice "")
 printf 'Intro.\n\n- not a change\n\n## Changes since v9.9.8\n\n- Shadows soften at dusk (#12)\n- The chat window remembers its size (#13)\n' > "$c/notes"
 if run "$c" "$tmp/code"; then

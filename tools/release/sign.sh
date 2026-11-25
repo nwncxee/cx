@@ -77,10 +77,8 @@ fi
 ssh-keygen -Y sign -f "$key" -n file SHA256SUMS
 ssh-keygen -Y verify -f "$signers" -I cx-releases -n file -s SHA256SUMS.sig < SHA256SUMS
 
-# The release notice CX reads once a session (managed/Services/Update): the tag, the first ten lines under
-# the notes' Changes heading, and each zip's SHA-256 from the SHA256SUMS just signed, so About can show a player
-# the checksum of the zip this release publishes, the Windows one after its repack. Signed under its own
-# namespace so no other signature of the key can pose as one.
+# The notice CX reads (managed/Services/Update): the tag, ten Changes lines and each published zip's SHA-256.
+# Its own namespace keeps any other signature of the key from posing as one.
 {
   echo "cx-update 1"
   echo "version $tag"
