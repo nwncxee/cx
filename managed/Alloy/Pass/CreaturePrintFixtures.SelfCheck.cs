@@ -150,6 +150,19 @@ internal static unsafe partial class Weather
     /// <summary>The lunging wolf: its raised forepaws 0.08 m and 0.3 m up, on one line that the planted forepaw sinks below.</summary>
     private static ModelDef LungeWolf() => Quadruped("cx_pr_lunge", LungePaws, WolfPaw, [Lifted, 0.3f, Planted, Planted]);
 
+    /// <summary>A wolf climbing a 1-in-10 rise ahead, one hind paw drawn in under its centre: only that paw is on the level.</summary>
+    private static readonly Vector2[] ClimbPaws = [new(-0.15f, 0.45f), new(0.15f, 0.6f), new(-0.15f, 0f), new(0.15f, 0.3f)];
+
+    /// <summary>The climbing wolf: every paw planted on the rise, each a tenth of its reach ahead above the centre's ground.</summary>
+    private static ModelDef ClimbWolf() => Quadruped("cx_pr_climb", ClimbPaws, WolfPaw, [0.045f, 0.06f, Planted, 0.03f]);
+
+    /// <summary>A wolf walking down a 1-in-9 slope: its forepaws just ahead of its centre, its hind paws far behind.</summary>
+    private static readonly Vector2[] DescentPaws = [new(-0.15f, 0.04f), new(0.15f, 0.03f), new(-0.15f, -0.48f), new(0.15f, -0.48f)];
+
+    /// <summary>The descending wolf: its back-left paw planted on the slope behind, the back-right one 8 cm above it, both
+    /// forepaws 3 cm up.</summary>
+    private static ModelDef DescentWolf() => Quadruped("cx_pr_descent", DescentPaws, WolfPaw, [0.03f, 0.032f, 0.053f, 0.133f]);
+
     /// <summary>The ox: front-left and back-right hooves planted.</summary>
     private static ModelDef Ox() => Quadruped("cx_pr_ox", OxHooves, OxHoof, [Planted, Lifted, Lifted, Planted]);
 
@@ -260,9 +273,13 @@ internal static unsafe partial class Weather
     private static readonly Vector2 DragonPaw = new(0.7f, 0.9f);
     private const float TailLow = 0.03f;
 
+    /// <summary>Where a dragon's rigid claw guard lies, ahead of its forepaws on the ground, and its size.</summary>
+    private static readonly Vector2 ClawGuardAt = new(0f, 3f), ClawGuard = new(0.3f, 0.3f);
+
     /// <summary>The red dragon as one skinned mesh over bone dummies posed at <see cref="DragonPose"/>; with
-    /// <paramref name="bones"/> false its skin binds none, so it stays at its rest pose.</summary>
-    private static ModelDef Dragon(bool bones)
+    /// <paramref name="bones"/> false its skin binds none, so it stays at its rest pose. A <paramref name="guard"/>
+    /// adds a rigid claw guard mesh after the skin.</summary>
+    private static ModelDef Dragon(bool bones, bool guard = false)
     {
         var mesh = new FixMesh();
         mesh.Box(DragonBind[2], 1.6f, 3.6f, 1.2f, 2);
@@ -272,7 +289,8 @@ internal static unsafe partial class Weather
         b.Node("dskin", 0, Vector3.Zero, mesh.Mesh(), mesh.Skin(bones ? DragonBind : []));
         string[] names = ["spine", "paw_fl", "paw_fr", "paw_bl", "paw_br", "tail1", "tail2", "tail3"];
         for (int k = 2; k < DragonNodes; k++) b.Node(names[k - 2], 0, DragonPose[k]);
-        return b.Model(bones ? "cx_pr_dragon" : "cx_pr_boneless");
+        if (guard) b.Node("claw_guard", 0, new Vector3(ClawGuardAt, Planted), new FixMesh().Box(Vector3.Zero, ClawGuard.X, ClawGuard.Y, 0.1f).Mesh());
+        return b.Model(guard ? "cx_pr_guarded" : bones ? "cx_pr_dragon" : "cx_pr_boneless");
     }
 
     /// <summary>One placed creature: a scene-database object of <paramref name="m"/> at <paramref name="at"/>, facing +y,

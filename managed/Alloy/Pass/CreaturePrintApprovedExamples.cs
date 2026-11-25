@@ -430,6 +430,26 @@ internal static unsafe partial class Weather
         StepDown(in twice, PrintNow);
         StepDown(in twice, PrintNow + 0.05f);
         check.Expect(_prints == once + 1, $"a wolf's two events in one stride: one footfall ({_prints - once})");
+
+        // Given a wolf climbing a 1-in-10 rise, one hind paw drawn in under its centre and the rest planted up the rise
+        // When a footstep event fires
+        // Then every paw prints, not only the one on the level under its centre
+        DbId climb = Keep(placed, Place(ClimbWolf(), PrintAt));
+        FreshGround(snow: true, wet: false);
+        StepFacts cl = OpenStep(climb, -1, TypeSoft, SizeMedium, PrintAt, 901);
+        StepDown(in cl, PrintNow);
+        check.Expect(!climb.IsNull && FeetRead(PrintAt, ClimbPaws, [true, true, true, true]),
+                     "a wolf climbing a rise: every paw on the rise prints, not only the one under its centre");
+
+        // Given a wolf walking down a slope, one hind paw planted behind it and both forepaws lifted 3 cm beside its centre
+        // When a footstep event fires
+        // Then only the planted hind paw prints
+        DbId descent = Keep(placed, Place(DescentWolf(), PrintAt));
+        FreshGround(snow: true, wet: false);
+        StepFacts ds = OpenStep(descent, -1, TypeSoft, SizeMedium, PrintAt, 902);
+        StepDown(in ds, PrintNow);
+        check.Expect(!descent.IsNull && FeetRead(PrintAt, DescentPaws, [false, false, true, false]),
+                     "a wolf walking downhill: its planted hind paw prints, not the forepaws lifted beside its centre");
     }
 
     /// <summary>Whether a sole-sized print lies under the foot at <paramref name="rel"/>: pressed there, as long as a
@@ -491,6 +511,16 @@ internal static unsafe partial class Weather
         StepDown(in d, PrintNow);
         check.Expect(!dragon.IsNull && DragonPrinted(PrintAt), "a red dragon: a paw-sized print under each planted paw, where its bones put it");
         check.Expect(!TailPressed(PrintAt), "a red dragon: no print along its tail");
+
+        // Given a red dragon wearing a rigid claw guard, a mesh of its own read after its skin, resting on the snow
+        // When a footstep event fires
+        // Then the claw guard prints as well as the planted paws
+        DbId guarded = Keep(placed, Place(Dragon(bones: true, guard: true), PrintAt));
+        FreshGround(snow: true, wet: false);
+        StepFacts gd = OpenStep(guarded, -1, TypeDragon, SizeHuge, PrintAt, 903);
+        StepDown(in gd, PrintNow);
+        check.Expect(!guarded.IsNull && Pressed(PrintAt, ClawGuardAt) && DragonPrinted(PrintAt),
+                     "a dragon's rigid claw guard prints beside its paws: the skin's unused bone slots are no feet");
 
         // Given 20 red dragons walking across the snow
         // When their footstep events fire
