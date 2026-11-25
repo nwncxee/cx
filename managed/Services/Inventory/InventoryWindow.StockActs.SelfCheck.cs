@@ -7,7 +7,7 @@ namespace CX.Services.Inventory;
 
 internal sealed partial class InventoryWindow
 {
-    private const uint Sword = 101, Helm = 105, Potion = 106, Bag = 107, Dagger = 108, Belt = 109, WornHelm = 104, WornSword = 110, Gem = 201, LootChest = 0x500;   // not-an-offset: object ids
+    private const uint Sword = 101, Helm = 105, Potion = 106, Bag = 107, Dagger = 108, Belt = 109, WornHelm = 104, WornSword = 110, Pouch = 111, Gem = 201, LootChest = 0x500;   // not-an-offset: object ids
 
     /// <summary>Off-device: the window acting as the stock panel does, one suite per behaviour: coloured names, a drop on a
     /// worn item, the double-click and a drop from outside the backpack. Oracle: hand-written fixtures, the stock behaviour each Then names.</summary>
@@ -187,7 +187,34 @@ internal sealed partial class InventoryWindow
         b.Drag(lx, ly, b.Cx(0), b.Cy(0));
         check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Take, Gem, X: AutoCell, Y: AutoCell, Other: LootChest),
                      $"a chest item dropped on a taken cell lands where the server picks ({Said(acts)})");
+
+        // Given an open chest and a bag in the backpack
+        // When the player drops a chest item on the bag
+        // Then it goes into the bag, and draws ghosted where it was until the server answers
+        b.Drag(lx, ly, b.Cx(5), b.Cy(0));
+        bool intoBag = acts.Count == 1 && acts[0] == new InvAction(InvActKind.Put, Gem, X: AutoCell, Y: AutoCell, Other: Bag);
+        if (intoBag) { w.MarkPending(acts[0]); w.ApplyPending(); }
+        check.Expect(intoBag && l.Items[0].X == 0 && l.Items[0].Y == 0 && l.Items[0].Ghost,
+                     $"a chest item dropped on a bag goes into it, ghosted where it was ({Said(acts)}, at {l.Items[0].X},{l.Items[0].Y})");
         l.Reset(InventoryModel.Invalid, b.Now);
+
+        // Given a bag open in the loot pane
+        // When the player drops a dagger on that bag in the backpack
+        // Then it is refused, as in the stock client
+        l.Reset(Bag, b.Now);
+        b.Drag(b.Cx(0), b.Cy(3), b.Cx(5), b.Cy(0));
+        check.Expect(acts.Count == 1 && acts[0].Kind == InvActKind.Refused, $"a drop on the bag open in the loot pane is refused ({Said(acts)})");
+        l.Reset(InventoryModel.Invalid, b.Now);
+
+        // Given two bags in the backpack
+        // When the player drops one bag on the other
+        // Then it is refused: a bag does not go inside a bag
+        InventoryModel m = w.Model;
+        m.Items[6] = new InvItem { Oid = Pouch, X = 1, Y = 3, W = 1, H = 1, BaseId = 66, Container = true };
+        m.Count = 7;
+        b.Drag(b.Cx(1), b.Cy(3), b.Cx(5), b.Cy(0));
+        check.Expect(acts.Count == 1 && acts[0].Kind == InvActKind.Refused, $"a bag dropped on a bag is refused ({Said(acts)})");
+        m.Count = 6;
 
         // Given a bag in the backpack
         // When the player drops a dagger on the bag
@@ -196,11 +223,26 @@ internal sealed partial class InventoryWindow
         check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Put, Dagger, X: AutoCell, Y: AutoCell, Other: Bag),
                      $"a dagger dropped on a bag goes into it ({Said(acts)})");
 
+        // Given a worn helmet and a bag in the backpack
+        // When the player drops the helmet on the bag
+        // Then the helmet is taken off into the bag, as the stock grid sends it
+        b.Drag(b.SlotX("head"), b.SlotY("head"), b.Cx(5), b.Cy(0));
+        check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Unequip, WornHelm, X: AutoCell, Y: AutoCell, Other: Bag),
+                     $"a worn helmet dropped on a bag is taken off into it ({Said(acts)})");
+
         // Given a backpack item
         // When the player drops it on another occupied backpack cell
         // Then it is refused, as in the stock client
         b.Drag(b.Cx(0), b.Cy(3), b.Cx(2), b.Cy(0));
         check.Expect(acts.Count == 1 && acts[0].Kind == InvActKind.Refused, $"a backpack item on another item's cell is refused ({Said(acts)})");
+
+        // Given a worn helmet and a backpack of several pages
+        // When the player drops the helmet on an occupied cell
+        // Then every backpack page but the one shown is asked for again, since the server may place it on any
+        b.Drag(b.SlotX("head"), b.SlotY("head"), b.Cx(0), b.Cy(0));
+        if (acts.Count == 1) w.MarkPending(acts[0]);
+        int other = m.Selected == 0 ? 1 : 0;
+        check.Expect(!m.Fresh[other] && m.Fresh[m.Selected], $"an unequip to a cell the server picks makes the other pages stale (page {other} fresh {m.Fresh[other]})");
     }
 
     private static int Slot(string id)

@@ -514,10 +514,10 @@ internal sealed partial class InventoryWindow
         return true;
     }
 
-    /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take (out of
-    /// the loot) / Merge onto a like stack; a tab -> the first free cell from that page on; a slot -> Equip (the server swaps a worn item out) / Merge; a
-    /// loot cell -> <see cref="LootDrop"/>; outside the window -> Drop at the release point. The per-frame preview
-    /// passes <paramref name="describe"/> false so a refusal builds no text.</summary>
+    /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take / Merge / into a
+    /// bag, to a cell the server picks when a slot or loot item does not fit there; a tab -> the first free cell from that
+    /// page on; a slot -> Equip (the server swaps the worn one out) / Merge; a loot cell -> <see cref="LootDrop"/>; outside
+    /// -> Drop at the release point. The per-frame preview passes <paramref name="describe"/> false: a refusal builds no text.</summary>
     internal InvAction? Drop(InvHit h, bool inside, bool describe = true)
     {
         uint oid = _dragOid;
@@ -533,10 +533,15 @@ internal sealed partial class InventoryWindow
         {
             Footprint(h, InventoryModel.Cols, InventoryModel.Rows, out int x, out int y);
             int under = Model.ItemAt(h.X, h.Y);
-            if (under >= 0 && Model.Items[under].Oid != oid && Mergeable(Model.Items[under], it))
-                return new InvAction(InvActKind.Merge, Model.Items[under].Oid, Other: oid);
+            InvItem below = under >= 0 ? Model.Items[under] : default;
+            bool other = under >= 0 && below.Oid != oid;
+            if (other && Mergeable(below, it)) return new InvAction(InvActKind.Merge, below.Oid, Other: oid);
             if (Model.Blank(y / InventoryModel.Rows)) return new InvAction(InvActKind.Refused, oid, Text: describe ? Loading : "");
-            if (!Model.Fits(x, y, _dragW, _dragH, oid, PageLimit)) return new InvAction(InvActKind.Refused, oid, Text: describe ? "No room there." : "");
+            if (other && below.Container && !it.Container && below.Oid != Loot.Oid)
+                return new InvAction(_dragFromSlot >= 0 ? InvActKind.Unequip : InvActKind.Put, oid, X: AutoCell, Y: AutoCell, Other: below.Oid);
+            if (!Model.Fits(x, y, _dragW, _dragH, oid, PageLimit))
+                return inBag ? new InvAction(InvActKind.Refused, oid, Text: describe ? "No room there." : "")
+                             : new InvAction(toBag, oid, X: AutoCell, Y: AutoCell, Other: from);
             if (inBag && it.X == x && it.Y == y) return null;
             return new InvAction(toBag, oid, X: x, Y: y, Other: from);
         }
@@ -665,8 +670,8 @@ internal sealed partial class InventoryWindow
         InvItem it = Info(oid);
         byte to = a.Kind switch
         {
-            InvActKind.Move or InvActKind.Unequip => AtBag,
-            InvActKind.Take => a.X == AutoCell ? AtNone : AtBag,
+            _ when a.X == AutoCell => AtNone,
+            InvActKind.Move or InvActKind.Unequip or InvActKind.Take => AtBag,
             InvActKind.Put => AtLoot,
             InvActKind.Equip => AtSlot,
             _ => AtNone,
@@ -683,13 +688,11 @@ internal sealed partial class InventoryWindow
     {
         switch (a.Kind)
         {
+            case InvActKind.Move or InvActKind.Unequip or InvActKind.Take or InvActKind.Put when a.X == AutoCell:
+                TouchAt(a.Oid); Model.Stale(); return;
             case InvActKind.Move or InvActKind.Unequip: Model.Touch(a.Y / InventoryModel.Rows); return;
             case InvActKind.Put: Loot.Touch(a.Y / LootModel.Rows); return;
-            case InvActKind.Take:
-                TouchAt(a.Oid);
-                if (a.X == AutoCell) Model.Stale();
-                else Model.Touch(a.Y / InventoryModel.Rows);
-                return;
+            case InvActKind.Take: TouchAt(a.Oid); Model.Touch(a.Y / InventoryModel.Rows); return;
             case InvActKind.Split: TouchAt(a.Oid); Model.Stale(); return;
             case InvActKind.Merge or InvActKind.Use or InvActKind.Drop or InvActKind.Radial: TouchAt(a.Oid); return;
         }

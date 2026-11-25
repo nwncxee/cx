@@ -637,10 +637,10 @@ internal static unsafe class InventoryNative
         if (msg != IntPtr.Zero) EngineFn.SendInvEquip(msg, oid, mask, PlayerId());
     }
 
-    public static void Unequip(uint oid, int x, int y)
+    public static void Unequip(uint oid, int x, int y, uint target)
     {
         IntPtr msg = Msg();
-        if (msg != IntPtr.Zero) EngineFn.SendInvUnequip(msg, oid, (byte)x, (byte)y, PlayerId());
+        if (msg != IntPtr.Zero) EngineFn.SendInvUnequip(msg, oid, (byte)x, (byte)y, target);
     }
 
     /// <summary><c>RepositoryMove</c> to cell (<paramref name="x"/>, wire <paramref name="y"/>) of <paramref name="target"/>'s

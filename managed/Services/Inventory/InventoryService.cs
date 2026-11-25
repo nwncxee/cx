@@ -244,8 +244,8 @@ public sealed unsafe partial class InventoryService : IExtenderService
         int h = Math.Max(1, _inv.Info(a.Oid).H);
         int wireY = a.Kind switch
         {
-            InvActKind.Move or InvActKind.Unequip => InventoryModel.Flip(a.Y, h),
-            InvActKind.Take => a.X == InventoryWindow.AutoCell ? a.Y : InventoryModel.Flip(a.Y, h),
+            _ when a.X == InventoryWindow.AutoCell => a.Y,
+            InvActKind.Move or InvActKind.Unequip or InvActKind.Take => InventoryModel.Flip(a.Y, h),
             InvActKind.Put => ItemGrid.Flip(a.Y, h, LootModel.Rows),
             _ => a.Y,
         };
@@ -261,7 +261,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         switch (a.Kind)
         {
             case InvActKind.Equip: InventoryNative.Equip(a.Oid, a.Mask); break;
-            case InvActKind.Unequip: InventoryNative.Unequip(a.Oid, a.X, wireY); break;
+            case InvActKind.Unequip: InventoryNative.Unequip(a.Oid, a.X, wireY, a.Other != 0 ? a.Other : InventoryNative.PlayerId()); break;
             case InvActKind.Move: InventoryNative.Move(a.Oid, a.X, wireY, InventoryNative.PlayerId()); break;
             case InvActKind.Take:
                 InventoryNative.Move(a.Oid, a.X, wireY, a.X == InventoryWindow.AutoCell ? InventoryModel.Invalid : InventoryNative.PlayerId());
