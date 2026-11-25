@@ -152,8 +152,8 @@ architecture and how to add a feature.
 
 ## Contributing
 
-Fork the repository and open a pull request against `main`. CI doesn't run on a pull request from a
-fork until a maintainer approves it.
+Talk to us before you build a feature: on a GitHub issue or on the CX Discord. [`CONTRIBUTING.md`](CONTRIBUTING.md)
+says what a pull request needs, from that agreement to its proof and its performance numbers.
 
 ## Contact
 
