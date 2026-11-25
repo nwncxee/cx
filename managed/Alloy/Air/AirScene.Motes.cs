@@ -43,6 +43,9 @@ internal static partial class AirScene
     /// being swept along.</summary>
     private const float EddyTurn = 3f;
 
+    /// <summary>How fast a blast throws a mote at its heart, metres a second, falling to nothing at its edge.</summary>
+    private const float BlastSpeed = 4f;
+
     /// <summary>Does the area's look hang motes?</summary>
     private static bool Hangs(AirSceneState s) => (s.Look.Layers(s.Night) & AirLayer.Motes) != 0;
 
@@ -149,6 +152,26 @@ internal static partial class AirScene
             if (swirl.LengthSquared() <= m.Kick[i].LengthSquared()) continue;
             m.Kick[i] = swirl;
             m.Spin[i] = round == side ? EddyTurn : -EddyTurn;
+        }
+    }
+
+    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres throws the motes in it outward, the
+    /// nearest fastest; at Low and with the air off it throws none.</summary>
+    internal static void Blast(Vector3 at, float radius)
+    {
+        AirSceneState s = _s;
+        AirMotes m = s.Motes;
+        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || m.Lamps == 0 || !Hangs(s) || !(radius > 0f)) return;
+        int n = m.Lamps * PerLamp;
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 off = m.Pos[i] - at;
+            float d = off.Length();
+            if (m.Dark[i] || d >= radius || d == 0f) continue;
+            Vector3 thrown = off * (BlastSpeed * (1f - d / radius) / d);
+            if (thrown.LengthSquared() <= m.Kick[i].LengthSquared()) continue;
+            m.Kick[i] = thrown;
+            m.Spin[i] = 0f;
         }
     }
 

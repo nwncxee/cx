@@ -145,9 +145,6 @@ internal static partial class AirScene
     /// <summary>A tree trunk standing at <paramref name="at"/>.</summary>
     internal static void Trunk(Vector2 at) { }
 
-    /// <summary>A blast at <paramref name="at"/> of <paramref name="radius"/> metres.</summary>
-    internal static void Blast(Vector3 at, float radius) { }
-
     /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, with the air off nothing moves.</summary>
     internal static void Step(float dt, Vector2 wind)
     {
