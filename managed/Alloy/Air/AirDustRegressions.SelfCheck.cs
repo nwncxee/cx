@@ -169,14 +169,17 @@ internal static class AirDustRegressions
         Span<GroundMist.Cell> cells = MemoryMarshal.Cast<byte, GroundMist.Cell>(into.AsSpan(GroundMist.Head));
         int ox = (int)head.X, oy = (int)head.Y;
         GroundMist.Cell feet = cells[UploadAt(0, 0, ox, oy)], wall = cells[UploadAt((int)RoomHalf + 1, 0, ox, oy)];
-        (float depth, float top) = AirScene.Shown(0.5f, 0.5f);
         int again = GroundMist.Pack(ref gen, into);
         Go(Frame, Vector2.Zero);
         int next = GroundMist.Pack(ref gen, into);
-        check.Expect(head.W == 1f && feet.Dust == depth && depth > 0f && feet.Top == top && top > 0f && wall.Dust == 0f,
-            $"the upload carries {feet.Dust:F4} m to {feet.Top:F2} m at the feet against {depth:F4} m to {top:F2} m, {wall.Dust:F4} m on the wall (want the air's, none)");
+        check.Expect(head.W == 1f && MathF.Abs(feet.Dust - OpenDust) <= OpenStir * OpenDust && feet.Top == RestTop && wall.Dust == 0f,
+            $"the upload carries {feet.Dust:F4} m to {feet.Top:F2} m at the feet, {wall.Dust:F4} m on the wall (want {OpenDust:F2} m within {OpenStir:P0}, to {RestTop:F2} m, none)");
         check.Expect(again == 0 && next == GroundMist.PackedBytes, $"an unchanged air sends {again} bytes, a stepped one {next} (want 0, the whole field)");
     }
+
+    /// <summary>A still crypt column more than three metres from a wall at Dust 1 and fog amount 0: 0.1 m of dust, no
+    /// wall gathering, stirred by at most 5% either way, standing 0.4 m with no front to lift it.</summary>
+    private const float OpenDust = 0.1f, OpenStir = 0.05f, RestTop = 0.4f;
 
     /// <summary>The upload's column holding world metre (<paramref name="x"/>, <paramref name="y"/>) under corner (<paramref name="ox"/>, <paramref name="oy"/>).</summary>
     private static int UploadAt(int x, int y, int ox, int oy) => (y - oy) * GroundMist.Side + (x - ox);
