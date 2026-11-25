@@ -66,8 +66,7 @@ with `mg plugin pack` and use Plugins > Install Plugin from File. Then enable it
 
 - **Plugins > NWNCX:EE Area Settings...** asks for an area and a feature, then what the area uses: *the player's own
   settings* (the area sets nothing), *volumetric fog with the values below* (every key written), or *classic fog*
-  (`cx.vfog.enabled=0` alone). The air offers the same three: the player's own, *the values below*, or *no air*
-  (`cx.air.enabled=0` alone). The form opens on the area's current choice and values. The edit is one step of Undo.
+  (`cx.vfog.enabled=0` alone). The plugin does not offer the air: set its `cx.air.*` variables by hand, and expect *Verify Module* to flag them. The form opens on the area's current choice and values. The edit is one step of Undo.
 - **Build > Verify Module** gets a check, *NWNCX:EE area variables name real settings*, which flags a `cx.*` variable
   naming no setting, or with a value of the wrong type or out of range.
 
