@@ -448,6 +448,14 @@ internal static partial class GroundMist
         return c < 0 ? float.NaN : s.Floor[c];
     }
 
+    /// <summary>The field's corner in whole metres and the player's feet across the ground; false while no floor is laid.</summary>
+    internal static bool Corner(out int ox, out int oy, out Vector2 feet)
+    {
+        GroundMistState s = _s;
+        (ox, oy, feet) = (s.Ox, s.Oy, s.Player);
+        return s.Laid;
+    }
+
     /// <summary>Is the mist switched on: Ground mist, under Volumetric fog?</summary>
     internal static bool On() => VolumetricFog.Enabled.V && VolumetricFog.Mist.V;
 
