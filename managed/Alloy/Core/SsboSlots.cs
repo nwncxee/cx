@@ -49,6 +49,8 @@ internal static class SsboSlots
     internal const uint Content = 15;
     /// <summary>The lamplight's motes, above the rig the mote stage lights them by.</summary>
     internal const uint AirMotes = 15;
+    /// <summary>A meadow's wisps, on the motes' point: each air stage binds its own buffer there before it dispatches.</summary>
+    internal const uint AirWisps = AirMotes;
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
@@ -63,7 +65,7 @@ internal static class SsboSlots
         ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
-        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air, ["CxAirMotes"] = AirMotes,
+        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air, ["CxAirMotes"] = AirMotes, ["CxAirWisps"] = AirWisps,
         ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,

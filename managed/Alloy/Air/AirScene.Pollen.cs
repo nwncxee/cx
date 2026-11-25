@@ -20,7 +20,7 @@ internal static partial class AirScene
     private const float PollenShare = 1f, PollenSettle = 3f;
 
     /// <summary>Turns the pollen's draws from the motes', so a grain and a mote of one index take different paths.</summary>
-    private const uint PollenSalt = 0x5BD1E995u;
+    private const uint PollenSalt = 0x5BD1E995u; // not-an-offset: a hash salt
 
     /// <summary>Does the area float pollen: was it seeded on entry, which only a look that floats it does?</summary>
     private static bool Glints(AirSceneState s) => s.Pollen.Seeded;

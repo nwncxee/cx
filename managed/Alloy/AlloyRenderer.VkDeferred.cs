@@ -28,6 +28,8 @@ public sealed unsafe partial class AlloyRenderer
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
         public VkDefLoc L;
+        /// <summary>The records an air stage reads on the air's storage point, none for every other stage.</summary>
+        public BufferId Own;
     }
 
     /// <summary>Where each loose term this path's stages read sits in its own block, resolved once at build: the
@@ -80,8 +82,15 @@ public sealed unsafe partial class AlloyRenderer
         /// whether it was refused; the motes as that stage reads them, and the records packed for it.</summary>
         public VkDefStage? Motes;
         public bool MotesFailed;
-        public BufferId MoteBuf;
         public readonly Vector4[] MoteData = new Vector4[AirScene.MotesPacked];
+        /// <summary>The mote stage's sky-lit build that lays a meadow's pollen, whether it was refused, and the records packed for it.</summary>
+        public VkDefStage? Pollen;
+        public bool PollenFailed;
+        public readonly Vector4[] PollenData = new Vector4[AirScene.PollenPacked];
+        /// <summary>The stage that veils the lit frame with a meadow's wisps, whether it was refused, and the records packed for it.</summary>
+        public VkDefStage? Wisps;
+        public bool WispsFailed;
+        public readonly Vector4[] WispData = new Vector4[AirScene.WispsPacked];
     }
 
     private static VkDeferredState _vkdef = new();
@@ -144,15 +153,19 @@ public sealed unsafe partial class AlloyRenderer
         bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
         bool debt = VkDefSlotLights(rig);
         bool dust = AirScene.Lies && VkDefDust(vk, log);
-        bool motes = AirScene.Floats && VkDefMotes(vk, log);
-        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseMotes = 0;
+        bool motes = AirScene.Floats && VkDefAir(vk, ref d.Motes, ref d.MotesFailed, AirScene.MoteCs, null, AirScene.MotesPacked, "vk air motes", "motes", log);
+        bool pollen = AirScene.Glinting && VkDefAir(vk, ref d.Pollen, ref d.PollenFailed, AirScene.MoteCs, VkAirSky, AirScene.PollenPacked, "vk air pollen", "pollen", log);
+        bool wisps = AirScene.Hung && VkDefAir(vk, ref d.Wisps, ref d.WispsFailed, AirScene.WispCs, null, AirScene.WispsPacked, "vk air wisps", "wisps", log);
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseMotes = 0, loosePollen = 0, looseWisps = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
             || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass)
             || debt && !VkDefBlocks(d.Debt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDebt, ref pass)
             || debt && !VkDefBlocks(d.DebtApply!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseApply, ref pass)
             || dust && !VkDefBlocks(d.Dust!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDust, ref pass)
-            || motes && !VkDefBlocks(d.Motes!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseMotes, ref pass))
+            || motes && !VkDefBlocks(d.Motes!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseMotes, ref pass)
+            || pollen && !VkDefBlocks(d.Pollen!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out loosePollen, ref pass)
+            || wisps && !VkDefBlocks(d.Wisps!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseWisps, ref pass))
             return;
 
         ref DeferredBlock b = ref d.Blk;
@@ -220,11 +233,32 @@ public sealed unsafe partial class AlloyRenderer
         int packed = motes ? AirScene.PackMotes(d.MoteData) : 0;
         if (packed > 1)
         {
-            cl.UpdateBuffer(d.MoteBuf, 0, MemoryMarshal.AsBytes(d.MoteData.AsSpan(0, packed)));
+            cl.UpdateBuffer(d.Motes!.Own, 0, MemoryMarshal.AsBytes(d.MoteData.AsSpan(0, packed)));
             cl.BeginLabel("air motes"u8);
             cl.SetPipeline(d.Motes!.Pipe);
             VkDefBindSet(cl, d.Motes, s.Hdr, default, looseMotes, pass, slots);
             cl.Dispatch((packed - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
+            cl.EndLabel();
+        }
+        Vector3 sky = pollen || wisps ? FogLinear() : default;
+        int grains = pollen ? AirScene.PackPollen(d.PollenData, sky) : 0;
+        if (grains > 1)
+        {
+            cl.UpdateBuffer(d.Pollen!.Own, 0, MemoryMarshal.AsBytes(d.PollenData.AsSpan(0, grains)));
+            cl.BeginLabel("air pollen"u8);
+            cl.SetPipeline(d.Pollen!.Pipe);
+            VkDefBindSet(cl, d.Pollen, s.Hdr, default, loosePollen, pass, slots);
+            cl.Dispatch((grains - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
+            cl.EndLabel();
+        }
+        int sheet = wisps ? AirScene.PackWisps(d.WispData, sky) : 0;
+        if (sheet > 0)
+        {
+            cl.UpdateBuffer(d.Wisps!.Own, 0, MemoryMarshal.AsBytes(d.WispData.AsSpan(0, sheet)));
+            cl.BeginLabel("air wisps"u8);
+            cl.SetPipeline(d.Wisps!.Pipe);
+            VkDefBindSet(cl, d.Wisps, s.Hdr, default, looseWisps, pass, slots);
+            cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
             cl.EndLabel();
         }
         if (sample)
@@ -261,19 +295,22 @@ public sealed unsafe partial class AlloyRenderer
         return false;
     }
 
-    /// <summary>The mote stage and the buffer it reads on this device, built the first frame motes float. False, logged
-    /// once, when either was refused: the frame then shows no motes.</summary>
-    private static bool VkDefMotes(VkBackend vk, ExtenderLog log)
+    /// <summary>The define that builds the mote stage lit by the sky rather than the lamps, for a meadow's pollen.</summary>
+    private const string VkAirSky = "CX_AIR_SKY 1";
+
+    /// <summary>One air stage and the buffer of <paramref name="records"/> it reads on this device, built the first frame
+    /// its layer shows. False, logged once, when either was refused: the frame then shows no <paramref name="what"/>.</summary>
+    private static bool VkDefAir(VkBackend vk, ref VkDefStage? st, ref bool failed, string resref, string? define,
+                                 int records, string label, string what, ExtenderLog log)
     {
-        VkDeferredState d = _vkdef;
-        if (d.Motes != null) return true;
-        if (d.MotesFailed) return false;
-        d.Motes = VkDefBuild(vk, AirScene.MoteCs, null, "vk air motes", log);
-        d.MoteBuf = vk.CreateBuffer(new BufferDesc(AirScene.MotesPacked * 16, BufferUse.Storage, MemoryKind.Device, "vk air motes"));
-        if (d.Motes != null && !d.MoteBuf.IsNull) return true;
-        d.Motes = null;
-        d.MotesFailed = true;
-        log.Always("AlloyRenderer: the air's mote stage did NOT build (logged above) -- no motes show on this device");
+        if (st != null) return true;
+        if (failed) return false;
+        st = VkDefBuild(vk, resref, define, label, log);
+        if (st != null) st.Own = vk.CreateBuffer(new BufferDesc(records * 16, BufferUse.Storage, MemoryKind.Device, label));
+        if (st != null && !st.Own.IsNull) return true;
+        st = null;
+        failed = true;
+        log.Always($"AlloyRenderer: the air's {what} stage did NOT build (logged above) -- no {what} show on this device");
         return false;
     }
 
@@ -534,7 +571,7 @@ public sealed unsafe partial class AlloyRenderer
                         SsboSlots.Movers when !VkMovers.IsNull => VkMovers,
                         SsboSlots.Chart when !LightmapBake.VkChart.IsNull => LightmapBake.VkChart,
                         SsboSlots.Air when !d.Air.IsNull => d.Air,
-                        SsboSlots.AirMotes when !d.MoteBuf.IsNull => d.MoteBuf,
+                        SsboSlots.AirMotes when !st.Own.IsNull => st.Own,
                         _ => s.ZeroSsbo,
                     });
                     break;

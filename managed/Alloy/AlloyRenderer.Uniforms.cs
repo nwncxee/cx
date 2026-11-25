@@ -23,12 +23,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The scene's fog colour, linearised. The block stores it display-space -- the stock shaders
     /// lerp toward it AFTER RevertColorSpace -- and the Alloy frame is linear end to end, so the curve comes
     /// off here rather than in every stage that fogs.</summary>
-    private static void UploadFogColour(int loc)
+    private static void UploadFogColour(int loc) => LooseBlock.Set(loc, new Vector4(FogLinear(), 1f));
+
+    /// <summary>The scene's fog colour with the display curve taken off, as every Alloy stage takes it.</summary>
+    private static Vector3 FogLinear()
     {
         Vector3 src = FrameInputs.FogColor;
-        LooseBlock.Set(loc, new Vector4(MathF.Pow(MathF.Max(src.X, 0f), AlloyLights.SrgbGamma),
-                                        MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma),
-                                        MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma), 1f));
+        return new Vector3(MathF.Pow(MathF.Max(src.X, 0f), AlloyLights.SrgbGamma),
+                           MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma),
+                           MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma));
     }
 
     /// <summary>This frame's fog, packed the way every Alloy stage reads it -- enable, start, end and

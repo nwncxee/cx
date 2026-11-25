@@ -16,7 +16,8 @@ SHADERS = os.path.join("managed", "Alloy", "Shaders")
 HOME = "cx_air.glsl"
 MAINS = {
     "cx_airdust_cs.glsl": ("CxAirDust", "CxAirLit"),
-    "cx_airmote_cs.glsl": ("CxAirLit",),
+    "cx_airmote_cs.glsl": ("CxAirLit", "CxAirSky"),
+    "cx_airwisp_cs.glsl": ("CxAirSky",),
 }
 MAIN_NAME = re.compile(r"^cx_air\w*_cs\.glsl$")
 
