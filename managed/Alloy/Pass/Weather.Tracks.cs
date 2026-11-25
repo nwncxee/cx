@@ -85,34 +85,72 @@ internal static unsafe partial class Weather
     private static void FootDown(Vector3 p, Vector2 facing, uint id, float now, bool open)
     {
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z)) return;
-        Vector2 h = facing.LengthSquared() > 1e-6f ? Vector2.Normalize(facing) : Vector2.UnitY;
+        Vector2 h = Heading(facing);
+        if (!Footfall(id, now, out bool right)) return;
+        Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * (right ? FootSide : -FootSide);
+        if (open && PressInto(at, h, now, in TodaySole)) _prints++;
+        if (open) ThrowSplash(new Vector3(at, p.Z), now);
+    }
+
+    /// <summary>The unit heading <paramref name="facing"/> points along; +y when it points nowhere.</summary>
+    private static Vector2 Heading(Vector2 facing) => facing.LengthSquared() > 1e-6f ? Vector2.Normalize(facing) : Vector2.UnitY;
+
+    /// <summary>Whether creature <paramref name="id"/>'s step at <paramref name="now"/> is a new footfall, and which
+    /// side it comes down on: a second event inside <see cref="SameStepSec"/> is the same one.</summary>
+    private static bool Footfall(uint id, float now, out bool right)
+    {
         int bit = (int)(id % SideBuckets);
         FootSideState fs = _side;
+        right = false;
         if (fs.Id[bit] != id) { fs.Id[bit] = id; fs.Bits &= ~(1UL << bit); }
-        else if (now - fs.At[bit] < SameStepSec) return;
+        else if (now - fs.At[bit] < SameStepSec) return false;
         fs.At[bit] = now;
         fs.Bits ^= 1UL << bit;
-        float side = ((fs.Bits >> bit) & 1) != 0 ? FootSide : -FootSide;
-        Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * side;
-        Vector2 focus = FrameInputs.HasFocus ? new Vector2(FrameInputs.Focus.X, FrameInputs.Focus.Y) : at;
-        if (open && _track != null && Tracks.V && _snow > TrackMinSnow && SnowStrength.V > 0f && Vector2.Distance(at, focus) < TrackRangeM)
-        {
-            Print(_track, at, h, now, 1f / TrackFill.V, focus, ref _trackLo, ref _trackHi);
-            _prints++;
-        }
-        if (open && FootSplash.V > 0f && WetShown > FootMinWet)
-        {
-            _foot[_footNext] = new Vector4(at.X, at.Y, p.Z, now);
-            _footNext = (_footNext + 1) % FootMax;
-        }
+        right = ((fs.Bits >> bit) & 1) != 0;
+        return true;
     }
+
+    /// <summary>Presses <paramref name="shape"/> at <paramref name="at"/> while snow lies and the spot is in range of the
+    /// camera's follow target; true when it was pressed.</summary>
+    private static bool PressInto(Vector2 at, Vector2 h, float now, in PrintShape shape)
+    {
+        Vector2 focus = FrameInputs.HasFocus ? new Vector2(FrameInputs.Focus.X, FrameInputs.Focus.Y) : at;
+        if (_track == null || !Tracks.V || _snow <= TrackMinSnow || SnowStrength.V <= 0f || Vector2.Distance(at, focus) >= TrackRangeM) return false;
+        Print(_track, at, h, now, 1f / TrackFill.V, focus, ref _trackLo, ref _trackHi, in shape);
+        return true;
+    }
+
+    /// <summary>Throws a footfall's splash at <paramref name="at"/> while the ground shows wet.</summary>
+    private static void ThrowSplash(Vector3 at, float now)
+    {
+        if (FootSplash.V <= 0f || WetShown <= FootMinWet) return;
+        _foot[_footNext] = new Vector4(at, now);
+        _footNext = (_footNext + 1) % FootMax;
+    }
+
+    /// <summary>A print's outline: a toe lobe and a heel lobe, each an ellipse centred <c>At</c> metres along the
+    /// heading, <c>Len</c> long and <c>Wide</c> across (half-sizes). A pad is both lobes on one centre.</summary>
+    internal readonly record struct PrintShape(float ToeAt, float ToeLen, float ToeWide, float HeelAt, float HeelLen, float HeelWide)
+    {
+        /// <summary>Metres from the centre past which no lobe reaches.</summary>
+        public float Reach => MathF.Max(MathF.Max(ToeAt + ToeLen, HeelLen - HeelAt), MathF.Max(ToeWide, HeelWide));
+        /// <summary>A pad <paramref name="len"/> long and <paramref name="wide"/> across (half-sizes), on the foot's centre.</summary>
+        public static PrintShape Pad(float len, float wide) => new(0f, len, wide, 0f, len, wide);
+    }
+
+    /// <summary>Today's sole, the stamp a creature with no foot geometry presses.</summary>
+    private static readonly PrintShape TodaySole = new(ToeAt, ToeLen, ToeWide, HeelAt, HeelLen, HeelWide);
 
     /// <summary>The sole's depth, 0..1, at <paramref name="rel"/> metres from the foot's centre along heading
     /// <paramref name="h"/> (unit): the deeper of the toe and heel lobes, soft over their outer half.</summary>
-    internal static float PrintDepth(Vector2 rel, Vector2 h)
+    internal static float PrintDepth(Vector2 rel, Vector2 h) => PrintDepth(rel, h, in TodaySole);
+
+    /// <summary>The depth of <paramref name="shape"/> at <paramref name="rel"/>, as <see cref="PrintDepth(Vector2, Vector2)"/>.</summary>
+    internal static float PrintDepth(Vector2 rel, Vector2 h, in PrintShape shape)
     {
         float along = Vector2.Dot(rel, h), across = h.Y * rel.X - h.X * rel.Y;
-        return MathF.Max(Lobe(along - ToeAt, across, ToeLen, ToeWide), Lobe(along - HeelAt, across, HeelLen, HeelWide));
+        return MathF.Max(Lobe(along - shape.ToeAt, across, shape.ToeLen, shape.ToeWide),
+                         Lobe(along - shape.HeelAt, across, shape.HeelLen, shape.HeelWide));
         static float Lobe(float a, float c, float len, float wide)
         {
             float r = MathF.Sqrt(a * a / (len * len) + c * c / (wide * wide));
@@ -126,14 +164,18 @@ internal static unsafe partial class Weather
     /// that print has faded or lies farther from <paramref name="focus"/>, so a step one period away never
     /// erases the trail at the player's feet. The rows touched widen <paramref name="lo"/>..<paramref name="hi"/>.</summary>
     internal static void Print(TrackTexel[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi)
+        => Print(t, at, h, now, rate, focus, ref lo, ref hi, in TodaySole);
+
+    /// <summary><see cref="Print(TrackTexel[], Vector2, Vector2, float, float, Vector2, ref int, ref int)"/> of <paramref name="shape"/>.</summary>
+    internal static void Print(TrackTexel[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi, in PrintShape shape)
     {
         const float tpm = TrackSize / TrackPeriodM;
         int cx = (int)MathF.Floor(at.X * tpm), cy = (int)MathF.Floor(at.Y * tpm);
-        int r = (int)MathF.Ceiling(MathF.Max(ToeAt + ToeLen, -HeelAt + HeelLen) * tpm) + 1;
+        int r = (int)MathF.Ceiling(shape.Reach * tpm) + 1;
         for (int gy = cy - r; gy <= cy + r; gy++)
         for (int gx = cx - r; gx <= cx + r; gx++)
         {
-            float d = PrintDepth(new Vector2((gx + 0.5f) / tpm, (gy + 0.5f) / tpm) - at, h);
+            float d = PrintDepth(new Vector2((gx + 0.5f) / tpm, (gy + 0.5f) / tpm) - at, h, in shape);
             if (d <= 0.01f) continue;
             int tx = FloorDiv(gx), ty = FloorDiv(gy);
             ref TrackTexel e = ref t[(gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize];

@@ -97,7 +97,7 @@ internal static unsafe partial class Weather
     internal static void StepDown(in StepFacts s, float now)
     {
         if (!Grounded(in s)) return;
-        FootDown(s.At, s.Facing, s.Id, now, s.Open);
+        if (!OwnFeet(in s, now)) FootDown(s.At, s.Facing, s.Id, now, s.Open);
     }
 
     /// <summary>footstepsounds.2da types whose creature has no feet on the ground: none, the two wing rows and the
