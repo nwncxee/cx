@@ -4,24 +4,16 @@ using System.Text;
 
 namespace CX.Services.Update;
 
-/// <summary>A release-signing key: the principal an allowed-signers file names it by, and its Ed25519 public half.</summary>
-internal readonly record struct ReleaseKey(string Name, byte[] Public)
-{
-    /// <summary>The key's fingerprint as <c>ssh-keygen</c> prints it: <c>SHA256:</c> and the unpadded base64 of the
-    /// SHA-256 of its <c>ssh-ed25519</c> wire blob.</summary>
-    public string Fingerprint
-    {
-        get
-        {
-            byte[] blob = [0, 0, 0, 11, .. "ssh-ed25519"u8, 0, 0, 0, 32, .. Public];
-            return "SHA256:" + Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(blob)).TrimEnd('=');
-        }
-    }
-}
+/// <summary>A release-signing key: the principal an allowed-signers file names it by, its Ed25519 public half, and its
+/// fingerprint as <c>ssh-keygen</c> prints it (<c>SHA256:</c> and the unpadded base64 of its wire blob's SHA-256).</summary>
+internal readonly record struct ReleaseKey(string Name, byte[] Public, string Fingerprint);
 
 /// <summary>The keys a release notice may be signed with, read from allowed-signers text.</summary>
 internal static class ReleaseKeys
 {
+    /// <summary>The one key kind release keys and signatures are made with.</summary>
+    internal const string Ed25519 = "ssh-ed25519";
+
     /// <summary>Each <c>name ssh-ed25519 base64</c> line of <paramref name="text"/>; any other line is skipped.</summary>
     public static ReleaseKey[] Parse(string text)
     {
@@ -29,11 +21,12 @@ internal static class ReleaseKeys
         foreach (string raw in text.Split('\n'))
         {
             string[] f = raw.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (f.Length < 3 || f[0].StartsWith('#') || f[1] != "ssh-ed25519") continue;
+            if (f.Length < 3 || f[0].StartsWith('#') || f[1] != Ed25519) continue;
             byte[] blob;
             try { blob = Convert.FromBase64String(f[2]); } catch (FormatException) { continue; }
             var r = new SshReader(blob);
-            if (r.Text() == "ssh-ed25519" && r.Bytes() is { Length: 32 } pk && r.Done) keys.Add(new ReleaseKey(f[0], pk));
+            if (r.Text() == Ed25519 && r.Bytes() is { Length: 32 } pk && r.Done)
+                keys.Add(new ReleaseKey(f[0], pk, "SHA256:" + Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(blob)).TrimEnd('=')));
         }
         return [.. keys];
     }
@@ -62,10 +55,10 @@ internal static unsafe class SshSig
         var pub = new SshReader(r.Bytes() ?? []);
         string? ns = r.Text(), reserved = r.Text(), hash = r.Text();
         var sig = new SshReader(r.Bytes() ?? []);
-        if (pub.Text() != "ssh-ed25519" || pub.Bytes() is not { } pk) { why = "not an Ed25519 signature"; return null; }
+        if (pub.Text() != ReleaseKeys.Ed25519 || pub.Bytes() is not { } pk) { why = "not an Ed25519 signature"; return null; }
         if (ns != Namespace) { why = $"signed for '{ns}', not '{Namespace}'"; return null; }
         if (hash != "sha512") { why = $"hash '{hash}' is not sha512"; return null; }
-        if (sig.Text() != "ssh-ed25519" || sig.Bytes() is not { Length: 64 } s || !r.Done) { why = "malformed signature"; return null; }
+        if (sig.Text() != ReleaseKeys.Ed25519 || sig.Bytes() is not { Length: 64 } s || !r.Done) { why = "malformed signature"; return null; }
         ReleaseKey? key = null;
         foreach (ReleaseKey k in keys) if (k.Public.AsSpan().SequenceEqual(pk)) { key = k; break; }
         if (key == null) { why = "signed by a key CX does not know"; return null; }
