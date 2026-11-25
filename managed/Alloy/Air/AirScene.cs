@@ -109,8 +109,16 @@ internal static class AirScene
         return best;
     }
 
-    /// <summary>An area's corners and edges, none: the live look reads its place from the tileset and flags alone.</summary>
+    /// <summary>An area's corners and edges, none: before any area load is seen the look reads its place from the frame's
+    /// interior flag alone.</summary>
     private static readonly List<string[]> NoTiles = [];
+
+    /// <summary>The features of the area just loaded, or, when no load was seen, an area with only <paramref name="interior"/>.</summary>
+    private static AreaFeatures Loaded(bool interior)
+    {
+        AreaFeatures f = AirArea.Features;
+        return f.Tileset.Length > 0 || f.Corners.Count > 0 ? f : AreaFeatures.Of(string.Empty, interior ? AreaFeatures.Interior : 0u, NoTiles, NoTiles);
+    }
 
     /// <summary>Frame <paramref name="frame"/> of <paramref name="scene"/>: a new area drops the last one's dust and takes
     /// its own look once its floor is laid, then the air steps. Once a frame; allocates only on a new area.</summary>
@@ -122,7 +130,7 @@ internal static class AirScene
         if (fresh && s.Laid) { Reset(); s = _s; }
         if (!s.Laid && GroundMist.Corner(out _, out _, out _))
         {
-            Enter(AirPlaces.Resolve(AreaFeatures.Of(string.Empty, interior ? AreaFeatures.Interior : 0u, NoTiles, NoTiles)), night);
+            Enter(AirPlaces.Resolve(Loaded(interior)), night);
             s = _s;
         }
         s.Scene = scene.Value;

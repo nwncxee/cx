@@ -1951,8 +1951,12 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public int TestDirectLine(CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures) => EngineFn.TestDirectLine(Ptr, creature.Ptr, from, to, space, height, checkCreatures);
     /// <inheritdoc cref="EngineLayout.AreaTileHeight"/>
     public ref int TileHeight => ref *(int*)(Ptr + EngineLayout.AreaTileHeight);
+    /// <inheritdoc cref="EngineLayout.AreaTileSet"/>
+    public ref CNWTileSet TileSet => ref *(CNWTileSet*)(Ptr + EngineLayout.AreaTileSet);
     /// <inheritdoc cref="EngineLayout.AreaTileWidth"/>
     public ref int TileWidth => ref *(int*)(Ptr + EngineLayout.AreaTileWidth);
+    /// <inheritdoc cref="EngineLayout.AreaTiles"/>
+    public ref CNWTile Tiles => ref *(CNWTile*)(Ptr + EngineLayout.AreaTiles);
     /// <inheritdoc cref="EngineLayout.AreaUsesDayNightCycle"/>
     public ref int UsesDayNightCycle => ref *(int*)(Ptr + EngineLayout.AreaUsesDayNightCycle);
 }
@@ -2378,6 +2382,19 @@ public readonly unsafe partial struct CNWRules(IntPtr ptr)
     public ref IntPtr TwoDimArrays => ref *(IntPtr*)(Ptr + EngineLayout.RulesTwoDimArrays);
 }
 
+/// <summary>Typed view of an engine <c>CNWTile*</c>.</summary>
+public readonly unsafe partial struct CNWTile(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.TileId"/>
+    public ref int Id => ref *(int*)(Ptr + EngineLayout.TileId);
+    /// <inheritdoc cref="EngineLayout.TileStride"/>
+    public CNWTile this[int i] => new(Ptr + i * EngineLayout.TileStride);
+}
+
 /// <summary>Typed view of an engine <c>CNWTileData*</c>.</summary>
 public readonly unsafe partial struct CNWTileData(IntPtr ptr)
 {
@@ -2385,6 +2402,10 @@ public readonly unsafe partial struct CNWTileData(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.TileDataCorners"/>
+    public Span<ExoStringRec> Corners { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.TileDataCorners), 4); }
+    /// <inheritdoc cref="EngineLayout.TileDataEdges"/>
+    public Span<ExoStringRec> Edges { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.TileDataEdges), 4); }
     /// <inheritdoc cref="SymbolMap.TileDataGetModelResRef"/>
     public void TileDataGetModelResRef(void* ret) => EngineFn.TileDataGetModelResRef(ret, Ptr);
 }

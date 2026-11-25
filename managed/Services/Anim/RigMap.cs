@@ -191,7 +191,7 @@ internal static unsafe partial class RigMap
     }
 
     /// <summary>A 2DA cell as text, or null when the engine refuses it: a blank (<c>****</c>) cell, or no such row or column.</summary>
-    private static string? Cell(IntPtr table, int row, string column)
+    internal static string? Cell(IntPtr table, int row, string column)
     {
         ExoStringRec col = default, cell = default;
         byte* name = stackalloc byte[column.Length + 1];

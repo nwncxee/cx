@@ -334,6 +334,12 @@ offset	ErfResListEntry	plainSize	0xc	0xc	# ErfEntryPlain
 offset	CExoBase	aliasList	0x20	0x20	# ExoBaseAliasList
 offset	CNWTileSet	tileCount	0x4c	0x54	# TileSetTileCount
 offset	CNWTileSet	heightTransition	0x44	0x4c	# TileSetHeightTransition
+offset	CNWCArea	tileSet	0x290	0x290	# AreaTileSet
+offset	CNWCArea	tiles	0x298	0x298	# AreaTiles
+offset	CNWTile	stride	0x60	0x60	# TileStride
+offset	CNWTile	id	0x14	0x14	# TileId
+offset	CNWTileData	corners	0x38	0x38	# TileDataCorners
+offset	CNWTileData	edges	0x78	0x78	# TileDataEdges
 offset	CAuroraCompressedTextureDDS	res	0x18	0x18	# DdsHelperRes
 offset	CResTGA	header	0x88	0x88	# TgaHeader
 offset	CResTGA	colorMap	0x78	0x78	# TgaColorMap
