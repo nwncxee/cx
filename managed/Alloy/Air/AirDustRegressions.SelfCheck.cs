@@ -10,7 +10,7 @@ namespace CX.Alloy;
 
 /// <summary>The crypt dust's plain regressions: a passer's gap closes, Low and a teleport part nothing, a new area lies
 /// whole and sends no front, the air off shows none, the upload carries each column's dust and a new area's anew, the
-/// Dust dial moves the lying dust at once unless a hold set it. Oracle, by hand: a still crypt room's dust.</summary>
+/// Dust dial moves the lying and uploaded dust at once unless a hold set it. Oracle, by hand: a still crypt room's dust.</summary>
 internal static class AirDustRegressions
 {
     [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
@@ -39,6 +39,7 @@ internal static class AirDustRegressions
         GapEdge(check);
         DialLive(check);
         DialHeld(check);
+        DialUploads(check);
         log.Info(check.Ok ? "AirDustRegressions.SelfCheck: passed" : "AirDustRegressions.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -380,5 +381,34 @@ internal static class AirDustRegressions
         Air.Dust.V = Air.Dust.Default;
         check.Expect(before > 0f && MathF.Abs(after - before) <= 0.02f * before,
             $"under the hold Dust 0.2 leaves {after:F4} m of {before:F4} m (want all of it)");
+    }
+
+    /// <summary>The upload's dust at the player's column, packed afresh.</summary>
+    private static float FeetUpload(byte[] into, ref int gen, out int bytes)
+    {
+        bytes = GroundMist.Pack(ref gen, into);
+        Vector4 head = MemoryMarshal.Read<Vector4>(into);
+        return MemoryMarshal.Cast<byte, GroundMist.Cell>(into.AsSpan(GroundMist.Head))[UploadAt(0, 0, (int)head.X, (int)head.Y)].Dust;
+    }
+
+    // Given the player's Dust at 0.5 and Air detail at Low
+    // When they enter a crypt, and then move Dust to 0.2 without leaving
+    // Then the upload carries half the dust of Dust 1 at once, and a fifth of it the next frame.
+    private static void DialUploads(Checker check)
+    {
+        Air.Quality.V = "low";
+        Air.Dust.V = 0.5f;
+        Enter(Crypt, Room(), 0f, false);
+        var into = new byte[GroundMist.PackedBytes];
+        int gen = int.MinValue;
+        float half = FeetUpload(into, ref gen, out _);
+        Air.Dust.Set(0.2f);
+        Go(Frame, Vector2.Zero);
+        float fifth = FeetUpload(into, ref gen, out int bytes);
+        Air.Dust.V = Air.Dust.Default;
+        Air.Quality.V = "medium";
+        check.Expect(MathF.Abs(half - 0.5f * OpenDust) <= OpenStir * 0.5f * OpenDust, $"entered at Dust 0.5 the upload carries {half:F4} m (want {0.5f * OpenDust:F3} m within {OpenStir:P0})");
+        check.Expect(bytes == GroundMist.PackedBytes && MathF.Abs(fifth - 0.2f * OpenDust) <= OpenStir * 0.2f * OpenDust,
+            $"Dust 0.2 at Low sends {bytes} bytes carrying {fifth:F4} m (want the whole field, {0.2f * OpenDust:F3} m within {OpenStir:P0})");
     }
 }
