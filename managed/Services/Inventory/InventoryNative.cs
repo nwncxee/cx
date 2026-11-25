@@ -329,9 +329,8 @@ internal static unsafe class InventoryNative
     // ---- the per-frame copy ----
 
     /// <summary>Copy the player's inventory into <paramref name="m"/>. Render thread; allocates nothing (the label
-    /// re-read is cold, on a change of gold, weight or worn items only). "Worn" is the creature's own slot array, not
-    /// the item's <c>equipSlot</c>, the stock panel's box field, which is left stale when the appearance update unequips
-    /// before the confirm. A container's items reach the same <c>AddItem</c>; <see cref="EngineLayout.ItemInContainer"/> sends them away.</summary>
+    /// re-read is cold, on a change of gold, weight or worn items only). The paper doll shows what <see cref="WornIds"/>
+    /// picks. A container's items reach the same <c>AddItem</c>; <see cref="EngineLayout.ItemInContainer"/> sends them away.</summary>
     public static void Fill(InventoryModel m)
     {
         IntPtr app = App();
@@ -404,12 +403,12 @@ internal static unsafe class InventoryNative
         }
     }
 
-    /// <summary>The id each paper-doll slot shows (<see cref="InventoryModel.Slots"/> order) from the stock panel's slot boxes and
-    /// the creature's own slot array (<paramref name="worn"/>, indexed by the mask's bit).</summary>
+    /// <summary>The id each paper-doll slot shows (<see cref="InventoryModel.Slots"/> order): the stock panel's slot box, which an
+    /// appearance change leaves filled, else the creature's own slot (<paramref name="worn"/>, by the mask's bit) for a panel never built.</summary>
     internal static void WornIds(ReadOnlySpan<uint> boxes, ReadOnlySpan<uint> worn, Span<uint> ids)
     {
         for (int i = 0; i < ids.Length; i++)
-            ids[i] = worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
+            ids[i] = boxes[i] != InventoryModel.Invalid ? boxes[i] : worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
     }
 
     /// <summary>One item's contribution to the order-independent backpack digest (a sum of well-mixed terms).</summary>
