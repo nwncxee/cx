@@ -85,6 +85,7 @@ global using unsafe SdlSetWindowSizeFn = delegate* unmanaged<nint, int, int, voi
 global using unsafe SdlGetWindowSizeFn = delegate* unmanaged<nint, int*, int*, void>;
 global using unsafe ActivateTargetModeFn = delegate* unmanaged<nint, void>;
 global using unsafe ActionTargetLMouseDownFn = delegate* unmanaged<nint, void>;
+global using unsafe ActionTargetUpdateFn = delegate* unmanaged<nint, float, int>;
 global using unsafe PerformDefaultActionOnObjectFn = delegate* unmanaged<nint, nint, int>;
 global using unsafe SdlGetKeyboardStateFn = delegate* unmanaged<int*, byte*>;
 global using unsafe MovieShowFrameFn = delegate* unmanaged<nint, int, int, int, int, void>;
@@ -561,6 +562,8 @@ public readonly unsafe partial struct CActionTarget(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="SymbolMap.ActionTargetLMouseDown"/>
     public void ActionTargetLMouseDown() => EngineFn.ActionTargetLMouseDown(Ptr);
+    /// <inheritdoc cref="SymbolMap.ActionTargetUpdate"/>
+    public int ActionTargetUpdate(float dt) => EngineFn.ActionTargetUpdate(Ptr, dt);
     /// <inheritdoc cref="SymbolMap.ActivateTargetMode"/>
     public void ActivateTargetMode() => EngineFn.ActivateTargetMode(Ptr);
     /// <inheritdoc cref="EngineLayout.ActionTargetAllowed"/>
@@ -4359,6 +4362,10 @@ public static unsafe class EngineFn
     private static bool _ActionTargetLMouseDownDone;
     /// <inheritdoc cref="SymbolMap.ActionTargetLMouseDown"/>
     public static ActionTargetLMouseDownFn ActionTargetLMouseDown => (ActionTargetLMouseDownFn)(_ActionTargetLMouseDownDone ? _ActionTargetLMouseDown : Resolve(ref _ActionTargetLMouseDown, ref _ActionTargetLMouseDownDone, SymbolMap.ActionTargetLMouseDown));
+    private static IntPtr _ActionTargetUpdate;
+    private static bool _ActionTargetUpdateDone;
+    /// <inheritdoc cref="SymbolMap.ActionTargetUpdate"/>
+    public static ActionTargetUpdateFn ActionTargetUpdate => (ActionTargetUpdateFn)(_ActionTargetUpdateDone ? _ActionTargetUpdate : Resolve(ref _ActionTargetUpdate, ref _ActionTargetUpdateDone, SymbolMap.ActionTargetUpdate));
     private static IntPtr _PerformDefaultActionOnObject;
     private static bool _PerformDefaultActionOnObjectDone;
     /// <inheritdoc cref="SymbolMap.PerformDefaultActionOnObject"/>
@@ -6447,6 +6454,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ActionTargetLMouseDown"/>; returns the slot holding the next layer, or null.</summary>
     public static ActionTargetLMouseDownFn* ChainActionTargetLMouseDown(this HookService h, ActionTargetLMouseDownFn handler, int priority) =>
         (ActionTargetLMouseDownFn*)h.Chain(SymbolMap.ActionTargetLMouseDown, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ActionTargetUpdate"/>; returns the original, or null.</summary>
+    public static ActionTargetUpdateFn InstallActionTargetUpdate(this HookService h, ActionTargetUpdateFn handler) =>
+        (ActionTargetUpdateFn)h.Install(SymbolMap.ActionTargetUpdate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ActionTargetUpdate"/>; returns the slot holding the next layer, or null.</summary>
+    public static ActionTargetUpdateFn* ChainActionTargetUpdate(this HookService h, ActionTargetUpdateFn handler, int priority) =>
+        (ActionTargetUpdateFn*)h.Chain(SymbolMap.ActionTargetUpdate, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.PerformDefaultActionOnObject"/>; returns the original, or null.</summary>
     public static PerformDefaultActionOnObjectFn InstallPerformDefaultActionOnObject(this HookService h, PerformDefaultActionOnObjectFn handler) =>
         (PerformDefaultActionOnObjectFn)h.Install(SymbolMap.PerformDefaultActionOnObject, (IntPtr)handler);

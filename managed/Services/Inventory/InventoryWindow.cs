@@ -647,7 +647,9 @@ internal sealed partial class InventoryWindow
     public bool Aim(out uint oid)
     {
         oid = InventoryModel.Invalid;
-        return false;
+        if (!Contains(_mx, _my) || !Targeting()) return false;
+        oid = ItemUnder(HitTest(_mx, _my));
+        return true;
     }
 
     /// <summary>The item under a hit, from the backpack, a slot or the loot.</summary>

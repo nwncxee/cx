@@ -770,6 +770,7 @@ rva	_ZN8CNWCArea18GetSurfaceMaterialE6Vector	0x7db100	# AreaGetSurfaceMaterial
 rva	_ZN12CNWCAnimBase16GetAnimationNameEt	0x961540	# AnimGetName
 rva	_ZN13CActionTarget18ActivateTargetModeEv	0x83b9e0	# ActivateTargetMode
 rva	_ZN13CActionTarget16HandleLMouseDownEv	0x83be00	# ActionTargetLMouseDown
+rva	_ZN13CActionTarget6UpdateEf	0x83c230	# ActionTargetUpdate
 rva	_ZN21CClientExoAppInternal28PerformDefaultActionOnObjectEP10CNWCObject	0x6efec0	# PerformDefaultActionOnObject
 rva	g_vCreatureEnemyHighlight	0x1296eb8	# HiliteEnemy
 rva	g_vCreatureFriendHighlight	0x1296ec8	# HiliteFriend

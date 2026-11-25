@@ -342,6 +342,11 @@ internal static unsafe class SymbolMap
     /// it touches no member after the fire callback (which may <c>delete this</c>), which every caller invokes last.</summary>
     [Fn("void(CActionTarget this)")]
     public const string ActionTargetLMouseDown = "_ZN13CActionTarget16HandleLMouseDownEv";
+    /// <summary><c>CActionTarget::Update(float)</c> @0x965570 (rva 0x83c230) -- a live target mode's per-frame cursor: the same
+    /// GUI hit check, world pick and allowed-type scan as <see cref="ActionTargetLMouseDown"/>, ending in <c>SetMouseCursor</c>.
+    /// Returns 0; the float is not read on either build.</summary>
+    [Fn("int(CActionTarget this, float dt)")]
+    public const string ActionTargetUpdate = "_ZN13CActionTarget6UpdateEf";
     /// <summary>Tab-target. <c>CClientExoAppInternal::PerformDefaultActionOnObject(CNWCObject*)</c>
     /// @0x660830: the one world-click seam -- <c>PerformLButtonDownAction</c> calls it when the pick returned an
     /// object (verdict 2) and walks to the point when it answers 0, so a non-zero answer is "handled, no walk".
@@ -2814,6 +2819,7 @@ internal static unsafe class SymbolMap
         // same GetMousePos -> hit-check -> allowed-list scan -> fire.
         [ActivateTargetMode]      = At(),
         [ActionTargetLMouseDown]  = At(),
+        [ActionTargetUpdate]      = At(),   // GetMousePos -> hit-check (mask 0xf) -> pick -> allowed scan -> SetMouseCursor
         // tab-target: the click seam is the callee PerformLButtonDownAction (rva 0x6f02c0, the one caller
         // of WalkPlayerToPoint) runs on a verdict-2 pick, same type-byte switch as Linux @0x660830; the colour
         // globals are the DAT_ refs of the Windows HiliteAreaObjects (rva 0x7db2f0), per attitude branch.

@@ -314,6 +314,19 @@ internal static unsafe class InventoryNative
         return new CGameObject(go).AsNWCItem();
     }
 
+    /// <summary>The CX window covers the pointer while the target cursor grades: <paramref name="obj"/> is the CNWCObject* of
+    /// the item under it, Zero over an empty cell or the frame. Game thread, per frame; allocates nothing.</summary>
+    internal static bool Cover(InventoryWindow w, out IntPtr obj)
+    {
+        obj = IntPtr.Zero;
+        if (!w.Aim(out uint oid)) return false;
+        IntPtr app = App();
+        if (oid == InventoryModel.Invalid || app == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return true;
+        CNWCObject o = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
+        obj = o.IsNull ? IntPtr.Zero : o.Ptr;
+        return true;
+    }
+
     /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
     /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
     public static void FireTarget(uint oid)
