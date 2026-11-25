@@ -19,6 +19,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.DropsSelfCheck", Drops);
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
         Suite(log, "InventoryWindow.BuySelfCheck", Buy);
+        Suite(log, "InventoryWindow.AimSelfCheck", Aim);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)
@@ -373,6 +374,53 @@ internal sealed partial class InventoryWindow
         drag = default;
         Release(b, b.Cx(4), b.Cy(5));
         check.Expect(acts.Count == 0, $"a bare release over the window buys nothing ({Said(acts)})");
+    }
+
+    private static void Aim(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        bool targeting = true;
+        w.Targeting = () => targeting;
+
+        // Given the player has used an item that wants a target
+        // When they hover a backpack item, or a worn one, in the CX window
+        // Then the cursor is graded on that item, as over the stock panel
+        w.MouseMove(b.Cx(2), b.Cy(0));
+        bool onHelm = w.Aim(out uint helm);
+        w.MouseMove(b.SlotX("head"), b.SlotY("head"));
+        bool onWorn = w.Aim(out uint worn);
+        check.Expect(onHelm && helm == Helm && onWorn && worn == WornHelm,
+                     $"the target cursor over the backpack helmet and the worn one grades them ({onHelm} {helm:x}, {onWorn} {worn:x})");
+
+        // Given the same
+        // When they hover an empty cell or the window frame
+        // Then the cursor shows no target, and the world behind the window is not graded
+        w.MouseMove(b.Cx(1), b.Cy(5));
+        bool onEmpty = w.Aim(out uint empty);
+        w.MouseMove(w.X + w.W / 2, w.Y + 10f * w.S);
+        bool onFrame = w.Aim(out uint frame);
+        check.Expect(onEmpty && empty == InventoryModel.Invalid && onFrame && frame == InventoryModel.Invalid,
+                     $"the target cursor over an empty cell or the frame grades nothing, the window's own ({onEmpty} {empty:x}, {onFrame} {frame:x})");
+
+        // Given the same
+        // When they click the item
+        // Then the action fires on it, as it does today
+        b.Acts.Clear();
+        w.MouseButton(true, 1, b.Cx(2), b.Cy(0), 0); w.MouseButton(false, 1, b.Cx(2), b.Cy(0), 0);
+        check.Expect(b.Acts.Count == 1 && b.Acts[0] == new InvAction(InvActKind.Target, Helm), $"a click on the helmet fires the cursor at it ({Said(b.Acts)})");
+
+        // Given a target cursor is up
+        // When the pointer leaves the window
+        // Then the world behind is graded, as it is today
+        w.MouseMove(w.X + w.W + 200f, w.Y + 10f);
+        check.Expect(!w.Aim(out _), "the target cursor off the window leaves the grading to the world");
+
+        // Given no target cursor is up
+        // When the pointer is over a backpack item
+        // Then the window grades nothing
+        targeting = false;
+        w.MouseMove(b.Cx(2), b.Cy(0));
+        check.Expect(!w.Aim(out _), "with no target cursor up the window grades nothing");
     }
 
     /// <summary>A release at (<paramref name="x"/>, <paramref name="y"/>) with no press of the window's own; whether it was consumed.</summary>

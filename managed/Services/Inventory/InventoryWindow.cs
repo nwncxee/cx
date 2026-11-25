@@ -642,6 +642,14 @@ internal sealed partial class InventoryWindow
         Act?.Invoke(new InvAction(InvActKind.Refused, oid, Text: it.SlotMask == 0 ? "That can't be equipped." : "No free slot takes that."));
     }
 
+    /// <summary>The engine's target cursor is up and the pointer is over the window, which then grades the cursor in place of
+    /// the world behind it: <paramref name="oid"/> is the item under the pointer, <see cref="InventoryModel.Invalid"/> when none.</summary>
+    public bool Aim(out uint oid)
+    {
+        oid = InventoryModel.Invalid;
+        return false;
+    }
+
     /// <summary>The item under a hit, from the backpack, a slot or the loot.</summary>
     private uint ItemUnder(InvHit h)
     {
