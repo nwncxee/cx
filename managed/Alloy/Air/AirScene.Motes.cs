@@ -47,9 +47,8 @@ internal static partial class AirScene
     /// being swept along.</summary>
     private const float EddyTurn = 3f;
 
-    /// <summary>How fast a blast throws a mote at its heart, metres a second, falling to nothing at its edge, and a leaf,
-    /// whose broad face the blast catches.</summary>
-    private const float BlastSpeed = 4f, LeafBlast = 10f;
+    /// <summary>How fast a blast throws a mote at its heart, metres a second, falling to nothing at its edge.</summary>
+    private const float BlastSpeed = 4f;
 
     /// <summary>Does the area's look hang motes?</summary>
     private static bool Hangs(AirSceneState s) => (s.Look.Layers(s.Night) & AirLayer.Motes) != 0;
@@ -192,7 +191,7 @@ internal static partial class AirScene
         if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || !(radius > 0f)) return;
         if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius, BlastSpeed, false);
         if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius, BlastSpeed, false);
-        if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, LeafBlast, true);
+        if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, BlastSpeed, true);
         if (s.Columns == AirLayer.Haze) Clear(s, at, radius);
     }
 
