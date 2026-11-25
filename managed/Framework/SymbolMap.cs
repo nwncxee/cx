@@ -2296,6 +2296,11 @@ internal static unsafe class SymbolMap
     /// inventory plays for <c>gui_cannotequip</c> with 0. The resref crosses by value: <see cref="CX.Engine.ResRefArg"/>.</summary>
     [Fn("void(ResRefArg sound, uint arg)")]
     public const string PlayGuiSound = "_Z12PlayGuiSound7CResRefj";
+    /// <summary><c>CGuiMultiInvbox::HandleDoubleClick(CNWCItem*)</c> @0x690300 (Windows rva 0x8801b0) -- the stock grid's
+    /// double-click: a container base item is <c>UseObject</c>ed, else the player's item opens the target cursor of its
+    /// first cast-spell property. The body reads nothing of the box.</summary>
+    [Fn("void(CGuiContainer this, CNWCItem item)")]
+    public const string InvboxHandleDoubleClick = "_ZN15CGuiMultiInvbox17HandleDoubleClickEP8CNWCItem";
     /// <summary><c>GameCameraHitCheck(int x, int y, Vector* out, CHitInfo* info)</c> @0x63a270 (Windows rva 0x6d7f50) -- the
     /// world under a GUI-space point (SDL x, <c>GuiManVpH - y</c>) through the module camera: what
     /// <c>CGuiDragSource::HandleLMouseUp</c> asks when a drag ends over no GUI object. Sets <c>info+0x20 = 1</c>, then
@@ -2471,7 +2476,7 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr msg, byte page, int isMine)")]
     public const string SendGuiInvSelectPanel = "_ZN11CNWCMessage42SendPlayerToServerGuiInventory_SelectPanelEhi";
     /// <summary><c>..._UseObject(uint oid, int, int)</c> @0x7ffe50 (rva 0x7c07c0), major 6 minor 11 -- double-click on
-    /// a usable item (<see cref="EngineLayout.BaseItemUsable"/> non-zero), and also how the X button closes a
+    /// a container item (<see cref="EngineLayout.BaseItemContainer"/> non-zero), and also how the X button closes a
     /// container. Vanilla passes 0 for both ints.</summary>
     [Fn("void(IntPtr msg, uint oid, int a, int b)")]
     public const string SendInputUseObject = "_ZN11CNWCMessage33SendPlayerToServerInput_UseObjectEjii";
@@ -3331,6 +3336,7 @@ internal static unsafe class SymbolMap
         [GetInventoryPanel]      = At(),
         [InvGetEquipSlot]        = At(),   // body read: 14-entry mask table at 0xe4ffc0, box = this+0x528 + i*400
         [PlayGuiSound]           = Nm("?PlayGuiSound@@YAXVCResRef@@I@Z"),
+        [InvboxHandleDoubleClick] = At(),   // body read: base+0x80 -> UseObject, else possessor +0x264 == player, props +0x1f4/+0x1f8
         [GameCameraHitCheck]     = At(),   // body read: GetModuleCamera, info+0x20 = 1, camera vtbl +0x60
         [GetGameobjectHit]       = At(),   // body read: kind +0x24, gob +0x48, item -> +0x48
         // ---- the scene seam ----

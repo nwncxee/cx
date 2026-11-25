@@ -56,6 +56,10 @@ public static partial class UiHost
     /// <summary>The single window that owns focus -- the candidate keyboard owner. Null when nothing is focused.</summary>
     public static Window? Focused { get; private set; }
 
+    /// <summary>SDL's click count for the press being routed: 2 on the second click of a double-click, timed by the
+    /// system's own double-click setting.</summary>
+    public static int Clicks = 1;
+
     public static IReadOnlyList<Window> Windows => _windows;
 
     internal static void Register(Window w)

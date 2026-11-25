@@ -383,6 +383,17 @@ public static unsafe partial class EngineLayout
     /// (Linux nm @0x7cdbd0 <c>item+0x2a4</c>, Windows rva 0x83f190 <c>item+0x284</c>), which then suppresses the
     /// count label when <see cref="BaseItemStacking"/> is 1 or the count is below 2.</summary>
     public static readonly int ItemStackSize = Field<int>("CNWCItem", "stackSize");
+    /// <summary>CNWCItem: its active item properties, a count and an array of records. <c>CNWCItem::GetActiveProperty</c>
+    /// bounds the index by the count and returns array + i * stride (Linux nm @0x7cbb40 <c>+0x214</c> / <c>+0x218</c>, Windows
+    /// rva 0x83d580 <c>+0x1f4</c> / <c>+0x1f8</c>).</summary>
+    public static readonly int ItemActivePropertyCount = Field<int>("CNWCItem", "activePropertyCount");
+    /// <inheritdoc cref="ItemActivePropertyCount"/>
+    public static readonly int ItemActiveProperties = Field<CX.Engine.CNWItemProperty>("CNWCItem", "activeProperties");
+    /// <summary>CNWItemProperty: one record of <see cref="ItemActiveProperties"/>, 0x30 bytes on both builds (the getter's
+    /// stride), its property type the first <c>ushort</c>; <c>HandleDoubleClick</c> tests that type for 0xf, cast spell.</summary>
+    public static readonly int ItemPropertyStride = Field("CNWItemProperty", "stride");
+    /// <inheritdoc cref="ItemPropertyStride"/>
+    public static readonly int ItemPropertyType = Field<ushort>("CNWItemProperty", "propertyName");
     /// <summary>CNWBaseItem (a 200-byte record of <c>baseitems.2da</c>, reached through
     /// <see cref="SymbolMap.GetBaseItem"/>): the <b>equippable-slot bitmask</b>. The whole client-side equip
     /// rule is <c>(base-&gt;equipSlots &amp; invbox-&gt;slotMask) != 0</c>. Identical on both builds, paired
@@ -403,7 +414,7 @@ public static unsafe partial class EngineLayout
     /// means "activate an item property" (walk the item's properties for type 0xf and open an action target).
     /// Identical on both builds -- <c>CGuiMultiInvbox::HandleDoubleClick</c> branches on
     /// <c>*(int*)(base + 0x80)</c> on each (Linux nm @0x690300, Windows rva 0x8801b0).</summary>
-    public static readonly int BaseItemUsable = Field<int>("CNWBaseItem", "usable");
+    public static readonly int BaseItemContainer = Field<int>("CNWBaseItem", "container");
     /// <summary>CNWRules -&gt; its <c>CNWBaseItemArray*</c>. Every client body that needs a base item does the same
     /// two-step, <c>GetBaseItem(*(g_pRules + 0x20), item-&gt;baseItem)</c>, at the same offset on both builds
     /// (<c>CNWCItem::GetName</c> Linux nm @0x7ce810 / Windows rva 0x83d8a0, and three others).</summary>

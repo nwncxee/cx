@@ -22,6 +22,8 @@ public unsafe struct SdlEvent
     [FieldOffset(0x14)] public uint SymU;
     /// <summary>A mouse button event's button.</summary>
     [FieldOffset(0x10)] public byte Button;
+    /// <summary>A mouse button event's click count: 2 for the second click of a double-click at the system's speed.</summary>
+    [FieldOffset(0x12)] public byte Clicks;
     /// <summary>A mouse event's x.</summary>
     [FieldOffset(0x14)] public int X;
     /// <summary>A mouse event's y.</summary>

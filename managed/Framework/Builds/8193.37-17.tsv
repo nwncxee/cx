@@ -597,11 +597,15 @@ offset	CNWCItem	repoY	0x275	0x255	# ItemRepoY
 offset	CNWCItem	possessor	0x284	0x264	# ItemPossessor
 offset	CNWCItem	inContainer	0x288	0x268	# ItemInContainer
 offset	CNWCItem	stackSize	0x2a4	0x284	# ItemStackSize
+offset	CNWCItem	activePropertyCount	0x214	0x1f4	# ItemActivePropertyCount
+offset	CNWCItem	activeProperties	0x218	0x1f8	# ItemActiveProperties
+offset	CNWItemProperty	stride	0x30	0x30	# ItemPropertyStride
+offset	CNWItemProperty	propertyName	0x0	0x0	# ItemPropertyType
 offset	CNWBaseItem	equipSlots	0x4	0x4	# BaseItemEquipSlots
 offset	CNWBaseItem	invSlotWidth	0x14	0x14	# BaseItemInvSlotWidth
 offset	CNWBaseItem	invSlotHeight	0x15	0x15	# BaseItemInvSlotHeight
 offset	CNWBaseItem	stacking	0x24	0x24	# BaseItemStacking
-offset	CNWBaseItem	usable	0x80	0x80	# BaseItemUsable
+offset	CNWBaseItem	container	0x80	0x80	# BaseItemContainer
 offset	CNWBaseItem	modelType	0x16	0x16	# BaseItemModelType
 offset	CNWBaseItem	itemClass	0x40	0x40	# BaseItemClass
 offset	CNWRules	baseItems	0x20	0x20	# RulesBaseItems
@@ -905,6 +909,7 @@ rva	_ZN14CGuiDragSource23HandleMouseMoveCapturedEii	0x1eea60	# DragSourceMoveCap
 rva	_ZN8CNWCItem13PlayDropSoundEv	0x83ea00	# ItemPlayDropSound
 rva	_ZN13CClientExoApp17GetInventoryPanelEv	0x6abbe0	# GetInventoryPanel
 rva	_ZN15CPanelInventory12GetEquipSlotEi	0x855b10	# InvGetEquipSlot
+rva	_ZN15CGuiMultiInvbox17HandleDoubleClickEP8CNWCItem	0x8801b0	# InvboxHandleDoubleClick
 rva	_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii	0x87f970	# InvboxAddItem
 rva	_ZN15CPanelInventory22SetContainerGUIVisibleEiiij	0x8575f0	# InvSetContainerGuiVisible
 rva	_ZN15CPanelInventory21HandleContainerPageUpEv	0x855d00	# InvContainerPageUp

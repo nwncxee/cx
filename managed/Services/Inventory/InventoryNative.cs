@@ -68,7 +68,7 @@ internal static unsafe class InventoryNative
     {
         SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvHandleInvButton, SymbolMap.InvCloseForLevelup,
         SymbolMap.SendPossessFamiliar, SymbolMap.RulesetIntEntry, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
-        SymbolMap.InvGetEquipSlot, SymbolMap.PlayGuiSound,
+        SymbolMap.InvGetEquipSlot, SymbolMap.PlayGuiSound, SymbolMap.InvboxHandleDoubleClick,
         SymbolMap.GetGameObject, SymbolMap.AppManager, SymbolMap.Rules, SymbolMap.GetBaseItem,
         SymbolMap.SendInvEquip, SymbolMap.SendInvUnequip, SymbolMap.SendInvRepositoryMove, SymbolMap.SendInvDrop,
         SymbolMap.SendGuiInvStatus, SymbolMap.SendGuiInvSelectPanel, SymbolMap.SendInputUseObject, SymbolMap.SendInputMergeItem,
@@ -549,10 +549,24 @@ internal static unsafe class InventoryNative
             if (!b.IsNull)
             {
                 r.W = Math.Max(1, (int)b.InvSlotWidth); r.H = Math.Max(1, (int)b.InvSlotHeight);
-                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Container = b.Usable != 0;
+                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Container = b.Container != 0;
             }
         }
+        r.CastSpell = HasProperty(item, CastSpellProperty);
         return r;
+    }
+
+    /// <summary>The item property type of a cast-spell property (<c>itempropdef.2da</c> row 15), the one the stock
+    /// double-click opens a target cursor for.</summary>
+    private const ushort CastSpellProperty = 15;
+
+    /// <summary>True when one of the item's active properties is of <paramref name="type"/>.</summary>
+    private static bool HasProperty(CNWCItem item, ushort type)
+    {
+        CNWItemProperty props = item.ActiveProperties;
+        if (props.IsNull) return false;
+        for (int i = 0; i < item.ActivePropertyCount; i++) if (props[i].PropertyName == type) return true;
+        return false;
     }
 
     /// <summary>Run the stock <c>SetCharacterData</c> on the (never shown) player panel and read back its AC and
@@ -658,18 +672,14 @@ internal static unsafe class InventoryNative
         if (msg != IntPtr.Zero) EngineFn.SendInputMergeItem(msg, dst, src);
     }
 
-    /// <summary>The stock double-click: a usable base item is <c>UseObject</c>ed; anything else opens its radial, where
-    /// its cast-spell properties live (the stock panel opens the target cursor for the first one directly).</summary>
-    public static void Use(uint oid, int x, int y)
+    /// <summary>The stock double-click, the backpack grid's own <c>HandleDoubleClick</c>: a container is <c>UseObject</c>ed,
+    /// and an item with a cast-spell property opens that spell's target cursor.</summary>
+    public static void DoubleClick(uint oid)
     {
-        IntPtr app = App();
+        IntPtr app = App(), panel = MyPanel();
         IntPtr it = app == IntPtr.Zero ? IntPtr.Zero : Item(app, oid);
-        if (it == IntPtr.Zero) return;
-        IntPtr baseItems = BaseItems();
-        var b = baseItems == IntPtr.Zero ? default : new CNWBaseItem(EngineFn.GetBaseItem(baseItems, new CNWCItem(it).BaseItem));
-        if (b.IsNull || b.Usable == 0) { Radial(oid, x, y); return; }
-        IntPtr msg = Msg();
-        if (msg != IntPtr.Zero) EngineFn.SendInputUseObject(msg, oid, 0, 0);
+        if (it == IntPtr.Zero || panel == IntPtr.Zero) return;
+        new CPanelInventory(panel).BackpackGrid.InvboxHandleDoubleClick(new CNWCItem(it));
     }
 
     /// <summary>The item's own radial (<c>CNWCItem::ActivateRadialMenu</c>, which CX's radial takes over): split, use,
@@ -843,7 +853,7 @@ internal static unsafe class InventoryNative
         IntPtr it = app == IntPtr.Zero ? IntPtr.Zero : Item(app, w.Oid);
         if (it == IntPtr.Zero || baseItems == IntPtr.Zero) return false;
         var b = new CNWBaseItem(EngineFn.GetBaseItem(baseItems, new CNWCItem(it).BaseItem));
-        if (b.IsNull || b.Usable == 0) return false;
+        if (b.IsNull || b.Container == 0) return false;
         target = w.Oid;
         return true;
     }

@@ -191,12 +191,6 @@ internal sealed partial class InventoryWindow
 
             // clicks
             acts.Clear();
-            w.MouseButton(true, 1, Cx(0), Cy(0), 0); w.MouseButton(false, 1, Cx(0), Cy(0), 0);
-            now += Stopwatch.Frequency / 10;
-            w.MouseButton(true, 1, Cx(0), Cy(0), 0); w.MouseButton(false, 1, Cx(0), Cy(0), 0);
-            check.Expect(acts.Count == 1 && acts[0].Kind == InvActKind.Use, "a double-click uses");
-            now += Stopwatch.Frequency;
-            acts.Clear();
             w.MouseButton(true, 3, Cx(0), Cy(0), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Radial, 101, X: (int)Cx(0), Y: (int)Cy(0)), "a right-click opens the item radial at the click");
             now += Stopwatch.Frequency;
@@ -406,7 +400,7 @@ internal sealed partial class InventoryWindow
             acts.Clear();
             w.MouseButton(true, 1, Lx(0), Ly(0), 0); w.MouseButton(false, 1, Lx(0), Ly(0), 0);
             now += Stopwatch.Frequency / 10;
-            w.MouseButton(true, 1, Lx(0), Ly(0), 0); w.MouseButton(false, 1, Lx(0), Ly(0), 0);
+            w.MouseButton(true, 1, Lx(0), Ly(0), 0, 2); w.MouseButton(false, 1, Lx(0), Ly(0), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Take, 201, X: AutoCell, Y: AutoCell, Other: 0x500), "a double-click takes, the server picking the cell");   // not-an-offset: the container
             now += Stopwatch.Frequency;
             acts.Clear();

@@ -384,6 +384,7 @@ global using unsafe RulesetIntEntryFn = delegate* unmanaged<nint, ulong, int, in
 global using unsafe InvSetCharacterDataFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe InvGetEquipSlotFn = delegate* unmanaged<nint, int, nint>;
 global using unsafe PlayGuiSoundFn = delegate* unmanaged<CX.Engine.ResRefArg, uint, void>;
+global using unsafe InvboxHandleDoubleClickFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
 global using unsafe GetGameobjectHitFn = delegate* unmanaged<nint, nint*, int>;
 global using unsafe SendBarterStartFn = delegate* unmanaged<nint, uint, uint, void>;
@@ -1374,6 +1375,8 @@ public readonly unsafe partial struct CGuiContainer(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.ContainerCols"/>
     public ref int Cols => ref *(int*)(Ptr + EngineLayout.ContainerCols);
+    /// <inheritdoc cref="SymbolMap.InvboxHandleDoubleClick"/>
+    public void InvboxHandleDoubleClick(CNWCItem item) => EngineFn.InvboxHandleDoubleClick(Ptr, item.Ptr);
     /// <inheritdoc cref="EngineLayout.ContainerItemIds"/>
     public ref IntPtr ItemIds => ref *(IntPtr*)(Ptr + EngineLayout.ContainerItemIds);
     /// <inheritdoc cref="EngineLayout.ContainerPage"/>
@@ -1776,6 +1779,8 @@ public readonly unsafe partial struct CNWBaseItem(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.BaseItemContainer"/>
+    public ref int Container => ref *(int*)(Ptr + EngineLayout.BaseItemContainer);
     /// <inheritdoc cref="EngineLayout.BaseItemEquipSlots"/>
     public ref uint EquipSlots => ref *(uint*)(Ptr + EngineLayout.BaseItemEquipSlots);
     /// <inheritdoc cref="EngineLayout.BaseItemInvSlotHeight"/>
@@ -1788,8 +1793,6 @@ public readonly unsafe partial struct CNWBaseItem(IntPtr ptr)
     public ref byte ModelType => ref *(byte*)(Ptr + EngineLayout.BaseItemModelType);
     /// <inheritdoc cref="EngineLayout.BaseItemStacking"/>
     public ref short Stacking => ref *(short*)(Ptr + EngineLayout.BaseItemStacking);
-    /// <inheritdoc cref="EngineLayout.BaseItemUsable"/>
-    public ref int Usable => ref *(int*)(Ptr + EngineLayout.BaseItemUsable);
 }
 
 /// <summary>Typed view of an engine <c>CNWCAmbientSound*</c>.</summary>
@@ -2075,6 +2078,10 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ItemActiveProperties"/>
+    public ref CNWItemProperty ActiveProperties => ref *(CNWItemProperty*)(Ptr + EngineLayout.ItemActiveProperties);
+    /// <inheritdoc cref="EngineLayout.ItemActivePropertyCount"/>
+    public ref int ActivePropertyCount => ref *(int*)(Ptr + EngineLayout.ItemActivePropertyCount);
     /// <inheritdoc cref="EngineLayout.ItemAsObject"/>
     public CNWCObject AsObject => new(Ptr + EngineLayout.ItemAsObject);
     /// <inheritdoc cref="EngineLayout.ItemBaseItem"/>
@@ -2297,6 +2304,19 @@ public readonly unsafe ref partial struct CNWCVisualEffectOnObject(IntPtr ptr)
     public ref uint Source => ref *(uint*)(Ptr + EngineLayout.EffectSource);
     /// <inheritdoc cref="EngineLayout.EffectTransform"/>
     public ObjectVisualTransformData Transform => new(Ptr + EngineLayout.EffectTransform);
+}
+
+/// <summary>Typed view of an engine <c>CNWItemProperty*</c>.</summary>
+public readonly unsafe partial struct CNWItemProperty(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ItemPropertyType"/>
+    public ref ushort PropertyName => ref *(ushort*)(Ptr + EngineLayout.ItemPropertyType);
+    /// <inheritdoc cref="EngineLayout.ItemPropertyStride"/>
+    public CNWItemProperty this[int i] => new(Ptr + i * EngineLayout.ItemPropertyStride);
 }
 
 /// <summary>Typed view of an engine <c>CNWMessage*</c>.</summary>
@@ -5557,6 +5577,10 @@ public static unsafe class EngineFn
     private static bool _PlayGuiSoundDone;
     /// <inheritdoc cref="SymbolMap.PlayGuiSound"/>
     public static PlayGuiSoundFn PlayGuiSound => (PlayGuiSoundFn)(_PlayGuiSoundDone ? _PlayGuiSound : Resolve(ref _PlayGuiSound, ref _PlayGuiSoundDone, SymbolMap.PlayGuiSound));
+    private static IntPtr _InvboxHandleDoubleClick;
+    private static bool _InvboxHandleDoubleClickDone;
+    /// <inheritdoc cref="SymbolMap.InvboxHandleDoubleClick"/>
+    public static InvboxHandleDoubleClickFn InvboxHandleDoubleClick => (InvboxHandleDoubleClickFn)(_InvboxHandleDoubleClickDone ? _InvboxHandleDoubleClick : Resolve(ref _InvboxHandleDoubleClick, ref _InvboxHandleDoubleClickDone, SymbolMap.InvboxHandleDoubleClick));
     private static IntPtr _GameCameraHitCheck;
     private static bool _GameCameraHitCheckDone;
     /// <inheritdoc cref="SymbolMap.GameCameraHitCheck"/>
@@ -8178,6 +8202,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.PlayGuiSound"/>; returns the slot holding the next layer, or null.</summary>
     public static PlayGuiSoundFn* ChainPlayGuiSound(this HookService h, PlayGuiSoundFn handler, int priority) =>
         (PlayGuiSoundFn*)h.Chain(SymbolMap.PlayGuiSound, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.InvboxHandleDoubleClick"/>; returns the original, or null.</summary>
+    public static InvboxHandleDoubleClickFn InstallInvboxHandleDoubleClick(this HookService h, InvboxHandleDoubleClickFn handler) =>
+        (InvboxHandleDoubleClickFn)h.Install(SymbolMap.InvboxHandleDoubleClick, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.InvboxHandleDoubleClick"/>; returns the slot holding the next layer, or null.</summary>
+    public static InvboxHandleDoubleClickFn* ChainInvboxHandleDoubleClick(this HookService h, InvboxHandleDoubleClickFn handler, int priority) =>
+        (InvboxHandleDoubleClickFn*)h.Chain(SymbolMap.InvboxHandleDoubleClick, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GameCameraHitCheck"/>; returns the original, or null.</summary>
     public static GameCameraHitCheckFn InstallGameCameraHitCheck(this HookService h, GameCameraHitCheckFn handler) =>
         (GameCameraHitCheckFn)h.Install(SymbolMap.GameCameraHitCheck, (IntPtr)handler);

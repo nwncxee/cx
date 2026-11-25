@@ -71,12 +71,12 @@ internal sealed partial class InventoryWindow
             Now += Stopwatch.Frequency;
         }
 
-        public void DoubleClick(float x, float y, long gap)
+        public void DoubleClick(float x, float y, long gap, int secondClicks = 2)
         {
             Acts.Clear();
             W.MouseButton(true, 1, x, y, 0, 1); W.MouseButton(false, 1, x, y, 0);
             Now += gap;
-            W.MouseButton(true, 1, x, y, 0, 2); W.MouseButton(false, 1, x, y, 0);
+            W.MouseButton(true, 1, x, y, 0, secondClicks); W.MouseButton(false, 1, x, y, 0);
             Now += Stopwatch.Frequency;
         }
     }
@@ -157,6 +157,12 @@ internal sealed partial class InventoryWindow
         // Then it counts as a double-click
         b.DoubleClick(b.Cx(5), b.Cy(0), Stopwatch.Frequency);
         check.Expect(acts.Count == 1 && acts[0].Kind == InvActKind.Use, $"a second click SDL counts as a double-click is one, however slow ({Said(acts)})");
+
+        // Given a bag in the backpack
+        // When the player clicks it twice, slower than their system's double-click setting
+        // Then the bag stays shut
+        b.DoubleClick(b.Cx(5), b.Cy(0), Stopwatch.Frequency / 10, secondClicks: 1);
+        check.Expect(acts.Count == 0, $"two clicks SDL counts as single ones are no double-click, however fast ({Said(acts)})");
     }
 
     private static void Drops(Checker check, Bench b)

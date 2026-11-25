@@ -181,6 +181,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseDown:
                 {
                     byte btn = ((SdlEvent*)ev)->Button;
+                    UiHost.Clicks = ((SdlEvent*)ev)->Clicks;
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);

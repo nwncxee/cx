@@ -85,7 +85,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = Draw,
         DrawOver = DrawTip,
-        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods(), UiHost.Clicks)),
         OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(inv.MouseMove(x, y)),
         OnMouseWheel = dy => !Native.ModalPanelUp() && Input(inv.MouseWheel(dy)),
         OnKey = (key, mods) => !Native.ModalPanelUp() && Input(inv.Key(key, mods)),
@@ -229,6 +229,9 @@ public sealed unsafe partial class InventoryService : IExtenderService
         {
             case InvActKind.Close: Close(notify: true); return;
             case InvActKind.CloseLoot: InventoryNative.UseObject(a.Other); return;
+            case InvActKind.Aim:
+                InventoryNative.DoubleClick(a.Oid);
+                return;
             case InvActKind.Refused:
                 if (a.Text.Length > 0) InventoryNative.Feedback(a.Text);
                 if (a.Sound.Length > 0) InventoryNative.GuiSound(a.Sound);
@@ -266,7 +269,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
             case InvActKind.Put: InventoryNative.Move(a.Oid, a.X, wireY, a.Other); break;
             case InvActKind.Merge: InventoryNative.Merge(a.Oid, a.Other); break;
             case InvActKind.Split: InventoryNative.Split(a.Oid, a.X); break;
-            case InvActKind.Use: InventoryNative.Use(a.Oid, a.X, a.Y); break;
+            case InvActKind.Use: InventoryNative.DoubleClick(a.Oid); break;
             case InvActKind.Radial:
                 InventoryNative.Radial(a.Oid, a.X, a.Y, _inv.Loot.Find(a.Oid) < 0 ? -1
                                                      : _inv.Loot.IsItem ? InventoryNative.RadialPossessed : InventoryNative.RadialGround);

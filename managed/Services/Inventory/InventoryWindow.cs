@@ -44,8 +44,6 @@ internal sealed partial class InventoryWindow
     private const float EdgeRowsPerSec = 8f;
     /// <summary>The scrolled view's glide toward its target (1/s; ~95 % in 3/rate).</summary>
     private const float GlideRate = 18f;
-    /// <summary>Two clicks on one item within this are a double-click.</summary>
-    private const float DoubleClickSec = 0.4f;
     /// <summary>The interface sound the stock panel plays when a slot refuses an item.</summary>
     internal const string CannotEquip = "gui_cannotequip";
     /// <summary>Pointer travel before a press becomes a drag (design px).</summary>
@@ -124,7 +122,6 @@ internal sealed partial class InventoryWindow
     private int _dragFromSlot = -1, _dragW = 1, _dragH = 1, _grabCx, _grabCy;
     private float _mx = -1f, _my = -1f;
     private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
-    private long _lastClickAt;
     /// <summary>The hovered item name's colour, packed RGB; <see cref="Nameplate.PlateLayout.Plain"/> draws in the text colour.</summary>
     private uint _tipRgb = Nameplate.PlateLayout.Plain;
     private readonly Tooltip _tip = new();
@@ -334,6 +331,17 @@ internal sealed partial class InventoryWindow
     internal static bool SellsOn(in InvAction drop, bool overStoreBox)
         => overStoreBox && drop.Mask == 0 && drop.Other == 0;
 
+    /// <summary>The stock grid's double-click on a backpack item: a bag is used, a cast-spell item raises its target
+    /// cursor, anything else does nothing. The worn slots have no double-click in the stock panel.</summary>
+    private void DoubleClick(uint oid, float px, float py)
+    {
+        int i = Model.Find(oid);
+        if (i < 0) return;
+        ref InvItem it = ref Model.Items[i];
+        if (it.Container) Act?.Invoke(new InvAction(InvActKind.Use, oid, X: (int)px, Y: (int)py));
+        else if (it.CastSpell) Act?.Invoke(new InvAction(InvActKind.Aim, oid));
+    }
+
     /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state and <paramref name="clicks"/> SDL's
     /// click count. Consumed when over the window, or while a gesture it started is live.</summary>
     public bool MouseButton(bool down, int button, float px, float py, int mods, int clicks = 1)
@@ -387,11 +395,11 @@ internal sealed partial class InventoryWindow
         if (oid == InventoryModel.Invalid) return true;
         bool loot = h.Kind == InvHitKind.LootCell;
 
-        if (oid == _lastClickOid && Clock() - _lastClickAt < (long)(DoubleClickSec * Stopwatch.Frequency))
+        if (clicks >= 2 && oid == _lastClickOid)
         {
             _lastClickOid = InventoryModel.Invalid;
             if (loot) TakeAuto(oid);
-            else Act?.Invoke(new InvAction(InvActKind.Use, oid, X: (int)px, Y: (int)py));
+            else DoubleClick(oid, px, py);
             return true;
         }
         if ((mods & KmodCtrl) != 0)
@@ -500,7 +508,7 @@ internal sealed partial class InventoryWindow
         if (!_press) return Contains(px, py);
         bool wasDrag = _drag;
         _press = _drag = false;
-        if (!wasDrag) { _lastClickOid = _dragOid; _lastClickAt = Clock(); return true; }
+        if (!wasDrag) { _lastClickOid = _dragOid; return true; }
         InvAction? a = Drop(HitTest(px, py), Contains(px, py));
         if (a is { } act) Act?.Invoke(act);
         return true;
