@@ -59,7 +59,7 @@ internal static class AirPlaces
         bool indoor = (f.Flags & AreaFeatures.Indoor) != 0;
         bool cave = SoundScene.Material(f.Flags) == SoundScene.CaveRock;
         bool water = !indoor && (Any(f.Corners, "water") || AnyOf(f.Edges, WaterEdges));
-        string? row = _table.Rows.TryGetValue(f.Tileset ?? string.Empty, out string? r) ? r : null;
+        string? row = _table.Rows.TryGetValue(f.Tileset, out string? r) ? r : null;
         bool winter = row == "winter" || Any(f.Corners, "snow");
         AirPlace place = Held() ?? Named(row) ?? Featured(f, indoor);
         return new AirLook(place, winter, water, cave);
@@ -134,9 +134,8 @@ internal static class AirPlaces
         if (rows == null) return s;
         foreach ((string set, string place) in rows)
         {
-            string p = (place ?? string.Empty).Trim().ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(set) || (p != "winter" && Named(p) == null)) continue;
-            s.Rows[set.Trim()] = p;
+            string p = place.ToLowerInvariant();
+            if (p == "winter" || Named(p) != null) s.Rows[set] = p;
         }
         return s;
     }
