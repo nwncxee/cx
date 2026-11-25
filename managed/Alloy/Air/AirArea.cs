@@ -22,9 +22,6 @@ public sealed unsafe class AirArea : IExtenderService
     /// <summary>The place table's resref and its two columns.</summary>
     private const string Table = "cx_airplace", TilesetColumn = "Tileset", PlaceColumn = "Place";
 
-    /// <summary>The longest resref the engine names.</summary>
-    private const int ResRefBytes = 16;
-
     /// <summary>The features of the area loaded last; empty until one loads.</summary>
     internal static AreaFeatures Features => _s.Features;
 
@@ -51,7 +48,7 @@ public sealed unsafe class AirArea : IExtenderService
         if (set != IntPtr.Zero && resref != IntPtr.Zero)
         {
             int n = 0; byte* p = (byte*)resref;
-            while (n < ResRefBytes && p[n] != 0) n++;
+            while (n < ResRef.Chars && p[n] != 0) n++;
             _s.SetPtr = set;
             _s.SetName = System.Text.Encoding.ASCII.GetString(p, n);
         }
