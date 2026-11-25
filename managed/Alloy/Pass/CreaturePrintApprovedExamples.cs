@@ -53,7 +53,7 @@ internal static unsafe partial class Weather
         }
         finally
         {
-            foreach (DbId o in placed) Unplace(o);
+            for (int i = placed.Count - 1; i >= 0; i--) Unplace(placed[i]);
             Services.Anim.PoseRig.Db = db;
             if (freshSeam) Seam.Facade.DropTables();
             PartTree.Log = treeLog; MeshArena.Log = arenaLog; FootSplash.V = splash;
@@ -366,6 +366,18 @@ internal static unsafe partial class Weather
         StepDown(in pl, PrintNow);
         check.Expect(!plain.IsNull && SoleUnder(PrintAt, left), "a humanoid: one sole under the foot on the ground");
         check.Expect(!Pressed(PrintAt, new Vector2(RightUp.X, RightUp.Y)), "a humanoid: no sole under the foot in the air");
+
+        // Given lying snow under open sky And a humanoid whose foot bones carry no mesh, its boots hung from them
+        // When a footstep event fires
+        // Then the sole is pressed under the boot on the ground, not today's stamp ahead of its centre
+        DbId booted = Keep(placed, Place(Biped("cx_pr_booted", StockLegs, RightUp, LeftDown, bareFeet: true), PrintAt));
+        bool hung = !Keep(placed, HangBoot(booted, StockLegs.Left.Foot, PrintAt + LeftDown)).IsNull
+                    & !Keep(placed, HangBoot(booted, StockLegs.Right.Foot, PrintAt + RightUp)).IsNull;
+        FreshGround(snow: true, wet: false);
+        StepFacts bt = OpenStep(booted, -1, TypeNormal, SizeMedium, PrintAt);
+        StepDown(in bt, PrintNow);
+        check.Expect(hung && SoleUnder(PrintAt, left) && !SoleAhead(PrintAt),
+                     "a humanoid with boots hung from bare foot bones: the sole under the planted boot, not today's stamp");
 
         // Given lying snow under open sky And a humanoid whose walk has no footstep events
         // When a foot plants

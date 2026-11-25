@@ -222,8 +222,10 @@ internal static unsafe partial class Weather
     private static readonly string[] HoofNodes = ["lhand_h", "rhand_h", "lfoot_h", "rfoot_h"];
 
     /// <summary>A biped whose right and left soles stand on <paramref name="right"/> and <paramref name="left"/>,
-    /// named <paramref name="legs"/>; with a hem hanging to <see cref="HemLow"/>, with a horse's hoof nodes, or with one stray.</summary>
-    private static ModelDef Biped(string name, BipedNames legs, Vector3 right, Vector3 left, bool hem = false, bool hooves = false, bool strayHoof = false)
+    /// named <paramref name="legs"/>; with a hem hanging to <see cref="HemLow"/>, with a horse's hoof nodes, with one stray,
+    /// or with <paramref name="bareFeet"/>: foot bones with no mesh, as a player's are under the boots hung from them.</summary>
+    private static ModelDef Biped(string name, BipedNames legs, Vector3 right, Vector3 left, bool hem = false, bool hooves = false, bool strayHoof = false,
+                                  bool bareFeet = false)
     {
         var b = new FixBody();
         float hip = hooves ? 1.6f : 1f;
@@ -234,13 +236,37 @@ internal static unsafe partial class Weather
         {
             int thigh = b.Node(leg.Thigh, pelvis, new Vector3(f.X, f.Y * 0.5f, hip), new FixMesh().Box(new Vector3(0f, 0f, -0.4f), 0.12f, 0.12f, 0.4f).Mesh());
             int shin = b.Node(leg.Shin, thigh, f + new Vector3(0f, 0f, 0.5f), new FixMesh().Box(new Vector3(0f, 0f, -0.42f), 0.1f, 0.1f, 0.42f).Mesh());
-            b.Node(leg.Foot, shin, f, new FixMesh().Box(Vector3.Zero, Sole.X, Sole.Y, 0.08f).Mesh());
+            b.Node(leg.Foot, shin, f, bareFeet ? null : new FixMesh().Box(Vector3.Zero, Sole.X, Sole.Y, 0.08f).Mesh());
         }
         if (hem) b.Node("robe_g", pelvis, new Vector3(0f, 0f, HemLow), new FixMesh().Ring(Vector3.Zero, HemAcross, HemAlong, 0.6f, 16).Mesh());
         if (hooves)
             for (int k = 0; k < 4; k++) b.Node(HoofNodes[k], 0, Hooves[k]);
         if (strayHoof) b.Node(HoofNodes[0], 0, Hooves[0]);
         return b.Model(name);
+    }
+
+    /// <summary>A boot: one sole-sized mesh standing on its own origin, a body part model hung from a foot bone.</summary>
+    private static ModelDef Boot()
+    {
+        var b = new FixBody();
+        b.Node("boot", 0, Vector3.Zero, new FixMesh().Box(Vector3.Zero, Sole.X, Sole.Y, 0.08f).Mesh());
+        return b.Model("cx_pr_boot");
+    }
+
+    /// <summary>Hangs a <see cref="Boot"/> from <paramref name="body"/>'s part named <paramref name="node"/>, placed on that
+    /// foot at <paramref name="at"/> in the world, as the engine composes a body part onto its node; default when it fails.</summary>
+    private static DbId HangBoot(DbId body, string node, Vector3 at)
+    {
+        if (body.IsNull) return default;
+        int foot = -1, first = SceneDb.ObjPartFirst[body.Index];
+        for (int p = first; p < first + SceneDb.ObjPartCount[body.Index]; p++)
+            if (SceneDb.PartModel[p] is { } m && m.Nodes[SceneDb.PartNode[p]].Name == node) foot = p;
+        DbId boot = foot < 0 ? default : Place(Boot(), at);
+        if (boot.IsNull) return boot;
+        if (!SceneDb.PieceLink(body, boot)) { Unplace(boot); return default; }
+        SceneDb.SetAttachTo(boot.Index, body);
+        SceneDb.SetAttachPart(boot.Index, foot);
+        return boot;
     }
 
     /// <summary>The plain biped's planted left sole and its lifted right one, relative to its centre.</summary>
@@ -318,6 +344,7 @@ internal static unsafe partial class Weather
     private static void Unplace(DbId obj)
     {
         if (obj.IsNull) return;
+        if (SceneDb.Objects.Valid(SceneDb.ObjAttachTo[obj.Index])) SceneDb.PieceUnlink(SceneDb.ObjAttachTo[obj.Index], obj);
         nint shell = Seam.Facade.ObjectShell(obj);
         if (shell != 0) { Seam.Facade.Retire(shell); SceneDb.ObjFacade[obj.Index] = 0; }
         DbAnim.ObjectRetired(obj);

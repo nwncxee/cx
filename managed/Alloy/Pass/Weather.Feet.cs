@@ -107,8 +107,8 @@ internal static unsafe partial class Weather
         int n = 0;
         if (bones.RFoot != 0 && bones.LFoot != 0)
         {
-            if (Measure(PoseRig.Index(bones.RFoot), h, out feet[n])) n++;
-            if (Measure(PoseRig.Index(bones.LFoot), h, out feet[n])) n++;
+            if (MeasureFoot(body, PoseRig.Index(bones.RFoot), h, out feet[n])) n++;
+            if (MeasureFoot(body, PoseRig.Index(bones.LFoot), h, out feet[n])) n++;
             if (n == 2) return n;
             n = 0;
         }
@@ -194,15 +194,37 @@ internal static unsafe partial class Weather
     private static bool Measure(int p, Vector2 h, out Foot f)
     {
         f = default;
+        Span3 s = Span3.Empty;
+        return AddBounds(p, h, ref s) && s.ToFoot(out f);
+    }
+
+    /// <summary>Rig foot part <paramref name="foot"/> of <paramref name="body"/> as a foot: its own mesh and the mesh of
+    /// every piece the body hangs from it, as a body part model (a boot) hangs from a bare foot bone.</summary>
+    private static bool MeasureFoot(DbId body, int foot, Vector2 h, out Foot f)
+    {
+        f = default;
+        Span3 s = Span3.Empty;
+        bool any = AddBounds(foot, h, ref s);
+        foreach (DbId c in SceneDb.Pieces(body))
+        {
+            if (SceneDb.ObjAttachPart[c.Index] != foot) continue;
+            int first = SceneDb.ObjPartFirst[c.Index], count = SceneDb.ObjPartCount[c.Index];
+            for (int p = first; p < first + count; p++) any |= AddBounds(p, h, ref s);
+        }
+        return any && s.ToFoot(out f);
+    }
+
+    /// <summary>Takes part <paramref name="p"/>'s mesh bounds, in the world, into <paramref name="s"/>; false when it has no mesh.</summary>
+    private static bool AddBounds(int p, Vector2 h, ref Span3 s)
+    {
         ModelDef? m = SceneDb.PartModel[p];
         int node = SceneDb.PartNode[p];
         if (m == null || (uint)node >= (uint)m.Nodes.Length || m.Nodes[node].Mesh is not { } mesh) return false;
         Matrix4x4 w = DbAnim.PartWorld(p);
-        Span3 s = Span3.Empty;
         for (int k = 0; k < 8; k++)
             s.Add(Vector3.Transform(new Vector3((k & 1) != 0 ? mesh.BMax.X : mesh.BMin.X, (k & 2) != 0 ? mesh.BMax.Y : mesh.BMin.Y,
                                                 (k & 4) != 0 ? mesh.BMax.Z : mesh.BMin.Z), w), h);
-        return s.ToFoot(out f);
+        return true;
     }
 
     /// <summary>Marks the planted feet. The ground is a line through the creature's centre along its heading, at a grade
