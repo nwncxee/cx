@@ -1474,12 +1474,24 @@ internal static unsafe class SymbolMap
     /// <see cref="EngineLayout.PathfindSpaceArgs"/>; both Vectors by value, so SysV xmm pairs and Win64 pointers.</summary>
     [Fn("int(CNWCArea this, CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures)")]
     public const string TestDirectLine = "_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi";
-    /// <summary>SDL2 cursor capture for mouse-look: relative mode hides the cursor and streams raw deltas.</summary>
+    /// <summary>SDL2 relative mouse mode: hides the cursor and streams deltas. Mouse-look's capture on Windows, where
+    /// SDL runs it on raw input.</summary>
     [Fn("int(int enabled)")]
     public const string SdlSetRelativeMouseMode = "SDL_SetRelativeMouseMode";
     /// <inheritdoc cref="SdlSetRelativeMouseMode"/>
     [Fn("void(IntPtr window, int x, int y)")]
     public const string SdlWarpMouseInWindow = "SDL_WarpMouseInWindow";
+    /// <summary>SDL2 <c>SDL_ShowCursor(toggle)</c>: 0 hides, 1 shows, -1 asks. Mouse-look hides the cursor itself on
+    /// Linux, where it measures the pointer instead of using SDL's warp-emulated relative mode.</summary>
+    [Fn("int(int toggle)")]
+    public const string SdlShowCursor = "SDL_ShowCursor";
+    /// <summary>SDL2 <c>SDL_SetWindowGrab(window, grabbed)</c>: confines the pointer to the window while a look on
+    /// Linux holds it, as relative mode's own grab did.</summary>
+    [Fn("void(IntPtr window, int grabbed)")]
+    public const string SdlSetWindowGrab = "SDL_SetWindowGrab";
+    /// <inheritdoc cref="SdlSetWindowGrab"/>
+    [Fn("int(IntPtr window)")]
+    public const string SdlGetWindowGrab = "SDL_GetWindowGrab";
     /// <summary><c>CGuiInGame::ToggleOff()</c> @0x66dda0 / <c>UnToggleOff()</c> @0x66e930 -- the engine's own
     /// hide/show of the whole in-game GUI (every panel, quick chat, the NUI scope), the pair the server's
     /// Cutscene_HideGui message (major 0x33 minor 7) and <c>SetCutsceneMode</c> call. The free camera
@@ -3043,6 +3055,9 @@ internal static unsafe class SymbolMap
         [TestDirectLine] = At(),       // WalkPlayerToPoint's 7-slot line-test callee (docs/windows-symbols.md)
         [SdlSetRelativeMouseMode] = Nm("SDL_SetRelativeMouseMode"),
         [SdlWarpMouseInWindow] = Nm("SDL_WarpMouseInWindow"),
+        [SdlShowCursor] = Nm("SDL_ShowCursor"),
+        [SdlSetWindowGrab] = Nm("SDL_SetWindowGrab"),
+        [SdlGetWindowGrab] = Nm("SDL_GetWindowGrab"),
         // CGuiInGame is not exported; both reached from the anchored HandleServerToPlayerMessage (0x7a41a0)
         // case 0x33 -> cutscene handler 0x786450 -> minor 7's ToggleOff / UnToggleOff arms, bodies identical to Linux.
         [GuiInGameToggleOff] = At(),
