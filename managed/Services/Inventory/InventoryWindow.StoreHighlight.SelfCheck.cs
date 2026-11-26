@@ -3,11 +3,10 @@ using CX.Framework;
 
 namespace CX.Services.Inventory;
 
-/// <summary>The store highlight's examples that already hold, as plain regression tests: a store drag lights nothing where the
-/// release leaves the cell to the server, and a drag that buys nothing lights nothing. They held before the grid lit a
-/// store drag at all (the window lit only its own drags), so they guard the change that lights it. The ring, the page tabs
-/// and an item bigger than a page are edges the mutants found, red before the fix. Oracle: the approved
-/// examples, read off the frame (<see cref="LitFrame"/>), and the cells a release buys into (<see cref="Buy"/>).</summary>
+/// <summary>The store highlight's regression tests: where a release leaves the cell to the server, or buys nothing, nothing
+/// lights. These held before the grid lit a store drag; the ring, the page tabs and an item bigger than a page are edges
+/// the mutants found, red before the fix. Oracle: the approved examples, read off the frame (<see cref="LitFrame"/>), and
+/// the cells a release buys into (<see cref="Buy"/>).</summary>
 internal sealed partial class InventoryWindow
 {
     private const uint StoreTall = 303;
