@@ -14,6 +14,7 @@ internal static class Lod
     {
         G = KnobGroup.Declare("lod", "Graphics", "Quality", master: "Automatic mesh detail",
             masterHelp: "Distant walls and floors are drawn from a simplified copy of their own mesh. "
+                      + "A model that ships its own detail levels keeps them and is never simplified. "
                       + "Off draws every model at full detail at every distance, which is what the game does.",
             masterTier: Tier.ChatOnly, order: 304, title: "Model detail",
             masterChanged: CasterPass.ShadowInvalidate);
@@ -188,6 +189,7 @@ internal static class MeshLod
           "the staged coarse runs are not the fixture's two generated runs in index form");
         check.Expect(AlloyRenderer.ArenaLevels(one, out uint oc1, out _, out uint oc2, out _) && oc1 == 0 && oc2 == 0,
           "a mesh the simplifier declined twice reports a coarse run anyway");
+        AlloyRenderer.AuthoredLodSelfCheck(check, three);
         Db.MeshArena.Release(three); Db.MeshArena.Release(one);
 
         // CX-50: the shadow view's level curve. The oracle is arithmetic done by hand: at a 40 u cascade fit

@@ -972,10 +972,11 @@ public sealed unsafe partial class AlloyRenderer
         row.Moved = SlotMoverNow(i, posed, dangly);
     }
 
-    /// <summary>The mesh LOD level a row draws at this frame, off the cull's own sphere and the pass's eye.</summary>
-    private static int RowLevel(int i)
+    /// <summary>The mesh LOD level a row draws at this frame, off the cull's own sphere and the pass's eye; 0 for a
+    /// model that ships its own <c>.lod</c>.</summary>
+    internal static int RowLevel(int i)
     {
-        if (!MeshLod.On || _lodScale <= 0f) return 0;
+        if (!MeshLod.On || _lodScale <= 0f || DbAuthoredLod(i)) return 0;
         ref Sphere lsp = ref _dSph[i];
         if (lsp.Radius >= NeverCull) return 0;
         float dx = lsp.Center.X - _eyePos.X, dy = lsp.Center.Y - _eyePos.Y, dz = lsp.Center.Z - _eyePos.Z;
