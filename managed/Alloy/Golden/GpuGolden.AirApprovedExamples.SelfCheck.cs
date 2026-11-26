@@ -155,25 +155,29 @@ internal static partial class GpuGolden
 
     // Given wisps over a meadow by day
     // When the player looks up at them
-    // Then they take the colour of the area's sunlight, not a fixed white.
+    // Then they take the colour of the area's sunlight, not a fixed white, and brighter than the sun's light alone.
     private static void AirWispsSun(VkBackend vk, Checker check, ExtenderLog log)
     {
         float[]? got = AirSky(vk, check, log, new[] { 0.6f, 0.6f, 0.6f, 1f, 0.85f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.8f, 1f }, "golden air wisps sun");
         if (got == null) return;
-        var (wr, _, wb) = Rgb(got, 0);
-        var (cr, _, cb) = Rgb(got, 1);
+        var (wr, wg, wb) = Rgb(got, 0);
+        var (cr, cg, cb) = Rgb(got, 1);
         check.Expect(wr > wb && cb > cr, $"E130 the wisps show {Rgb(got, 0)} under a warm sun and {Rgb(got, 1)} under a cool one (want each sun's colour)");
+        check.Expect(wr + wg + wb > 2.55f && cr + cg + cb > 2.5f,
+            $"E130 the wisps show {Rgb(got, 0)} under a warm sun of 1,0.85,0.6 and {Rgb(got, 1)} under a cool one of 0.6,0.8,1 (want brighter than each sun alone, by 0.1 at least)");
     }
 
     // Given the same meadow at night
     // When the player looks up
-    // Then the wisps show pale in the moonlight's colour rather than black.
+    // Then the wisps show pale in the moonlight's colour rather than black, and brighter than the moon's light alone would
+    // light them.
     private static void AirWispsMoon(VkBackend vk, Checker check, ExtenderLog log)
     {
-        float[]? got = AirSky(vk, check, log, new[] { 0f, 0f, 0f, 0.15f, 0.17f, 0.30f }, "golden air wisps moon");
+        float[]? got = AirSky(vk, check, log, new[] { 0.02f, 0.02f, 0.03f, 0.15f, 0.17f, 0.30f }, "golden air wisps moon");
         if (got == null) return;
         var (r, g, b) = Rgb(got, 0);
         check.Expect(r + g + b > 0.1f && b > r, $"E131 the wisps under the moon show {Rgb(got, 0)} (want pale, the moon's blue, not black)");
+        check.Expect(r + g + b > 0.66f, $"E131 the wisps under a moon of 0.15,0.17,0.30 show {Rgb(got, 0)} (want brighter than the moon alone, by 0.04 at least)");
     }
 
     // Given a forest at night lit only by its ambient light
