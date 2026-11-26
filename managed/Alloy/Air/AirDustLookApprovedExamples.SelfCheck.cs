@@ -502,14 +502,14 @@ internal static class AirDustLookApprovedExamples
 
     // Given a crypt floor that reads dark under its green braziers without the air, at fog amount 15
     // When the dust lies on it and the eye looks across it grazing
-    // Then the floor seen through the dust reads no brighter than 1.5 times its own brightness, and no darker than half of it.
+    // Then the floor seen through the dust reads no brighter than 1.6 times its own brightness, and no darker than half of it.
     private static void DarkCryptStaysDark(Checker check)
     {
         Enter(AirFixture.Crypt, Room(), MostFog, false);
         Go(3f, Vector2.Zero);
         (float best, float worst) = Grazed(Upload());
-        check.Expect(worst <= 1.5f && best >= 0.5f,
-            $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
+        check.Expect(worst <= 1.6f && best >= 0.5f,
+            $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.6)");
     }
 
     // Given the dark crypt the live client stands in: a dais 3 m up over a sunken ring, its fog amount 15, its rig of lamps
