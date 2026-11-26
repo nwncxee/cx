@@ -127,7 +127,7 @@ internal static partial class GpuGolden
         float[]? got = AirSky(vk, check, log, new[] { 0.30f, 0.30f, 0.30f, 0.20f, 0.22f, 0.35f }, "golden air mist moon");
         if (got == null) return;
         var (r, _, b) = Rgb(got, 0);
-        check.Expect(b > r, $"E70 the mist under a blue moon and a grey fog shows {Rgb(got, 0)} (want the moon's blue)");
+        check.Expect(b > r, $"E70 the mist under a blue moon and a grey ambient shows {Rgb(got, 0)} (want the moon's blue)");
     }
 
     // Given the night mist beside a lamp on the quay
