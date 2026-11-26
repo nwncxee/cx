@@ -248,8 +248,10 @@ post\.taa\b	CX-394
 weather\.streak\b|Rain streak length|Streaks and flakes|each streak	CX-456
 # The mip chains are one single-pass downsampler (cx_spd_c), not a dispatch per level off the hi-Z stage.
 \bcx_ssrhiz_c\b|CX_SSR_STORAGE|CX_SSR_COLOUR	CX-419
-# ADR 0056 replaced this record; only the decision records may still name it.
+# ADR 0060 holds this record's rule now; only the decision records may still name it.
 ADR[- ]0021	#220
+# ADR-0060 to ADR-0063 restate these four in the current decision-record shape.
+ADR[- ]005[6-9]	#442
 # A content pair's lanes live in a pool sized to the pair, not in a fixed array on the row.
 twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218
 # Vulkan's lit stage reads its textures only through the handle table, so the knob's off state drew every lit surface white.

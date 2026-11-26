@@ -135,7 +135,7 @@
     // The engine's split: every light accumulates its own lobe, then ONE view-side normalisation
     // (fSpecularBaseModifier) and the material's specular colour scale the sum
     // (inc_lighting.shd:545 and :653). fSpecularity is already inside the lobe via the Fresnel term.
-    // ADR 0056: the screen-space term darkens direct light too, as vanilla's pass over the finished frame does;
+    // ADR 0060: the screen-space term darkens direct light too, as vanilla's pass over the finished frame does;
     // /ao direct is the chat-only dial, 1 as shipped. A material's AO map and the height map stay on the ambient
     // term alone (inc_lighting.shd:599-601). The probe term below picks it up through `diffuse` at no extra cost.
     float dirOcc = mix(1.0, screenAo, uAoDirect);
