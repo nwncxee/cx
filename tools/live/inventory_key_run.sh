@@ -10,13 +10,17 @@
 # Each returns 2 when the run could not be made.
 # shellcheck disable=SC2034 # the INV_ results are read by the scripts that source this
 inventory_run() {
-    local runner="$1" out="$2" keys="$3" status
+    local runner="$1" out="$2" keys="$3" status started
     shift 3
+    INV_SEQ="" INV_STOCK="" INV_LOG=""
     mkdir -p "$(dirname "$out")"
+    started="$(mktemp)"
     "$runner" --out "$out" --cfg 'inventory.enabled=1' --keys "$keys" "$@" > "$out.txt" 2>&1
     status=$?
-    INV_LOG="$(find "$out" -name cx.log -print -quit)"
-    [ -n "$INV_LOG" ] || { echo "no cx.log under $out (runner exit $status, see $out.txt)"; return 2; }
+    # A runner that refuses before boot leaves an earlier run's cx.log in OUT; only one written by this run is graded.
+    INV_LOG="$(find "$out" -name cx.log -newer "$started" -print -quit 2>/dev/null)"
+    rm -f "$started"
+    [ -n "$INV_LOG" ] || { echo "no cx.log from this run under $out (runner exit $status, see $out.txt)"; return 2; }
     grep -aq "InventoryService: armed (replacing the stock panel)" "$INV_LOG" \
         || { echo "the CX inventory never armed with inventory.enabled=1 ($INV_LOG)"; return 2; }
     INV_SEQ="$(grep -aoE "\[inv\] (act Close|status open=(True|False))" "$INV_LOG" \
