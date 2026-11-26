@@ -1,13 +1,17 @@
+using System.Collections.Generic;
 using CX.Framework;
 
 namespace CX.Services.Inventory;
 
-/// <summary>CX-722 F3's examples that already hold, as plain regression tests: a store drag lights nothing where the
+/// <summary>The store highlight's examples that already hold, as plain regression tests: a store drag lights nothing where the
 /// release leaves the cell to the server, and a drag that buys nothing lights nothing. They held before the grid lit a
-/// store drag at all (the window lit only its own drags), so they guard the change that lights it. Oracle: the approved
+/// store drag at all (the window lit only its own drags), so they guard the change that lights it. The ring, the page tabs
+/// and an item bigger than a page are edges the mutants found, red before the fix. Oracle: the approved
 /// examples, read off the frame (<see cref="LitFrame"/>), and the cells a release buys into (<see cref="Buy"/>).</summary>
 internal sealed partial class InventoryWindow
 {
+    private const uint StoreTall = 303;
+
     private static void StoreUnlit(Checker check, Bench b)
     {
         InventoryWindow w = b.W;
@@ -54,5 +58,45 @@ internal sealed partial class InventoryWindow
         w.MouseMove(b.Cx(4), b.Cy(5));
         Lit quickbar = LitFrame(b);
         check.Expect(quickbar.None && quickbar.Over == overAtRest, $"a quickbar button over a free cell lights nothing ({quickbar.Cells}, {quickbar.Over})");
+
+        drag = (StoreRing, 1, 1);
+        w.MouseMove(b.Cx(4), b.Cy(5));
+        Lit ring = LitFrame(b);
+        check.Expect(ring.Green.Count == 1 && ring.Green.Contains((4, 5)) && ring.Red.Count == 0, $"a store ring over a free cell lights that one cell ({ring.Cells})");
+
+        drag = (StoreHelm, 2, 2);
+        w.MouseMove(w.Sx(w._tabs.X0) + 3f * w.S, b.Cy(5));
+        Lit tabs = LitFrame(b);
+        check.Expect(tabs.None, $"a store helmet over the page tabs, beside free cells, lights nothing ({tabs.Cells})");
+
+        foreach ((uint, int, int) odd in new[] { (StoreTall, 1, InventoryModel.Rows + 1), (StoreTall, InventoryModel.Cols + 1, 1) })
+        {
+            drag = odd;
+            w.MouseMove(b.Cx(4), b.Cy(5));
+            Lit big = LitFrame(b);
+            b.Acts.Clear();
+            w.MouseButton(false, 1, b.Cx(4), b.Cy(5), 0);
+            check.Expect(big.None && b.Acts is [{ Kind: InvActKind.Buy, X: AutoCell, Y: AutoCell }],
+                         $"a {odd.Item2}x{odd.Item3} store item, bigger than a page, lights nothing and is bought for the server to place ({big.Cells}, {string.Join(" ", b.Acts)})");
+        }
+    }
+
+    /// <summary>A footprint bigger than a page, which a hak's base item table can give: the window's own drag of it lights
+    /// only cells of the grid, on the page it is dragged on, with the next page in view below.</summary>
+    private static void FootprintEdge(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        w.Layout(1f, true, true, 4000, 4000);
+        w.X = 0f; w.Y = 0f;
+        w.Model.Items[0] = new InvItem { Oid = Sword, X = 0, Y = 0, W = InventoryModel.Cols + 1, H = InventoryModel.Rows + 1 };
+        w.Model.Count = 1;
+        w.Top = w._target = 1f;
+        w.MouseButton(true, 1, b.Cx(0), b.Cy(0), 0);
+        w.MouseMove(b.Cx(1), b.Cy(1));
+        Lit lit = LitFrame(b);
+        var cells = new List<(int X, int Y)>(lit.Green);
+        cells.AddRange(lit.Red);
+        check.Expect(cells.Count == InventoryModel.Cols * (InventoryModel.Rows - 1) && cells.TrueForAll(c => c.X < InventoryModel.Cols && c.Y < InventoryModel.Rows - 1),
+                     $"an item wider than the grid and taller than a page lights the grid's columns on its own page only ({lit.Cells})");
     }
 }

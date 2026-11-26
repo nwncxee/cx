@@ -6,7 +6,7 @@ using static CX.Ui.PanelChrome;
 
 namespace CX.Services.Inventory;
 
-/// <summary>CX-722 F3: the grid shows where a store item the engine drags will land. Oracle: the approved examples, read
+/// <summary>The grid shows where a store item the engine drags will land. Oracle: the approved examples, read
 /// off the frame the window emits, and the cell the release buys into (<see cref="Buy"/>).</summary>
 internal sealed partial class InventoryWindow
 {
