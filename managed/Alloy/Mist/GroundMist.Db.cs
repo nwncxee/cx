@@ -44,9 +44,9 @@ internal static partial class GroundMist
     }
 
     /// <summary>Write the field and the air's dust and mist for the fog stage into <paramref name="into"/>: a head (the
-    /// corner, the side, 1 while either shows; the <paramref name="sky"/>'s fog colour and the mist's height), then a
-    /// <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/> says the stage already
-    /// has them; with nothing showing, the head alone.</summary>
+    /// corner, the side, 1 while either shows; the <paramref name="sky"/>'s fog colour and the mist's height; the heights
+    /// the air lies between), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/>
+    /// says the stage already has them; with nothing showing, the head alone.</summary>
     internal static int Pack(ref int gen, Span<byte> into, Vector3 sky = default)
     {
         GroundMistState s = _s;
@@ -57,9 +57,11 @@ internal static partial class GroundMist
         if (now == gen) return 0;
         gen = now;
         MemoryMarshal.Write(into, new Vector4(s.Ox, s.Oy, Side, shows ? 1f : 0f));
-        MemoryMarshal.Write(into[(Head / 2)..], new Vector4(sky, AirScene.MistTop));
+        MemoryMarshal.Write(into[SkyAt..], new Vector4(sky, AirScene.MistTop));
+        MemoryMarshal.Write(into[SlabAt..], new Vector4(0f, -1f, 0f, 0f));
         if (!shows) return Head;
         Span<Cell> cells = MemoryMarshal.Cast<byte, Cell>(into[Head..]);
+        float lo = float.MaxValue, hi = float.MinValue;
         for (int y = 0; y < Side; y++)
             for (int x = 0; x < Side; x++)
             {
@@ -67,8 +69,13 @@ internal static partial class GroundMist
                 float wx = s.Ox + x + 0.5f, wy = s.Oy + y + 0.5f;
                 (float lies, float top) = dust ? AirScene.Shown(wx, wy) : (0f, 0f);
                 float wet = dust ? AirScene.MistAt(wx, wy) : 0f;
-                cells[c] = new Cell(float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c], wet, lies, top);
+                float floor = float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c];
+                cells[c] = new Cell(floor, wet, lies, top);
+                if (floor == NoFloor || lies <= 0f && wet <= 0f) continue;
+                lo = MathF.Min(lo, floor);
+                hi = MathF.Max(hi, floor + MathF.Max(lies > 0f ? top : 0f, wet > 0f ? AirScene.MistTop : 0f));
             }
+        if (lo <= hi) MemoryMarshal.Write(into[SlabAt..], new Vector4(lo, hi, 0f, 0f));
         return PackedBytes;
     }
 
@@ -77,6 +84,9 @@ internal static partial class GroundMist
     [StructLayout(LayoutKind.Sequential)]
     internal readonly record struct Cell(float Floor, float Mist, float Dust, float Top);
 
+    /// <summary>Where the head's sky and its slab (the lowest floor and the highest top the air reaches) start, bytes.</summary>
+    internal const int SkyAt = sizeof(float) * 4, SlabAt = sizeof(float) * 8;
+
     /// <summary>The bytes of the field's head, of one <see cref="Cell"/>, and of the whole field as <see cref="Pack"/> writes it.</summary>
-    internal const int Head = sizeof(float) * 8, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
+    internal const int Head = sizeof(float) * 12, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
 }

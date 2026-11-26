@@ -145,7 +145,7 @@ internal static class AirWaterMistRegressions
         int gen = int.MinValue;
         GroundMist.Pack(ref gen, Sent, Vector3.Zero);
         int again = GroundMist.Pack(ref gen, Sent, Dusky);
-        Vector4 sky = MemoryMarshal.Read<Vector4>(Sent.AsSpan(GroundMist.Head / 2));
+        Vector4 sky = MemoryMarshal.Read<Vector4>(Sent.AsSpan(GroundMist.SkyAt));
         check.Expect(again > 0 && sky == new Vector4(Dusky, AirScene.MistTop),
             $"a new fog colour sends {again} bytes with sky {sky} (want an upload carrying <{Dusky}, {AirScene.MistTop}>)");
     }

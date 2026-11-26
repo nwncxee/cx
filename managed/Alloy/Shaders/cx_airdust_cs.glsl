@@ -13,8 +13,8 @@ layout(binding = 7) uniform sampler2D uGbDepth;
 layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(std430, binding = 8) readonly buffer CxLightBuf { vec4 uLights[]; };
 /// The field: its corner (x, y), its side in columns and 1 while anything shows; the sky's fog colour and the mist's
-/// height; then per column its floor, its mist's depth, its dust's depth and the height that dust reaches, metres.
-layout(std430, binding = 12) readonly buffer CxAirBuf { vec4 uAirHead; vec4 uAirSky; vec4 uAirCells[]; };
+/// height; the lowest floor and the highest top the air reaches; then per column its floor, its mist's depth, its dust's depth and the height that dust reaches, metres.
+layout(std430, binding = 12) readonly buffer CxAirBuf { vec4 uAirHead; vec4 uAirSky; vec4 uAirSlab; vec4 uAirCells[]; };
 
 /// Steps along the ray, and the farthest the march looks, metres: dust past it is too thin to read.
 const int CX_AIR_STEPS = 24;
