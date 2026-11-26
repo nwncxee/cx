@@ -327,6 +327,10 @@ internal static partial class DrawRecipe
         f.Row = row;
     }
 
+    /// <summary>Off-device: recipe <paramref name="r"/> draws arena range <paramref name="range"/> WITHOUT holding a
+    /// reference on it; set it back to -1 before <see cref="ReleaseForCheck"/>, which would release it.</summary>
+    internal static void RangeForCheck(int r, int range) => _range[r] = range;
+
     /// <summary>Give back a slot <see cref="FlagsForCheck"/> handed out.</summary>
     internal static void ReleaseForCheck(int r)
     {

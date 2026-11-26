@@ -27,6 +27,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is slot <paramref name="i"/> the database's?</summary>
     internal static bool DbSlot(int i) => (uint)i < (uint)_oDbPart.Length && _oDbPart[i] >= 0;
 
+    /// <summary>Does this DB slot's object ship <c>.lod</c> alternates? Its levels are then the content's own, and
+    /// <see cref="MeshLod"/>'s generated runs stay off it in colour and shadow alike, or the two thin it twice.</summary>
+    internal static bool DbAuthoredLod(int i)
+    {
+        if (!DbSlot(i)) return false;
+        DbId o = SceneDb.PartObj[_oDbPart[i]];
+        return SceneDb.Objects.Valid(o) && SceneDb.ObjSeamLodModel1[o.Index] != null;
+    }
+
     /// <summary>May the lightmap bake take this DB slot? Lit, still geometry of a Static object (a tile or a
     /// Static placeable) and nothing else -- a baked mover would keep the light of wherever it stood when it
     /// enrolled, and a charted copy of a dangly, skinned or animmesh range is its vertices frozen at the offer.</summary>
@@ -544,11 +553,11 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>A DB caster's two coarse runs, for the staging the per-view dispatch picks a level out of.
-    /// False (and zeros) = not a DB part, so it bakes its one range in every view.</summary>
+    /// False (and zeros) = not a DB part, or one whose model ships a <c>.lod</c>: it bakes its one range in every view.</summary>
     internal static bool DbCasterLevels(int slot, out uint cnt1, out uint first1, out uint cnt2, out uint first2)
     {
         cnt1 = 0; first1 = 0; cnt2 = 0; first2 = 0;
-        return DbSlot(slot)
+        return DbSlot(slot) && !DbAuthoredLod(slot)
                && ArenaLevels(DrawRecipe.Range(_oDbRecipe[slot]), out cnt1, out first1, out cnt2, out first2);
     }
 
