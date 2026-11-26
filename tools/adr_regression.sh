@@ -69,5 +69,19 @@ current "$tmp/d/0060-records-keep-one-current-shape.md"
 echo 'It names `code`.' >> "$tmp/d/0060-records-keep-one-current-shape.md"
 bash tools/gates/adr.sh "$tmp/d" > "$tmp/out" 2>&1 && fail "the gate passes a record check-adr refuses"
 
+mkdir "$tmp/e"
+older "$tmp/e/0021-an-older-record.md"
+sed -i 's/ADR-0060/ADR-0021/' "$tmp/e/0021-an-older-record.md"
+echo 'Superseded by ADR-0056.' >> "$tmp/e/0021-an-older-record.md"
+bash tools/gates/adr.sh "$tmp/e" > "$tmp/out" 2>&1 && fail "the gate passes a pointer to a record that is gone and retired by none"
+current "$tmp/e/0060-records-keep-one-current-shape.md"
+sed -i 's/older records keep theirs\.$/older records keep theirs. Retires ADR-0056: restated./' "$tmp/e/0060-records-keep-one-current-shape.md"
+bash tools/gates/adr.sh "$tmp/e" > "$tmp/out" 2>&1 || fail "the gate refuses a pointer that a Retires line answers: $(cat "$tmp/out")"
+
+older "$tmp/c/0021-an-older-record.md"
+sed -i 's/ADR-0060/ADR-0021/' "$tmp/c/0021-an-older-record.md"
+echo 'Superseded by ADR-0059.' >> "$tmp/c/0021-an-older-record.md"
+bash tools/gates/adr.sh "$tmp/c" > "$tmp/out" 2>&1 || fail "the gate refuses a pointer to a record that exists: $(cat "$tmp/out")"
+
 [ $rc = 0 ] && echo "adr regression: passes"
 exit $rc
