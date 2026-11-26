@@ -11,9 +11,11 @@ int Crypt(object oArea)
     return GetIsAreaInterior(oArea) && (sSet == "tdc01" || sSet == "tde01" || sSet == "tdm01");
 }
 
+// The camera looks east, the way each jump faces the PC, and not the way the PC faces, which a fight turns, so every
+// run frames the same view.
 void Camera(object oPC, string sStep, float fPitch)
 {
-    AssignCommand(oPC, SetCameraFacing(GetFacing(oPC), 9.0, fPitch, CAMERA_TRANSITION_TYPE_SNAP));
+    AssignCommand(oPC, SetCameraFacing(0.0, 9.0, fPitch, CAMERA_TRANSITION_TYPE_SNAP));
     ShowMark(sStep);
 }
 
