@@ -59,6 +59,8 @@ internal static class AirDustLookApprovedExamples
             PlaceableSeenThrough(check);
             PlaceableLitByTheRoom(check);
             MistEdgeSoft(check);
+            DenseFogSeenThrough(check);
+            PlaceablePoolBounded(check);
         }
         log.Info(check.Ok ? "AirDustLookApprovedExamples.SelfCheck: passed" : "AirDustLookApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
@@ -93,11 +95,11 @@ internal static class AirDustLookApprovedExamples
 
     /// <summary><paramref name="tiles"/> as an interior crypt holding the stock fog placeable at <paramref name="at"/>, its
     /// mist settled.</summary>
-    private static Field Placed(List<Tile> tiles, Vector3 at)
+    private static Field Placed(List<Tile> tiles, Vector3 at, int frames = Settled)
     {
         Lay(tiles, Vector3.Zero, true, 0f);
         AirScene.Enter(AirFixture.Crypt, false, true);
-        EmitterSim.MistEmit(StockFog, new[] { StockNode }, new[] { at }, Settled);
+        EmitterSim.MistEmit(StockFog, new[] { StockNode }, new[] { at }, frames);
         Go(3f, Vector2.Zero);
         return Upload();
     }
@@ -423,5 +425,37 @@ internal static class AirDustLookApprovedExamples
             $"G3 the mist thins from 90% to 10% over {bank:F2} m to the bank and {stone:F2} m to the stone (want 0.75 m at least)");
         check.Expect(bankTop <= 0.75f && stoneTop <= 0.75f,
             $"G3 where half the mist is left its top stands at {bankTop:P0} of its height off the bank and {stoneTop:P0} by the stone (want 75% at most)");
+    }
+
+    /// <summary>The highest fog amount the toolset sets an area.</summary>
+    private const float MostFog = 15f;
+
+    /// <summary>The frames a long settle runs: long enough for a pool to fill as far as it ever will.</summary>
+    private const int LongSettled = 6000;
+
+    // Given a crypt's 4 m passage whose area fog is set as high as the toolset sets it
+    // When the eye looks along the floor across 10 m of its dust, gathered by the walls either side
+    // Then F1 still holds: the fog's amount thickens the dust, never into a slab the floor 10 m off is lost behind.
+    private static void DenseFogSeenThrough(Checker check)
+    {
+        Enter(AirFixture.Crypt, Ground(40f, 1f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= 30f || MathF.Abs(y - 0.5f) >= 2f ? Nonwalk : Stone), MostFog, false);
+        Go(3f, Vector2.Zero);
+        Field f = Upload();
+        float ten = Keep(f, new Vector3(-25f, 0.5f, Eye), new Vector3(-15f, 0.5f, 0f), CryptLight);
+        check.Expect(ten >= 1f / MathF.E, $"F1 under fog {MostFog} the eye keeps {ten:P0} of the floor 10 m off (want at least 37%)");
+    }
+
+    // Given the stock fog placeable on the rim of a hollow, feeding it for over a minute and a half
+    // When the eye looks down into the hollow 10 m off
+    // Then the mist pooled there is no deeper to the eye than the night's lay, and the hollow's floor is still seen.
+    private static void PlaceablePoolBounded(Checker check)
+    {
+        static float Hollow(float x, float y) => -0.5f * MathF.Max(0f, 1f - Vector2.Distance(new Vector2(x, y), new Vector2(-15f, 0.5f)) / 6f);
+        List<Tile> tiles = Ground(40f, 1f, Hollow, (x, y) => MathF.Abs(x) >= 30f || MathF.Abs(y) >= 30f ? Nonwalk : Stone);
+        Field f = Placed(tiles, new Vector3(-20f, 0.5f, Hollow(-20f, 0.5f) + 0.5f), LongSettled);
+        float pool = Column(f, -15f, 0.5f, Hollow(-15f, 0.5f), true).Depth;
+        float ten = Keep(f, new Vector3(-25f, 0.5f, Eye), new Vector3(-15f, 0.5f, Hollow(-15f, 0.5f)), CryptLight);
+        check.Expect(pool > 0f && pool <= 0.31f && ten >= 1f / MathF.E,
+            $"G1 the hollow holds {pool:F3} m of the placeable's mist and the eye keeps {ten:P0} of its floor 10 m off (want some mist, 0.31 m at most, at least 37% kept)");
     }
 }
