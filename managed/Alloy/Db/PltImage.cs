@@ -73,24 +73,41 @@ internal static unsafe class PltImage
         return true;
     }
 
+    /// <summary>The layers an (intensity, layer) pair stream uses, one bit each; a layer past <see cref="Layers"/> is
+    /// not one the engine colours.</summary>
+    internal static int LayerMask(ReadOnlySpan<byte> pairs)
+    {
+        int mask = 0;
+        for (int i = 1; i < pairs.Length; i += BytesPerPixel)
+            if (pairs[i] < Layers) mask |= 1 << pairs[i];
+        return mask;
+    }
+
     /// <summary>The file as an RG8 mip chain in one native buffer, levels packed base-first. Null with
     /// <paramref name="why"/> set on any refusal. Worker thread; the caller frees the buffer with
     /// <see cref="NativeMemory.Free"/>.</summary>
     internal static byte* Decode(ReadOnlySpan<byte> raw, out int w, out int h, out int levels, out string? why)
+        => Decode(raw, out w, out h, out levels, out _, out why);
+
+    /// <summary><see cref="Decode(ReadOnlySpan{byte}, out int, out int, out int, out string?)"/>, with the base
+    /// level's <see cref="LayerMask"/>.</summary>
+    internal static byte* Decode(ReadOnlySpan<byte> raw, out int w, out int h, out int levels, out int layerMask, out string? why)
     {
-        levels = 0;
+        levels = layerMask = 0;
         if (!Parse(raw, out w, out h, out int layers, out bool rle, out why)) return null;
         if (layers > Layers) FilesOverLayers++;
         levels = TexRegistry.Levels(w, h);
         long bytes = ChainBytes(w, h, levels);
         byte* dst = (byte*)NativeMemory.Alloc((nuint)bytes);
         long want = (long)w * h * BytesPerPixel;
+        var pairs = new Span<byte>(dst, (int)want);
         if (rle)
         {
-            if (!Unrle(raw[HeaderBytes..], new Span<byte>(dst, (int)want), out why))
+            if (!Unrle(raw[HeaderBytes..], pairs, out why))
             { NativeMemory.Free(dst); return null; }
         }
-        else raw.Slice(HeaderBytes, (int)want).CopyTo(new Span<byte>(dst, (int)want));
+        else raw.Slice(HeaderBytes, (int)want).CopyTo(pairs);
+        layerMask = LayerMask(pairs);
         int top = 0;
         for (long i = 1; i < want; i += 2) if (dst[i] > top) top = dst[i];
         if (top >= Layers) PixelsOverLayers++;

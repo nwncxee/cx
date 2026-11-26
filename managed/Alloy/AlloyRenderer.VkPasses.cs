@@ -528,7 +528,7 @@ public sealed unsafe partial class AlloyRenderer
             bool blend = AlloyClasses.Blends(cls) && !r.Interior;
             int blendKey = blend && r.Oit != VkOitPart.Accum ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];
-            bool wash = _gWash[g] != 0 && !equal;
+            bool wash = WashPulls(_gWash[g]) && !equal;
             CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? WorldDepth.Nearer : WorldDepth.NearerOrEqual;
             bool test = !(blend && wash && !Renderer.WashTest.V);
             var depth = new DepthState(test, !equal && r.DepthMask, func);

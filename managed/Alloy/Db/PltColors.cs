@@ -103,7 +103,9 @@ internal static unsafe class PltColors
     /// <summary>Part <paramref name="part"/> goes back to its object's rows (<c>Gob::RestoreTexture</c>).</summary>
     internal static void ClearPart(int part)
     {
-        if ((uint)part < (uint)SceneDb.MaxParts) SceneDb.PartPltOwn[part] = false;
+        if ((uint)part >= (uint)SceneDb.MaxParts || !SceneDb.PartPltOwn[part]) return;
+        SceneDb.PartPltOwn[part] = false;
+        _colorWrites++;
     }
 
     /// <summary>A piece grafted onto <paramref name="parent"/> takes the parent's rows when it has none. The
@@ -116,6 +118,7 @@ internal static unsafe class PltColors
         int c = child.Index * Layers, p = parent.Index * Layers;
         for (int l = 0; l < Layers; l++) if (SceneDb.ObjPltRow[c + l] != 0) return;
         Array.Copy(SceneDb.ObjPltRow, p, SceneDb.ObjPltRow, c, Layers);
+        _colorWrites++;
         SceneDb.Objects.Mark(child.Index, Dirty.Material);
     }
 
@@ -128,6 +131,9 @@ internal static unsafe class PltColors
         return row < 0 ? 0 : PltPalettes.Height - 1;
     }
     private static long _clamped;
+
+    /// <summary>Colour writes so far: the rows a palette part's class reads moved when this did.</summary>
+    internal static long ColourWrites => _colorWrites;
 
     /// <summary>The object record is going: zero its rows. A <see cref="DbId"/> index is recycled and these
     /// are not derived from anything the next tenant sets, so without this a new creature wears the dead
@@ -331,6 +337,29 @@ internal static unsafe class PltColors
         SetRow(obj, 4, PltPalettes.Height + 10);
         Expect(Row(obj, 4) == PltPalettes.Height - 1 && _clamped == clampedBefore + 1,
             "a row past the master palette was not clamped and counted");
+
+        // A part's class reads the rows it wears (AlloyRenderer.PltClass), so the two writes that move them without
+        // a colour call count as writes too: a piece taking its parent's rows, and a part giving its own back.
+        DbId child = SceneDb.Objects.Alloc();
+        Expect(!child.IsNull, "the object table would not allocate a second record");
+        if (!child.IsNull)
+        {
+            long w0 = _colorWrites;
+            Inherit(child, obj);
+            Expect(Row(child, 3) == 1234 && _colorWrites == w0 + 1, "a piece taking its parent's rows did not count a write");
+            Inherit(child, obj);
+            Expect(_colorWrites == w0 + 1, "a piece that has rows took its parent's again");
+            SceneDb.Objects.Free(child);
+        }
+        int part = SceneDb.MaxParts - 1;
+        bool wasOwn = SceneDb.PartPltOwn[part];
+        SceneDb.PartPltOwn[part] = true;
+        long w1 = _colorWrites;
+        ClearPart(part);
+        Expect(!SceneDb.PartPltOwn[part] && _colorWrites == w1 + 1, "a part giving its own rows back did not count a write");
+        ClearPart(part);
+        Expect(_colorWrites == w1 + 1, "clearing a part with no rows of its own counted a write");
+        SceneDb.PartPltOwn[part] = wasOwn;
 
         const int Slot = 3;
         Clear(Slot);

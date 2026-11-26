@@ -211,6 +211,7 @@ public sealed unsafe partial class AlloyRenderer
                      "a blended material on an unfaded object, creature or static, composites every layer");
         check.Expect(OitGrouped(objAlpha: 1f, decal: true, wash: WashWhole), "a ground decal keeps its object");
         check.Expect(OitGrouped(objAlpha: 1f, decal: false, wash: WashSplit), "a split wash's rest keeps its object");
+        check.Expect(OitGrouped(objAlpha: 1f, decal: false, wash: WashGradedPlt), "a graded cloak's rest keeps its object");
         check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: WashWhole), "a whole wash on a fading tile does not");
         check.Expect(GhostCurve(0.5f, 2f) == 0.75f && GhostCurve(0.25f, 1f) == 0.25f,
                      "a ghost draws as n layers of itself: half at two layers is three quarters, one layer is unchanged");
@@ -358,8 +359,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Does a blended draw carry its run root as its OIT object id? When its object is faded as a whole --
     /// ghosting, the one case where an object must not show its own interior -- and for a ground decal or a split
-    /// wash's rest, whose stacked sheets composite as one layer per object.</summary>
-    internal static bool OitGrouped(float objAlpha, bool decal, byte wash) => objAlpha < 1f || decal || wash == WashSplit;
+    /// wash's rest or a graded palette part's, whose stacked sheets composite as one layer per object.</summary>
+    internal static bool OitGrouped(float objAlpha, bool decal, byte wash) => objAlpha < 1f || decal || WashSplits(wash);
 
     /// <summary>The object alpha slot <paramref name="i"/> draws with. Where the list resolve composites a faded object
     /// once, its overlapping parts no longer thicken it, so it draws as <c>alloy.ghost</c> layers of itself.</summary>

@@ -76,11 +76,31 @@ public sealed unsafe partial class AlloyRenderer
     /// draws solid with the cutouts and whose graded rest blends.</summary>
     internal const byte WashWhole = 1, WashSplit = 2;
 
+    /// <summary>Not a wash: a palette part wearing a graded colour (<see cref="PltClass"/>), split like
+    /// <see cref="WashSplit"/> -- solid interior, blended rest -- but a body, so it keeps its depth and its test.</summary>
+    internal const byte WashGradedPlt = 3;
+
+    /// <summary>Is an <c>_oWash</c> value a wash, pulled toward the eye and maybe drawn without the depth test?</summary>
+    internal static bool WashPulls(byte wash) => wash is WashWhole or WashSplit;
+
+    /// <summary>Does an <c>_oWash</c> value draw its fully covered texels solid ahead of a blended rest?</summary>
+    internal static bool WashSplits(byte wash) => wash is WashSplit or WashGradedPlt;
+
+    /// <summary>The <c>_oWash</c> a slot takes: <see cref="DbWashMode"/>'s, or <see cref="WashGradedPlt"/> for a
+    /// palette part that blends.</summary>
+    private static byte DbWashOf(int part, int recipe, bool washes, byte cls, bool decal)
+    {
+        byte w = DbWashMode(washes, cls, decal);
+        if (w != 0 || decal || cls != (byte)AlloyClass.Blended) return w;
+        TexId diffuse = DbTexOf(part, recipe, 0);
+        return TexRegistry.KindOf(diffuse) == TexKind.Plt && !DbEnvMapped(part, diffuse) ? WashGradedPlt : w;
+    }
+
     /// <summary>Name a slot's wash in the log once its diffuse is measured -- before that its class is the
     /// conservative cutout guess, which is every tile's ground.</summary>
     private static void DbNoteWash(int recipe, RecipeFlag rf, ObjFlag of, bool lit, byte cls, byte decal, byte wash, bool env)
     {
-        if (decal == 0 && wash != 0 && DrawRecipe.Measured(recipe))
+        if (decal == 0 && WashPulls(wash) && DrawRecipe.Measured(recipe))
             DecalLayer.NoteRefused(recipe, (AlloyClass)cls, DbDecalWhyNot(recipe, rf, of, lit, env));
     }
 
@@ -193,7 +213,7 @@ public sealed unsafe partial class AlloyRenderer
         _oCls[i] = DbClsOf(part, recipe, washes, _oDecal[i] != 0);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
-        _oWash[i] = DbWashMode(washes, _oCls[i], _oDecal[i] != 0);
+        _oWash[i] = DbWashOf(part, recipe, washes, _oCls[i], _oDecal[i] != 0);
         DbNoteWash(recipe, rf, of, _oLit[i], _oCls[i], _oDecal[i], _oWash[i], env);
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
@@ -273,7 +293,7 @@ public sealed unsafe partial class AlloyRenderer
     internal const int DbArenaVaoBit = 1 << 22;
 
     /// <summary>The slot's class: <see cref="DbClass"/>'s, except that an opaque PLT on an instance with no env map
-    /// is a cutout. <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
+    /// is a cutout, or blended where it wears a graded colour (<see cref="PltClass"/>). <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
     /// texture; without one it asks <c>HasAlpha</c>, which every PLT answers yes (alpha mean 0.5), so the palette
     /// alpha is coverage there -- palette row 61 is alpha 0 throughout, the "ragged cloak" colour.</summary>
     private static byte DbClsOf(int part, int recipe, bool wash, bool decal)
@@ -283,7 +303,39 @@ public sealed unsafe partial class AlloyRenderer
         TexId diffuse = DbTexOf(part, recipe, 0);
         // ponytail: the shadow keeps the solid silhouette -- the caster cut samples the pair texture, whose alpha
         // is 1; resolve the palette in cx_castmaskcut if a ragged cloak's shadow ever matters.
-        return TexRegistry.KindOf(diffuse) == TexKind.Plt && !DbEnvMapped(part, diffuse) ? (byte)AlloyClass.Cutout : cls;
+        bool plt = TexRegistry.KindOf(diffuse) == TexKind.Plt;
+        return PltClass(cls, plt, plt && DbEnvMapped(part, diffuse), plt && DbPltGraded(part, diffuse));
+    }
+
+    /// <summary>An opaque recipe's class once its diffuse is known. A PLT with no env map takes its alpha from the
+    /// palette, so it cuts at 0.2 as bucket 3 does, and blends where a row it wears is graded
+    /// (<see cref="PltPalettes.GradedRows"/>): vanilla blends that part, and a cutout drew its 0.2..1 shades solid.</summary>
+    internal static byte PltClass(byte cls, bool plt, bool envMapped, bool graded)
+        => cls != (byte)AlloyClass.Opaque || !plt || envMapped ? cls
+           : graded ? (byte)AlloyClass.Blended : (byte)AlloyClass.Cutout;
+
+    /// <summary>Does a layer the PLT uses resolve, on this part, to a graded row? Its own rows where it has them,
+    /// else its object's.</summary>
+    private static bool DbPltGraded(int part, TexId diffuse)
+    {
+        if ((uint)part >= (uint)SceneDb.MaxParts) return false;
+        bool own = SceneDb.PartPltOwn[part];
+        DbId obj = SceneDb.PartObj[part];
+        if (!own && !SceneDb.Objects.Valid(obj)) return false;
+        ReadOnlySpan<ushort> rows = own
+            ? SceneDb.PartPltRow.AsSpan(part * SceneDb.PltLayers, SceneDb.PltLayers)
+            : SceneDb.ObjPltRow.AsSpan(obj.Index * SceneDb.PltLayers, SceneDb.PltLayers);
+        return WearsGraded(TexRegistry.PltLayersOf(diffuse), rows, PltPalettes.GradedRows);
+    }
+
+    /// <summary>Does any layer in <paramref name="layers"/> name a graded row? A mask of 0 is a PLT not decoded yet,
+    /// asked across every layer so a graded colour never draws solid while it loads.</summary>
+    internal static bool WearsGraded(int layers, ReadOnlySpan<ushort> rows, ReadOnlySpan<bool> graded)
+    {
+        if (layers == 0) layers = (1 << rows.Length) - 1;
+        for (int l = 0; l < rows.Length; l++)
+            if ((layers & (1 << l)) != 0 && rows[l] < graded.Length && graded[rows[l]]) return true;
+        return false;
     }
 
     /// <summary>A recipe's CLASS moves once its diffuse lands (<see cref="DrawRecipe.Reclassify"/>), so every
@@ -312,7 +364,7 @@ public sealed unsafe partial class AlloyRenderer
             DbWriteTexRot(i, o, recipe, rf);
             // ...and the .txi's blend pair and fullbright flag, which an offer that waited reads late.
             bool a2c = (rf & RecipeFlag.Coverage) != 0;
-            byte wash = DbWashMode(washes, cls, decal != 0);
+            byte wash = DbWashOf(_oDbPart[i], recipe, washes, cls, decal != 0);
             if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash, env);
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c) continue;

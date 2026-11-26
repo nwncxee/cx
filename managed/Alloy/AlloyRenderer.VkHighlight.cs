@@ -113,7 +113,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             push.AlphaCut = p == plain ? -1f : AlloyClasses.Discard(_gCls[g]);
             push.DrawBase = j;
-            push.Pull = _gWash[g] != 0 ? pull : 0f;
+            push.Pull = WashPulls(_gWash[g]) ? pull : 0f;
             side.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkBatchPush>(in push)));
             side.DrawIndexed(_dCount[j], 1, (int)(_dOff[j] / sizeof(ushort)), _dBase[j]);
             s.Drawn = true;

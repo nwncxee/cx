@@ -80,6 +80,7 @@ internal static unsafe class PltPalettes
             return false;
         }
         Compose(_master, slot, rgba!, w, h);
+        MarkGraded(slot);
         if (!_set[slot]) _loaded++;
         _set[slot] = true;
         _loads++;
@@ -159,6 +160,31 @@ internal static unsafe class PltPalettes
             _log?.Always("PltPalettes: not one of the seven palettes loaded -- every PLT resolves BLACK. The "
                        + "per-slot lines above say why");
         }
+    }
+
+    /// <summary>Is master row <paramref name="row"/> graded, any shade's alpha between the 0.2 cut and solid? Where the
+    /// palette alpha is coverage (a gob with no env map) a part wearing one blends, as vanilla's does.</summary>
+    internal static ReadOnlySpan<bool> GradedRows => _graded;
+    private static readonly bool[] _graded = new bool[Height];
+
+    /// <summary>Palette loads so far: <see cref="GradedRows"/> changes only when this does.</summary>
+    internal static long Loads => _loads;
+
+    /// <summary>Does one RGBA8 master row hold a shade the 0.2 cut keeps and the split's 0.99 solid test does not, an
+    /// alpha of 52..252?</summary>
+    internal static bool GradedRow(ReadOnlySpan<byte> rgba)
+    {
+        for (int x = AlphaByte; x < rgba.Length; x += Bpp)
+            if (rgba[x] is > CutAlpha and < SolidAlpha) return true;
+        return false;
+    }
+    private const int AlphaByte = 3;
+    private const byte CutAlpha = 51, SolidAlpha = 253;
+
+    private static void MarkGraded(int slot)
+    {
+        for (int r = slot * RowsPerSlot; r < (slot + 1) * RowsPerSlot; r++)
+            _graded[r] = GradedRow(_master.AsSpan(r * RowBytes, RowBytes));
     }
 
     internal static void ContextLost() { _tex = 0; _dirty = true; }
