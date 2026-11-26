@@ -32,6 +32,8 @@ const float CX_AIR_STEP = 1.0;
 const float CX_AIR_DROP = 2.0;
 /// A column whose floor lies below this has none: the air beside it fades out across it, a column wide.
 const float CX_AIR_WALL = -1e8;
+/// How far the floor under the dust runs across a join of two quarters per metre the second rises over the first, metres.
+const float CX_AIR_CLIMB = 0.55;
 /// Points along the air a ray crosses where the lamps' light is taken, and lamps of the rig each walks.
 const int CX_AIR_PROBES = 4;
 const int CX_AIR_LAMPS = 32;
@@ -65,6 +67,17 @@ float CxAirFloored(vec4 cell, float w)
     return cell.x < CX_AIR_WALL ? 0.0 : w;
 }
 
+/// The shares of two neighbouring quarters of floors a and b a fraction f across: a joined floor climbs over CX_AIR_CLIMB
+/// metres a metre of rise, a quarter at most, centred on the join, so a stair's riser stays a riser.
+vec2 CxAirClimb(float f, float a, float b)
+{
+    if (!CxAirBlends(a, b)) return CxAirPair(f, false);
+    float w = min(CX_AIR_CLIMB * abs(a - b) * 2.0, 1.0);
+    if (min(a, b) < CX_AIR_WALL || w <= 1e-4) return CxAirPair(f, true);
+    float t = clamp((f - 0.5) / w + 0.5, 0.0, 1.0);
+    return vec2(1.0 - t, t);
+}
+
 /// The floor of half-metre quarter q of the field, or none off it.
 float CxAirQuarterAt(ivec2 q)
 {
@@ -74,16 +87,16 @@ float CxAirQuarterAt(ivec2 q)
     return uAirCells[side * side + c.y * side + c.x][k.y * 2 + k.x];
 }
 
-/// The floor under world point p from the four nearest quarters, blended across the joins as the columns are; none
-/// where none of them has one.
+/// The floor under world point p from the four nearest quarters, climbing across the joins; none where none of them
+/// has one.
 float CxAirQuarter(vec2 p)
 {
     vec2 q = (p - uAirHead.xy) * 2.0 - 0.5;
     ivec2 c = ivec2(floor(q));
     vec2 f = q - vec2(c);
     float a = CxAirQuarterAt(c), b = CxAirQuarterAt(c + ivec2(1, 0)), d = CxAirQuarterAt(c + ivec2(0, 1)), e = CxAirQuarterAt(c + ivec2(1, 1));
-    vec2 x0 = CxAirPair(f.x, CxAirBlends(a, b)), x1 = CxAirPair(f.x, CxAirBlends(d, e));
-    vec2 y0 = CxAirPair(f.y, CxAirBlends(a, d)), y1 = CxAirPair(f.y, CxAirBlends(b, e));
+    vec2 x0 = CxAirClimb(f.x, a, b), x1 = CxAirClimb(f.x, d, e);
+    vec2 y0 = CxAirClimb(f.y, a, d), y1 = CxAirClimb(f.y, b, e);
     vec4 w = vec4(CxAirFloored(vec4(a), x0.x * y0.x), CxAirFloored(vec4(b), x0.y * y1.x),
                   CxAirFloored(vec4(d), x1.x * y0.y), CxAirFloored(vec4(e), x1.y * y1.y));
     float sum = w.x + w.y + w.z + w.w;

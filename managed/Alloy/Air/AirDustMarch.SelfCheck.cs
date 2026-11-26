@@ -43,7 +43,7 @@ internal static class AirDustMarch
     {
         private readonly byte[] _bytes;
         internal readonly Vector4 Head, Sky, Slab;
-        internal readonly float Sigma, Albedo, Step, Drop, Wall, Far;
+        internal readonly float Sigma, Albedo, Step, Drop, Wall, Far, Climb;
         internal readonly int Steps, Probes, Lamps;
 
         internal Field(byte[] bytes)
@@ -58,13 +58,14 @@ internal static class AirDustMarch
             Drop = Const("CX_AIR_DROP");
             Wall = Const("CX_AIR_WALL");
             Far = Const("CX_AIR_FAR");
+            Climb = Const("CX_AIR_CLIMB");
             Steps = (int)Const("CX_AIR_STEPS");
             Probes = (int)Const("CX_AIR_PROBES");
             Lamps = (int)Const("CX_AIR_LAMPS");
         }
 
         /// <summary>Does the stage declare every number the march takes?</summary>
-        internal bool Declared => !float.IsNaN(Sigma + Albedo + Step + Drop + Wall + Far + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
+        internal bool Declared => !float.IsNaN(Sigma + Albedo + Step + Drop + Wall + Far + Climb + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
 
         /// <summary>Column (<paramref name="x"/>, <paramref name="y"/>) of the field, or one with no floor off it.</summary>
         internal GroundMist.Cell Cell(int x, int y)
@@ -84,20 +85,31 @@ internal static class AirDustMarch
         }
 
         /// <summary><c>CxAirQuarter</c>: the floor under (<paramref name="x"/>, <paramref name="y"/>) from the four nearest
-        /// quarters, blended across the joins; none where none has one.</summary>
+        /// quarters, climbing across the joins; none where none has one.</summary>
         internal float Quarter(float x, float y)
         {
             float qx = (x - Head.X) * 2f - 0.5f, qy = (y - Head.Y) * 2f - 0.5f;
             int ix = (int)MathF.Floor(qx), iy = (int)MathF.Floor(qy);
             float fx = qx - ix, fy = qy - iy;
             float a = QuarterAt(ix, iy), b = QuarterAt(ix + 1, iy), d = QuarterAt(ix, iy + 1), e = QuarterAt(ix + 1, iy + 1);
-            (float a0, float b0) = Pair(fx, Joined(a, b));
-            (float a1, float b1) = Pair(fx, Joined(d, e));
-            (float l0, float u0) = Pair(fy, Joined(a, d));
-            (float l1, float u1) = Pair(fy, Joined(b, e));
+            (float a0, float b0) = Climbed(fx, a, b);
+            (float a1, float b1) = Climbed(fx, d, e);
+            (float l0, float u0) = Climbed(fy, a, d);
+            (float l1, float u1) = Climbed(fy, b, e);
             float wa = a < Wall ? 0f : a0 * l0, wb = b < Wall ? 0f : b0 * l1, wd = d < Wall ? 0f : a1 * u0, we = e < Wall ? 0f : b1 * u1;
             float sum = wa + wb + wd + we;
             return sum > 0f ? (wa * a + wb * b + wd * d + we * e) / sum : -1e9f;
+        }
+
+        /// <summary><c>CxAirClimb</c>: the shares of two neighbouring quarters of floors <paramref name="a"/> and <paramref name="b"/>
+        /// a fraction <paramref name="f"/> across, the floor climbing a join over <see cref="Climb"/> metres a metre of rise.</summary>
+        private (float A, float B) Climbed(float f, float a, float b)
+        {
+            if (!Joined(a, b)) return Pair(f, false);
+            float w = MathF.Min(Climb * MathF.Abs(a - b) * 2f, 1f);
+            if (MathF.Min(a, b) < Wall || w <= 1e-4f) return Pair(f, true);
+            float t = Math.Clamp((f - 0.5f) / w + 0.5f, 0f, 1f);
+            return (1f - t, t);
         }
 
         /// <summary><c>CxAirBase</c>: the floor a cell of floor <paramref name="a"/> lays its air over where the quarter's is <paramref name="here"/>.</summary>
