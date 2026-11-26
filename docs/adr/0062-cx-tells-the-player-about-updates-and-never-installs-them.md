@@ -17,7 +17,7 @@ While F1 and F2 hold, CX reads only an update notice signed by a key it ships wi
 
 ## Consequences
 
-The player stays the installer, so a hijacked release source cannot push code or redirect anyone. An updater writing code to disk was turned down: one verifier bug would expose every player. Updating stays a manual step. No migration: nothing was stored before. Retires ADR-0058: this record restates its rule in the current shape.
+The player stays the installer, so a hijacked release source cannot push code or redirect anyone. An updater writing code to disk was turned down: one verifier bug would expose every player. Updating stays a manual step. Retires ADR-0058: this record restates its rule in the current shape.
 
 ## Guard
 
