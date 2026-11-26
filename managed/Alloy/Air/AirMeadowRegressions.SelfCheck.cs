@@ -9,7 +9,7 @@ namespace CX.Alloy;
 /// <summary>The meadow wisps' plain regressions: the wind's speed carries them, a front tears behind its line, a second
 /// front finds what the first left, they fill back, fog holds them, the band's middle is thickest, none hang with the air
 /// off or in a crypt, a ray low over the horizon keeps the sky, and the streaks wander. Oracle, by hand: the flat meadow,
-/// the strong wind along x and the band's middle 60 m up, where a streak's mean over a 16 m square is exactly the wisps' fill.</summary>
+/// the strong wind along x and the band's middle 60 m up, where the wisps over a 16 m square, the streaks divided out, are their fill.</summary>
 internal static class AirMeadowRegressions
 {
     /// <summary>Where the wisps are read: the band's middle.</summary>
@@ -44,8 +44,16 @@ internal static class AirMeadowRegressions
         Go(30f, Vector2.Zero);
     }
 
-    /// <summary>The wisps' mean thickness over the 16 m square at <paramref name="x"/> along the wind, in the band's middle.</summary>
-    private static float At(float x) => Thick(AirLayer.Wisps, x, 0f, 8f, Overhead);
+    /// <summary>The wisps' mean thickness over the 16 m square at <paramref name="x"/> along the wind, in the band's middle,
+    /// over the streaks' mean there: what is left of them, whatever the streaks wandering under the square.</summary>
+    private static float At(float x)
+    {
+        float streaks = 0f;
+        int n = 0;
+        for (float px = x - 7.5f; px < x + 8f; px += 1f)
+            for (float py = -7.5f; py < 8f; py += 1f, n++) streaks += AirScene.StreakAt(px, py);
+        return Thick(AirLayer.Wisps, x, 0f, 8f, Overhead) / (streaks / n);
+    }
 
     /// <summary>How far the wisps travel in ten seconds of <paramref name="wind"/>, from a settled calm meadow.</summary>
     private static float Travel(Vector2 wind)
@@ -151,7 +159,7 @@ internal static class AirMeadowRegressions
     }
 
     // Given wisps over a meadow by day
-    // When the player looks out a few degrees over the horizon, and nearly straight up
+    // When the player looks out from 2 to 15 degrees over the horizon, and nearly straight up
     // Then low down the wisps keep most of the sky behind them, and overhead they still show.
     private static void GrazingKeepsSky(Checker check)
     {
@@ -163,7 +171,7 @@ internal static class AirMeadowRegressions
         for (int a = 0; a < 16; a++)
         {
             float az = a * MathF.Tau / 16f;
-            for (int e = 2; e <= 10; e++)
+            for (int e = 2; e <= 15; e++)
             {
                 float keep = AirWispMarch.Keep(w, eye, Heading(az, e));
                 if (keep < worst) (worst, low) = (keep, e);

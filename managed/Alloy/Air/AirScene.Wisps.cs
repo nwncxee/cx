@@ -31,7 +31,7 @@ internal static partial class AirScene
     private const float WispLong = 24f, WispWideA = 16f / 3f, WispWideB = 3.2f;
 
     /// <summary>How far a streak wanders across the wind, metres, and the span across it of one wander, metres.</summary>
-    private const float WispWarp = 4f, WispKnot = 12f;
+    private const float WispWarp = 4f, WispKnot = 8f;
 
     /// <summary>The wisps' shape now.</summary>
     internal static AirWisps Wisps => new(_s.Sheet.Stretch, _s.Sheet.Carried);
