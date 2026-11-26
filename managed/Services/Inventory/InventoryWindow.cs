@@ -69,8 +69,6 @@ internal sealed partial class InventoryWindow
     /// <summary>The store item the engine is dragging and its size in cells (<c>W</c> 0 when none). The service asks the
     /// engine's mouse captor; the self-check sets its own.</summary>
     public Func<(uint Oid, int W, int H)> StoreDrag = static () => default;
-    /// <summary>The engine's GUI scale, which sizes the icon it drags. The service asks the engine; the self-check sets its own.</summary>
-    public Func<float> EngineGuiScale = static () => 1f;
     /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
     /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
     public Action<uint>? HoverItem;
