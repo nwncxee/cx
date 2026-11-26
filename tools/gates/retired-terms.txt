@@ -304,12 +304,15 @@ cx-(shaders|charts)	CX-553	older CX|no cx-(shaders|charts)|Path\.Combine\(ud, "c
 general\.logs\b|\bGeneral\.Logs(Default)?\b|\bLogsAtBoot\b|\bExtenderLog\.Enabled\b	logs-always	LogsAlwaysApprovedExamples|RetiredKeys = 
 # The part-column wait list a late .mtr re-seeded, folded into the one rederive a late landing shares with an override.
 \b(ReseedMaterials|MaterialWaiting|TakePartMaterialEdge)\b	late-mtr-one-path
-# The offset camera's spring arm and its four knobs: the occluder fade keeps the character in view, so the
-# camera keeps its full rig. The keys are named only where cx.cfg drops them and where their test feeds them.
+# The offset camera's spring arm and its four knobs: the camera keeps its full rig, and with an offset on a wall may
+# hide the character, by choice (CX-745). The keys are named only where cx.cfg drops them and where their test feeds them.
 \bwalls\.(margin|armin|armout|armradius)\b	CX-649	RetiredKeys|ArmKeys|cx\.cfg that holds|Settings\.Read\(
 \bspring ?arm\b	CX-649	no spring arm|springarm\.keep
 \b(CastStatic|IStaticWorld|ArmFraction)\b	CX-649
 \bBaseItemUsable\b	CX-729
+# The occluder fade and its three knobs, removed whole. The keys are named only where cx.cfg drops them and where
+# their tests feed them.
+\bwalls\.(fade|floor|radius)\b	CX-745	RetiredKeys|FadeKeys|ApprovedExamples|Settings\.Read\(|cx\.cfg that holds
 
 # The nameplate health bar, deleted with its HP reads (ADR-0060): health is the server's to reveal, and some servers hide
 # it on purpose and give other hints. The plate shows the server's damage level and nothing more.

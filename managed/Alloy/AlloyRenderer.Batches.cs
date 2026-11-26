@@ -22,7 +22,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         int n = 0, nb = 0, na = 0;
         PrepareVisible();
-        OccludeFrame();   // #537: the hit fan this walk tags occluders from
         {
         for (int c = (int)AlloyClass.Opaque; c <= (int)AlloyClass.Cutout; c++)
         {
@@ -49,14 +48,12 @@ public sealed unsafe partial class AlloyRenderer
                     Counters._skipFogTile++;
                     _oFading[i] = true; continue;
                 }
-                _oFading[i] = OccludeFan.CasterFading(fade, _gate[i].OccFade);
-                // #537: a faded occluder is a translucent part like any other, so it takes the blended run too.
-                // ...and the object's own fade (CNWCObject::FadeObject through SetColorShifting): a creature or
+                _oFading[i] = fade < 1f;
+                // The object's own fade (CNWCObject::FadeObject through SetColorShifting): a creature or
                 // placeable the server adds or drops in perception range fades over 2 s, as vanilla's does
                 float objAlpha = DbObjAlpha(i);
                 if (objAlpha <= 0f) continue;
-                float alpha = OccludeFan.Fold(PartAlphaCached(i, tri), fade, OccludeVerdict(i),
-                                              DbSlot(i) && SceneDb.PartDissolve[_oDbPart[i]] < 1f) * objAlpha;
+                float alpha = PartAlphaCached(i, tri) * fade * objAlpha;
                 bool dis = alpha >= 1f && Dissolves(i, tri, ref _stageCounters[0]);
                 if (samp) FrameZones.AddSampled(FrameZones.Zone.Fade, tFade, ChaseEvery);
                 if (alpha < 1f)
@@ -626,7 +623,6 @@ public sealed unsafe partial class AlloyRenderer
         // CX-188: and the texture memo with it -- a re-tenanted slot's handles and tids describe its
         // predecessor, and this is the one signal that _oDbRecipe may have been re-pointed under them.
         _recTexStamp[i] = 0;
-        UnstampChase(i);
     }
 
     /// <summary>This record moved and has to reach the GPU again. Overflow is not a silent drop -- it promotes

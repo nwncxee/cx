@@ -6,17 +6,16 @@ namespace CX.Alloy;
 /// <summary>The per-draw record's layout contract.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Headless: the per-draw record's layout contract -- <c>CxDraw</c>, one 76-float, 304-byte std430
+    /// <summary>Headless: the per-draw record's layout contract -- <c>CxDraw</c>, one 72-float, 288-byte std430
     /// block at <see cref="SsboSlots.Draw"/> indexed by ownership slot, sound only while the GLSL declares that same layout.</summary>
     internal static bool StaticSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.StaticSelfCheck");
 
-        check.Expect(ExtFloat == PrevFloat + 16 && ExtFloat + sizeof(MaterialExt) / sizeof(float) + 4 == DrawFloats && sizeof(ParamRow) == 88,
-          "ADR 0026's ext0..ext2 do not sit between prev and the occluder cut that closes the record");
+        check.Expect(ExtFloat == PrevFloat + 16 && ExtFloat + sizeof(MaterialExt) / sizeof(float) == DrawFloats && sizeof(ParamRow) == 88,
+          "ADR 0026's ext0..ext2 do not sit between prev and the record's end");
         var rec = new DrawRecordBlock();
-        check.Expect(sizeof(DrawRecordBlock) == 304 && (byte*)&rec.Prev - (byte*)&rec == 176 && (byte*)&rec.Ext - (byte*)&rec == 240
-                     && (byte*)&rec.Occ - (byte*)&rec == 288
+        check.Expect(sizeof(DrawRecordBlock) == 288 && (byte*)&rec.Prev - (byte*)&rec == 176 && (byte*)&rec.Ext - (byte*)&rec == 240
                      && sizeof(BonePalette) == 4096 && sizeof(Sphere) == 16 && sizeof(Box) == 24 && sizeof(TexHandles) == 32,
           "the draw record, the bone palette, the sphere, the box or the handle block is not the size the shaders stride by");
         check.Expect(ShaderSource.Get("cx_content_v.glsl").Contains("buffer CxTexH { uint uTexH[]; };")

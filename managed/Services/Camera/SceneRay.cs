@@ -16,7 +16,7 @@ namespace CX.Services.Camera;
 public static unsafe class SceneRay
 {
     private static SceneHitCheckFn _hitCheck;
-    /// <summary>Resolved once: a cast runs per creature per frame and 15 times per occluder fan.</summary>
+    /// <summary>Resolved once: a cast runs per creature per frame.</summary>
     private static HitInfoResetFn _reset;
     private static IntPtr* _scene;
     private static int* _statics;
@@ -82,42 +82,26 @@ public static unsafe class SceneRay
     }
 
     /// <summary>The ignore list, one slot, allocated once: a <see cref="HitQuery"/> carries it by reference and
-    /// the occluder fan casts fifteen times a frame.</summary>
+    /// a cast runs per creature per frame.</summary>
     private static readonly DbId[] _dbIgnore = new DbId[1];
 
     /// <inheritdoc cref="Cast(IntPtr, Vector3, Vector3, IntPtr, out Vector3, out IntPtr, bool)"/>
     private static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
                               out Vector3 hit, out IntPtr gob, bool statics)
     {
-        bool got = Cast(Facade.SceneId(scene), from, to, Facade.ObjectId(ignore), out hit, out DbId obj, statics);
+        hit = default;
+        gob = IntPtr.Zero;
+        DbId s = Facade.SceneId(scene), skip = Facade.ObjectId(ignore);
+        if (s.IsNull) return false;
+        HitQuery q = HitQuery.Ray(s, from, to, statics);
+        _dbIgnore[0] = skip;
+        if (!skip.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
+        if (!HitTest.Cast(q, out HitResult r)) return false;
+        hit = r.Point;
         // The callers speak in facade pointers (IsPlaceable reads the shell's mirrored
         // Gob+externalType), so the hit object goes back out as its shell, as a static hit goes back as zero.
-        gob = got && !obj.IsNull ? (IntPtr)Facade.ObjectShell(obj) : IntPtr.Zero;
-        return got;
-    }
-
-    /// <summary>Nearest hit on <paramref name="from"/>-&gt;<paramref name="to"/> in database scene <paramref name="scene"/>,
-    /// skipping <paramref name="ignore"/> (null: nothing); <paramref name="obj"/> is the object hit, null for a static
-    /// one. Allocation-free: the one ignore slot is reused.</summary>
-    public static bool Cast(DbId scene, Vector3 from, Vector3 to, DbId ignore, out Vector3 hit, out DbId obj, bool statics = false)
-    {
-        bool got = Cast(scene, from, to, ignore, out HitResult r, statics, faceNormal: false);
-        hit = got ? r.Point : default;
-        obj = got ? r.Obj : default;
-        return got;
-    }
-
-    /// <summary>The same cast, answering the whole <see cref="HitResult"/>; <paramref name="faceNormal"/> asks for a
-    /// triangle hit's face normal (<see cref="HitQuery.FaceNormal"/>).</summary>
-    public static bool Cast(DbId scene, Vector3 from, Vector3 to, DbId ignore, out HitResult r, bool statics, bool faceNormal)
-    {
-        r = default;
-        if (scene.IsNull) return false;
-        HitQuery q = HitQuery.Ray(scene, from, to, statics);
-        q.FaceNormal = faceNormal;
-        _dbIgnore[0] = ignore;
-        if (!ignore.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
-        return HitTest.Cast(q, out r);
+        gob = r.Obj.IsNull ? IntPtr.Zero : (IntPtr)Facade.ObjectShell(r.Obj);
+        return true;
     }
 
     public static bool IsPlaceable(IntPtr gob) => gob != IntPtr.Zero && new Gob(gob).ExternalType == GobKindPlaceable;

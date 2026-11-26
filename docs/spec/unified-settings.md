@@ -919,14 +919,11 @@ post-Control Adjust/SettleCollision; FOV `Camera+0x4c4` has no engine restorer, 
 `_fovFirst`, then `_welded = true` + `CameraCut()`. The layer writes the slider whenever the
 mode's master is on. Mouse-look is a per-mode toggle, not a group of its own.
 
-**Camera** — groups `walls` (510, *Walls*), `free` (512, *Free camera*). Neither has a master;
+**Camera** — group `free` (512, *Free camera*). It has no master;
 `free`'s header: "No master: the free camera is entered from the button and left with Escape."
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
-| walls.fade | Fade objects that hide you | T | on | U | L | Fade | Trees, walls and props between the camera and your character turn see-through. Needs Alloy: with it off the row is greyed and says so. |
-| walls.floor | Faded opacity | S | 0–1 step 0.05 · 0.5 | U | L | Fade | How solid a faded object stays. 0 hides it entirely. |
-| walls.radius | Fade ray width | S | 0–5 m step 0.1 · 0.5 | C | L | Fade | Half-width of the ray fan that finds occluders. |
 | free.enter | Enter the free camera | B | — | U | — | — | Fly the camera freely: move keys fly, Space/C up and down, Z/X roll, Shift is fast, the wheel sets speed, right-drag looks. Escape returns. Closes this panel. |
 | free.speed | Fly speed | S | 0.1–200 m/s step 0.5 · 8 | U | L | Feel | How fast the move keys fly the camera; Shift is four times this. |
 | free.leash | Range from your character | S | 1–25 m step 1 · 25 | U | L | Feel | The camera stops this far from your character. A server that sets its own camera limit overrides it. |
@@ -935,7 +932,7 @@ mode's master is on. Mouse-look is a per-mode toggle, not a group of its own.
 | free.turn | Keyboard turn speed | S | 10–720 °/s step 10 · 90 | A | L | Feel | |
 | free.roll | Roll on entry | S | −180–180 ° step 5 · 0 | A | L | Feel | |
 
-`_occRate` (8) stays a const; `Leave()` restores FOV when `free.fov` was set.
+`Leave()` restores FOV when `free.fov` was set.
 
 **Targeting** — group `tabtarget` (520). Master = the whole mode; off = stock Tab and stock
 clicks, the lock and any pending preview cast dropped on the off edge. With it on, its cast
@@ -1066,7 +1063,7 @@ is not "the stock one draws", it is "nothing draws". The caveat is what the buil
 | Mouse-look | `<mode>.mouselook` | U · live | `Release()` on the off edge; per mode, not a group. |
 | Tab-target | tabtarget.enabled | U · live | off (the default) = stock Tab and clicks; the lock and a pending preview cast drop on the off edge. |
 | Hotkeys | hotkeys.enabled | U · live | gate the actions, never the hooks or the advertise. |
-| General, About, Preset, Lights, Ambient occlusion, Effects, Image, Walls, Free camera | none | — | the header says why. |
+| General, About, Preset, Lights, Ambient occlusion, Effects, Image, Free camera | none | — | the header says why. |
 
 Framework facts: the window registry is immutable after frame 1, so every live hide is a
 content early-return, never an Unregister.
@@ -1124,7 +1121,7 @@ Each step ships on its own and leaves the client working.
 - Boot/live twins collapsed into one knob: `halos`/`halosize` (`halogain` is gone -- `effects.halos`
   IS the brightness), `probe`,
   `renderscale`, `shadows` (+ the feed's `_enabled`), `partbatch`, `partsamp`, `keydiag`,
-  the four `mouselook*` boot keys, `camera.occlude`.
+  the four `mouselook*` boot keys.
 
 ## 9. Not in this spec
 

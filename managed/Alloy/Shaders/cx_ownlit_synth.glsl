@@ -1,14 +1,3 @@
-/// The opacity left after the occluder cut: occ.x off inside the cylinder of radius occ.y around the camera ray (focus
-/// to camera), easing to whole over its outer fifth, so a faded tree opens where it hides the character and nowhere else.
-float CxOccluderKeep(vec4 occ, vec3 world)
-{
-    if (occ.x <= 0.0) return 1.0;
-    vec3 ray = uCamPos - uCamFocus;
-    float t = clamp(dot(world - uCamFocus, ray) / max(dot(ray, ray), 1e-6), 0.0, 1.0);
-    float off = length(world - (uCamFocus + ray * t));
-    return mix(1.0 - occ.x, 1.0, smoothstep(occ.y * 0.8, occ.y, off));
-}
-
 /// Is this fragment outside a split part's solid interior? Coverage times the part's own opacity, so a ghost has none.
 bool CxSolidCut(float coverage, float alpha)
 {
@@ -115,9 +104,6 @@ void main()
     vec3 dp1 = dFdx(vWorld), dp2 = dFdy(vWorld);
     vec2 du1 = dFdx(vUV), du2 = dFdy(vUV);
     CxDraw d = uDraw[vDraw];
-#ifndef CX_CAST
-    d.rot.w *= CxOccluderKeep(d.occ, vWorld);
-#endif
     int feat = int(d.feat.x);
     // #330: the keyhole verdict FIRST. It used to sit at the very end, so every fragment inside the
     // aperture paid the whole lit stage -- the cluster loop and the cube taps -- and then discarded;

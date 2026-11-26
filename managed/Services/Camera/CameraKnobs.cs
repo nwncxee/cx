@@ -2,26 +2,26 @@ using CX.Framework;
 
 namespace CX.Services.Camera;
 
-/// <summary>The six camera groups, in panel order. <see cref="Declare"/> touches each class so
+/// <summary>The five camera groups, in panel order. <see cref="Declare"/> touches each class so
 /// the groups declare on the main thread at Initialize, in this order, whether or not a camera service arms
 /// (a group that stands down still declares).</summary>
 internal static class CameraKnobs
 {
     internal static void Declare()
     {
-        _ = CameraModes.ByMode; _ = Walls.G; _ = FreeCam.G; _ = TabTarget.G;
+        _ = CameraModes.ByMode; _ = FreeCam.G; _ = TabTarget.G;
     }
 
     internal const float FovMin = 10f, FovMax = 120f;
 
-    /// <summary>Off-device, read-only (a set would arm the writer against the user's real file): the six groups
+    /// <summary>Off-device, read-only (a set would arm the writer against the user's real file): the five groups
     /// declare in panel order, the per-mode defaults differ where the spec says, the FOV magic zero is gone from
     /// the modes and kept on <c>free.fov</c>, and <c>/chase fov 60</c> parses to the chase row alone.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
         Declare();
-        string[] order = { "chase", "topdown", "driving", "walls", "free", "tabtarget" };
+        string[] order = { "chase", "topdown", "driving", "free", "tabtarget" };
         int at = -1;
         foreach (string g in order)
         {
@@ -47,7 +47,6 @@ internal static class CameraKnobs
         check.Expect(KnobGroup.Find("free.enter") is KnobButton && FreeCam.G.Knobs[0] == FreeCam.Enter, "free.enter is the first row and a button");
         check.Expect(FreeCam.Fov.Default == 0f && FreeCam.Fov.Min == 0f && FreeCam.Leash.Default == FreeCam.LeashMax && FreeCam.Leash.Max == FreeCam.LeashMax,
           "free.fov keeps 0 = the mode's; the leash never exceeds the engine's 25");
-        check.Expect(Walls.Fade.Default && Walls.Floor.Default == 0.5f && Walls.Radius.Default == 0.5f, "walls defaults are the #537/#538 boot values");
         check.Expect(!MouseLook.Right.Default && MouseLook.Sens.Default == 1f && MouseLook.Threshold.Default == 4 && !MouseLook.Invert.Default, "mouselook defaults are the old boot keys'");
         check.Expect(MouseLook.HeadTrack.Default && MouseLook.HeadYaw.Default == 70f && MouseLook.HeadPitch.Default == 30f
           && MouseLook.HeadYaw.Max == 89f && MouseLook.HeadPitch.Max == 89f,
@@ -207,27 +206,6 @@ internal static class CameraModes
         TopDown = new CameraModeKnobs("topdown", "Top-down", 1, 501, moveDefault: false);
         Driving = new CameraModeKnobs("driving", "Driving", 2, 502, moveDefault: true);
         ByMode = new[] { Chase, TopDown, Driving };
-    }
-}
-
-/// <summary>The <c>walls</c> group: the occlusion fade, read by <c>AlloyRenderer.Occlude</c>. The fade rate stays a
-/// const, and the fan's width is nobody's dial but the one who tuned it, so it is ChatOnly (ADR 0030).</summary>
-internal static class Walls
-{
-    internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Fade;
-    internal static readonly Knob<float> Floor, Radius;
-
-    static Walls()
-    {
-        G = KnobGroup.Declare("walls", "Controls", "Camera", order: 510, title: "Walls");
-        Fade = G.Toggle("fade", "Fade objects that hide you", true,
-                        help: "Trees, walls and props between the camera and your character turn see-through.");
-        Fade.Requires = KnobNeed.Alloy;
-        Floor = G.Slider("floor", "Faded opacity", 0f, 1f, 0.05f, 0.5f,
-                         help: "How solid a faded object stays. 0 hides it entirely.");
-        Radius = G.Slider("radius", "Fade ray width", 0f, 5f, 0.1f, 0.5f, "m", Tier.ChatOnly,
-                          help: "Half-width of the ray fan that finds occluders.");
     }
 }
 

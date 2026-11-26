@@ -148,60 +148,7 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
-        /// <summary>One object at the world origin whose parts are <paramref name="meshes"/>, laid out in world space
-        /// as one model's nodes, in one contiguous part run; returns the object.</summary>
-        internal static DbId Obj(DbId scene, string name, byte cls, bool isStatic, ObjFlag flags, params MeshDef[] meshes)
-        {
-            var nodes = new NodeDef[meshes.Length];
-            Vector3 lo = new(float.MaxValue), hi = new(float.MinValue);
-            for (int k = 0; k < meshes.Length; k++)
-            {
-                nodes[k] = new NodeDef { Name = name + k, Index = k, Kind = NodeKind.TriMesh, Mesh = meshes[k] };
-                lo = Vector3.Min(lo, meshes[k].BMin); hi = Vector3.Max(hi, meshes[k].BMax);
-            }
-            var model = new ModelDef { Name = name, Classification = cls, Nodes = nodes, BMin = lo, BMax = hi };
-            if (!SceneDb.Parts.AllocRange(meshes.Length, out int first)) return default;
-            DbId o = SceneDb.Objects.Alloc();
-            int i = o.Index;
-            DbFeed.InitObject(i);
-            SceneDb.ObjKindOf[i] = ObjKind.Model;
-            SceneDb.ObjModel[i] = model;
-            SceneDb.ObjScene[i] = scene;
-            DbScene.Members(scene).Add(o);
-            SceneDb.ObjPos[i] = Vector3.Zero; SceneDb.ObjRot[i] = Quaternion.Identity; SceneDb.ObjScale[i] = 1f;
-            SceneDb.ObjWorld[i] = Matrix4x4.Identity;
-            SceneDb.ObjVisible[i] = true;
-            SceneDb.ObjTint[i] = Vector4.One;
-            SceneDb.ObjFlags[i] = flags;
-            SceneDb.HitObjAlpha[i] = 1f;
-            SceneDb.HitObjFadeAlpha[i] = 1f;
-            SceneDb.HitObjClass[i] = cls;
-            SceneDb.HitObjStatic[i] = isStatic;
-            SceneDb.ObjPartFirst[i] = first; SceneDb.ObjPartCount[i] = meshes.Length;
-            for (int k = 0; k < meshes.Length; k++)
-            {
-                int p = first + k;
-                DbFeed.InitPart(p);
-                SceneDb.PartObj[p] = o;
-                SceneDb.PartModel[p] = model;
-                SceneDb.PartNode[p] = k;
-                SceneDb.PartParent[p] = -1;
-                SceneDb.PartPos[p] = Vector3.Zero; SceneDb.PartRot[p] = Quaternion.Identity; SceneDb.PartScale[p] = 1f;
-                SceneDb.PartWorld[p] = Matrix4x4.Identity;
-                SceneDb.PartEnabled[p] = true; SceneDb.PartMerged[p] = false;
-                SceneDb.PartAlpha[p] = 1f;
-                SceneDb.PartMesh[p] = -1;
-                SceneDb.PartMeshDef[p] = null;
-            }
-            HitFeed.NoteObject(o, isStatic);
-            for (int k = 0; k < meshes.Length; k++) HitFeed.NoteTrigger(first + k, 0);
-            HitBounds.Refresh(i);
-            Array.Resize(ref _objs, _objs.Length + 1);
-            _objs[^1] = o;
-            return o;
-        }
-
-        internal static DbId NewScene()
+        private static DbId NewScene()
         {
             DbId s = SceneDb.Scenes.Alloc();
             SceneDb.SceneIsWorld[s.Index] = true;
@@ -442,21 +389,15 @@ public static unsafe partial class HitTestCheck
             {
                 if (!SceneDb.Objects.Valid(o)) continue;
                 HitGrid.Remove(o.Index);
-                SceneDb.ObjFacade[o.Index] = 0;
-                int first = SceneDb.ObjPartFirst[o.Index], count = SceneDb.ObjPartCount[o.Index];
-                for (int p = first; p < first + count; p++)
+                int first = SceneDb.ObjPartFirst[o.Index];
+                for (int p = first; p < first + SceneDb.ObjPartCount[o.Index]; p++)
                 {
                     // A recycled part slot must not inherit this fixture's geometry: the box is the one hit
                     // column a later tenant reads before anything re-derives it.
                     SceneDb.HitPartBMin[p] = new Vector3(1f); SceneDb.HitPartBMax[p] = new Vector3(-1f);
                     SceneDb.HitPartTrigger[p] = 0;
-                    SceneDb.PartFade[p] = 1f;
-                    SceneDb.PartDissolve[p] = 1f;
+                    SceneDb.Parts.Free(SceneDb.Parts.IdAt(p));
                 }
-                // A run from AllocRange goes back whole; FreeRange leaves a single Alloc'd slot alone (no chunk
-                // head there), and the per-slot Free then skips every slot FreeRange already retired.
-                SceneDb.Parts.FreeRange(first, count);
-                for (int p = first; p < first + count; p++) SceneDb.Parts.Free(SceneDb.Parts.IdAt(p));
                 SceneDb.Objects.Free(o);
             }
             foreach (DbId c in _cams) if (SceneDb.Cameras.Valid(c)) SceneDb.Cameras.Free(c);

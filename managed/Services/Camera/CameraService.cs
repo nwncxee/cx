@@ -143,7 +143,6 @@ public sealed unsafe class CameraService : IExtenderService
         }
         FrameRegistry.Global.Register(FramePhase.PostPresent, 50, OnFrameEnd, "CameraService", log);
         KnobSurface.Note(Report);
-        SceneRay.Init();
     }
 
     // ---- the DB-mode edges -------------------------------------------------------------------
@@ -236,21 +235,21 @@ public sealed unsafe class CameraService : IExtenderService
         mod.PredictPitchImpulse = 0f;
     }
 
-    /// <summary>The one writer of <c>CAMERA_FLAG_DISABLE_COLLISION</c>: set while an offset or the
-    /// occlusion fade wants the engine's pull-in off, cleared only if this session set it, never
-    /// rewritten when it already holds -- the server's own bits stay untouched.</summary>
+    /// <summary>The one writer of <c>CAMERA_FLAG_DISABLE_COLLISION</c>: set while an offset wants the engine's
+    /// pull-in off, cleared only if this session set it, never rewritten when it already holds -- the server's
+    /// own bits stay untouched.</summary>
     public static void SettleCollision(IntPtr module)
     {
         if (module == IntPtr.Zero) return;
         var mod = new CNWCModule(module);
-        SettleFlag(ref mod.CameraFlags, _wantNoCollision, AlloyRenderer.OccludeFadeWanted, ref _weSetFlag);
+        SettleFlag(ref mod.CameraFlags, _wantNoCollision, ref _weSetFlag);
     }
 
-    /// <summary>One settle of the flag word <paramref name="flags"/>: set while the rig or the fade wants the pull-in
-    /// off, cleared only when <paramref name="weSet"/> says this session set it, untouched when it already holds.</summary>
-    internal static void SettleFlag(ref int flags, bool rigWantsOff, bool fadeWantsOff, ref bool weSet)
+    /// <summary>One settle of the flag word <paramref name="flags"/>: set while the rig wants the pull-in off,
+    /// cleared only when <paramref name="weSet"/> says this session set it, untouched when it already holds.</summary>
+    internal static void SettleFlag(ref int flags, bool rigWantsOff, ref bool weSet)
     {
-        if (rigWantsOff || fadeWantsOff)
+        if (rigWantsOff)
         {
             if ((flags & EngineLayout.CameraFlagDisableCollision) == 0) { flags |= EngineLayout.CameraFlagDisableCollision; weSet = true; }
         }

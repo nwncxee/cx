@@ -19,7 +19,6 @@
     <CxCoreSource Include="Framework/KnobFile.cs" />
     <CxCoreSource Include="Framework/KnobGroup.SelfCheck.cs" />
     <CxCoreSource Include="Framework/KnobGroup.cs" />
-    <CxCoreSource Include="Framework/KnobNeeds.cs" />
     <CxCoreSource Include="Framework/LogParts.cs" />
     <CxCoreSource Include="Framework/SelfCheckSuite.cs" />
     <CxCoreSource Include="Framework/Settings.cs" />

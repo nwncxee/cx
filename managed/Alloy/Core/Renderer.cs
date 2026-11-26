@@ -122,7 +122,6 @@ internal static class Renderer
 
     static Renderer()
     {
-        KnobNeeds.WatchAlloy(static () => On);
         Quality.Touch();
         G = KnobGroup.Declare("alloy", "Graphics", "Quality", master: "Enable the Alloy renderer",
             masterHelp: "Draw the 3D world with CX's own Vulkan renderer: real-time shadows, HDR, grass, post-processing. "

@@ -188,9 +188,9 @@ internal static class RendererContract
         bool pass = PassCheck(log);
         bool slotSafe = SlotSafeSelfCheck(log);
         bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
-        // the record's field list, counted by field size: the 304-byte stride staged above (#392 and ADR 0026 grew it)
+        // the record's field list, counted by field size: the 288-byte stride staged above
         bool ok = slots && ssbo && ubo && pass && slotSafe && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
-                  && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; vec4 occ; }")
+                  && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
                   && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
                   && DrawBufDecl.Contains("vec4 feat")
                   // the feature ids are a contract between the ShaderFeature enum (staged into d.feat.x) and the

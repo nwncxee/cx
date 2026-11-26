@@ -1237,7 +1237,7 @@ public static unsafe partial class EngineLayout
     /// <inheritdoc cref="TgaOwned"/>
     public static readonly int TgaSrcSize = Field<int>("CResTGA", "srcSize");
 
-    // ---- the occlusion fade (#537): the camera flags, the hit record, the gob's object kind ----
+    // ---- the camera flags ----
 
     /// <summary>CNWCModule -&gt; the <c>CAMERA_FLAG_*</c> bitmask the server's <c>SetCameraFlags</c> lands in;
     /// bit <see cref="CameraFlagDisableCollision"/> is what <c>UpdateCameraCollision</c> tests. Paired on

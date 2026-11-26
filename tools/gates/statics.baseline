@@ -173,7 +173,6 @@
 11 managed/Alloy/Scene/AlloyRenderer.DbPass.cs
 5 managed/Alloy/Scene/AlloyRenderer.DbSky.cs
 22 managed/Alloy/Scene/AlloyRenderer.DbStage.cs
-9 managed/Alloy/Scene/AlloyRenderer.Occlude.cs
 29 managed/Alloy/Scene/AlloyRenderer.Route.cs
 3 managed/Alloy/Scene/AlloyRenderer.Slots.cs
 31 managed/Alloy/Scene/AlloyRenderer.Table.cs

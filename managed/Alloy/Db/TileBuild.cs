@@ -282,7 +282,7 @@ public static partial class TileBuild
         // The create contract, in its order (CONTRACTS.md "LIFECYCLE WIRING"), and all three were missing:
         //   * the animation runtime has to know the record exists before anything poses it;
         //   * the hit index files it as STATIC -- a tile and a static placeable are the area's static set,
-        //     which is what a click-to-move floor cast and the camera's occluder fan test against;
+        //     which is what a click-to-move floor cast and the camera's pull-in test against;
         //   * and it JOINS the scene. Writing ObjScene by hand (as this did) leaves the scene with no
         //     members, so GetAurSceneObjectCount answers 0, the draw-order slots are no-ops and -- the one
         //     that bites -- a scene destroy frees no tile at all, because its sweep walks the member list.

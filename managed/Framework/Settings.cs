@@ -44,7 +44,7 @@ public static class Settings
     }
 
     /// <summary>Keys an older CX wrote for a setting that is gone: dropped on read, so the next write leaves them out.</summary>
-    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius"];
+    private static readonly string[] RetiredKeys = ["general.logs", "walls.margin", "walls.armin", "walls.armout", "walls.armradius", "walls.fade", "walls.floor", "walls.radius"];
 
     /// <summary>Take every pair of <paramref name="text"/>, in <c>cx.cfg</c>'s own format, into the loaded table,
     /// less the <see cref="RetiredKeys"/>.</summary>

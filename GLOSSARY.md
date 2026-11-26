@@ -240,7 +240,7 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   timestamps, lock): edited on the window's own gear, never a panel row. Hidden-tier settings.
 - **Camera mode group** — one knob group per engine camera mode (chase, top-down, stiff chase),
   identical rows with per-mode values, each with its own master: off means the stock camera runs
-  untouched in that mode. Tuning shared by the modes (recenter, drive, walls) is its own group,
+  untouched in that mode. Tuning shared by the modes (recenter, drive) is its own group,
   never a mode's.
 - **Action row** — a panel row that does something when pressed instead of holding a value (enter
   the free camera, revoke every approved hotkey). Never persisted; the reset leaves it alone; and it
