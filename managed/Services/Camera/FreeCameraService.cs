@@ -52,7 +52,9 @@ public sealed unsafe class FreeCameraService : IExtenderService
         SelfCheck(log);
         if (!EngineLayout.Require(log, "FreeCamera", "CNWCCreature", "CNWCObject", "CNWCModule", "CClientExoAppInternal", "CGuiInGame", "Camera")) return;
         if (!SymbolMap.Require(log, "FreeCamera", SymbolMap.WinMessageHandler, SymbolMap.GuiInGameToggleOff, SymbolMap.GuiInGameUnToggleOff,
-                               SymbolMap.SdlSetRelativeMouseMode, SymbolMap.SdlWarpMouseInWindow, SymbolMap.GetModule, SymbolMap.AppManager, SymbolMap.GetGameObject)) return;
+                               SymbolMap.SdlSetRelativeMouseMode, SymbolMap.SdlWarpMouseInWindow, SymbolMap.SdlShowCursor,
+                               SymbolMap.SdlGetKeyboardFocus, SymbolMap.SdlSetWindowGrab, SymbolMap.SdlGetWindowGrab, SymbolMap.SdlGetWindowSize, SymbolMap.GetModule, SymbolMap.AppManager, SymbolMap.GetGameObject)) return;
+        PointerCapture.Init(log, hooks);
         _next = hooks.ChainWinMessageHandler(&OnWinMessage, 110);
         if (_next == null) { log.Info("FreeCamera: standing down (WinMessageHandler chain refused)"); return; }
         _armed = true;
@@ -174,7 +176,7 @@ public sealed unsafe class FreeCameraService : IExtenderService
                 if (b is not (SdlButtonLeft or SdlButtonMiddle or SdlButtonRight) || _looking) break;
                 if (UiInputService.EngineGuiWantsPress() || UiHost.HitTest(mx, my) != null) break;
                 _ate |= (byte)(1 << b);
-                if (b == SdlButtonRight) { _looking = true; _originX = mx; _originY = my; EngineFn.SdlSetRelativeMouseMode(1); }
+                if (b == SdlButtonRight) { _looking = true; _originX = mx; _originY = my; PointerCapture.Begin(mx, my, false); }
                 return 0;   // left: no click-to-move; middle: the engine's orbit would move the behavior, not us
             }
             case SdlMouseUp:
@@ -187,10 +189,11 @@ public sealed unsafe class FreeCameraService : IExtenderService
             }
             case SdlMouseMotion:
                 if (!_looking) { _mx = ((SdlEvent*)ev)->X; _my = ((SdlEvent*)ev)->Y; break; }
+                if (PointerCapture.Delta(ev, out int dx, out int dy))
                 {
                     float kx = MouseLook.Sens.V * FreeCam.Sens.V / MouseLookService.ViewportWidth();
-                    _yaw = Wrap(_yaw + ((SdlEvent*)ev)->XRel * MouseLookService.TurnPerPx * kx);
-                    _pitch = Math.Clamp(_pitch + ((SdlEvent*)ev)->YRel * MouseLookService.TiltPerPx * kx * (MouseLook.Invert.V ? -1f : 1f), PitchFloor, PitchCeil);
+                    _yaw = Wrap(_yaw + dx * MouseLookService.TurnPerPx * kx);
+                    _pitch = Math.Clamp(_pitch + dy * MouseLookService.TiltPerPx * kx * (MouseLook.Invert.V ? -1f : 1f), PitchFloor, PitchCeil);
                 }
                 return 0;
             case SdlMouseWheel:
@@ -208,7 +211,7 @@ public sealed unsafe class FreeCameraService : IExtenderService
     {
         if (!_looking) return;
         _looking = false;
-        EngineFn.SdlSetRelativeMouseMode(0);
+        PointerCapture.End();
         EngineFn.SdlWarpMouseInWindow(IntPtr.Zero, _originX, _originY);
     }
 
