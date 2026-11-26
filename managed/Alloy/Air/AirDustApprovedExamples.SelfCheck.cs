@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// knee at half a metre), the room's walls and pool laid tile by tile, and the fog terms the volume builds.</summary>
 internal static unsafe class AirDustApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirDustApprovedExamples.SelfCheck");

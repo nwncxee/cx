@@ -16,7 +16,7 @@ internal static class AirWaterMistApprovedExamples
     /// <summary>A strong wind from the water onto the streets.</summary>
     private static readonly Vector2 Onshore = new(-2f, 0f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirWaterMistApprovedExamples.SelfCheck");

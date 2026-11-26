@@ -11,7 +11,7 @@ namespace CX.Alloy;
 /// case holds, the places they name, and a crypt room's dust with the air on and none with it off.</summary>
 internal static class AirAreaVariablesRegressions
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirAreaVariablesRegressions.SelfCheck");

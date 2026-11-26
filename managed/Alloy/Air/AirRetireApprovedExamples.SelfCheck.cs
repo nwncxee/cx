@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// the Volumetric fog panel. Oracle, by hand: the retired key's spelling and the words a player would read on a row.</summary>
 internal static class AirRetireApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirRetireApprovedExamples.SelfCheck");

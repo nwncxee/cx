@@ -14,7 +14,7 @@ internal static class AirMeadowApprovedExamples
     /// <summary>Where the wisps are read: high overhead.</summary>
     private const float Overhead = 60f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirMeadowApprovedExamples.SelfCheck");

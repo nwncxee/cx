@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// Oracle, by hand: the fixture's still crypt room, a lamp's 40 motes and the lamps and blasts placed below.</summary>
 internal static class AirMotesRegressions
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirMotesRegressions.SelfCheck");

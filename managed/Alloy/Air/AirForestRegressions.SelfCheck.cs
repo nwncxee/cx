@@ -20,7 +20,7 @@ internal static class AirForestRegressions
     /// <summary>A trunk the haze readings stand by, on a column's centre, and the column 3 m east of it, half way through the fade.</summary>
     private static readonly Vector2 Trunk = new(-9.5f, 0.5f), Fading = new(-6.5f, 0.5f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirForestRegressions.SelfCheck");

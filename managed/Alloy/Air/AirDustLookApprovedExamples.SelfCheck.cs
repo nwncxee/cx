@@ -35,7 +35,7 @@ internal static class AirDustLookApprovedExamples
     /// <summary>A torch's colour as the engine hands it over, sRGB.</summary>
     private static readonly Vector3 Torch = new(1f, 0.55f, 0.2f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirDustLookApprovedExamples.SelfCheck");

@@ -18,7 +18,7 @@ internal static class AirPollenRegressions
     /// <summary>Half the strong wind's speed, metres a second: the air's drift in it.</summary>
     private const float SteadyDrift = 1f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirPollenRegressions.SelfCheck");

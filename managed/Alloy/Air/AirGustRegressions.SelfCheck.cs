@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// never tears more than lies, stays away at Low and goes with the air. Oracle, by hand: the wind each case sets and a still crypt room's dust.</summary>
 internal static class AirGustRegressions
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirGustRegressions.SelfCheck");

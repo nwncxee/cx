@@ -18,7 +18,7 @@ internal static class AirMeadowRegressions
     /// <summary>Either side of the player along the wind, metres: well behind a fresh front's line, and well ahead of it.</summary>
     private const float Behind = -20f, Ahead = 20f;
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirMeadowRegressions.SelfCheck");

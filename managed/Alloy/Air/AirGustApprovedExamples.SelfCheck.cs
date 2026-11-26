@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// example's script sets, the dust's depth and motion read at points chosen off the room, and the front's reader.</summary>
 internal static class AirGustApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirGustApprovedExamples.SelfCheck");

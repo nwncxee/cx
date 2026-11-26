@@ -15,7 +15,7 @@ internal static class AirSharedApprovedExamples
     /// <summary>The four places: a crypt, a meadow by day, a forest, a city by the water at night.</summary>
     private static readonly string[] Places = { "crypt", "meadow", "forest", "city" };
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirSharedApprovedExamples.SelfCheck");

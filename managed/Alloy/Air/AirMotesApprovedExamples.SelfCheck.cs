@@ -11,7 +11,7 @@ namespace CX.Alloy;
 /// wind each script sets, and walking and drifting speeds chosen off a person's pace (a drift is under 0.5 m/s).</summary>
 internal static class AirMotesApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirMotesApprovedExamples.SelfCheck");

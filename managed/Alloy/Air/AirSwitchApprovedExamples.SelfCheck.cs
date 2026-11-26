@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// the composed cx.cfg.</summary>
 internal static unsafe class AirSwitchApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirSwitchApprovedExamples.SelfCheck");

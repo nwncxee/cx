@@ -15,7 +15,7 @@ internal static class AirAreaVariablesApprovedExamples
     /// <summary>A GIT whose only variable is the float <c>CX.air.dust</c> = 0.4, upper-case prefix and all.</summary>
     private const string UpperGit = "R0lUIFYzLjI4AAAAAgAAAFAAAAAEAAAAgAAAAAQAAADAAAAADwAAAM8AAAAMAAAA2wAAAAgAAAD/////AAAAAAEAAAAAAAAAAAAAAAMAAAAPAAAAAAAAAAAAAAAKAAAAAQAAAAAAAAAEAAAAAgAAAAIAAAAIAAAAAwAAAM3MzD5WYXJUYWJsZQAAAAAAAAAATmFtZQAAAAAAAAAAAAAAAFR5cGUAAAAAAAAAAAAAAABWYWx1ZQAAAAAAAAAAAAAACwAAAENYLmFpci5kdXN0AQAAAAIAAAADAAAAAQAAAAEAAAA=";
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirAreaVariablesApprovedExamples.SelfCheck");

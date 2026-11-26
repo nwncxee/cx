@@ -16,7 +16,7 @@ internal static class AirWaterMistRegressions
     /// <summary>A fog colour no stage starts from, to see it reach the head.</summary>
     private static readonly Vector3 Dusky = new(0.1f, 0.2f, 0.3f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirWaterMistRegressions.SelfCheck");

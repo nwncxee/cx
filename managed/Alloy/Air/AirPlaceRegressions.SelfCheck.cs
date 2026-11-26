@@ -9,7 +9,7 @@ namespace CX.Alloy;
 /// Oracle, by hand: the place rules the council settled and the tile counts each case builds.</summary>
 internal static class AirPlaceRegressions
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirPlaceRegressions.SelfCheck");

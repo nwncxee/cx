@@ -17,7 +17,7 @@ internal static class AirForestApprovedExamples
     /// <summary>A point among the trunks, and one in the middle of the clearing.</summary>
     private static readonly Vector2 Trees = new(-10f, 0f), Clearing = new(20f, 0f);
 
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirForestApprovedExamples.SelfCheck");

@@ -13,7 +13,7 @@ namespace CX.Alloy;
 /// Dust dial moves the lying and uploaded dust at once unless a hold set it. Oracle, by hand: a still crypt room's dust.</summary>
 internal static class AirDustRegressions
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirDustRegressions.SelfCheck");

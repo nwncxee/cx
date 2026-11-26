@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// the council settled, not the resolver's own rows.</summary>
 internal static class AirPlaceApprovedExamples
 {
-    [SelfCheckSuite(SuitePhase.BeforeServices, InSession = false)]
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AirPlaceApprovedExamples.SelfCheck");
