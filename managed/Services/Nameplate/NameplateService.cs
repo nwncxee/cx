@@ -593,7 +593,7 @@ public sealed unsafe class NameplateService : IExtenderService
         OverrideLayout ov = LayoutOverride(e, atlas, scale, nameLines, band, bandW);
         PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, ov.ShowName ? nameLines : 0,
                                              bandW, portrait, ov.ShowBand,
-                                             NameplateKnobs.HealthBar.V && e.Damage >= 0, lineH, scale,
+                                             NameplateKnobs.HealthBar.V && e.Health >= 0f, lineH, scale,
                                              ov.PreLines, ov.PostLines, ov.ExtraW, BarW(scale));
         w = m.W; h = m.H;
     }
@@ -905,7 +905,7 @@ public sealed unsafe class NameplateService : IExtenderService
                                   bool portraits, bool background, Hit[] hits, ref int hitN)
     {
         bool band = NameplateKnobs.HealthBand.V && e.Damage >= 0;
-        bool bar = NameplateKnobs.HealthBar.V && e.Damage >= 0;
+        bool bar = NameplateKnobs.HealthBar.V && e.Health >= 0f;
         float nameW = MeasureName(e, atlas, TextMaxW(scale), out int nameLines);
         string bandText = band ? PlateLayout.BandText(BandWords.Current, e.Damage) : "";
         float bandW = band ? MeasureRunes(atlas, bandText) : 0f;

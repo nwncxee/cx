@@ -65,7 +65,8 @@ public static partial class PlateLayout
     /// const so this file stays pure math and self-checks with no UI state.</summary>
     private const float PortraitAspect = 0.64f;
 
-    /// <summary>Number of health bands (<c>CNWCCreatureStats + 0x8e</c> is 0..5).</summary>
+    /// <summary>The vanilla health bands, 0..5, the rows the engine's HP thresholds land in. A server can set a
+    /// creature to any later <c>damagelevels.2da</c> row; those take their caption from that row alone.</summary>
     public const int BandCount = 6;
 
     /// <summary>Band colours as flat 0..255 (r,g,b) triplets in band order; normalised by
@@ -661,38 +662,40 @@ public static partial class PlateLayout
     private static readonly float[] BandFill = { 1f, 0.85f, 0.625f, 0.375f, 0.125f, 0f };
 
     /// <summary>The health bar's fill, 0..1: <c>(cur + temp) / max</c> while <paramref name="max"/> is set and the
-    /// pool lands in <paramref name="band"/> (only self and party are ever sent HP, and a leaver's goes stale),
-    /// else the band's midpoint. ponytail: stale HP that still agrees with the band draws a stale fill within it;
-    /// checking party membership (<c>CPanelPartyBar::FindMemberPanel</c>) is the upgrade if that reads wrong.</summary>
+    /// pool lands in a vanilla <paramref name="band"/> or the band is a server's own row, else a vanilla band's
+    /// midpoint, else -1 (no bar). ponytail: stale HP that agrees with the band draws a stale fill; checking party
+    /// membership (<c>CPanelPartyBar::FindMemberPanel</c>) is the upgrade if that reads wrong.</summary>
     public static float HealthFraction(int cur, int temp, int max, int band)
     {
-        int b = band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band;
+        int b = band < 0 ? 0 : band;
         if (max > 0)
         {
             int hp = (short)(cur + temp);   // the engine sums the two shorts as a short
-            if (BandOf(hp, max) == b)
+            if (b >= BandCount || BandOf(hp, max) == b)
             {
                 float f = (float)hp / max;
                 return f < 0f ? 0f : f > 1f ? 1f : f;
             }
         }
-        return BandFill[b];
+        return b < BandCount ? BandFill[b] : -1f;
     }
 
-    /// <summary>One caption per band from what the client's table resolved to, trimmed: a null entry (the cell
+    /// <summary>One caption per table row from what the client's table resolved to, trimmed: a null entry (the cell
     /// did not parse) or a blank one is <c>""</c>, no caption. Cold: allocates the array once per resolve.</summary>
     public static string[] BandCaptions(string?[] resolved)
     {
-        var captions = new string[BandCount];
-        for (int i = 0; i < BandCount; i++) captions[i] = resolved[i]?.Trim() ?? "";
+        var captions = new string[resolved.Length];
+        for (int i = 0; i < resolved.Length; i++) captions[i] = resolved[i]?.Trim() ?? "";
         return captions;
     }
 
-    /// <summary>Health-band caption from <paramref name="captions"/>, a <see cref="BandCaptions"/> result.
-    /// Out-of-range indices clamp to the nearest band; the returned string is a
-    /// cached one, never built (hot path), and may be empty.</summary>
-    public static string BandText(string[] captions, int band) =>
-        captions[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
+    /// <summary>The caption of damage level <paramref name="band"/>, the table row the engine reads too: a negative
+    /// level reads row 0, one past the last row has none. A cached string, never built (hot path); may be empty.</summary>
+    public static string BandText(string[] captions, int band)
+    {
+        int i = band < 0 ? 0 : band;
+        return i < captions.Length ? captions[i] : "";
+    }
 
     /// <summary>Name colour by reaction byte (<c>CNWCCreature + 0x3a8</c>): 1 friend green, 2 enemy red,
     /// anything else neutral blue. 0..1.</summary>

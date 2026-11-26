@@ -16,10 +16,13 @@ internal static unsafe class BandWords
     /// <summary>The 2da column holding each band's strref.</summary>
     private static ReadOnlySpan<byte> StringRefColumn => "STRING_REF\0"u8;
 
+    /// <summary>The rows a damage level can name: the server sends it as one byte.</summary>
+    private const int MaxRows = 256;
+
     /// <summary>The cache and the counter behind it; one object, so nothing here is a loose static.</summary>
     private sealed class BandWordsState
     {
-        public string[] Words = PlateLayout.BandCaptions(new string?[PlateLayout.BandCount]);
+        public string[] Words = [];
         /// <summary>Bumped by every invalidation; the cache is current when <see cref="SeenGeneration"/> matches it.</summary>
         public int Generation;
         public int SeenGeneration = -1;
@@ -38,7 +41,7 @@ internal static unsafe class BandWords
     private static readonly BandWordsState _state = new();
     private static readonly OriginalCalls _originals = new();
 
-    /// <summary>The captions to draw, one per band. All empty until the first resolve succeeds.</summary>
+    /// <summary>The captions to draw, one per table row. Empty until the first resolve succeeds.</summary>
     public static string[] Current => _state.Words;
 
     /// <summary>Hook every TLK entry point that can change what a strref resolves to. A server sends overrides
@@ -79,7 +82,7 @@ internal static unsafe class BandWords
     { int r = _originals.Reload(self); Stale(); return r; }
 
     /// <summary>Re-resolve the captions when the cache is stale. One int compare when nothing changed; the
-    /// resolve itself is six table reads and six TLK lookups. If the tables are not reachable yet the cache
+    /// resolve itself is one table read and one TLK lookup per row. If the tables are not reachable yet the cache
     /// stays stale and the next call tries again.</summary>
     public static void Refresh()
     {
@@ -105,7 +108,8 @@ internal static unsafe class BandWords
         if (table == IntPtr.Zero || EngineFn.C2DAGetINTEntry == null || EngineFn.ExoStringInit == null
             || EngineFn.ExoStringDtor == null) return null;
 
-        var words = new string?[PlateLayout.BandCount];
+        int rows = new C2DA(table).Rows;
+        var words = new string?[rows < 0 ? 0 : rows > MaxRows ? MaxRows : rows];
         byte* col = stackalloc byte[Native.ExoScratch];
         NativeMemory.Clear(col, Native.ExoScratch);
         fixed (byte* name = StringRefColumn) EngineFn.ExoStringInit((IntPtr)col, name, uint.MaxValue);

@@ -487,7 +487,13 @@ public static partial class PlateLayout
         check.Expect(got[1] == "" && got[2] == "", "a blank or whitespace-only caption stays empty, the server chose no word");
         check.Expect(got[3] == "", "a cell that did not parse draws no caption, never a typed-in word");
         check.Expect(got[4] == "Hurt", "a caption loses its stray edge spaces");
-        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine" && BandText(got, 12) == "Gone", "out-of-range band index clamps");
+        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine", "a negative band index reads the first row");
+        check.Expect(BandText(got, 12) == "", "a level past the table's last row draws no caption, not the last row's word");
+        string[] custom = BandCaptions(new string?[] { "Fine", "Barely", "Injured", "Badly", "Near", "Dead", "Bleeding", "Hidden" });
+        check.Expect(custom.Length == 8, "a server's table keeps every row it has, not only the vanilla six");
+        check.Expect(BandText(custom, 6) == "Bleeding" && BandText(custom, 7) == "Hidden",
+                     "a server's own damage level shows its own row's caption, not Dead");
+        check.Expect(BandColor(7) == BandColor(5), "a row past the vanilla six takes the colour vanilla gives row 5 and above");
         check.Expect(ReferenceEquals(BandText(got, 0), BandText(got, 0)), "band text is a cached string, not built per call");
 
         // ---- A blank caption measures no width ----
@@ -531,7 +537,10 @@ public static partial class PlateLayout
         check.Expect(Near(HealthFraction(50, 0, 50, 3), 0.375f), "stale HP that contradicts the band loses to the band");
         check.Expect(HealthFraction(60, 0, 50, 0) == 1f, "an overfull pool never draws past the track");
         check.Expect(HealthFraction(0, 0, 0, 0) == 1f && HealthFraction(0, 0, 0, 5) == 0f, "band 0 is a full bar, dead an empty one");
-        check.Expect(HealthFraction(0, 0, 0, 42) == 0f && HealthFraction(0, 0, 0, -1) == 1f, "an out-of-range band clamps");
+        check.Expect(HealthFraction(0, 0, 0, -1) == 1f, "a negative band clamps to the first");
+        check.Expect(Near(HealthFraction(37, 0, 50, 6), 0.74f), "a server's own level draws the bar from exact HP, which it says nothing against");
+        check.Expect(HealthFraction(0, 0, 0, 6) < 0f && HealthFraction(0, 0, 0, 42) < 0f,
+                     "a server's own level with no HP sent draws no bar, never an empty dead one");
 
         // ---- SpeakerPrefixLen: the engine's "[name]: " on a placeable/door line ----
         static System.Collections.Generic.List<System.Text.Rune> R(string s)
