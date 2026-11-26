@@ -111,6 +111,32 @@ internal static partial class GroundMist
             for (int x = 0; x < QuarterSide; x++) s.Quarter[y, x] = float.NaN;
         Lay(s, 1);
         Lay(s, 2);
+        LayInland(s);
+    }
+
+    /// <summary>The metres the dust thins over to nothing at the walkable floor's edge, the distance from a floorless
+    /// column's centre at which it starts to show, and the columns round each the nearest such centre is looked for in.</summary>
+    private const float Thin = 2f, Rim = 0.5f;
+    private const int Reach = 2;
+
+    /// <summary>Each column's share of its dust: 1 inland, thinning to nothing within <see cref="Thin"/> of the nearest
+    /// floorless column, off the field counted as one, so no line shows where the walkmesh ends.</summary>
+    private static void LayInland(GroundMistState s)
+    {
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+            {
+                int c = y * Side + x;
+                float near = Reach + Thin;
+                for (int j = -Reach; j <= Reach && !float.IsNaN(s.Floor[c]); j++)
+                    for (int i = -Reach; i <= Reach; i++)
+                    {
+                        int nx = x + i, ny = y + j, n = ny * Side + nx;
+                        if ((uint)nx < Side && (uint)ny < Side && !float.IsNaN(s.Floor[n])) continue;
+                        near = MathF.Min(near, MathF.Sqrt(i * i + j * j));
+                    }
+                s.Inland[c] = float.IsNaN(s.Floor[c]) ? 0f : Math.Clamp((near - Rim) / Thin, 0f, 1f);
+            }
     }
 
     /// <summary>Lay the floors <paramref name="per"/> cells to the metre (1: the columns and their water, 2: the
@@ -564,6 +590,9 @@ internal sealed class GroundMistState
 
     /// <summary>Per half-metre cell, by row then column from the corner: the floor over its centre (NaN for none).</summary>
     public readonly float[,] Quarter = new float[GroundMist.QuarterSide, GroundMist.QuarterSide];
+
+    /// <summary>Per column, the share of its dust it shows, thinning toward the walkable floor's edge.</summary>
+    public readonly float[] Inland = new float[GroundMist.Side * GroundMist.Side];
 
     /// <summary>Per column, whether its floor is open water.</summary>
     public readonly bool[] Wet = new bool[GroundMist.Side * GroundMist.Side];

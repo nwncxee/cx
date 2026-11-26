@@ -67,6 +67,7 @@ internal static partial class GroundMist
                 float wx = s.Ox + x + 0.5f, wy = s.Oy + y + 0.5f;
                 (float lies, float top) = dust ? AirScene.Shown(wx, wy) : (0f, 0f);
                 float wet = dust ? AirScene.MistAt(wx, wy) : 0f;
+                lies *= s.Inland[c];
                 float floor = float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c];
                 cells[c] = new Cell(floor, wet, lies, top);
                 quarters[c] = new Vector4(QuarterAt(s, 2 * x, 2 * y), QuarterAt(s, 2 * x + 1, 2 * y), QuarterAt(s, 2 * x, 2 * y + 1), QuarterAt(s, 2 * x + 1, 2 * y + 1));
