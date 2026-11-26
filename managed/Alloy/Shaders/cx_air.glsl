@@ -11,6 +11,20 @@ float CxAirDust(float z, float top)
     return 2.0 * (1.0 - z / top) / top;
 }
 
+// Do neighbouring columns with floors `a` and `b` join into one floor, their rise at most `step`? A wall's floor lies
+// far below anything, so a wall never joins.
+bool CxAirJoined(float a, float b, float step)
+{
+    return abs(a - b) <= step;
+}
+
+// The shares two neighbouring column centres take a fraction `f` of the way from the first to the second: a straight
+// blend over a joined floor, and over a wall or a ledge each fading to nothing halfway, so no air crosses the edge.
+vec2 CxAirPair(float f, bool joined)
+{
+    return joined ? vec2(1.0 - f, f) : vec2(max(1.0 - 2.0 * f, 0.0), max(2.0 * f - 1.0, 0.0));
+}
+
 // The light a layer scatters: the room's `ambient`, plus a `lamp` `dist` metres off that reaches `reach` metres,
 // falling off as the square of what is left of its reach and gone at its edge.
 vec3 CxAirLit(vec3 ambient, vec3 lamp, float dist, float reach)
