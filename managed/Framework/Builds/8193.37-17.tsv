@@ -594,20 +594,30 @@ offset	CNWCItem	ghost	0x260	0x240	# ItemGhost
 offset	CNWCItem	equipSlot	0x26c	0x24c	# ItemEquipSlot
 offset	CNWCItem	repoX	0x274	0x254	# ItemRepoX
 offset	CNWCItem	repoY	0x275	0x255	# ItemRepoY
+offset	CNWCItem	pendingX	0x276	0x256	# ItemPendingX
+offset	CNWCItem	pendingY	0x277	0x257	# ItemPendingY
+offset	CGuiMultiInvbox	cols	0x1a0	0x190	# MultiInvboxCols
+offset	CGuiMultiInvbox	rows	0x1a4	0x194	# MultiInvboxRows
 offset	CNWCItem	possessor	0x284	0x264	# ItemPossessor
 offset	CNWCItem	inContainer	0x288	0x268	# ItemInContainer
 offset	CNWCItem	stackSize	0x2a4	0x284	# ItemStackSize
+offset	CNWCItem	activePropertyCount	0x214	0x1f4	# ItemActivePropertyCount
+offset	CNWCItem	activeProperties	0x218	0x1f8	# ItemActiveProperties
+offset	CNWItemProperty	stride	0x30	0x30	# ItemPropertyStride
+offset	CNWItemProperty	propertyName	0x0	0x0	# ItemPropertyType
 offset	CNWBaseItem	equipSlots	0x4	0x4	# BaseItemEquipSlots
 offset	CNWBaseItem	invSlotWidth	0x14	0x14	# BaseItemInvSlotWidth
 offset	CNWBaseItem	invSlotHeight	0x15	0x15	# BaseItemInvSlotHeight
 offset	CNWBaseItem	stacking	0x24	0x24	# BaseItemStacking
-offset	CNWBaseItem	usable	0x80	0x80	# BaseItemUsable
+offset	CNWBaseItem	container	0x80	0x80	# BaseItemContainer
 offset	CNWBaseItem	modelType	0x16	0x16	# BaseItemModelType
 offset	CNWBaseItem	itemClass	0x40	0x40	# BaseItemClass
 offset	CNWRules	baseItems	0x20	0x20	# RulesBaseItems
 offset	CPanelInventory	containerMode	0x319c	0x2f64	# InvContainerMode
 offset	CPanelInventory	shownOid	0x31a0	0x2f68	# InvShownOid
 offset	CPanelInventory	equipPanel	0x368	0x308	# InvEquipPanel
+offset	CGuiInvbox	itemId	0x184	0x174	# InvboxItemId
+offset	CGuiInvbox	draggedId	0x170	0x160	# InvboxDraggedId
 offset	CPanelInventory	maxWeightLabel	0x1ed0	0x1d80	# InvMaxWeightLabel
 offset	CPanelInventory	containerGrid	0x2628	0x24b0	# InvContainerGrid
 offset	CPanelInventory	containerOid	0x2810	0x268c	# InvContainerOid
@@ -760,6 +770,7 @@ rva	_ZN8CNWCArea18GetSurfaceMaterialE6Vector	0x7db100	# AreaGetSurfaceMaterial
 rva	_ZN12CNWCAnimBase16GetAnimationNameEt	0x961540	# AnimGetName
 rva	_ZN13CActionTarget18ActivateTargetModeEv	0x83b9e0	# ActivateTargetMode
 rva	_ZN13CActionTarget16HandleLMouseDownEv	0x83be00	# ActionTargetLMouseDown
+rva	_ZN13CActionTarget6UpdateEf	0x83c230	# ActionTargetUpdate
 rva	_ZN21CClientExoAppInternal28PerformDefaultActionOnObjectEP10CNWCObject	0x6efec0	# PerformDefaultActionOnObject
 rva	g_vCreatureEnemyHighlight	0x1296eb8	# HiliteEnemy
 rva	g_vCreatureFriendHighlight	0x1296ec8	# HiliteFriend
@@ -903,7 +914,12 @@ rva	_ZN15CGuiQuickButton16HandleLeftButtonEv	0x85c8f0	# QuickButtonHandleLeftBut
 rva	_ZN14CGuiDragSource23HandleMouseMoveCapturedEii	0x1eea60	# DragSourceMoveCaptured
 rva	_ZN8CNWCItem13PlayDropSoundEv	0x83ea00	# ItemPlayDropSound
 rva	_ZN13CClientExoApp17GetInventoryPanelEv	0x6abbe0	# GetInventoryPanel
+rva	_ZN15CPanelInventory12GetEquipSlotEi	0x855b10	# InvGetEquipSlot
+rva	_ZN15CGuiMultiInvbox17HandleDoubleClickEP8CNWCItem	0x8801b0	# InvboxHandleDoubleClick
 rva	_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii	0x87f970	# InvboxAddItem
+rva	_ZN15CGuiMultiInvbox7AddItemEjiii	0x87f640	# MultiInvboxAddItem
+rva	_ZN15CGuiMultiInvbox24CheckIfIconPositionEmptyEiiiij	0x87fbb0	# MultiInvboxCellFree
+rva	_ZN11CNWCMessage31SendPlayerToServerBarterAddItemEjhh	0x7ba0f0	# SendBarterAddItem
 rva	_ZN15CPanelInventory22SetContainerGUIVisibleEiiij	0x8575f0	# InvSetContainerGuiVisible
 rva	_ZN15CPanelInventory21HandleContainerPageUpEv	0x855d00	# InvContainerPageUp
 rva	_ZN15CPanelInventory23HandleContainerPageDownEv	0x855be0	# InvContainerPageDown
@@ -914,6 +930,7 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInventory_EquipEjjj	0x7c0d70	# SendInvEq
 rva	_ZN11CNWCMessage35SendPlayerToServerInventory_UnequipEjhhj	0x7c1100	# SendInvUnequip (12/7)
 rva	_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj	0x7c1030	# SendInvRepositoryMove (12/9)
 rva	_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj	0x7c3d00	# SendStoreRequestSell (7/2)
+rva	_ZN11CNWCMessage34SendPlayerToServerStore_RequestBuyEjhhj	0x7c3c10	# SendStoreRequestBuy (7/1)
 rva	_ZN11CPanelStore19s_pActiveStorePanelE	0x1428d58	# ActiveStorePanel
 rva	_ZN11CPanelStore28HandleMouseoverInventoryItemEj	0x97bc20	# StoreMouseoverInventoryItem
 rva	_ZN11CNWCMessage32SendPlayerToServerInventory_DropEjfff	0x7c0c90	# SendInvDrop (12/3)

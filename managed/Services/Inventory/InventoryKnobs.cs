@@ -10,7 +10,7 @@ namespace CX.Services.Inventory;
 internal static class InventoryKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, DragDrop, Search, Kilograms, AboveNui, Placed;
+    internal static readonly Knob<bool> Enabled, DragDrop, Search, Kilograms, AboveNui, Placed, TakeAll;
     internal static readonly Knob<string> Mode;
     internal static readonly Knob<float> Size, X, Y;
     internal static readonly TextStyle Text;
@@ -32,6 +32,9 @@ internal static class InventoryKnobs
                           changed: InventoryService.Relayout);
         Search = G.Toggle("search", "Search box", true, help: "A box in the title bar that dims every item whose name doesn't match.",
                           changed: InventoryService.Relayout);
+        TakeAll = G.Toggle("takeall", "Take all button", true,
+                           help: "A Take all button in an open container's title bar: it takes every item into the backpack one at a time, each after the server confirms the last, no faster than a player clicking.",
+                           changed: InventoryService.Relayout);
         Kilograms = G.Toggle("kilograms", "Kilograms tooltip", false,
                              help: "Hovering the weight shows it in kilograms (1 lb = 0.4536 kg). The window itself keeps the game's pounds.");
         DragDrop = G.Toggle("dropground", "Drag out to drop", true,

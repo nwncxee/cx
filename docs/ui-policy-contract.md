@@ -767,8 +767,10 @@ Actions for `.route`: `inventory.equip`, `inventory.unequip`, `inventory.move`, 
 `inventory.split` (shift-click a stack: half), `inventory.drop`, `inventory.use`, `inventory.radial` (`x;y` are the
 click's screen point for `use` and `radial`), `inventory.barter`, `inventory.gold`, `inventory.quickbar`, and for an open
 container `inventory.take` (out of it: to a backpack cell, or `x;y` = `255;255` when the server picks, from a
-double-click or ctrl-click) and `inventory.put` (into it, from the backpack or elsewhere in it); for `move`, `unequip`,
-`take` and `put` they are the target cell in the wire's form, the game's own: column, and global row counted from each
+double-click or ctrl-click) and `inventory.put` (into it, from the backpack or elsewhere in it), and for an open store
+`inventory.buy` (a store item dragged onto the window: to the backpack cell under it, `255;255` when that is taken or
+the drop is on the frame; `engine` buys it with no confirm, as the stock drop does); for `move`, `unequip`, `take`, `put`
+and `buy` they are the target cell in the wire's form, the game's own: column, and global row counted from each
 page's bottom -- the backpack's 6-row pages, a container's 5-row ones -- and `take` / `put` name the container as the
 other oid).
 
@@ -776,7 +778,8 @@ World actions -- an item dragged out of the window, or gold carried out of the g
 are resolved by the stock drop rules first, then routed: `inventory.drop` (the ground, at the point), `inventory.use` (a
 potion on the player or the player's associate), `inventory.barter` (a backpack item on another creature), `inventory.gold` (the ground, a
 creature, a placeable or a usable ground item), `inventory.sell` (a backpack item released over an open store's item
-box; `engine` sells it with no confirm, as the stock drop does). `deny` on `inventory.gold` also refuses the gold button itself. Their
+box; `engine` sells it with no confirm, as the stock drop does), `inventory.offer` (a backpack item released over the
+player's side of an open trade; `engine` offers it at the cell under the point, as the stock drop does). `deny` on `inventory.gold` also refuses the gold button itself. Their
 `server` event appends the world point:
 `<action>;<oid hex>;<mask hex>;<amount>;0;<target oid hex>;<x>;<y>;<z>` (the item and its source slot mask; for gold
 the oid is the target and `amount` the gold; `7f000000` = the ground). An item released over a quickbar button routes

@@ -50,11 +50,14 @@ void main()
     if (GetCurrentlyRunningEvent() == EVENT_SCRIPT_MODULE_ON_PLAYER_TARGET)
     {
         object oPicked = GetTargetingModeSelectedObject();
-        Mark("targeted " + (GetIsObjectValid(oPicked) ? GetTag(oPicked) : "nothing"));
+        string sPicked = GetIsObjectValid(oPicked) ? GetTag(oPicked) : "nothing";
+        Mark("targeted " + sPicked);
+        FloatingTextStringOnCreature("Targeted: " + sPicked, GetLastPlayerToSelectTarget(), FALSE);
         return;
     }
     object oPC = GetEnteringObject();
     if (!GetIsPC(oPC)) return;
-    SetEventScript(GetModule(), EVENT_SCRIPT_MODULE_ON_PLAYER_TARGET, "cxshow");
+    // The ladder compiles this script under the module's own name (cxshow in the harness, another in a hand-check kit).
+    SetEventScript(GetModule(), EVENT_SCRIPT_MODULE_ON_PLAYER_TARGET, GetEventScript(GetModule(), EVENT_SCRIPT_MODULE_ON_CLIENT_ENTER));
     Arm(oPC, 0);
 }

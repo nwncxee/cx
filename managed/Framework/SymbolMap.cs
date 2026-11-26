@@ -342,6 +342,11 @@ internal static unsafe class SymbolMap
     /// it touches no member after the fire callback (which may <c>delete this</c>), which every caller invokes last.</summary>
     [Fn("void(CActionTarget this)")]
     public const string ActionTargetLMouseDown = "_ZN13CActionTarget16HandleLMouseDownEv";
+    /// <summary><c>CActionTarget::Update(float)</c> @0x965570 (rva 0x83c230) -- a live target mode's per-frame cursor: the same
+    /// GUI hit check, world pick and allowed-type scan as <see cref="ActionTargetLMouseDown"/>, ending in <c>SetMouseCursor</c>.
+    /// Returns 0; the float is not read on either build.</summary>
+    [Fn("int(CActionTarget this, float dt)")]
+    public const string ActionTargetUpdate = "_ZN13CActionTarget6UpdateEf";
     /// <summary>Tab-target. <c>CClientExoAppInternal::PerformDefaultActionOnObject(CNWCObject*)</c>
     /// @0x660830: the one world-click seam -- <c>PerformLButtonDownAction</c> calls it when the pick returned an
     /// object (verdict 2) and walks to the point when it answers 0, so a non-zero answer is "handled, no walk".
@@ -2287,6 +2292,20 @@ internal static unsafe class SymbolMap
     /// oid clears the panel's "this is mine" flag and permanently strips the gold widgets off it.</summary>
     [Fn("void(CPanelInventory this, uint oid)")]
     public const string InvSetCharacterData = "_ZN15CPanelInventory16SetCharacterDataEj";
+    /// <summary><c>CPanelInventory::GetEquipSlot(int slotMask)</c> @0x78d6f0 (Windows rva 0x855b10) -- the paper doll's box
+    /// for one slot mask, null for a mask none of the 14 boxes takes. Only the server's slot update fills or empties a
+    /// box, and closing the inventory clears them all.</summary>
+    [Fn("CGuiInvbox(CPanelInventory this, int slotMask)")]
+    public const string InvGetEquipSlot = "_ZN15CPanelInventory12GetEquipSlotEi";
+    /// <summary><c>PlayGuiSound(CResRef, uint)</c> @0x57fe00 -- a one-shot interface sound (group 9), the one the stock
+    /// inventory plays for <c>gui_cannotequip</c> with 0. The resref crosses by value: <see cref="CX.Engine.ResRefArg"/>.</summary>
+    [Fn("void(ResRefArg sound, uint arg)")]
+    public const string PlayGuiSound = "_Z12PlayGuiSound7CResRefj";
+    /// <summary><c>CGuiMultiInvbox::HandleDoubleClick(CNWCItem*)</c> @0x690300 (Windows rva 0x8801b0) -- the stock grid's
+    /// double-click: a container base item is <c>UseObject</c>ed, else the player's item opens the target cursor of its
+    /// first cast-spell property. The body reads nothing of the box.</summary>
+    [Fn("void(CGuiContainer this, CNWCItem item)")]
+    public const string InvboxHandleDoubleClick = "_ZN15CGuiMultiInvbox17HandleDoubleClickEP8CNWCItem";
     /// <summary><c>GameCameraHitCheck(int x, int y, Vector* out, CHitInfo* info)</c> @0x63a270 (Windows rva 0x6d7f50) -- the
     /// world under a GUI-space point (SDL x, <c>GuiManVpH - y</c>) through the module camera: what
     /// <c>CGuiDragSource::HandleLMouseUp</c> asks when a drag ends over no GUI object. Sets <c>info+0x20 = 1</c>, then
@@ -2302,6 +2321,10 @@ internal static unsafe class SymbolMap
     /// backpack item dropped on another creature (<c>CGuiInvbox::HandleDropAsSource</c>).</summary>
     [Fn("void(IntPtr msg, uint creature, uint item)")]
     public const string SendBarterStart = "_ZN11CNWCMessage35SendPlayerToServerBarterStartBarterEjj";
+    /// <summary><c>..._BarterAddItem(uint item, uchar x, uchar y)</c> @0x806530 (rva 0x7ba0f0), major 35 minor 5 -- a
+    /// backpack item offered at a cell of the player's side, 0xff, 0xff for the server to pick.</summary>
+    [Fn("void(IntPtr msg, uint item, byte x, byte y)")]
+    public const string SendBarterAddItem = "_ZN11CNWCMessage31SendPlayerToServerBarterAddItemEjhh";
     /// <summary><c>..._Input_UseItem(uint item, uchar, uchar, uint target, Vector)</c> @0x7ffa10 (rva 0x7c0610), major 6
     /// minor 9 -- a potion dropped on the player (vanilla passes 0, 0xff, the creature, a zero vector).</summary>
     [Fn("void(IntPtr msg, uint item, byte a, byte b, uint target, VectorArg pos)")]
@@ -2381,6 +2404,14 @@ internal static unsafe class SymbolMap
     /// <c>globalY</c> is page-major; Windows takes the 5th argument on the stack, which its call sites do pass.</summary>
     [Fn("void(IntPtr box, uint oid, int x, int globalY, int ghost)")]
     public const string InvboxAddItem = "_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii";
+    /// <summary><c>CGuiMultiInvbox::AddItem(uint oid, int x, int y, int ghost)</c> @0x692f70 (Windows rva 0x87f640) -- one
+    /// grid's add, which the barter box's drop calls with ghost 1 on the player's side of a trade.</summary>
+    [Fn("void(IntPtr box, uint oid, int x, int y, int ghost)")]
+    public const string MultiInvboxAddItem = "_ZN15CGuiMultiInvbox7AddItemEjiii";
+    /// <summary><c>CGuiMultiInvbox::CheckIfIconPositionEmpty(int w, int h, int x, int y, uint oid)</c> @0x692140 (Windows rva
+    /// 0x87fbb0) -- 1 when a <c>w</c> by <c>h</c> icon fits at (x, y), cells <c>oid</c> holds counting as free.</summary>
+    [Fn("int(IntPtr box, int w, int h, int x, int y, uint oid)")]
+    public const string MultiInvboxCellFree = "_ZN15CGuiMultiInvbox24CheckIfIconPositionEmptyEiiiij";
     /// <summary><c>CPanelInventory::SetContainerGUIVisible(int show, int notifyServer, int isItem, uint graphicOid)</c>
     /// @0x68e5d0 (Windows rva 0x8575f0; MSVC also inlined its <c>show == 0</c> half into <c>SetInventoryVisible</c>).
     /// <c>show == 0</c> is the stock container teardown -- mode off, grid emptied, sub-panel back to "Equip", oid
@@ -2440,6 +2471,10 @@ internal static unsafe class SymbolMap
     /// sends for an inventory item dropped on it (<c>CGuiStoreInvBox::ProcessItemDrop</c>), with no confirm.</summary>
     [Fn("void(IntPtr msg, uint item)")]
     public const string SendStoreRequestSell = "_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj";
+    /// <summary><c>..._Store_RequestBuy(uint item, uchar x, uchar y, uint owner)</c> @0x8045e0 (rva 0x7c3c10), major 7 minor 1 --
+    /// what the stock repository drop sends for a store item (<c>CGuiInvbox::RequestBuyNoConfirm</c>), with no confirm.</summary>
+    [Fn("void(IntPtr msg, uint item, byte x, byte globalY, uint owner)")]
+    public const string SendStoreRequestBuy = "_ZN11CNWCMessage34SendPlayerToServerStore_RequestBuyEjhhj";
     /// <summary><c>CPanelStore::s_pActiveStorePanel</c>: the open store's panel, null when none. <c>OnActivate</c> stores
     /// <c>this</c> and <c>OnDeactivate</c> zeroes it on both builds (Windows rva 0x1428d58, beside the store's own two clears).</summary>
     public const string ActiveStorePanel = "_ZN11CPanelStore19s_pActiveStorePanelE";
@@ -2462,7 +2497,7 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr msg, byte page, int isMine)")]
     public const string SendGuiInvSelectPanel = "_ZN11CNWCMessage42SendPlayerToServerGuiInventory_SelectPanelEhi";
     /// <summary><c>..._UseObject(uint oid, int, int)</c> @0x7ffe50 (rva 0x7c07c0), major 6 minor 11 -- double-click on
-    /// a usable item (<see cref="EngineLayout.BaseItemUsable"/> non-zero), and also how the X button closes a
+    /// a container item (<see cref="EngineLayout.BaseItemContainer"/> non-zero), and also how the X button closes a
     /// container. Vanilla passes 0 for both ints.</summary>
     [Fn("void(IntPtr msg, uint oid, int a, int b)")]
     public const string SendInputUseObject = "_ZN11CNWCMessage33SendPlayerToServerInput_UseObjectEjii";
@@ -2784,6 +2819,7 @@ internal static unsafe class SymbolMap
         // same GetMousePos -> hit-check -> allowed-list scan -> fire.
         [ActivateTargetMode]      = At(),
         [ActionTargetLMouseDown]  = At(),
+        [ActionTargetUpdate]      = At(),   // GetMousePos -> hit-check (mask 0xf) -> pick -> allowed scan -> SetMouseCursor
         // tab-target: the click seam is the callee PerformLButtonDownAction (rva 0x6f02c0, the one caller
         // of WalkPlayerToPoint) runs on a verdict-2 pick, same type-byte switch as Linux @0x660830; the colour
         // globals are the DAT_ refs of the Windows HiliteAreaObjects (rva 0x7db2f0), per attitude branch.
@@ -3320,6 +3356,9 @@ internal static unsafe class SymbolMap
         [RulesetIntEntry]        = Nm("?GetRulesetIntEntry@CNWRules@@QEAAH_KH@Z"),
         [InvSetCharacterData]    = At(),   // gold creature+0x1b8, weight +0x28c; label m_pString at label+0x90
         [GetInventoryPanel]      = At(),
+        [InvGetEquipSlot]        = At(),   // body read: 14-entry mask table at 0xe4ffc0, box = this+0x528 + i*400
+        [PlayGuiSound]           = Nm("?PlayGuiSound@@YAXVCResRef@@I@Z"),
+        [InvboxHandleDoubleClick] = At(),   // body read: base+0x80 -> UseObject, else possessor +0x264 == player, props +0x1f4/+0x1f8
         [GameCameraHitCheck]     = At(),   // body read: GetModuleCamera, info+0x20 = 1, camera vtbl +0x60
         [GetGameobjectHit]       = At(),   // body read: kind +0x24, gob +0x48, item -> +0x48
         // ---- the scene seam ----
@@ -3331,6 +3370,7 @@ internal static unsafe class SymbolMap
         [AuroraSetTileFoggedByWar] = Nm("?AuroraSetTileFoggedByWar@@YAXAEAVVector@@_N@Z"),
         [SetAlphaObject]         = Nm("?setalpha@@YAXPEAVCAurObject@@M@Z"),
         [SendBarterStart]        = At(),   // 35 / 1
+        [SendBarterAddItem]      = At(),   // 35 / 5, the barter box drop's 'InvR' source
         [SendInputUseItem]       = At(),   // 6 / 9; the Vector by pointer
         [SendGoldTransfer]       = At(),   // 8 / 1, minor 0x0a / 0x16; the Vector by pointer
         [QuickButtonSetItem]     = At(),   // body read: CGuiQuickButton drop handler (vtbl +0xe8) calls it with 0xff00ff, 0
@@ -3357,6 +3397,8 @@ internal static unsafe class SymbolMap
         [DragSourceMoveCaptured] = At(),   // the CGuiDragSource vftable's slot 0x88
         [ItemPlayDropSound]      = At(),   // the same handler's next call
         [InvboxAddItem]          = At(),   // page +0x1d0, rows +0x194 on the Windows CGuiMultiInvbox
+        [MultiInvboxAddItem]     = At(),   // the barter box drop's last call, ghost 1
+        [MultiInvboxCellFree]    = At(),   // cols +0x190, rows +0x194, cell array +0x1b0
         [InvSetContainerGuiVisible] = At(), // body read: mode +0x2f64, grid +0x24b0, isItem +0x2690, oid +0x268c, Status 0x7bdeb0
         [InvContainerPageUp]     = At(),   // body read: grid +0x24b0, SelectNextPage 0x7bde70 (25 / 2), page +0x2680, count +0x2f60
         [InvContainerPageDown]   = At(),   // body read: the same, SelectPreviousPage 0x7bde90 (25 / 3)
@@ -3367,6 +3409,7 @@ internal static unsafe class SymbolMap
         [SendInvEquip]           = At(),   // 12 / 1
         [SendInvUnequip]         = At(),   // 12 / 7
         [SendInvRepositoryMove]  = At(),   // 12 / 9
+        [SendStoreRequestBuy]    = At(),   // 7 / 1: writes item, x, y, owner and flags the item (+0x240), as Linux
         [SendStoreRequestSell]   = At(),   // 7 / 2: the one 7 / 2 send; sets the item's sell flag (+0x240) first, as Linux (+0x260)
         [ActiveStorePanel]       = At(),   // OnDeactivate zeroes it, then the store's +0x178 and panel +0x170 (Linux +0x198, +0x190)
         [StoreMouseoverInventoryItem] = At(), // TLK 61619, the 33-char name cut, markup +0x17c/+0x180, cap +0x18c, label +0x468

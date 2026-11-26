@@ -623,6 +623,7 @@ flow in slot order; no rows is vanilla order, *Reset layout* drops the root kind
 | inventory.size | Size | S | 0.75–3 × step 0.05 · 1 | U | L | — | Scale over the UI font scale. The window shrinks itself to fit the screen. |
 | inventory.mode | Pages | D | Tabs / Scroll · Scroll | U | L | — | Tabs is the vanilla layout (a tab per page); Scroll replaces the tabs with a scrollbar that glides through every page, dividers marking where each begins. |
 | inventory.search | Search box | T | on | U | L | — | A box in the title bar that dims every item whose name doesn't match. |
+| inventory.takeall | Take all button | T | on | U | L | — | A Take all button in an open container's title bar: it takes every item into the backpack one at a time, each after the server confirms the last, no faster than a player clicking. |
 | inventory.kilograms | Kilograms tooltip | T | off | U | L | — | Hovering the weight shows it in kilograms (1 lb = 0.4536 kg). The window itself keeps the game's pounds. |
 | inventory.dropground | Drag out to drop | T | on | U | L | — | Releasing a dragged item over the world acts as the stock panel does: on the ground it drops there, on another creature it offers a trade, on you or your associate a potion is drunk. Off: only quickbar drops leave the window. |
 | inventory.abovenui | Draw above NUI | T | off | U | L | — | Draws over the server's NUI windows and takes the clicks where they overlap. Off, a NUI window covers it. |

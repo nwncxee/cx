@@ -9,13 +9,13 @@ namespace CX.Services.Inventory;
 
 /// <summary>What the player asked the inventory to do; the service turns each into an engine send (or a
 /// <see cref="ServerPolicy"/> route).</summary>
-internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target }
+internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target, Aim, Buy }
 
-/// <summary>One request out of the window. <see cref="Mask"/> is an equip-slot bitmask (a Drop's source slot, 0 from the
-/// backpack), <see cref="X"/>/<see cref="Y"/> a backpack cell (global row; a Put's is a container cell, a Take's
-/// <see cref="InventoryWindow.AutoCell"/> when the server picks), a split's count, or a Use / Radial / Drop's screen
-/// point; <see cref="Other"/> a merge's second object or the open container; <see cref="Text"/> a refusal's reason.</summary>
-internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Mask = 0, int X = 0, int Y = 0, uint Other = 0, string Text = "");
+/// <summary>One request out of the window. <see cref="Mask"/>: an equip-slot bitmask (a Drop's source slot, 0 from the
+/// backpack); <see cref="X"/>/<see cref="Y"/>: a cell (global row; <see cref="InventoryWindow.AutoCell"/> when the server
+/// picks), a split's count, or a Use / Radial / Drop's screen point; <see cref="Other"/>: a merge's second object or the
+/// destination container; <see cref="Text"/> / <see cref="Sound"/>: a refusal's reason and interface sound.</summary>
+internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Mask = 0, int X = 0, int Y = 0, uint Other = 0, string Text = "", string Sound = "");
 
 /// <summary>An item icon the owner draws after the chrome batch (the <c>CascadeMenu.Icons</c> pattern): object id, rect,
 /// alpha, the item's footprint in cells (which part of its padded sheet is art), and the grid it sits in, if any
@@ -23,7 +23,7 @@ internal readonly record struct InvAction(InvActKind Kind, uint Oid = 0, uint Ma
 internal readonly record struct InvIcon(uint Oid, float X, float Y, float W, float H, float Alpha, int CellsW, int CellsH, int Clip);
 
 /// <summary>What a point in the window is. The <c>Loot*</c> kinds are the loot pane's.</summary>
-internal enum InvHitKind { None, Title, Close, Search, Tab, Scroll, Cell, Slot, Gold, Chrome, Loot, LootTitle, LootClose, LootCell, LootScroll }
+internal enum InvHitKind { None, Title, Close, Search, Tab, Scroll, Cell, Slot, Gold, Chrome, Loot, LootTitle, LootClose, LootTakeAll, LootCell, LootScroll }
 
 internal readonly record struct InvHit(InvHitKind Kind, int Index = -1, int X = -1, int Y = -1);
 
@@ -44,8 +44,8 @@ internal sealed partial class InventoryWindow
     private const float EdgeRowsPerSec = 8f;
     /// <summary>The scrolled view's glide toward its target (1/s; ~95 % in 3/rate).</summary>
     private const float GlideRate = 18f;
-    /// <summary>Two clicks on one item within this are a double-click.</summary>
-    private const float DoubleClickSec = 0.4f;
+    /// <summary>The interface sound the stock panel plays when a slot refuses an item.</summary>
+    internal const string CannotEquip = "gui_cannotequip";
     /// <summary>Pointer travel before a press becomes a drag (design px).</summary>
     private const float DragSlop = 4f;
     private const int ButtonLeft = 1, ButtonRight = 3;
@@ -66,6 +66,12 @@ internal sealed partial class InventoryWindow
     /// <summary>Whether the engine's target cursor is up (a spell, power or item waiting for its target). The service asks the
     /// engine; the self-check sets its own.</summary>
     public Func<bool> Targeting = static () => false;
+    /// <summary>The store item the engine is dragging and its size in cells (<c>W</c> 0 when none). The service asks the
+    /// engine's mouse captor; the self-check sets its own.</summary>
+    public Func<(uint Oid, int W, int H)> StoreDrag = static () => default;
+    /// <summary>Whether the engine is dragging anything (a store item, a quickbar button, a stock panel's item). The service
+    /// asks the engine; the self-check sets its own.</summary>
+    public Func<bool> EngineDragging = static () => false;
     /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
     /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
     public Action<uint>? HoverItem;
@@ -122,7 +128,8 @@ internal sealed partial class InventoryWindow
     private int _dragFromSlot = -1, _dragW = 1, _dragH = 1, _grabCx, _grabCy;
     private float _mx = -1f, _my = -1f;
     private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
-    private long _lastClickAt;
+    /// <summary>The hovered item name's colour, packed RGB; <see cref="Nameplate.PlateLayout.Plain"/> draws in the text colour.</summary>
+    private uint _tipRgb = Nameplate.PlateLayout.Plain;
     private readonly Tooltip _tip = new();
     /// <summary>The service's batch for <see cref="DrawTip"/>, kept across frames.</summary>
     internal VertexBatch? TipBatch;
@@ -139,6 +146,7 @@ internal sealed partial class InventoryWindow
     public void Hide()
     {
         Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Cut();
+        _takeFrom = _takeOid = InventoryModel.Invalid;
         Hovered(InventoryModel.Invalid);
     }
 
@@ -162,6 +170,7 @@ internal sealed partial class InventoryWindow
         Scrolled = scrolled && PageLimit > 1;
         ReadOnly = ServerPolicy.Bool("inventory.readonly", false);
         SearchOn = search && ServerPolicy.Bool("inventory.search.visible", true);
+        TakeAllOn = InventoryKnobs.TakeAll.V && !ReadOnly;
         if (!SearchOn) { Search = ""; SearchFocused = false; }
 
         float gridW = Cell * InventoryModel.Cols, gridH = ViewRows * Cell;
@@ -311,6 +320,7 @@ internal sealed partial class InventoryWindow
         float dt = _tickAt == 0 ? 0f : Math.Min(0.1f, (now - _tickAt) / (float)Stopwatch.Frequency);
         _tickAt = now;
         if (!Open) return;
+        TakeAllTick(now);
         LootTick(dt);
         if (!Scrolled) return;
         if (_drag && _mx >= Sx(_grid.X0) && _mx < Sx(_grid.X1))
@@ -330,9 +340,36 @@ internal sealed partial class InventoryWindow
     internal static bool SellsOn(in InvAction drop, bool overStoreBox)
         => overStoreBox && drop.Mask == 0 && drop.Other == 0;
 
-    /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state. Consumed when over the window, or
-    /// while a gesture it started is live.</summary>
-    public bool MouseButton(bool down, int button, float px, float py, int mods)
+    /// <summary><c>CGuiBarterInvBox::GetGuiObjType</c>'s tag: the player's own side of an open trade.</summary>
+    internal const int BarterBoxTag = 0x42617274;   // not-an-offset: 'Bart'
+
+    /// <summary>A drop released over the engine GUI box tagged <paramref name="boxTag"/> offers the item in the trade: on the
+    /// player's own side, from the backpack, as the stock <c>HandleDragDropAsDest</c> refuses any other source there.</summary>
+    internal static bool OffersOn(in InvAction drop, int boxTag)
+        => boxTag == BarterBoxTag && drop.Mask == 0 && drop.Other == 0;
+
+    /// <summary>One axis of the cell a drop lands in, as <c>CGuiMultiInvbox::CalculateDropPosition</c> works it in single
+    /// precision: the <paramref name="size"/>-cell item centred on the hit, 33-pixel cells of 0.01 GUI units, kept inside.</summary>
+    internal static int DropCell(float hit, float origin, int size, int count) => CentredCell((hit - origin) / 0.01f, size, count);
+
+    /// <summary>The first cell of a <paramref name="size"/>-cell footprint centred on a point <paramref name="px"/> pixels into a
+    /// line of <paramref name="count"/> 33-pixel cells, rounded and kept inside, as <c>CalculateDropPosition</c> works it.</summary>
+    private static int CentredCell(float px, int size, int count) => Math.Clamp((int)((px - size * 16) / Cell + 0.5f), 0, count - size);
+
+    /// <summary>The stock grid's double-click on a backpack item: a bag is used, a cast-spell item raises its target
+    /// cursor, anything else does nothing. The worn slots have no double-click in the stock panel.</summary>
+    private void DoubleClick(uint oid, float px, float py)
+    {
+        int i = Model.Find(oid);
+        if (i < 0) return;
+        ref InvItem it = ref Model.Items[i];
+        if (it.Container) Act?.Invoke(new InvAction(InvActKind.Use, oid, X: (int)px, Y: (int)py));
+        else if (it.CastSpell) Act?.Invoke(new InvAction(InvActKind.Aim, oid));
+    }
+
+    /// <summary>A press or release. <paramref name="mods"/> is the SDL modifier state and <paramref name="clicks"/> SDL's
+    /// click count. Consumed when over the window, or while a gesture it started is live.</summary>
+    public bool MouseButton(bool down, int button, float px, float py, int mods, int clicks = 1)
     {
         if (!Open) return false;
         _mx = px; _my = py;
@@ -341,6 +378,7 @@ internal sealed partial class InventoryWindow
         _tip.Cut();
         InvHit h = HitTest(px, py);
         if (h.Kind != InvHitKind.Search) SearchFocused = false;
+        if (h.Kind != InvHitKind.LootTakeAll) _takeFrom = InventoryModel.Invalid;
         uint oid = ItemUnder(h);
 
         if (Targeting())
@@ -364,6 +402,7 @@ internal sealed partial class InventoryWindow
         {
             case InvHitKind.Close: Act?.Invoke(new InvAction(InvActKind.Close)); return true;
             case InvHitKind.LootClose: Act?.Invoke(new InvAction(InvActKind.CloseLoot, Other: Loot.Oid)); return true;
+            case InvHitKind.LootTakeAll: StartTakeAll(); return true;
             case InvHitKind.Search: SearchFocused = true; return true;
             case InvHitKind.Tab: SetPage(h.Index); return true;
             case InvHitKind.Scroll:
@@ -383,11 +422,11 @@ internal sealed partial class InventoryWindow
         if (oid == InventoryModel.Invalid) return true;
         bool loot = h.Kind == InvHitKind.LootCell;
 
-        if (oid == _lastClickOid && Clock() - _lastClickAt < (long)(DoubleClickSec * Stopwatch.Frequency))
+        if (clicks >= 2 && oid == _lastClickOid)
         {
             _lastClickOid = InventoryModel.Invalid;
             if (loot) TakeAuto(oid);
-            else Act?.Invoke(new InvAction(InvActKind.Use, oid, X: (int)px, Y: (int)py));
+            else DoubleClick(oid, px, py);
             return true;
         }
         if ((mods & KmodCtrl) != 0)
@@ -433,6 +472,7 @@ internal sealed partial class InventoryWindow
             return Contains(px, py);   // outside, the engine hovers as usual: the quickbar button and world object light up
         }
         if (!Contains(px, py)) { _tip.Leave(); Hovered(InventoryModel.Invalid); return false; }
+        if (EngineDragging()) { _tip.Leave(); return false; }   // the engine moves the icon it drags on this motion
         HoverTip(px, py);
         return true;
     }
@@ -493,19 +533,45 @@ internal sealed partial class InventoryWindow
         if (_moving) { _moving = false; return true; }
         if (_scrolling) { _scrolling = false; return true; }
         if (_lootScrolling) { _lootScrolling = false; return true; }
-        if (!_press) return Contains(px, py);
+        if (!_press) return StoreRelease(px, py);
         bool wasDrag = _drag;
         _press = _drag = false;
-        if (!wasDrag) { _lastClickOid = _dragOid; _lastClickAt = Clock(); return true; }
+        if (!wasDrag) { _lastClickOid = _dragOid; return true; }
         InvAction? a = Drop(HitTest(px, py), Contains(px, py));
         if (a is { } act) Act?.Invoke(act);
         return true;
     }
 
-    /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take (out of
-    /// the loot) / Merge onto a like stack; a tab -> the first free cell from that page on; a slot -> Equip / Merge; a
-    /// loot cell -> <see cref="LootDrop"/>; outside the window -> Drop at the release point. The per-frame preview
-    /// passes <paramref name="describe"/> false so a refusal builds no text.</summary>
+    /// <summary>A release with no press of the window's own: over the window during the engine's store drag, a Buy at the
+    /// free cell under the centred footprint, or for the server to place. The release passes on, so the engine's drag ends.</summary>
+    private bool StoreRelease(float px, float py)
+    {
+        (uint oid, int w, int h) = StoreDrag();
+        if (w <= 0) return Contains(px, py);
+        if (!Contains(px, py)) return false;
+        if (!StoreCell(px, py, oid, w, h, out int x, out int y)) x = y = AutoCell;
+        Act?.Invoke(new InvAction(InvActKind.Buy, oid, X: x, Y: y));
+        return false;
+    }
+
+    /// <summary>The free cell a <paramref name="w"/>x<paramref name="h"/> store item let go at (<paramref name="px"/>,
+    /// <paramref name="py"/>) lands in, its footprint centred on the pointer; false where the server places it, as for an
+    /// item bigger than a page.</summary>
+    private bool StoreCell(float px, float py, uint oid, int w, int h, out int x, out int y)
+    {
+        x = y = 0;
+        InvHit hit = HitTest(px, py);
+        if (hit.Kind != InvHitKind.Cell || w > InventoryModel.Cols || h > InventoryModel.Rows) return false;
+        int page = hit.Y / InventoryModel.Rows;
+        x = CentredCell((px - Sx(_grid.X0)) / S, w, InventoryModel.Cols);
+        y = page * InventoryModel.Rows + CentredCell(Top * Cell + (py - Sy(_grid.Y0)) / S - page * InventoryModel.Rows * Cell, h, InventoryModel.Rows);
+        return !Model.Blank(page) && Model.Fits(x, y, w, h, oid, PageLimit);
+    }
+
+    /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take / Merge / into a
+    /// bag, to a cell the server picks when a slot or loot item does not fit there; a tab -> the first free cell from that
+    /// page on; a slot -> Equip (the server swaps the worn one out) / Merge; a loot cell -> <see cref="LootDrop"/>; outside
+    /// -> Drop at the release point. The per-frame preview passes <paramref name="describe"/> false: a refusal builds no text.</summary>
     internal InvAction? Drop(InvHit h, bool inside, bool describe = true)
     {
         uint oid = _dragOid;
@@ -521,10 +587,15 @@ internal sealed partial class InventoryWindow
         {
             Footprint(h, InventoryModel.Cols, InventoryModel.Rows, out int x, out int y);
             int under = Model.ItemAt(h.X, h.Y);
-            if (under >= 0 && Model.Items[under].Oid != oid && Mergeable(Model.Items[under], it))
-                return new InvAction(InvActKind.Merge, Model.Items[under].Oid, Other: oid);
+            InvItem below = under >= 0 ? Model.Items[under] : default;
+            bool other = under >= 0 && below.Oid != oid;
+            if (other && Mergeable(below, it)) return new InvAction(InvActKind.Merge, below.Oid, Other: oid);
             if (Model.Blank(y / InventoryModel.Rows)) return new InvAction(InvActKind.Refused, oid, Text: describe ? Loading : "");
-            if (!Model.Fits(x, y, _dragW, _dragH, oid, PageLimit)) return new InvAction(InvActKind.Refused, oid, Text: describe ? "No room there." : "");
+            if (other && below.Container && !it.Container && below.Oid != Loot.Oid)
+                return new InvAction(_dragFromSlot >= 0 ? InvActKind.Unequip : InvActKind.Put, oid, X: AutoCell, Y: AutoCell, Other: below.Oid);
+            if (!Model.Fits(x, y, _dragW, _dragH, oid, PageLimit))
+                return inBag ? new InvAction(InvActKind.Refused, oid, Text: describe ? "No room there." : "")
+                             : new InvAction(toBag, oid, X: AutoCell, Y: AutoCell, Other: from);
             if (inBag && it.X == x && it.Y == y) return null;
             return new InvAction(toBag, oid, X: x, Y: y, Other: from);
         }
@@ -542,8 +613,9 @@ internal sealed partial class InventoryWindow
             InvItem held = Model.Equipped[h.Index];
             if (held.Oid != InventoryModel.Invalid && Mergeable(held, it))
                 return new InvAction(InvActKind.Merge, held.Oid, Other: oid);
-            if ((it.SlotMask & d.Mask) == 0) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {_slots[h.Index].Label.ToLowerInvariant()} slot." : "");
-            if (held.Oid != InventoryModel.Invalid) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"The {_slots[h.Index].Label.ToLowerInvariant()} slot is taken." : "");
+            if ((it.SlotMask & d.Mask) == 0)
+                return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {_slots[h.Index].Label.ToLowerInvariant()} slot." : "",
+                                     Sound: CannotEquip);
             return new InvAction(InvActKind.Equip, oid, d.Mask);
         }
         return null;
@@ -585,6 +657,16 @@ internal sealed partial class InventoryWindow
         Act?.Invoke(new InvAction(InvActKind.Refused, oid, Text: it.SlotMask == 0 ? "That can't be equipped." : "No free slot takes that."));
     }
 
+    /// <summary>The engine's target cursor is up and the pointer is over the window, which then grades the cursor in place of
+    /// the world behind it: <paramref name="oid"/> is the item under the pointer, <see cref="InventoryModel.Invalid"/> when none.</summary>
+    public bool Aim(out uint oid)
+    {
+        oid = InventoryModel.Invalid;
+        if (!Contains(_mx, _my) || !Targeting()) return false;
+        oid = ItemUnder(HitTest(_mx, _my));
+        return true;
+    }
+
     /// <summary>The item under a hit, from the backpack, a slot or the loot.</summary>
     private uint ItemUnder(InvHit h)
     {
@@ -614,10 +696,11 @@ internal sealed partial class InventoryWindow
         {
             if (_tip.Key is uint k && k == oid) return;
             InvItem it = Info(oid);
-            string name = NameOf?.Invoke(oid) ?? "";
+            string name = PlainName(oid, out _tipRgb);
             _tip.Hover(oid, it.Stack > 1 ? $"{name} ({it.Stack})" : name, px, py, py + 16f * S);
             return;
         }
+        _tipRgb = Nameplate.PlateLayout.Plain;
         if (h.Kind == InvHitKind.Slot) { _tip.Hover(_slots[h.Index].Label, _slots[h.Index].Label, px, py, py + 16f * S); return; }
         if (h.Kind == InvHitKind.Gold) { _tip.Hover(_goldButton.Label, _goldButton.Label, px, py, py + 16f * S); return; }
         if (InventoryKnobs.Kilograms.V && In(_weight, px, py))
@@ -651,8 +734,8 @@ internal sealed partial class InventoryWindow
         InvItem it = Info(oid);
         byte to = a.Kind switch
         {
-            InvActKind.Move or InvActKind.Unequip => AtBag,
-            InvActKind.Take => a.X == AutoCell ? AtNone : AtBag,
+            _ when a.X == AutoCell => AtNone,
+            InvActKind.Move or InvActKind.Unequip or InvActKind.Take => AtBag,
             InvActKind.Put => AtLoot,
             InvActKind.Equip => AtSlot,
             _ => AtNone,
@@ -669,13 +752,11 @@ internal sealed partial class InventoryWindow
     {
         switch (a.Kind)
         {
+            case InvActKind.Move or InvActKind.Unequip or InvActKind.Take or InvActKind.Put when a.X == AutoCell:
+                TouchAt(a.Oid); Model.Stale(); return;
             case InvActKind.Move or InvActKind.Unequip: Model.Touch(a.Y / InventoryModel.Rows); return;
             case InvActKind.Put: Loot.Touch(a.Y / LootModel.Rows); return;
-            case InvActKind.Take:
-                TouchAt(a.Oid);
-                if (a.X == AutoCell) Model.Stale();
-                else Model.Touch(a.Y / InventoryModel.Rows);
-                return;
+            case InvActKind.Take: TouchAt(a.Oid); Model.Touch(a.Y / InventoryModel.Rows); return;
             case InvActKind.Split: TouchAt(a.Oid); Model.Stale(); return;
             case InvActKind.Merge or InvActKind.Use or InvActKind.Drop or InvActKind.Radial: TouchAt(a.Oid); return;
         }
@@ -726,11 +807,21 @@ internal sealed partial class InventoryWindow
         _dim.Clear();
         if (Search.Length == 0 || NameOf == null) return;
         for (int i = 0; i < Model.Count; i++)
-            if (!NameOf(Model.Items[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase)) _dim.Add(Model.Items[i].Oid);
+            if (!Matches(Model.Items[i].Oid)) _dim.Add(Model.Items[i].Oid);
         for (int i = 0; i < Model.Equipped.Length; i++)
-            if (Model.Equipped[i].Oid != InventoryModel.Invalid && !NameOf(Model.Equipped[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase))
-                _dim.Add(Model.Equipped[i].Oid);
+            if (Model.Equipped[i].Oid != InventoryModel.Invalid && !Matches(Model.Equipped[i].Oid)) _dim.Add(Model.Equipped[i].Oid);
         for (int i = 0; i < Loot.Count; i++)
-            if (!NameOf(Loot.Items[i].Oid).Contains(Search, StringComparison.OrdinalIgnoreCase)) _dim.Add(Loot.Items[i].Oid);
+            if (!Matches(Loot.Items[i].Oid)) _dim.Add(Loot.Items[i].Oid);
+    }
+
+    private bool Matches(uint oid) => PlainName(oid, out _).Contains(Search, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>An item's name as the player reads it, its colour codes stripped, and the colour its first letter is drawn in
+    /// (<paramref name="rgb"/>, <see cref="Nameplate.PlateLayout.Plain"/> when none). Cold: allocates.</summary>
+    private string PlainName(uint oid, out uint rgb)
+    {
+        string name = Nameplate.PlateLayout.StripColours(NameOf?.Invoke(oid) ?? "", out uint[]? colours);
+        rgb = colours is { Length: > 0 } ? colours[0] : Nameplate.PlateLayout.Plain;
+        return name;
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using CX.Framework;
 using CX.Ui;
 using static CX.Ui.PanelChrome;
@@ -30,6 +31,21 @@ internal sealed partial class InventoryWindow
     private const float LootGridW = LootModel.Cols * Cell, LootGridY = TitleH + Pad;
     private const float LootWDesign = Pad + LootGridW + TabGap + ScrollW + Pad;
 
+    /// <summary>The Take all button's design span in the loot title bar, left of the close button.</summary>
+    private const float TakeAllX1 = LootWDesign - Pad - CloseW - Gap, TakeAllX0 = TakeAllX1 - 60f;
+    /// <summary>Take all's pace: no two takes closer than a player clicking.</summary>
+    private const float TakePaceSec = 0.5f;
+    /// <summary>How long Take all waits on the server's confirmation of a take before it stops.</summary>
+    private const float TakeWaitSec = 3f;
+    /// <summary>The Take all button shows: <c>inventory.takeall</c> on and the window not read-only.</summary>
+    public bool TakeAllOn { get; private set; }
+    /// <summary>The container Take all is emptying, INVALID when it is not running; the take in flight, INVALID for none.</summary>
+    private uint _takeFrom = InventoryModel.Invalid, _takeOid = InventoryModel.Invalid;
+    /// <summary>When <see cref="_takeFrom"/> opened: the same container closed and opened again is a new run.</summary>
+    private long _takeOpened;
+    private long _takeSentAt, _takeNext;
+    private int _taken;
+
     private int LootRows => Loot.Pages * LootModel.Rows;
     /// <summary>Rows in view: all of them up to the window's height, one page at least.</summary>
     private int LootViewRows => Math.Clamp(LootRows, LootModel.Rows, Math.Max(LootModel.Rows, _lootMaxRows));
@@ -48,8 +64,11 @@ internal sealed partial class InventoryWindow
     {
         float dx = (px - LootX) / S, dy = (py - Y) / S;
         if (dy < TitleH)
-            return dx >= LootWDesign - Pad - CloseW && dx < LootWDesign - Pad && dy >= 2f && dy < 2f + CloseW
-                ? new(InvHitKind.LootClose) : new(InvHitKind.LootTitle);
+        {
+            if (dy < 2f || dy >= 2f + CloseW) return new(InvHitKind.LootTitle);
+            if (dx >= LootWDesign - Pad - CloseW && dx < LootWDesign - Pad) return new(InvHitKind.LootClose);
+            return TakeAllOn && dx >= TakeAllX0 && dx < TakeAllX1 ? new(InvHitKind.LootTakeAll) : new(InvHitKind.LootTitle);
+        }
         if (dy >= LootGridY && dy < LootGridY + LootViewRows * Cell)
         {
             if (dx >= Pad && dx < Pad + LootGridW)
@@ -124,10 +143,83 @@ internal sealed partial class InventoryWindow
         return new InvAction(InvActKind.Put, oid, X: x, Y: y, Other: Loot.Oid);
     }
 
+    /// <summary>The loot pane's title: the server's label, else the container's name with its colour codes stripped (once per
+    /// name: the draw asks every frame), else the TLK's word.</summary>
+    private string LootTitle()
+    {
+        if (_lootLabel.Length > 0) return _lootLabel;
+        if (Loot.Title.Length == 0) return _containerWord;
+        if (!ReferenceEquals(Loot.Title, _titleRaw)) { _titleRaw = Loot.Title; _titlePlain = Nameplate.PlateLayout.StripColours(_titleRaw, out _); }
+        return _titlePlain;
+    }
+
+    private string _titleRaw = "", _titlePlain = "";
+    private const string TakeAllText = "Take all";
+
     /// <summary>Double-click or Ctrl+click on a loot item: into the backpack wherever the server finds room.</summary>
     private void TakeAuto(uint oid)
     {
         if (!ReadOnly) Act?.Invoke(new InvAction(InvActKind.Take, oid, X: AutoCell, Y: AutoCell, Other: Loot.Oid));
+    }
+
+    /// <summary>Take all runs on the container open now: the opening it started on (a tick no other opening shares).</summary>
+    private bool TakingHere => _takeFrom != InventoryModel.Invalid && _takeOpened == Loot.OpenedAt;
+
+    /// <summary>Start Take all on the open container; a press while it runs changes nothing.</summary>
+    private void StartTakeAll()
+    {
+        if (TakingHere) return;
+        _takeFrom = Loot.Oid; _takeOpened = Loot.OpenedAt; _takeOid = InventoryModel.Invalid; _taken = 0; _takeNext = 0;
+        TakeAllTick(Clock());
+    }
+
+    /// <summary>Per frame while Take all runs: count the take the server confirmed (the item left the container), then send
+    /// the next once the pace allows, asking for a page not yet sent; stop on a close, a full backpack or a silent server.</summary>
+    private void TakeAllTick(long now)
+    {
+        if (_takeFrom == InventoryModel.Invalid) return;
+        if (!TakeAllOn || !TakingHere) { _takeFrom = InventoryModel.Invalid; return; }
+        long freq = Stopwatch.Frequency;
+        if (_takeOid != InventoryModel.Invalid)
+        {
+            if (Loot.Find(_takeOid) >= 0)
+            {
+                if (now - _takeSentAt >= (long)(TakeWaitSec * freq)) TakeAllStopped();
+                return;
+            }
+            _taken++; _takeOid = InventoryModel.Invalid;
+        }
+        if (now < _takeNext) return;
+        int next = -1;
+        for (int i = 0; i < Loot.Count; i++)
+        {
+            ref InvItem it = ref Loot.Items[i];
+            if (next < 0 || it.Y < Loot.Items[next].Y || it.Y == Loot.Items[next].Y && it.X < Loot.Items[next].X) next = i;
+        }
+        if (next < 0)
+        {
+            for (int p = 0; p < Loot.Pages; p++) if (Loot.Blank(p)) { Loot.Touch(p); return; }
+            _takeFrom = InventoryModel.Invalid;
+            return;
+        }
+        if (BackpackFull(Loot.Items[next].W, Loot.Items[next].H)) { TakeAllStopped(); return; }
+        _takeOid = Loot.Items[next].Oid; _takeSentAt = now; _takeNext = now + (long)(TakePaceSec * freq);
+        TakeAuto(_takeOid);
+    }
+
+    /// <summary>No backpack page has room for a <paramref name="w"/>x<paramref name="h"/> item, and every page is known.</summary>
+    private bool BackpackFull(int w, int h)
+    {
+        if (Model.FirstFree(w, h, 0, PageLimit, out _, out _)) return false;
+        for (int p = 0; p < PageLimit; p++) if (Model.Blank(p)) return false;
+        return true;
+    }
+
+    /// <summary>Take all stops short, and says how far it got.</summary>
+    private void TakeAllStopped()
+    {
+        Act?.Invoke(new InvAction(InvActKind.Refused, Text: $"Take all stopped: {_taken} taken, the rest stay in the container."));
+        _takeFrom = InventoryModel.Invalid;
     }
 
     /// <summary>The pane: frame, title (the container's name) and close button, the grid with a rule and number where each
@@ -142,7 +234,17 @@ internal sealed partial class InventoryWindow
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Ly(TitleH), HeaderBg); }
         float bx0 = Lx(LootWDesign - Pad - CloseW);
         CloseButton(under, skin, text, bx0, Ly(2f), Lx(LootWDesign - Pad), Ly(2f + CloseW));
-        string title = _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : _containerWord;
+        if (TakeAllOn)
+        {
+            float tx0 = Lx(TakeAllX0), ty0 = Ly(2f), tx1 = Lx(TakeAllX1), ty1 = Ly(2f + CloseW);
+            bool on = _takeFrom != InventoryModel.Invalid, hot = _mx >= tx0 && _mx < tx1 && _my >= ty0 && _my < ty1;
+            if (skin != null) skin.Draw(ButtonFace(on, hot), tx0, ty0, tx1, ty1);
+            else { Fill(under, tx0, ty0, tx1, ty1, on ? NavOn : hot ? Frame2 : CatBg); Outline(under, tx0, ty0, tx1, ty1, ColBorder); }
+            UiText.Draw(under, small, TakeAllText, (tx0 + tx1 - UiText.Measure(small, TakeAllText)) / 2f, ty0 + (ty1 - ty0 - small.LineHeight) / 2f + small.Ascent,
+                        on ? Hi : Tx2, tx1);
+            bx0 = tx0;
+        }
+        string title = LootTitle();
         UiText.Draw(under, text, title, Lx(Pad), y0 + (TitleH * s - lh) / 2f + text.Ascent, Tx, bx0 - 2f * s);
 
         float c = Cell * s, lw = Math.Max(1f, MathF.Round(s)), gx0 = Lx(Pad), gx1 = Lx(Pad + LootGridW), gy0 = Ly(LootGridY);

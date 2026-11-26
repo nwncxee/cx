@@ -339,6 +339,11 @@ public static unsafe partial class EngineLayout
     /// <c>'AcTg'</c> a target mode). Linux +0x28 (<c>GetCurrentActionTargetObject</c>); Windows +0x20, which the store's
     /// own drop code calls before its <c>'Stor'</c> tests (rva 0x880e03) and the target mode's lookup before <c>'AcTg'</c>.</summary>
     public static readonly int GuiObjTypeSlot = Field("CGuiObject", "vtbl.GetGuiObjType", Expect.VtblSlot, sig: "int()");
+    /// <summary>CGuiMultiInvbox: the grid's columns, then its rows. <c>CalculateDropPosition</c> clamps a drop cell to them
+    /// (Linux nm @0x691f90 <c>+0x1a0</c> / <c>+0x1a4</c>, Windows rva 0x87f9a0 <c>+0x190</c> / <c>+0x194</c>).</summary>
+    public static readonly int MultiInvboxCols = Field<int>("CGuiMultiInvbox", "cols");
+    /// <inheritdoc cref="MultiInvboxCols"/>
+    public static readonly int MultiInvboxRows = Field<int>("CGuiMultiInvbox", "rows");
     /// <summary>CGuiButton -&gt; its normal-state animation name (<c>char*</c>); quick buttons outline with <c>"qbEquip"</c> /
     /// <c>"qbMode"</c>. <c>SetButtonNormalAnimation</c> stores it at Linux <c>+0xe0</c>, Windows rva 0x1e5a00 <c>+0xc0</c>.</summary>
     public static readonly int ButtonNormalAnim = Field<IntPtr>("CGuiButton", "normalAnim");
@@ -365,10 +370,16 @@ public static unsafe partial class EngineLayout
     /// <summary>CNWCItem: the CONFIRMED backpack cell, two bytes. <c>y</c> is <b>global</b>
     /// (<c>page * rows + localY</c>), which is why one item's y can exceed the grid's 6 rows. Written by the
     /// <c>'A'</c> and <c>'M'</c> cases of <c>Update_GuiRepository</c> and read back by its remove step, on both
-    /// builds. The pending pair the ghost writes is the next two bytes and is not declared.</summary>
+    /// builds. The pending pair the ghost writes is <see cref="ItemPendingX"/>.</summary>
     public static readonly int ItemRepoX = Field<byte>("CNWCItem", "repoX");
     /// <inheritdoc cref="ItemRepoX"/>
     public static readonly int ItemRepoY = Field<byte>("CNWCItem", "repoY");
+    /// <summary>CNWCItem: the cell a ghosted item waits on, two bytes after <see cref="ItemRepoX"/>.
+    /// <c>CGuiBarterInvBox::ProcessItemDrop</c> writes them with the offered cell (Linux nm @0x9c2330 <c>item+0x276</c>,
+    /// Windows rva 0x97e120 <c>item+0x256</c>).</summary>
+    public static readonly int ItemPendingX = Field<byte>("CNWCItem", "pendingX");
+    /// <inheritdoc cref="ItemPendingX"/>
+    public static readonly int ItemPendingY = Field<byte>("CNWCItem", "pendingY");
     /// <summary>CNWCItem: the possessing creature's object id, INVALID when the item is on the ground.
     /// <c>Update_GuiRepository</c> sets it to the panel's shown oid on <c>'A'</c> and to INVALID on <c>'D'</c>
     /// (Linux nm @0x79e320, Windows rva 0x7b4620). Measured from the CNWCItem base, not the CNWCObject
@@ -383,6 +394,17 @@ public static unsafe partial class EngineLayout
     /// (Linux nm @0x7cdbd0 <c>item+0x2a4</c>, Windows rva 0x83f190 <c>item+0x284</c>), which then suppresses the
     /// count label when <see cref="BaseItemStacking"/> is 1 or the count is below 2.</summary>
     public static readonly int ItemStackSize = Field<int>("CNWCItem", "stackSize");
+    /// <summary>CNWCItem: its active item properties, a count and an array of records. <c>CNWCItem::GetActiveProperty</c>
+    /// bounds the index by the count and returns array + i * stride (Linux nm @0x7cbb40 <c>+0x214</c> / <c>+0x218</c>, Windows
+    /// rva 0x83d580 <c>+0x1f4</c> / <c>+0x1f8</c>).</summary>
+    public static readonly int ItemActivePropertyCount = Field<int>("CNWCItem", "activePropertyCount");
+    /// <inheritdoc cref="ItemActivePropertyCount"/>
+    public static readonly int ItemActiveProperties = Field<CX.Engine.CNWItemProperty>("CNWCItem", "activeProperties");
+    /// <summary>CNWItemProperty: one record of <see cref="ItemActiveProperties"/>, 0x30 bytes on both builds (the getter's
+    /// stride), its property type the first <c>ushort</c>; <c>HandleDoubleClick</c> tests that type for 0xf, cast spell.</summary>
+    public static readonly int ItemPropertyStride = Field("CNWItemProperty", "stride");
+    /// <inheritdoc cref="ItemPropertyStride"/>
+    public static readonly int ItemPropertyType = Field<ushort>("CNWItemProperty", "propertyName");
     /// <summary>CNWBaseItem (a 200-byte record of <c>baseitems.2da</c>, reached through
     /// <see cref="SymbolMap.GetBaseItem"/>): the <b>equippable-slot bitmask</b>. The whole client-side equip
     /// rule is <c>(base-&gt;equipSlots &amp; invbox-&gt;slotMask) != 0</c>. Identical on both builds, paired
@@ -403,7 +425,7 @@ public static unsafe partial class EngineLayout
     /// means "activate an item property" (walk the item's properties for type 0xf and open an action target).
     /// Identical on both builds -- <c>CGuiMultiInvbox::HandleDoubleClick</c> branches on
     /// <c>*(int*)(base + 0x80)</c> on each (Linux nm @0x690300, Windows rva 0x8801b0).</summary>
-    public static readonly int BaseItemUsable = Field<int>("CNWBaseItem", "usable");
+    public static readonly int BaseItemContainer = Field<int>("CNWBaseItem", "container");
     /// <summary>CNWRules -&gt; its <c>CNWBaseItemArray*</c>. Every client body that needs a base item does the same
     /// two-step, <c>GetBaseItem(*(g_pRules + 0x20), item-&gt;baseItem)</c>, at the same offset on both builds
     /// (<c>CNWCItem::GetName</c> Linux nm @0x7ce810 / Windows rva 0x83d8a0, and three others).</summary>
@@ -422,6 +444,13 @@ public static unsafe partial class EngineLayout
     /// <c>SetInventoryVisible</c> adds and removes under the tag "Equip" (Linux nm @0x68e760 <c>this+0x368</c>,
     /// Windows rva 0x857cd0 <c>this+0x308</c>).</summary>
     public static readonly int InvEquipPanel = Field<CX.Engine.CPanelInvEquip>("CPanelInventory", "equipPanel", embedded: true);
+    /// <summary>CGuiInvbox: the id of the item the box holds, <c>OBJECT_INVALID</c> when empty (<c>RemoveItem</c> @0x791240
+    /// writes it). The slot update reads it as <c>GetItemByID(box+0x184)</c> on Linux (nm @0x89dd90), <c>box+0x174</c> on
+    /// Windows (rva 0x7b3f30).</summary>
+    public static readonly int InvboxItemId = Field<uint>("CGuiInvbox", "itemId");
+    /// <summary>CGuiInvbox: the id of the item a drag from the box carries, read by <c>GetDraggedItem</c> (Linux nm @0x690730
+    /// <c>+0x170</c>, Windows rva 0x880030 <c>+0x160</c>).</summary>
+    public static readonly int InvboxDraggedId = Field<uint>("CGuiInvbox", "draggedId");
     /// <summary>CPanelInventory: the max-weight label <c>SetCharacterData</c> fills, measured as the
     /// <c>m_pString</c> the body writes through minus <see cref="LabelString"/> (Linux nm @0x68d810,
     /// Windows rva 0x856fa0).</summary>

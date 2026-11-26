@@ -49,6 +49,8 @@ internal static unsafe class InventoryNative
     /// player still carries unequipped, and per page by <see cref="PruneBagPage"/>.</summary>
     private static readonly Dictionary<uint, int> _seen = new();
     private static readonly uint[] _drop = new uint[InventoryModel.MaxItems];
+    /// <summary><see cref="Fill"/>'s per-frame slot box ids and the ids the paper doll shows, in <see cref="InventoryModel.Slots"/> order.</summary>
+    private static readonly uint[] _boxIds = new uint[InventoryModel.Slots.Length], _wornIds = new uint[InventoryModel.Slots.Length];
     /// <summary>What <see cref="Fill"/> last saw of gold / weight / worn items: a change re-runs the stock label fill.</summary>
     private static long _statSig = long.MinValue;
     /// <summary>Order-independent digest of the backpack (ids, cells, stacks): the set's enumeration order moves on every
@@ -66,6 +68,7 @@ internal static unsafe class InventoryNative
     {
         SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvHandleInvButton, SymbolMap.InvCloseForLevelup,
         SymbolMap.SendPossessFamiliar, SymbolMap.RulesetIntEntry, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
+        SymbolMap.InvGetEquipSlot, SymbolMap.PlayGuiSound, SymbolMap.InvboxHandleDoubleClick,
         SymbolMap.GetGameObject, SymbolMap.AppManager, SymbolMap.Rules, SymbolMap.GetBaseItem,
         SymbolMap.SendInvEquip, SymbolMap.SendInvUnequip, SymbolMap.SendInvRepositoryMove, SymbolMap.SendInvDrop,
         SymbolMap.SendGuiInvStatus, SymbolMap.SendGuiInvSelectPanel, SymbolMap.SendInputUseObject, SymbolMap.SendInputMergeItem,
@@ -85,7 +88,7 @@ internal static unsafe class InventoryNative
         if (!SymbolMap.Require(log, "InventoryService", Needed)) return false;
         if (!EngineLayout.Require(log, "InventoryService", "CPanelInventory", "CPanelInvEquip", "CGuiLabel", "CNWCItem",
                                   "CNWCCreature", "CNWBaseItem", "CNWRules", "CGameObject", "CNWCObject", "CGuiMan", "CHitInfo", "CPanelQuickBar", "CGuiInGame",
-                                  "CGuiContainer", "CGuiPanel")) return false;
+                                  "CGuiContainer", "CGuiPanel", "CGuiInvbox")) return false;
         _hooks.VisibleOrig = hooks.InstallInvSetInventoryVisible(&OnSetInventoryVisible);
         _hooks.ToggleOrig = hooks.InstallInvToggleDisplay(&OnToggleDisplay);
         _hooks.KeyOrig = hooks.InstallInvHandleInvButton(&OnInvButton);
@@ -311,14 +314,31 @@ internal static unsafe class InventoryNative
         return new CGameObject(go).AsNWCItem();
     }
 
+    /// <summary>The CX window covers the pointer while the target cursor grades: <paramref name="obj"/> is the CNWCObject* of
+    /// the item under it, Zero over an empty cell or the frame. Game thread, per frame; allocates nothing.</summary>
+    internal static bool Cover(InventoryWindow w, out IntPtr obj)
+    {
+        obj = IntPtr.Zero;
+        if (!w.Aim(out uint oid)) return false;
+        IntPtr app = App();
+        if (oid == InventoryModel.Invalid || app == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return true;
+        CNWCObject o = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
+        obj = o.IsNull ? IntPtr.Zero : o.Ptr;
+        return true;
+    }
+
     /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
-    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
-    public static void FireTarget(uint oid)
+    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up. Returns
+    /// what became of the click, for the log.</summary>
+    public static string FireTarget(uint oid)
     {
         IntPtr app = App(), mode = TargetFire.Live();
-        if (app == IntPtr.Zero || mode == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return;
+        if (app == IntPtr.Zero) return "no app";
+        if (mode == IntPtr.Zero) return "no target mode is up";
+        if (Item(app, oid) == IntPtr.Zero) return "not an item";
         CNWCObject obj = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
-        if (!obj.IsNull) TargetFire.Fire(mode, obj.Ptr);
+        if (obj.IsNull || !TargetFire.Fire(mode, obj.Ptr)) return "the fire hooks are not up";
+        return TargetFire.Live() == IntPtr.Zero ? "resolved" : "the mode refused it and stays up";
     }
 
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;
@@ -326,9 +346,8 @@ internal static unsafe class InventoryNative
     // ---- the per-frame copy ----
 
     /// <summary>Copy the player's inventory into <paramref name="m"/>. Render thread; allocates nothing (the label
-    /// re-read is cold, on a change of gold, weight or worn items only). "Worn" is the creature's own slot array, not
-    /// the item's <c>equipSlot</c>, the stock panel's box field, which is left stale when the appearance update unequips
-    /// before the confirm. A container's items reach the same <c>AddItem</c>; <see cref="EngineLayout.ItemInContainer"/> sends them away.</summary>
+    /// re-read is cold, on a change of gold, weight or worn items only). The paper doll shows what <see cref="WornIds"/>
+    /// picks. A container's items reach the same <c>AddItem</c>; <see cref="EngineLayout.ItemInContainer"/> sends them away.</summary>
     public static void Fill(InventoryModel m)
     {
         IntPtr app = App();
@@ -340,9 +359,11 @@ internal static unsafe class InventoryNative
 
         long sig = c.Gold * 1_000_003L + c.CarriedWeight;
         Span<uint> worn = c.EquippedItems;
+        Boxes(_boxIds);
+        WornIds(_boxIds, worn, _wornIds);
         for (int i = 0; i < InventoryModel.Slots.Length; i++)
         {
-            uint oid = worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
+            uint oid = _wornIds[i];
             sig = sig * 31 + oid;
             IntPtr it = oid == InventoryModel.Invalid ? IntPtr.Zero : Item(app, oid);
             if (it == IntPtr.Zero) { m.Equipped[i] = new InvItem { Oid = InventoryModel.Invalid, X = -1, Y = -1 }; continue; }
@@ -372,7 +393,7 @@ internal static unsafe class InventoryNative
                 if (dropped < _drop.Length) _drop[dropped++] = oid;
                 continue;
             }
-            if (item.Possessor != pid || worn.Contains(oid)) continue;
+            if (item.Possessor != pid || ((ReadOnlySpan<uint>)_wornIds).Contains(oid)) continue;
             if (n >= InventoryModel.MaxItems)
             {
                 if (!_modelFull) { _modelFull = true; Notice.Show(_log, $"inventory: more than {InventoryModel.MaxItems} items carried -- the rest are not shown"); }
@@ -386,6 +407,25 @@ internal static unsafe class InventoryNative
         for (int i = 0; i < dropped; i++) _seen.Remove(_drop[i]);
         m.Count = n;
         if (bag != _bagSig) { _bagSig = bag; m.Epoch++; }
+    }
+
+    /// <summary>Each paper-doll box's item id (<see cref="InventoryModel.Slots"/> order), <c>Invalid</c> for an empty box or no panel.</summary>
+    private static void Boxes(Span<uint> ids)
+    {
+        IntPtr panel = MyPanel();
+        for (int i = 0; i < ids.Length; i++)
+        {
+            CGuiInvbox box = panel == IntPtr.Zero ? default : new CPanelInventory(panel).InvGetEquipSlot((int)InventoryModel.Slots[i].Mask);
+            ids[i] = box.IsNull ? InventoryModel.Invalid : box.ItemId;
+        }
+    }
+
+    /// <summary>The id each paper-doll slot shows (<see cref="InventoryModel.Slots"/> order): the stock panel's slot box, which an
+    /// appearance change leaves filled, else the creature's own slot (<paramref name="worn"/>, by the mask's bit) for a panel never built.</summary>
+    internal static void WornIds(ReadOnlySpan<uint> boxes, ReadOnlySpan<uint> worn, Span<uint> ids)
+    {
+        for (int i = 0; i < ids.Length; i++)
+            ids[i] = boxes[i] != InventoryModel.Invalid ? boxes[i] : worn[System.Numerics.BitOperations.Log2(InventoryModel.Slots[i].Mask)];
     }
 
     /// <summary>One item's contribution to the order-independent backpack digest (a sum of well-mixed terms).</summary>
@@ -526,10 +566,24 @@ internal static unsafe class InventoryNative
             if (!b.IsNull)
             {
                 r.W = Math.Max(1, (int)b.InvSlotWidth); r.H = Math.Max(1, (int)b.InvSlotHeight);
-                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Usable = b.Usable != 0;
+                r.SlotMask = b.EquipSlots; r.Stackable = b.Stacking > 1; r.Container = b.Container != 0;
             }
         }
+        r.CastSpell = HasProperty(item, CastSpellProperty);
         return r;
+    }
+
+    /// <summary>The item property type of a cast-spell property (<c>itempropdef.2da</c> row 15), the one the stock
+    /// double-click opens a target cursor for.</summary>
+    private const ushort CastSpellProperty = 15;
+
+    /// <summary>True when one of the item's active properties is of <paramref name="type"/>.</summary>
+    private static bool HasProperty(CNWCItem item, ushort type)
+    {
+        CNWItemProperty props = item.ActiveProperties;
+        if (props.IsNull) return false;
+        for (int i = 0; i < item.ActivePropertyCount; i++) if (props[i].PropertyName == type) return true;
+        return false;
     }
 
     /// <summary>Run the stock <c>SetCharacterData</c> on the (never shown) player panel and read back its AC and
@@ -600,10 +654,10 @@ internal static unsafe class InventoryNative
         if (msg != IntPtr.Zero) EngineFn.SendInvEquip(msg, oid, mask, PlayerId());
     }
 
-    public static void Unequip(uint oid, int x, int y)
+    public static void Unequip(uint oid, int x, int y, uint target)
     {
         IntPtr msg = Msg();
-        if (msg != IntPtr.Zero) EngineFn.SendInvUnequip(msg, oid, (byte)x, (byte)y, PlayerId());
+        if (msg != IntPtr.Zero) EngineFn.SendInvUnequip(msg, oid, (byte)x, (byte)y, target);
     }
 
     /// <summary><c>RepositoryMove</c> to cell (<paramref name="x"/>, wire <paramref name="y"/>) of <paramref name="target"/>'s
@@ -635,18 +689,14 @@ internal static unsafe class InventoryNative
         if (msg != IntPtr.Zero) EngineFn.SendInputMergeItem(msg, dst, src);
     }
 
-    /// <summary>The stock double-click: a usable base item is <c>UseObject</c>ed; anything else opens its radial, where
-    /// its cast-spell properties live (the stock panel opens the target cursor for the first one directly).</summary>
-    public static void Use(uint oid, int x, int y)
+    /// <summary>The stock double-click, the backpack grid's own <c>HandleDoubleClick</c>: a container is <c>UseObject</c>ed,
+    /// and an item with a cast-spell property opens that spell's target cursor.</summary>
+    public static void DoubleClick(uint oid)
     {
-        IntPtr app = App();
+        IntPtr app = App(), panel = MyPanel();
         IntPtr it = app == IntPtr.Zero ? IntPtr.Zero : Item(app, oid);
-        if (it == IntPtr.Zero) return;
-        IntPtr baseItems = BaseItems();
-        var b = baseItems == IntPtr.Zero ? default : new CNWBaseItem(EngineFn.GetBaseItem(baseItems, new CNWCItem(it).BaseItem));
-        if (b.IsNull || b.Usable == 0) { Radial(oid, x, y); return; }
-        IntPtr msg = Msg();
-        if (msg != IntPtr.Zero) EngineFn.SendInputUseObject(msg, oid, 0, 0);
+        if (it == IntPtr.Zero || panel == IntPtr.Zero) return;
+        new CPanelInventory(panel).BackpackGrid.InvboxHandleDoubleClick(new CNWCItem(it));
     }
 
     /// <summary>The item's own radial (<c>CNWCItem::ActivateRadialMenu</c>, which CX's radial takes over): split, use,
@@ -757,19 +807,78 @@ internal static unsafe class InventoryNative
     /// <summary><c>SetButtonItem</c>'s property argument as the stock item drop passes it.</summary>
     private const int QuickItemProp = 0xff00ff;   // not-an-offset: the stock drop's "no property" word
 
-    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag.</summary>
-    private const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
+    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag, an open store's item box, where the stock drag sells.</summary>
+    public const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
 
-    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) is an open store's
-    /// item box, where the stock drag sells.</summary>
-    public static bool StoreBoxAt(int sx, int sy)
+    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) and its
+    /// <c>GetGuiObjType</c> tag (0 when none); the hit check leaves the point on it in <c>CGuiMan</c>'s hit point.</summary>
+    public static IntPtr GuiObjectAt(int sx, int sy, out int tag)
+    {
+        tag = 0;
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero) return IntPtr.Zero;
+        var man = new CGuiMan(gm);
+        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
+        if (obj != IntPtr.Zero) tag = new CGuiObject(obj).GetGuiObjType();
+        return obj;
+    }
+
+    /// <summary>Offer backpack item <paramref name="oid"/> on the player's side of a trade, <paramref name="box"/>, as
+    /// <c>CGuiBarterInvBox::ProcessItemDrop</c> does: <c>BarterAddItem</c> at the cell under the last hit check (0xff, 0xff
+    /// when it is taken, the server picking), then the item ghosted at that cell in the box.</summary>
+    public static void Offer(IntPtr box, uint oid)
     {
         IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
         IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
-        if (gm == IntPtr.Zero) return false;
-        var man = new CGuiMan(gm);
-        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
-        return obj != IntPtr.Zero && new CGuiObject(obj).GetGuiObjType() == StoreBoxTag;
+        IntPtr it = Item(App(), oid), bases = BaseItems(), model = box == IntPtr.Zero ? IntPtr.Zero : new CGuiObject(box).Model;
+        if (gm == IntPtr.Zero || it == IntPtr.Zero || bases == IntPtr.Zero || model == IntPtr.Zero
+            || EngineFn.MultiInvboxCellFree == null || EngineFn.MultiInvboxAddItem == null) return;
+        var item = new CNWCItem(it);
+        if (!Cells(it, bases, out int w, out int h)) return;
+        var grid = new CGuiMultiInvbox(box);
+        Span<float> hit = new CGuiMan(gm).HitPoint;
+        System.Numerics.Vector3 at = new Gob(model).Position;
+        int x = InventoryWindow.DropCell(hit[0], at.X, w, grid.Cols), y = InventoryWindow.DropCell(hit[1], at.Y, h, grid.Rows);
+        if (EngineFn.MultiInvboxCellFree(box, w, h, x, y, oid) == 0) x = y = -1;
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendBarterAddItem != null) EngineFn.SendBarterAddItem(msg, oid, (byte)x, (byte)y);
+        item.Ghost = 1;
+        item.PendingX = (byte)x;
+        item.PendingY = (byte)y;
+        EngineFn.MultiInvboxAddItem(box, oid, x, y, 1);
+    }
+
+    /// <summary>Item <paramref name="it"/>'s size in inventory cells, from its base item as the stock occupancy check reads it.</summary>
+    private static bool Cells(IntPtr it, IntPtr bases, out int w, out int h)
+    {
+        var b = new CNWBaseItem(EngineFn.GetBaseItem(bases, new CNWCItem(it).BaseItem));
+        w = b.IsNull ? 0 : b.InvSlotWidth;
+        h = b.IsNull ? 0 : b.InvSlotHeight;
+        return !b.IsNull;
+    }
+
+    /// <summary>The store item the engine is dragging and its size in cells, <c>W</c> 0 when none: a live drag whose source,
+    /// the mouse captor, is a box tagged 'Stor', as the stock repository drop tells a buy from a move.</summary>
+    public static (uint Oid, int W, int H) StoreDrag()
+    {
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero || !Quickbar.QuickbarNative.EngineDragging()) return default;
+        IntPtr src = new CGuiMan(gm).MouseCapture;
+        if (new CGuiObject(src).GetGuiObjType() != StoreBoxTag) return default;
+        uint oid = new CGuiInvbox(src).DraggedId;
+        IntPtr it = Item(App(), oid), bases = BaseItems();
+        if (it == IntPtr.Zero || bases == IntPtr.Zero || !Cells(it, bases, out int w, out int h)) return default;
+        return (oid, w, h);
+    }
+
+    /// <summary><c>Store_RequestBuy</c> for store item <paramref name="oid"/> at a backpack cell in the wire's form (0xff, 0xff
+    /// for the server to place), owned by the player, as the stock repository drop sends it: no confirm.</summary>
+    public static void Buy(uint oid, int x, int globalY)
+    {
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendStoreRequestBuy != null) EngineFn.SendStoreRequestBuy(msg, oid, (byte)x, (byte)globalY, PlayerId());
     }
 
     /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the
@@ -820,7 +929,7 @@ internal static unsafe class InventoryNative
         IntPtr it = app == IntPtr.Zero ? IntPtr.Zero : Item(app, w.Oid);
         if (it == IntPtr.Zero || baseItems == IntPtr.Zero) return false;
         var b = new CNWBaseItem(EngineFn.GetBaseItem(baseItems, new CNWCItem(it).BaseItem));
-        if (b.IsNull || b.Usable == 0) return false;
+        if (b.IsNull || b.Container == 0) return false;
         target = w.Oid;
         return true;
     }
@@ -844,4 +953,11 @@ internal static unsafe class InventoryNative
 
     /// <summary>A refusal the player must see.</summary>
     public static void Feedback(string text) => Notice.Show(_log, text);
+
+    /// <summary>Plays the interface sound <paramref name="resref"/> once, as the stock panel plays its refusals.</summary>
+    public static unsafe void GuiSound(string resref)
+    {
+        ResRef r = ResRef.Of(resref, lower: true);
+        EngineFn.PlayGuiSound(ResRefArg.Of(&r), 0);
+    }
 }

@@ -56,6 +56,8 @@ public sealed unsafe partial class InventoryService : IExtenderService
         InventoryWindow.SelfCheck(log);
         GoldPrompt.SelfCheck(log);
         WornSlotCheck.SelfCheck(log);
+        WornIdsCheck.SelfCheck(log);
+        InventoryWindow.StockActsSelfCheck(log);
         if (!InventoryNative.Attach(log, hooks)) { log.Info("InventoryService: stood down -- the stock inventory runs"); return; }
         RadialIcons.Init(log);
 
@@ -63,6 +65,9 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.NameOf = InventoryNative.Name;
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
         _inv.HoverItem = InventoryNative.PriceInStore;
+        _inv.StoreDrag = InventoryNative.StoreDrag;
+        _inv.EngineDragging = Quickbar.QuickbarNative.EngineDragging;
+        TargetFire.SetCover(static (out IntPtr obj) => InventoryNative.Cover(_inv, out obj));
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
         _window = NewWindow();
         InitGold();
@@ -83,7 +88,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         RaiseAboveNui = static () => InventoryKnobs.AboveNui.V,
         DrawContent = Draw,
         DrawOver = DrawTip,
-        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+        OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(inv.MouseButton(down, button, x, y, InventoryNative.Mods(), UiHost.Clicks)),
         OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(inv.MouseMove(x, y)),
         OnMouseWheel = dy => !Native.ModalPanelUp() && Input(inv.MouseWheel(dy)),
         OnKey = (key, mods) => !Native.ModalPanelUp() && Input(inv.Key(key, mods)),
@@ -227,17 +232,23 @@ public sealed unsafe partial class InventoryService : IExtenderService
         {
             case InvActKind.Close: Close(notify: true); return;
             case InvActKind.CloseLoot: InventoryNative.UseObject(a.Other); return;
-            case InvActKind.Refused: InventoryNative.Feedback(a.Text); return;
+            case InvActKind.Aim:
+                InventoryNative.DoubleClick(a.Oid);
+                return;
+            case InvActKind.Refused:
+                if (a.Text.Length > 0) InventoryNative.Feedback(a.Text);
+                if (a.Sound.Length > 0) InventoryNative.GuiSound(a.Sound);
+                return;
             case InvActKind.Gold: OpenGold(); return;
             case InvActKind.Drop: DropInWorld(a); return;
-            case InvActKind.Target: InventoryNative.FireTarget(a.Oid); return;
+            case InvActKind.Target: _log?.Info($"[inv] target fire: {InventoryNative.FireTarget(a.Oid)}"); return;
         }
         string name = a.Kind.ToString().ToLowerInvariant();
-        int h = Math.Max(1, _inv.Info(a.Oid).H);
+        int h = Math.Max(1, a.Kind == InvActKind.Buy ? _inv.StoreDrag().H : _inv.Info(a.Oid).H);
         int wireY = a.Kind switch
         {
-            InvActKind.Move or InvActKind.Unequip => InventoryModel.Flip(a.Y, h),
-            InvActKind.Take => a.X == InventoryWindow.AutoCell ? a.Y : InventoryModel.Flip(a.Y, h),
+            _ when a.X == InventoryWindow.AutoCell => a.Y,
+            InvActKind.Move or InvActKind.Unequip or InvActKind.Take or InvActKind.Buy => InventoryModel.Flip(a.Y, h),
             InvActKind.Put => ItemGrid.Flip(a.Y, h, LootModel.Rows),
             _ => a.Y,
         };
@@ -253,15 +264,16 @@ public sealed unsafe partial class InventoryService : IExtenderService
         switch (a.Kind)
         {
             case InvActKind.Equip: InventoryNative.Equip(a.Oid, a.Mask); break;
-            case InvActKind.Unequip: InventoryNative.Unequip(a.Oid, a.X, wireY); break;
+            case InvActKind.Unequip: InventoryNative.Unequip(a.Oid, a.X, wireY, a.Other != 0 ? a.Other : InventoryNative.PlayerId()); break;
             case InvActKind.Move: InventoryNative.Move(a.Oid, a.X, wireY, InventoryNative.PlayerId()); break;
             case InvActKind.Take:
                 InventoryNative.Move(a.Oid, a.X, wireY, a.X == InventoryWindow.AutoCell ? InventoryModel.Invalid : InventoryNative.PlayerId());
                 break;
             case InvActKind.Put: InventoryNative.Move(a.Oid, a.X, wireY, a.Other); break;
+            case InvActKind.Buy: InventoryNative.Buy(a.Oid, a.X, wireY); break;
             case InvActKind.Merge: InventoryNative.Merge(a.Oid, a.Other); break;
             case InvActKind.Split: InventoryNative.Split(a.Oid, a.X); break;
-            case InvActKind.Use: InventoryNative.Use(a.Oid, a.X, a.Y); break;
+            case InvActKind.Use: InventoryNative.DoubleClick(a.Oid); break;
             case InvActKind.Radial:
                 InventoryNative.Radial(a.Oid, a.X, a.Y, _inv.Loot.Find(a.Oid) < 0 ? -1
                                                      : _inv.Loot.IsItem ? InventoryNative.RadialPossessed : InventoryNative.RadialGround);

@@ -309,6 +309,7 @@ general\.logs\b|\bGeneral\.Logs(Default)?\b|\bLogsAtBoot\b|\bExtenderLog\.Enable
 \bwalls\.(margin|armin|armout|armradius)\b	CX-649	RetiredKeys|ArmKeys|cx\.cfg that holds|Settings\.Read\(
 \bspring ?arm\b	CX-649	no spring arm|springarm\.keep
 \b(CastStatic|IStaticWorld|ArmFraction)\b	CX-649
+\bBaseItemUsable\b	CX-729
 
 # The nameplate health bar, deleted with its HP reads (ADR-0060): health is the server's to reveal, and some servers hide
 # it on purpose and give other hints. The plate shows the server's damage level and nothing more.

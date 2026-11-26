@@ -181,6 +181,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseDown:
                 {
                     byte btn = ((SdlEvent*)ev)->Button;
+                    UiHost.Clicks = ((SdlEvent*)ev)->Clicks;
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);
@@ -381,10 +382,20 @@ public sealed unsafe class UiInputService : IExtenderService
     private static void OnSetMouseCursor(IntPtr @this, int cursorId, int hotspot, int p3, int p4, int p5)
     {
         if (_origSetCursor == null) return;
-        if (CX.Services.Nui.HeldImageService.HoldsCursor) _origSetCursor(@this, CX.Services.Nui.HeldImageService.HeldCursor, 0, 1, 0, p5);
-        else if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
+        int held = CX.Services.Nui.HeldImageService.HoldsCursor ? CX.Services.Nui.HeldImageService.HeldCursor : NoCursor;
+        int pick = CursorFor(cursorId, _forceDefault, CX.Services.Camera.TargetFire.Live() != IntPtr.Zero, held);
+        if (pick != cursorId) _origSetCursor(@this, pick, 0, 1, 0, p5);
         else _origSetCursor(@this, cursorId, hotspot, p3, p4, p5);
     }
+
+    /// <summary>No held image holds the cursor.</summary>
+    internal const int NoCursor = -1;
+
+    /// <summary>The cursor the fold sets for the engine's <paramref name="id"/>: a held image's (<paramref name="held"/>,
+    /// <see cref="NoCursor"/> for none), the walk pointer over CX UI, else the engine's own. A live target mode keeps its
+    /// own cursor over CX UI, as it does over a stock panel.</summary>
+    internal static int CursorFor(int id, bool overUi, bool targetMode, int held)
+        => held != NoCursor ? held : overUi && !targetMode ? UiCursorId : id;
 
     // ---- environmental probes -------------------------------------------------------------------
     /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our below-NUI windows, so they take the press
