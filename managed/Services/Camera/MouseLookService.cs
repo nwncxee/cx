@@ -9,7 +9,7 @@ namespace CX.Services.Camera;
 
 /// <summary>
 /// Mouse-look on right-drag: the engine's one mouse orbit is middle-drag, and this makes right-drag the same orbit
-/// with the cursor captured -- SDL relative mode, every motion swallowed and fed to the engine's impulse path, so
+/// with the cursor captured -- hidden and measured by CX on Linux, SDL relative mode on Windows, every motion swallowed and fed to the engine's impulse path, so
 /// locks and limits stay engine-owned; a press under <c>threshold</c> is replayed so the radial menu still opens.
 /// The action camera forwards events rewritten to the screen centre. Outermost chain layer, allocates nothing.
 /// </summary>
@@ -67,7 +67,7 @@ public sealed unsafe class MouseLookService : IExtenderService
         CameraKnobs.Declare();
         if (!EngineLayout.Require(log, "MouseLook", "CGuiMan")) return;
         if (!SymbolMap.Require(log, "MouseLook", SymbolMap.WinMessageHandler, SymbolMap.TurnCamera, SymbolMap.TiltCamera,
-                               SymbolMap.SdlSetRelativeMouseMode, SymbolMap.SdlWarpMouseInWindow,
+                               SymbolMap.SdlSetRelativeMouseMode, SymbolMap.SdlWarpMouseInWindow, SymbolMap.SdlShowCursor,
                                SymbolMap.GuiMan, SymbolMap.GuiObjectHitCheck, SymbolMap.GetModule, SymbolMap.AppManager)) return;
         _modState = EngineFn.SdlGetModState;
         Crosshair.Register();
@@ -122,7 +122,7 @@ public sealed unsafe class MouseLookService : IExtenderService
                 {
                     // The engine's own orbit button: it keeps the press, we keep the cursor.
                     _state = State.Looking; _looks++;
-                    EngineFn.SdlSetRelativeMouseMode(1);
+                    Capture(mx, my, false);
                     return Forward(ev);
                 }
                 Buffer.MemoryCopy((void*)ev, _held, SdlEventSize, SdlEventSize);
@@ -136,19 +136,11 @@ public sealed unsafe class MouseLookService : IExtenderService
                     int threshold = MouseLook.Threshold.V;
                     if (dx * dx + dy * dy <= threshold * threshold) break;   // a still click so far: the engine tracks it
                     _state = State.Looking; _looks++;
-                    EngineFn.SdlSetRelativeMouseMode(1);
+                    Capture(((SdlEvent*)ev)->X, ((SdlEvent*)ev)->Y, false);
                     return 0;   // this event's delta already moved the (soon warped-back) cursor; start clean
                 }
                 if (CameraService.GateUp || FreeCameraService.Active) { Release(); return 0; }
-                IntPtr module = CameraService.Module();
-                if (module != IntPtr.Zero)
-                {
-                    float w = ViewportWidth();
-                    float k = MouseLook.Sens.V / w;
-                    var mod = new CNWCModule(module);
-                    mod.TurnCamera(((SdlEvent*)ev)->XRel * TurnPerPx * k, 1);
-                    mod.TiltCamera(((SdlEvent*)ev)->YRel * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
-                }
+                Turn(ev);
                 return 0;
             case SdlMouseUp:
                 if (_state == State.Idle || ((SdlEvent*)ev)->Button != _button) break;
@@ -207,11 +199,11 @@ public sealed unsafe class MouseLookService : IExtenderService
         {
             if (_state != State.Idle) Release();
             ViewportCentre(out _cx, out _cy);
-            EngineFn.SdlSetRelativeMouseMode(1); _actions++;
+            Capture(_cx, _cy, true); _actions++;
         }
         else
         {
-            EngineFn.SdlSetRelativeMouseMode(0);
+            Uncapture();
             EngineFn.SdlWarpMouseInWindow(IntPtr.Zero, _cx, _cy);   // the cursor appears where the engine believes it is
         }
         _action = on;
@@ -228,14 +220,7 @@ public sealed unsafe class MouseLookService : IExtenderService
         switch (*(uint*)ev)
         {
             case SdlMouseMotion:
-                IntPtr module = CameraService.Module();
-                if (module != IntPtr.Zero)
-                {
-                    float k = MouseLook.Sens.V / ViewportWidth();
-                    var mod = new CNWCModule(module);
-                    mod.TurnCamera(((SdlEvent*)ev)->XRel * TurnPerPx * k, 1);
-                    mod.TiltCamera(((SdlEvent*)ev)->YRel * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
-                }
+                Turn(ev);
                 ((SdlEvent*)ev)->X = ax; ((SdlEvent*)ev)->Y = ay;
                 ((SdlEvent*)ev)->XRel = 0; ((SdlEvent*)ev)->YRel = 0;
                 break;
@@ -321,15 +306,62 @@ public sealed unsafe class MouseLookService : IExtenderService
     /// reads <c>MouseLook.Enabled.V</c>.</summary>
     internal static void MasterChanged() { if (!MouseLook.Enabled.V) { Release(); if (_action) SetAction(false); } }
 
-    /// <summary>End a look or a held press: cursor back where the drag began, relative mode off, state idle.</summary>
+    /// <summary>End a look or a held press: cursor back where the drag began and shown again, state idle.</summary>
     private static void Release()
     {
         if (_state == State.Looking)
         {
-            EngineFn.SdlSetRelativeMouseMode(0);
+            Uncapture();
             EngineFn.SdlWarpMouseInWindow(IntPtr.Zero, _originX, _originY);   // NULL window = the one with mouse focus
         }
         _state = State.Idle;
+    }
+
+    /// <summary>Linux measures the pointer itself (<see cref="PointerTrack"/>): the game's SDL 2.0.8 has no
+    /// XInput2 there, so its relative mode is warp emulation whose lost or late echoes jump the view.
+    /// Windows keeps SDL's relative mode on purpose: SDL 2.0.8 runs it on raw input there, with no warp.</summary>
+    private static readonly bool OwnTrack = !OperatingSystem.IsWindows();
+    private static readonly PointerTrack _track = new();
+
+    /// <summary>Hide the cursor and start streaming deltas from (<paramref name="x"/>, <paramref name="y"/>);
+    /// <paramref name="warped"/> warps the cursor there first, as the action camera's centre.</summary>
+    private static void Capture(int x, int y, bool warped)
+    {
+        if (!OwnTrack) { EngineFn.SdlSetRelativeMouseMode(1); return; }
+        var gm = new CGuiMan(_guiMan != IntPtr.Zero ? *(IntPtr*)_guiMan : IntPtr.Zero);
+        int w = !gm.IsNull ? gm.VpWidth : 0, h = !gm.IsNull ? gm.VpHeight : 0;
+        EngineFn.SdlShowCursor(0);
+        if (!warped) { _track.Begin(x, y, w, h); return; }
+        _track.BeginWarped(x, y, w, h);
+        EngineFn.SdlWarpMouseInWindow(IntPtr.Zero, x, y);
+    }
+
+    private static void Uncapture()
+    {
+        if (OwnTrack) EngineFn.SdlShowCursor(1);
+        else EngineFn.SdlSetRelativeMouseMode(0);
+    }
+
+    /// <summary>One motion's turn and tilt, from SDL's xrel on Windows and from the pointer track on Linux.</summary>
+    private static void Turn(IntPtr ev)
+    {
+        int dx, dy;
+        if (!OwnTrack) { dx = ((SdlEvent*)ev)->XRel; dy = ((SdlEvent*)ev)->YRel; }
+        else
+        {
+            bool was = _track.WarpsIgnored;
+            bool moved = _track.Feed(((SdlEvent*)ev)->X, ((SdlEvent*)ev)->Y, out dx, out dy, out bool warp, out int wx, out int wy);
+            if (warp) EngineFn.SdlWarpMouseInWindow(IntPtr.Zero, wx, wy);
+            if (!was && _track.WarpsIgnored && _track.Ignored == 1)
+                _log?.Info("MouseLook: the window system ignored a cursor warp; a look now stops at the window edge");
+            if (!moved) return;
+        }
+        IntPtr module = CameraService.Module();
+        if (module == IntPtr.Zero) return;
+        float k = MouseLook.Sens.V / ViewportWidth();
+        var mod = new CNWCModule(module);
+        mod.TurnCamera(dx * TurnPerPx * k, 1);
+        mod.TiltCamera(dy * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
     }
 
 
@@ -356,7 +388,7 @@ public sealed unsafe class MouseLookService : IExtenderService
 
     /// <summary>The mouse-look line of the live mode's status.</summary>
     internal static string Report() =>
-        FormattableString.Invariant($"{(MouseLook.Enabled.V ? "on" : "OFF (the stock middle-drag)")}; right-drag {(MouseLook.Right.V ? "on" : "off")}, middle-drag {(MouseLook.Enabled.V ? "captured" : "stock")}; sensitivity {MouseLook.Sens.V:0.##} invert {(MouseLook.Invert.V ? 1 : 0)} threshold {MouseLook.Threshold.V}px | {_looks} look(s), {_clicks} replayed click(s), state {_state}; action camera {(MouseLook.Action.V ? (_action ? "on" : "paused") : "off")}, {_actions} capture(s), {_walksRefused} walk(s) refused, {_selfHidden} self-pick(s) hidden | {AimAssist.Report()} | {ActionFeedback.Report()} | {HeadTrackService.Fragment}");
+        FormattableString.Invariant($"{(MouseLook.Enabled.V ? "on" : "OFF (the stock middle-drag)")}; right-drag {(MouseLook.Right.V ? "on" : "off")}, middle-drag {(MouseLook.Enabled.V ? "captured" : "stock")}; sensitivity {MouseLook.Sens.V:0.##} invert {(MouseLook.Invert.V ? 1 : 0)} threshold {MouseLook.Threshold.V}px | {_looks} look(s), {_clicks} replayed click(s), state {_state}, {(OwnTrack ? $"own pointer track ({_track.Warps} warp(s), {_track.Dropped} stale, {_track.Ignored} ignored)" : "SDL relative mode")}; action camera {(MouseLook.Action.V ? (_action ? "on" : "paused") : "off")}, {_actions} capture(s), {_walksRefused} walk(s) refused, {_selfHidden} self-pick(s) hidden | {AimAssist.Report()} | {ActionFeedback.Report()} | {HeadTrackService.Fragment}");
 }
 
 /// <summary>The action camera's crosshair: a small four-arm reticle at the viewport centre, drawn as a registered

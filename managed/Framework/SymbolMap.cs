@@ -1480,6 +1480,10 @@ internal static unsafe class SymbolMap
     /// <inheritdoc cref="SdlSetRelativeMouseMode"/>
     [Fn("void(IntPtr window, int x, int y)")]
     public const string SdlWarpMouseInWindow = "SDL_WarpMouseInWindow";
+    /// <summary>SDL2 <c>SDL_ShowCursor(toggle)</c>: 0 hides, 1 shows, -1 asks. Mouse-look hides the cursor itself on
+    /// Linux, where it measures the pointer instead of using SDL's warp-emulated relative mode.</summary>
+    [Fn("int(int toggle)")]
+    public const string SdlShowCursor = "SDL_ShowCursor";
     /// <summary><c>CGuiInGame::ToggleOff()</c> @0x66dda0 / <c>UnToggleOff()</c> @0x66e930 -- the engine's own
     /// hide/show of the whole in-game GUI (every panel, quick chat, the NUI scope), the pair the server's
     /// Cutscene_HideGui message (major 0x33 minor 7) and <c>SetCutsceneMode</c> call. The free camera
@@ -3043,6 +3047,7 @@ internal static unsafe class SymbolMap
         [TestDirectLine] = At(),       // WalkPlayerToPoint's 7-slot line-test callee (docs/windows-symbols.md)
         [SdlSetRelativeMouseMode] = Nm("SDL_SetRelativeMouseMode"),
         [SdlWarpMouseInWindow] = Nm("SDL_WarpMouseInWindow"),
+        [SdlShowCursor] = Nm("SDL_ShowCursor"),
         // CGuiInGame is not exported; both reached from the anchored HandleServerToPlayerMessage (0x7a41a0)
         // case 0x33 -> cutscene handler 0x786450 -> minor 7's ToggleOff / UnToggleOff arms, bodies identical to Linux.
         [GuiInGameToggleOff] = At(),

@@ -250,6 +250,7 @@ global using unsafe WalkUpdateLocationFn = delegate* unmanaged<nint, int>;
 global using unsafe TestDirectLineFn = delegate* unmanaged<nint, nint, CX.Engine.VectorArg, CX.Engine.VectorArg, float, float, int, int>;
 global using unsafe SdlSetRelativeMouseModeFn = delegate* unmanaged<int, int>;
 global using unsafe SdlWarpMouseInWindowFn = delegate* unmanaged<nint, int, int, void>;
+global using unsafe SdlShowCursorFn = delegate* unmanaged<int, int>;
 global using unsafe GuiInGameToggleOffFn = delegate* unmanaged<nint, void>;
 global using unsafe GuiInGameUnToggleOffFn = delegate* unmanaged<nint, void>;
 global using unsafe UpdateLookAtFn = delegate* unmanaged<nint, void>;
@@ -5031,6 +5032,10 @@ public static unsafe class EngineFn
     private static bool _SdlWarpMouseInWindowDone;
     /// <inheritdoc cref="SymbolMap.SdlWarpMouseInWindow"/>
     public static SdlWarpMouseInWindowFn SdlWarpMouseInWindow => (SdlWarpMouseInWindowFn)(_SdlWarpMouseInWindowDone ? _SdlWarpMouseInWindow : Resolve(ref _SdlWarpMouseInWindow, ref _SdlWarpMouseInWindowDone, SymbolMap.SdlWarpMouseInWindow));
+    private static IntPtr _SdlShowCursor;
+    private static bool _SdlShowCursorDone;
+    /// <inheritdoc cref="SymbolMap.SdlShowCursor"/>
+    public static SdlShowCursorFn SdlShowCursor => (SdlShowCursorFn)(_SdlShowCursorDone ? _SdlShowCursor : Resolve(ref _SdlShowCursor, ref _SdlShowCursorDone, SymbolMap.SdlShowCursor));
     private static IntPtr _GuiInGameToggleOff;
     private static bool _GuiInGameToggleOffDone;
     /// <inheritdoc cref="SymbolMap.GuiInGameToggleOff"/>
@@ -7444,6 +7449,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlWarpMouseInWindow"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlWarpMouseInWindowFn* ChainSdlWarpMouseInWindow(this HookService h, SdlWarpMouseInWindowFn handler, int priority) =>
         (SdlWarpMouseInWindowFn*)h.Chain(SymbolMap.SdlWarpMouseInWindow, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlShowCursor"/>; returns the original, or null.</summary>
+    public static SdlShowCursorFn InstallSdlShowCursor(this HookService h, SdlShowCursorFn handler) =>
+        (SdlShowCursorFn)h.Install(SymbolMap.SdlShowCursor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlShowCursor"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlShowCursorFn* ChainSdlShowCursor(this HookService h, SdlShowCursorFn handler, int priority) =>
+        (SdlShowCursorFn*)h.Chain(SymbolMap.SdlShowCursor, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GuiInGameToggleOff"/>; returns the original, or null.</summary>
     public static GuiInGameToggleOffFn InstallGuiInGameToggleOff(this HookService h, GuiInGameToggleOffFn handler) =>
         (GuiInGameToggleOffFn)h.Install(SymbolMap.GuiInGameToggleOff, (IntPtr)handler);
