@@ -23,10 +23,11 @@ internal static class AirDustMarch
     /// <summary>The shipped stage's text.</summary>
     internal static string Stage => ShaderSource.Get(AirScene.ShdCs + ".glsl");
 
-    /// <summary>The value of the stage's <c>const</c> <paramref name="name"/>, int or float; NaN when it declares none.</summary>
-    internal static float Const(string name)
+    /// <summary>The value of the <c>const</c> <paramref name="name"/> the dust stage, or <paramref name="stage"/>'s text,
+    /// declares, int or float; NaN when it declares none.</summary>
+    internal static float Const(string name, string? stage = null)
     {
-        string src = Stage;
+        string src = stage ?? Stage;
         foreach (string kind in new[] { "const float ", "const int " })
         {
             int at = src.IndexOf(kind + name + " = ", StringComparison.Ordinal);

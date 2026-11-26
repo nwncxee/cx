@@ -78,6 +78,9 @@ internal static partial class AirScene
                   + 0.4f * MathF.Sin(MathF.Tau * across / WispWideB + 2.1f) * (0.5f + 0.5f * MathF.Sin(1.7f * MathF.Tau * along + 2.9f));
     }
 
+    /// <summary>The wisps' streaks now at world (<paramref name="x"/>, <paramref name="y"/>), as the wisp stage lays them.</summary>
+    internal static float StreakAt(float x, float y) => Streaks(_s.Sheet, x, y);
+
     /// <summary>Do wisps hang over this frame: the air on, in a place that hangs them?</summary>
     internal static bool Hung => _s.Laid && On(_s) && (_s.Look.Layers(_s.Night) & AirLayer.Wisps) != 0;
 

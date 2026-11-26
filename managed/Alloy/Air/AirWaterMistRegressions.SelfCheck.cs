@@ -13,7 +13,7 @@ namespace CX.Alloy;
 /// stream laid tile by tile, and the head layout the dust stage declares.</summary>
 internal static class AirWaterMistRegressions
 {
-    /// <summary>A fog colour no stage starts from, to see it reach the head.</summary>
+    /// <summary>A fog colour no stage starts from, to see it stay out of the head.</summary>
     private static readonly Vector3 Dusky = new(0.1f, 0.2f, 0.3f);
 
     [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
@@ -28,6 +28,7 @@ internal static class AirWaterMistRegressions
         PlacedDrawn(check);
         PlacedRefilled(check);
         SkyGoesUp(check);
+        BlueFogLeavesMist(check);
         MistGoesUp(check);
         FogLaysNoFloor(check);
         log.Info(check.Ok ? "AirWaterMistRegressions.SelfCheck: passed" : "AirWaterMistRegressions.SelfCheck: FAILED");
@@ -135,18 +136,38 @@ internal static class AirWaterMistRegressions
             $"at fog amount 10 the stage idles {idle} before any placement; the placement lays {beside:F4} m beside it and {far:F4} m 30 m off (want true, some, none)");
     }
 
-    // Given the night mist uploaded under one fog colour
+    // Given the night mist uploaded
     // When the sky's fog colour changes with the air unchanged
-    // Then the upload goes again, its head carrying the new colour and the mist's height.
+    // Then nothing goes again: the stage lights the mist by the area's ambient and moon, and the head carries the mist's height.
     private static void SkyGoesUp(Checker check)
     {
         Enter(City, Quay(), 0f, true);
         Go(5f, Vector2.Zero);
         int gen = int.MinValue;
-        GroundMist.Pack(ref gen, Sent, Vector3.Zero);
-        int again = GroundMist.Pack(ref gen, Sent, Dusky);
-        Vector4 sky = MemoryMarshal.Read<Vector4>(Sent.AsSpan(GroundMist.SkyAt));
-        check.Expect(again > 0 && sky == new Vector4(Dusky, AirScene.MistTop),
-            $"a new fog colour sends {again} bytes with sky {sky} (want an upload carrying <{Dusky}, {AirScene.MistTop}>)");
+        GroundMist.Pack(ref gen, Sent);
+        Vector3 was = FrameInputs.FogColor;
+        FrameInputs.FogColor = Dusky;
+        int again = GroundMist.Pack(ref gen, Sent);
+        FrameInputs.FogColor = was;
+        Vector4 slab = MemoryMarshal.Read<Vector4>(Sent.AsSpan(GroundMist.SlabAt));
+        check.Expect(again == 0 && slab.W == AirScene.MistTop,
+            $"a new fog colour sends {again} bytes and the head carries the mist {slab.W} m deep (want none, {AirScene.MistTop})");
+    }
+
+    // Given a city by the water at night whose builder tints the fog a saturated blue, under a grey ambient and a pale moon
+    // When the player looks across the mist
+    // Then the mist takes the hue of the light the ground takes, the ambient and the moon, not the fog's blue.
+    private static void BlueFogLeavesMist(Checker check)
+    {
+        Enter(City, Quay(), 0f, true);
+        Go(30f, Vector2.Zero);
+        int gen = int.MinValue;
+        GroundMist.Pack(ref gen, Sent);
+        var field = new AirDustMarch.Field(Sent);
+        var room = new AirDustMarch.Shine(new Vector3(0.04f, 0.04f, 0.05f), new Vector3(0.02f, 0.05f, 0.6f), new Vector3(0.05f, 0.06f, 0.1f));
+        (_, Vector3 added) = field.March(new Vector3(4f, 0.3f, 1.7f), new Vector3(16f, 0.3f, 0f), room, ReadOnlySpan<AirDustMarch.Point>.Empty);
+        Vector3 ground = room.Ambient + room.Diffuse;
+        check.Expect(added.X > 0f && added.Z / added.X <= 1.05f * ground.Z / ground.X,
+            $"under a blue fog the mist adds {added.X:F4},{added.Y:F4},{added.Z:F4}, {added.Z / added.X:F2} times as much blue as red where the ground's light has {ground.Z / ground.X:F2} (want the ground's hue)");
     }
 }
