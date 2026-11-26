@@ -61,6 +61,7 @@ internal static class AirDustLookApprovedExamples
             MistEdgeSoft(check);
             DenseFogSeenThrough(check);
             PlaceablePoolBounded(check);
+            DarkCryptStaysDark(check);
         }
         log.Info(check.Ok ? "AirDustLookApprovedExamples.SelfCheck: passed" : "AirDustLookApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
@@ -457,5 +458,37 @@ internal static class AirDustLookApprovedExamples
         float ten = Keep(f, new Vector3(-25f, 0.5f, Eye), new Vector3(-15f, 0.5f, Hollow(-15f, 0.5f)), CryptLight);
         check.Expect(pool > 0f && pool <= 0.31f && ten >= 1f / MathF.E,
             $"G1 the hollow holds {pool:F3} m of the placeable's mist and the eye keeps {ten:P0} of its floor 10 m off (want some mist, 0.31 m at most, at least 37% kept)");
+    }
+
+    /// <summary>A dark crypt floor's lit albedo, linear: worn stone.</summary>
+    private const float FloorAlbedo = 0.2f;
+
+    /// <summary>A crypt's green brazier as the engine hands its colour over, sRGB.</summary>
+    private static readonly Vector3 Brazier = new(0.35f, 0.9f, 0.35f);
+
+    /// <summary>Rec. 709 luma of a linear colour.</summary>
+    private static float Luma(Vector3 c) => 0.2126f * c.X + 0.7152f * c.Y + 0.0722f * c.Z;
+
+    // Given a crypt floor that reads dark under its green braziers without the air, at fog amount 15
+    // When the dust lies on it and the eye looks across it grazing
+    // Then the floor seen through the dust reads no brighter than 1.5 times its own brightness, and no darker than half of it.
+    private static void DarkCryptStaysDark(Checker check)
+    {
+        Enter(AirFixture.Crypt, Room(), MostFog, false);
+        Go(3f, Vector2.Zero);
+        Field f = Upload();
+        Point[] lamps = { new(new Vector3(-2f, 2.5f, 1.5f), 6f, Brazier), new(new Vector3(4f, -2.5f, 1.5f), 6f, Brazier) };
+        float worst = 1f, best = 1f;
+        for (float x = -2f; x <= 6f; x += 1f)
+        {
+            var surf = new Vector3(x, 0.3f, 0f);
+            (float keep, Vector3 added) = f.March(new Vector3(x - 8f, 0.3f, Eye), surf, CryptLight, lamps);
+            float bare = Luma(FloorAlbedo * Stock(CryptLight.Ambient, lamps, surf));
+            float seen = bare * keep + Luma(added);
+            worst = MathF.Max(worst, seen / bare);
+            best = MathF.Min(best, seen / bare);
+        }
+        check.Expect(worst <= 1.5f && best >= 0.5f,
+            $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
     }
 }
