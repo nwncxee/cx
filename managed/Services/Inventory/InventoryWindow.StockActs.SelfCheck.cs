@@ -20,6 +20,8 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
         Suite(log, "InventoryWindow.BuySelfCheck", Buy);
         Suite(log, "InventoryWindow.StoreMotionSelfCheck", StoreMotion);
+        Suite(log, "InventoryWindow.StoreHighlightApprovedExamples.SelfCheck", StoreHighlight);
+        Suite(log, "InventoryWindow.StoreUnlitSelfCheck", StoreUnlit);
         Suite(log, "InventoryWindow.AimSelfCheck", Aim);
         Suite(log, "InventoryWindow.TakeAllSelfCheck", TakeAll);
     }
