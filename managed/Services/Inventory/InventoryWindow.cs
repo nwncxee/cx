@@ -549,17 +549,23 @@ internal sealed partial class InventoryWindow
         (uint oid, int w, int h) = StoreDrag();
         if (w <= 0) return Contains(px, py);
         if (!Contains(px, py)) return false;
-        int x = AutoCell, y = AutoCell;
-        InvHit hit = HitTest(px, py);
-        if (hit.Kind == InvHitKind.Cell)
-        {
-            int page = hit.Y / InventoryModel.Rows;
-            int cx = CentredCell((px - Sx(_grid.X0)) / S, w, InventoryModel.Cols);
-            int cy = page * InventoryModel.Rows + CentredCell(Top * Cell + (py - Sy(_grid.Y0)) / S - page * InventoryModel.Rows * Cell, h, InventoryModel.Rows);
-            if (!Model.Blank(page) && Model.Fits(cx, cy, w, h, oid, PageLimit)) (x, y) = (cx, cy);
-        }
+        if (!StoreCell(px, py, oid, w, h, out int x, out int y)) x = y = AutoCell;
         Act?.Invoke(new InvAction(InvActKind.Buy, oid, X: x, Y: y));
         return false;
+    }
+
+    /// <summary>The free cell a <paramref name="w"/>x<paramref name="h"/> store item let go at (<paramref name="px"/>,
+    /// <paramref name="py"/>) lands in, its footprint centred on the pointer; false where the server places it, as for an
+    /// item bigger than a page.</summary>
+    private bool StoreCell(float px, float py, uint oid, int w, int h, out int x, out int y)
+    {
+        x = y = 0;
+        InvHit hit = HitTest(px, py);
+        if (hit.Kind != InvHitKind.Cell || w > InventoryModel.Cols || h > InventoryModel.Rows) return false;
+        int page = hit.Y / InventoryModel.Rows;
+        x = CentredCell((px - Sx(_grid.X0)) / S, w, InventoryModel.Cols);
+        y = page * InventoryModel.Rows + CentredCell(Top * Cell + (py - Sy(_grid.Y0)) / S - page * InventoryModel.Rows * Cell, h, InventoryModel.Rows);
+        return !Model.Blank(page) && Model.Fits(x, y, w, h, oid, PageLimit);
     }
 
     /// <summary>The drop rules for the dragged item over <paramref name="h"/>: a cell -> Move / Unequip / Take / Merge / into a

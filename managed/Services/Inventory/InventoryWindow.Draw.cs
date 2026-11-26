@@ -326,8 +326,8 @@ internal sealed partial class InventoryWindow
     }
 
     /// <summary>Drag feedback (the footprint under the pointer, green where it lands, red where it cannot; the slots that take
-    /// the item lit, as <c>ShowValidSlots</c> does), the hover outline, and the tooltip; over the loot grid,
-    /// <see cref="LootOver"/>.</summary>
+    /// the item lit, as <c>ShowValidSlots</c> does; a store item the engine drags, green where it is bought into), the
+    /// hover outline, and the tooltip; over the loot grid, <see cref="LootOver"/>.</summary>
     private void EmitOver(VertexBatch over, VertexBatch gridOver, VertexBatch lootOver, GlyphAtlas small)
     {
         float s = S;
@@ -343,18 +343,16 @@ internal sealed partial class InventoryWindow
             {
                 InvAction? a = Drop(h, true, describe: false);
                 Footprint(h, InventoryModel.Cols, InventoryModel.Rows, out int x, out int y);
-                uint rgb = a is { Kind: InvActKind.Refused } ? Warn : Ok;
                 if (a is { Kind: InvActKind.Merge }) { int u = Model.ItemAt(h.X, h.Y); x = Model.Items[u].X; y = Model.Items[u].Y; }
-                for (int dy = 0; dy < _dragH; dy++)
-                    for (int dx = 0; dx < _dragW; dx++)
-                        if (x + dx < InventoryModel.Cols && CellRect(x + dx, y + dy, out float cx0, out float cy0) && (y + dy) / InventoryModel.Rows == y / InventoryModel.Rows)
-                            Fill(gridOver, cx0 + 1f, cy0 + 1f, cx0 + Cell * s, cy0 + Cell * s, rgb, 0.35f);
+                FootprintFill(gridOver, x, y, _dragW, _dragH, a is { Kind: InvActKind.Refused } ? Warn : Ok);
             }
             else if (h.Kind == InvHitKind.Slot)
                 Outline(over, Sx(_slots[h.Index].X0), Sy(_slots[h.Index].Y0), Sx(_slots[h.Index].X1), Sy(_slots[h.Index].Y1),
                         Drop(h, true, describe: false) is { Kind: InvActKind.Refused } ? Warn : Ok);
             return;
         }
+        if (StoreDrag() is (uint oid, int sw, int sh) && sw > 0 && StoreCell(_mx, _my, oid, sw, sh, out int bx, out int by))
+            FootprintFill(gridOver, bx, by, sw, sh, Ok);
         if (Contains(_mx, _my))
         {
             InvHit h = HitTest(_mx, _my);
@@ -368,6 +366,17 @@ internal sealed partial class InventoryWindow
             else if (h.Kind == InvHitKind.Slot)
                 Outline(over, Sx(_slots[h.Index].X0), Sy(_slots[h.Index].Y0), Sx(_slots[h.Index].X1), Sy(_slots[h.Index].Y1), Hi, 0.8f);
         }
+    }
+
+    /// <summary>The <paramref name="w"/>x<paramref name="h"/> cells from (<paramref name="x"/>, global <paramref name="y"/>) that
+    /// are in view and on that page, filled <paramref name="rgb"/>: where a dragged item lands.</summary>
+    private void FootprintFill(VertexBatch gridOver, int x, int y, int w, int h, uint rgb)
+    {
+        float s = S;
+        for (int dy = 0; dy < h; dy++)
+            for (int dx = 0; dx < w; dx++)
+                if (x + dx < InventoryModel.Cols && CellRect(x + dx, y + dy, out float cx0, out float cy0) && (y + dy) / InventoryModel.Rows == y / InventoryModel.Rows)
+                    Fill(gridOver, cx0 + 1f, cy0 + 1f, cx0 + Cell * s, cy0 + Cell * s, rgb, 0.35f);
     }
 
     /// <summary>The item tooltip, into a batch of its own that the service draws in the popup band, over NUI and every window.</summary>
