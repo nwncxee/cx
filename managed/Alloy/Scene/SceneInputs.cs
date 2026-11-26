@@ -207,13 +207,12 @@ public sealed unsafe partial class SceneInputs : IExtenderService
     /// <summary>RenderInterface::GetGlobalShaderParamf -- param 0x12 = the engine's light-radius multiplier.</summary>
     private static RiGetGlobalShaderParamfFn _getGspF;
 
-    /// <summary>Take the engine's global-param read the light feed latches through; false when the shadows feed
-    /// stays unarmed.</summary>
+    /// <summary>Take the engine's global-param read the light feed latches through, whatever the shadows say; false
+    /// when the shadows feed stays unarmed.</summary>
     internal static bool Arm(bool shadows, RiGetGlobalShaderParamfFn gsp)
     {
-        if (!shadows) return false;
         _getGspF = gsp;
-        return true;
+        return shadows;
     }
 
     /// <summary>Latch the two constants the engine's point-light attenuation is built from, out of the
