@@ -528,6 +528,8 @@ pull-ins, and `yaw jumps` counts frames that turned the camera more than 30 degr
 
 `airdust` is the floor dust and night mist capture. The PC jumps to the module's first crypt, dungeon or cave area (tileset `tdc01`, `tde01` or `tdm01`; the default module's is a crypt) at noon. The camera looks across the floor, then down at it, and the PC walks 8 m. Then the PC jumps to the module's first outdoor area at 23:00. Its keys save `1-across.png` through `7-night.png`. A City Interior area such as the default module's starting inn takes no air look, so the dust never shows there. Run it with `--cfg chat.enabled=0`.
 
+`airsky` is the meadow wisps against the sky. Its policy holds `air.place=meadow`, so the module's first outdoor area takes the meadow look whatever its tileset. The PC jumps there at noon; the camera looks across the ground and then up as far as the camera pitches, and at 23:00 it takes the same two views. Its keys save `1-day-across.png` through `4-night-up.png`. Run it with `--cfg chat.enabled=0`.
+
 `rain` is the fixed rain capture: the PC jumps to the module's first outdoor area, heavy rain at noon there, a snap to one camera angle, then a slow scripted
 pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0.png` to `pan5.png`), so two builds
 compare frame for frame. Run it once with `--cfg post.scale=1` (FSR) and once with `--cfg post.scale=1.5` (TAA), with
