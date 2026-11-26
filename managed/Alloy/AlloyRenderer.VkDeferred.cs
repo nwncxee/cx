@@ -228,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
         if (dust)
         {
             // ponytail: the whole field goes up each frame the air steps; a dirty-rect upload once a still crypt costs a frame
-            int air = GroundMist.Pack(ref d.AirGen, d.AirBytes, FogLinear());
+            int air = GroundMist.Pack(ref d.AirGen, d.AirBytes);
             if (air > 0) cl.UpdateBuffer(d.Air, 0, d.AirBytes.AsSpan(0, air));
             cl.BeginLabel("air dust"u8);
             cl.SetPipeline(d.Dust!.Pipe);
@@ -246,8 +246,7 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((packed - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
             cl.EndLabel();
         }
-        Vector3 sky = pollen || leaves || wisps ? FogLinear() : default;
-        int grains = pollen ? AirScene.PackPollen(d.PollenData, sky) : 0;
+        int grains = pollen ? AirScene.PackPollen(d.PollenData) : 0;
         if (grains > 1)
         {
             cl.UpdateBuffer(d.Pollen!.Own, 0, MemoryMarshal.AsBytes(d.PollenData.AsSpan(0, grains)));
@@ -257,7 +256,7 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((grains - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
             cl.EndLabel();
         }
-        int fallen = leaves ? AirScene.PackLeaves(d.LeafData, sky) : 0;
+        int fallen = leaves ? AirScene.PackLeaves(d.LeafData) : 0;
         if (fallen > 1)
         {
             cl.UpdateBuffer(d.Leaves!.Own, 0, MemoryMarshal.AsBytes(d.LeafData.AsSpan(0, fallen)));
@@ -267,7 +266,7 @@ public sealed unsafe partial class AlloyRenderer
             cl.Dispatch((fallen - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
             cl.EndLabel();
         }
-        int sheet = wisps ? AirScene.PackWisps(d.WispData, sky) : 0;
+        int sheet = wisps ? AirScene.PackWisps(d.WispData) : 0;
         if (sheet > 0)
         {
             cl.UpdateBuffer(d.Wisps!.Own, 0, MemoryMarshal.AsBytes(d.WispData.AsSpan(0, sheet)));

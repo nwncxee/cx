@@ -157,7 +157,7 @@ internal static class AirMeadowRegressions
     {
         Settled(0f);
         Span<Vector4> w = stackalloc Vector4[AirScene.WispsPacked];
-        AirScene.PackWisps(w, Vector3.Zero);
+        AirScene.PackWisps(w);
         var eye = new Vector3(w[2].Z, w[2].W, 1.7f);
         float worst = 1f, low = 0f, up = 0f;
         for (int a = 0; a < 16; a++)
@@ -194,23 +194,24 @@ internal static class AirMeadowRegressions
         {
             float th = h * MathF.PI / 12f;
             for (int i = 0; i < v.Length; i++) v[i] = AirScene.StreakAt(MathF.Cos(th) * i * 0.25f, MathF.Sin(th) * i * 0.25f);
-            float alike = MostAlike(v, 32, 512);
+            float alike = Returns(v, 512);
             if (alike > most) (most, worst) = (alike, h * 15f);
         }
         Vector2 dir = Vector2.Normalize(AirScene.Wisps.Stretch), across = new(-dir.Y, dir.X);
         float along = Alike(dir * 4f), side = Alike(across * 4f);
         check.Expect(most < 0.5f && along > side + 0.3f,
-            $"along the line {worst:F0} degrees off the wind the streaks repeat {most:F2} alike at some spacing from 8 m to 128 m, and 4 m apart they match {along:F2} along the wind and {side:F2} across it (want under 0.5, and 0.3 more along)");
+            $"along the line {worst:F0} degrees off the wind the streaks come back {most:F2} alike within 128 m once passed, and 4 m apart they match {along:F2} along the wind and {side:F2} across it (want under 0.5, and 0.3 more along)");
     }
 
-    /// <summary>The most two stretches of <paramref name="v"/> are alike, normalised, shifted by <paramref name="from"/> to
-    /// <paramref name="to"/> samples against each other.</summary>
-    private static float MostAlike(float[] v, int from, int to)
+    /// <summary>How alike <paramref name="v"/> comes back to itself, normalised, once a shift of it has first fallen under
+    /// 0.2 alike, out to a shift of <paramref name="to"/> samples: near 1 for a pattern that repeats.</summary>
+    private static float Returns(float[] v, int to)
     {
         float mean = 0f;
         foreach (float x in v) mean += x / v.Length;
         float most = -1f;
-        for (int lag = from; lag <= to; lag++)
+        bool passed = false;
+        for (int lag = 1; lag <= to; lag++)
         {
             double xy = 0, xx = 0, yy = 0;
             for (int i = 0; i + lag < v.Length; i++)
@@ -218,7 +219,9 @@ internal static class AirMeadowRegressions
                 double a = v[i] - mean, b = v[i + lag] - mean;
                 xy += a * b; xx += a * a; yy += b * b;
             }
-            most = MathF.Max(most, (float)(xy / Math.Sqrt(xx * yy)));
+            float alike = (float)(xy / Math.Sqrt(xx * yy));
+            passed |= alike < 0.2f;
+            if (passed) most = MathF.Max(most, alike);
         }
         return most;
     }

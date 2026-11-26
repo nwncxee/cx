@@ -30,6 +30,9 @@ internal static partial class AirScene
     /// <summary>How long a streak runs along the wind, metres before any stretch, and the two widths across it, metres.</summary>
     private const float WispLong = 24f, WispWideA = 16f / 3f, WispWideB = 3.2f;
 
+    /// <summary>How far a streak wanders across the wind, metres, and the span across it of one wander, metres.</summary>
+    private const float WispWarp = 4f, WispKnot = 12f;
+
     /// <summary>The wisps' shape now.</summary>
     internal static AirWisps Wisps => new(_s.Sheet.Stretch, _s.Sheet.Carried);
 
@@ -67,15 +70,38 @@ internal static partial class AirScene
         return WispBase * s.Hold * (ahead ? w.Ahead : w.Fill) * MathF.Sin(MathF.PI * z / WispDepth) * Streaks(w, at.X, at.Y);
     }
 
-    /// <summary>The wisps' streaks at world (<paramref name="x"/>, <paramref name="y"/>), from 0 to 2 and 1 across a streak's
-    /// width: bands across the wind, each waxing and waning along it.</summary>
+    /// <summary>The wisps' streaks at world (<paramref name="x"/>, <paramref name="y"/>), from 0 to 2 and about 1 across a
+    /// streak's width: bands along the wind that wander across it, each waxing and waning along it.</summary>
     private static float Streaks(AirWispSheet w, float x, float y)
     {
         float len = w.Stretch.Length();
         Vector2 dir = len > 0f ? w.Stretch / len : Vector2.UnitX, q = new Vector2(x, y) - w.Carried;
         float along = Vector2.Dot(q, dir) / (WispLong * MathF.Max(len, 1f)), across = q.Y * dir.X - q.X * dir.Y;
-        return 1f + 0.6f * MathF.Sin(MathF.Tau * across / WispWideA) * (0.5f + 0.5f * MathF.Sin(MathF.Tau * along + 0.4f))
-                  + 0.4f * MathF.Sin(MathF.Tau * across / WispWideB + 2.1f) * (0.5f + 0.5f * MathF.Sin(1.7f * MathF.Tau * along + 2.9f));
+        float a = across + WispWarp * WispWander(along, across / WispKnot), b = across + WispWarp * WispWander(along + 7.3f, across / WispKnot + 3.1f);
+        return 1f + 0.6f * MathF.Sin(MathF.Tau * a / WispWideA) * (0.5f + 0.5f * MathF.Sin(MathF.Tau * along + 0.4f))
+                  + 0.4f * MathF.Sin(MathF.Tau * b / WispWideB + 2.1f) * (0.5f + 0.5f * MathF.Sin(1.7f * MathF.Tau * along + 2.9f));
+    }
+
+    /// <summary>Smooth value noise at (<paramref name="x"/>, <paramref name="y"/>), -1 to 1, one lattice cell a unit wide;
+    /// the wisp stage's CxWispWander, its hash bit for bit.</summary>
+    private static float WispWander(float x, float y)
+    {
+        float fx = MathF.Floor(x), fy = MathF.Floor(y), u = x - fx, v = y - fy;
+        int ix = (int)fx, iy = (int)fy;
+        u = u * u * (3f - 2f * u);
+        v = v * v * (3f - 2f * v);
+        float lo = float.Lerp(WispLattice(ix, iy), WispLattice(ix + 1, iy), u), hi = float.Lerp(WispLattice(ix, iy + 1), WispLattice(ix + 1, iy + 1), u);
+        return 2f * float.Lerp(lo, hi, v) - 1f;
+    }
+
+
+    /// <summary>The lattice point (<paramref name="ix"/>, <paramref name="iy"/>)'s value, 0 to 1.</summary>
+    private static float WispLattice(int ix, int iy)
+    {
+        uint h = unchecked((uint)ix * 0x8da6b343u ^ (uint)iy * 0xd8163841u);
+        h = unchecked((h ^ (h >> 13)) * 0x5bd1e995u);
+        h ^= h >> 15;
+        return (h & 0xffffu) / 65535f;
     }
 
     /// <summary>The wisps' streaks now at world (<paramref name="x"/>, <paramref name="y"/>), as the wisp stage lays them.</summary>
@@ -85,10 +111,10 @@ internal static partial class AirScene
     internal static bool Hung => _s.Laid && On(_s) && (_s.Look.Layers(_s.Night) & AirLayer.Wisps) != 0;
 
     /// <summary>Write the wisps into <paramref name="into"/> as the wisp stage reads them: their band, how thick, the front's
-    /// line and heading from the feet, how far carried and stretched, the <paramref name="sky"/> colour that lights them,
-    /// what is left behind and ahead of the line, and the streaks' sizes. Returns the records written, 0 when none hang.
+    /// line and heading from the feet, how far carried and stretched, what is left behind and ahead of the line, and the
+    /// streaks' sizes and wander. Returns the records written, 0 when none hang.
     /// Hot: allocates nothing.</summary>
-    internal static int PackWisps(Span<Vector4> into, Vector3 sky)
+    internal static int PackWisps(Span<Vector4> into)
     {
         if (!Hung || into.Length < WispsPacked) return 0;
         AirSceneState s = _s;
@@ -99,8 +125,8 @@ internal static partial class AirScene
         into[0] = new Vector4(floor + WispLow, WispDepth, WispBase * s.Hold, line);
         into[1] = new Vector4(w.Carried.X, w.Carried.Y, w.Stretch.X, w.Stretch.Y);
         into[2] = new Vector4(s.Front.Dir.X, s.Front.Dir.Y, s.Feet.X, s.Feet.Y);
-        into[3] = new Vector4(sky, w.Fill);
-        into[4] = new Vector4(w.Ahead, WispLong, WispWideA, WispWideB);
+        into[3] = new Vector4(w.Fill, w.Ahead, WispLong, WispWideA);
+        into[4] = new Vector4(WispWideB, WispWarp, WispKnot, 0f);
         return WispsPacked;
     }
 }

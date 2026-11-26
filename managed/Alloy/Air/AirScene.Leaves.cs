@@ -93,9 +93,9 @@ internal static partial class AirScene
     internal static bool Falling => _s.Laid && On(_s) && Falls(_s) && _s.Leaves.Trunks > 0;
 
     /// <summary>Write the leaves aloft into <paramref name="into"/> as the mote stage's sky-lit build reads them: a head
-    /// holding their count and the <paramref name="sky"/> colour that lights them, then each leaf's place and how
+    /// holding their count, then each leaf's place and how
     /// brightly it shows, fading in once loosed. Returns the records written, 0 when none fall. Hot: allocates nothing.</summary>
-    internal static int PackLeaves(Span<Vector4> into, Vector3 sky)
+    internal static int PackLeaves(Span<Vector4> into)
     {
         if (!Falling || into.Length < 1) return 0;
         AirLeaves l = _s.Leaves;
@@ -105,7 +105,7 @@ internal static partial class AirScene
             if (l.Dark[i]) continue;
             into[++n] = new Vector4(l.Pos[i], Math.Clamp((l.Clock - l.Born[i]) / MoteFadeIn, 0f, 1f));
         }
-        into[0] = new Vector4(n, sky.X, sky.Y, sky.Z);
+        into[0] = new Vector4(n, 0f, 0f, 0f);
         return n + 1;
     }
 }

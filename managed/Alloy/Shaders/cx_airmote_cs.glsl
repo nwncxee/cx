@@ -1,7 +1,7 @@
 // The motes floating in a crypt's lamplight, one invocation per mote after the dust: each is projected into the main
 // view, hidden behind what the depth buffer holds in front of it, and laid over the HDR target as a soft speck lit
 // by the lamps it floats among (cx_air's CxAirLit). Built with CX_AIR_SKY it lays a meadow's pollen instead, lit
-// by the sky colour in the head's yzw and the area's sun or moon (cx_air's CxAirSky).
+// by the area's ambient and its sun or moon (cx_air's CxAirSky).
 #version 460 core
 layout(local_size_x = 64) in;
 
@@ -12,7 +12,7 @@ layout(local_size_x = 64) in;
 layout(binding = 7) uniform sampler2D uGbDepth;
 layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(std430, binding = 8) readonly buffer CxLightBuf { vec4 uLights[]; };
-/// The motes: how many in the head's x (and the sky colour in yzw for CX_AIR_SKY), then per mote its place, metres,
+/// The motes: how many in the head's x, then per mote its place, metres,
 /// and how brightly it shows (0 to 1) in w.
 layout(std430, binding = 15) readonly buffer CxAirMotes { vec4 uMoteHead; vec4 uMotes[]; };
 
@@ -40,7 +40,7 @@ void main()
     vec4 w = uInvVp * vec4(2.0 * (vec2(c) + 0.5) / vec2(uRect.zw) - 1.0, d, 1.0);
     if (distance(w.xyz / w.w, uEyePos) < distance(mote.xyz, uEyePos)) return;
 #ifdef CX_AIR_SKY
-    vec3 lit = CxAirSky(uMoteHead.yzw, uAreaDiffuse) * (CX_MOTE_GAIN * mote.w);
+    vec3 lit = CxAirSky(uAreaAmbient, uAreaDiffuse) * (CX_MOTE_GAIN * mote.w);
 #else
     vec3 lamps = vec3(0.0);
     int n = min(uLightCount, CX_MOTE_LAMPS);

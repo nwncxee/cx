@@ -80,10 +80,10 @@ internal static partial class AirScene
     internal static bool Glinting => _s.Laid && On(_s) && Glints(_s);
 
     /// <summary>Write the lit pollen into <paramref name="into"/> as the mote stage's sky-lit build reads it: a head holding
-    /// their count and the <paramref name="sky"/> colour that lights them, then each grain's place and how brightly it
+    /// their count, then each grain's place and how brightly it
     /// shows, fading in once set afloat and out toward the square's edge. Returns the records written, 0 when none
     /// glints. Hot: allocates nothing.</summary>
-    internal static int PackPollen(Span<Vector4> into, Vector3 sky)
+    internal static int PackPollen(Span<Vector4> into)
     {
         if (!Glinting || into.Length < 1) return 0;
         AirPollen g = _s.Pollen;
@@ -97,7 +97,7 @@ internal static partial class AirScene
             float glow = Math.Clamp(MathF.Min((g.Clock - g.Born[i]) / MoteFadeIn, edge), 0f, 1f);
             into[++n] = new Vector4(p, glow);
         }
-        into[0] = new Vector4(n, sky.X, sky.Y, sky.Z);
+        into[0] = new Vector4(n, 0f, 0f, 0f);
         return n + 1;
     }
 }

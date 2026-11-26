@@ -579,9 +579,8 @@ internal sealed class GroundMistState
     public int AirGen = int.MinValue;
     public bool Stepped, Any;
 
-    /// <summary>Whether any column holds mist over the area's floor of it, and the sky colour the stage last took.</summary>
+    /// <summary>Whether any column holds mist over the area's floor of it.</summary>
     public bool Over;
-    public Vector3 Sky;
 
     /// <summary>This frame's emitters.</summary>
     public MistSource[] Source = new MistSource[GroundMist.MaxSources];

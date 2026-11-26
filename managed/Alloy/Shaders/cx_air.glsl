@@ -33,10 +33,10 @@ vec3 CxAirLit(vec3 ambient, vec3 lamp, float dist, float reach)
     return ambient + lamp * left * left;
 }
 
-// The colour an outdoor layer takes away from lamps: the area's `fog` colour lit by its sun or moon `diffuse`, so a
-// black fog under the moon still shows the moon's colour.
-vec3 CxAirSky(vec3 fog, vec3 diffuse)
+// The colour an outdoor layer takes away from lamps: the light the ground takes, the area's `ambient` and its sun or
+// moon `diffuse`, never the fog colour a builder tints the sky with.
+vec3 CxAirSky(vec3 ambient, vec3 diffuse)
 {
-    return fog + diffuse;
+    return ambient + diffuse;
 }
 #endif

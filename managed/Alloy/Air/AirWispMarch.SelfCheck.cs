@@ -16,7 +16,8 @@ internal static class AirWispMarch
     {
         string stage = Stage;
         int steps = (int)AirDustMarch.Const("CX_WISP_STEPS", stage);
-        reach = MathF.Min(reach, AirDustMarch.Const("CX_WISP_FAR", stage));
+        float far = AirDustMarch.Const("CX_WISP_FAR", stage), clear = AirDustMarch.Const("CX_WISP_CLEAR", stage) * far;
+        reach = MathF.Min(reach, far);
         float lo = w[0].X, depth = w[0].Y, t0 = 0f, t1 = reach;
         if (MathF.Abs(dir.Z) > 1e-4f)
         {
@@ -31,8 +32,9 @@ internal static class AirWispMarch
         {
             Vector3 p = eye + dir * (t0 + (k + 0.5f) * dt);
             float z = p.Z - lo;
-            float left = Vector2.Dot(new Vector2(p.X, p.Y) - new Vector2(w[2].Z, w[2].W), new Vector2(w[2].X, w[2].Y)) > w[0].W ? w[4].X : w[3].W;
-            tau += w[0].Z * left * MathF.Sin(MathF.PI * Math.Clamp(z / depth, 0f, 1f)) * AirScene.StreakAt(p.X, p.Y) * dt;
+            float left = Vector2.Dot(new Vector2(p.X, p.Y) - new Vector2(w[2].Z, w[2].W), new Vector2(w[2].X, w[2].Y)) > w[0].W ? w[3].Y : w[3].X;
+            float t = t0 + (k + 0.5f) * dt, s = Math.Clamp((t - clear) / (far - clear), 0f, 1f), fade = 1f - s * s * (3f - 2f * s);
+            tau += w[0].Z * left * fade * MathF.Sin(MathF.PI * Math.Clamp(z / depth, 0f, 1f)) * AirScene.StreakAt(p.X, p.Y) * dt;
         }
         return MathF.Exp(-tau);
     }

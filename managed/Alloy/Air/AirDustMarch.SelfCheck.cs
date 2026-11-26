@@ -12,7 +12,7 @@ internal static class AirDustMarch
     /// <summary>A lamp of the rig: where it stands, how far it reaches and its colour as the engine hands it over.</summary>
     internal readonly record struct Point(Vector3 At, float Reach, Vector3 Colour);
 
-    /// <summary>The room's light: the area's ambient, the sky's fog colour and its sun or moon.</summary>
+    /// <summary>The room's light: the area's ambient, the sky's fog colour (which lights no air) and its sun or moon.</summary>
     internal readonly record struct Shine(Vector3 Ambient, Vector3 Fog, Vector3 Diffuse);
 
     /// <summary>The attenuation pair the engine latches at its shipped lighting settings: maximum intensity 1.5, intensity
@@ -43,7 +43,7 @@ internal static class AirDustMarch
     internal readonly struct Field
     {
         private readonly byte[] _bytes;
-        internal readonly Vector4 Head, Sky, Slab;
+        internal readonly Vector4 Head, Slab;
         internal readonly float Sigma, Albedo, Step, Drop, Wall, Far, Climb;
         internal readonly int Steps, Probes, Lamps;
 
@@ -51,7 +51,6 @@ internal static class AirDustMarch
         {
             _bytes = bytes;
             Head = MemoryMarshal.Read<Vector4>(bytes);
-            Sky = MemoryMarshal.Read<Vector4>(bytes.AsSpan(GroundMist.SkyAt));
             Slab = MemoryMarshal.Read<Vector4>(bytes.AsSpan(GroundMist.SlabAt));
             Sigma = Const("CX_AIR_SIGMA");
             Albedo = Const("CX_AIR_ALBEDO");
@@ -152,7 +151,7 @@ internal static class AirDustMarch
             if (w <= 0f || end < c.Floor - Drop) return;
             float h = z - Base(c.Floor, here);
             dust += w * c.Dust * Profile(h, c.Top);
-            mist += w * c.Mist * Profile(h, Sky.W * top);
+            mist += w * c.Mist * Profile(h, Slab.W * top);
         }
 
         /// <summary><c>CxAirDust</c>: thickest on the floor, nothing at <paramref name="top"/>, integrating to 1.</summary>
@@ -200,7 +199,7 @@ internal static class AirDustMarch
                 Vector3 p = eye + ray * ((k + 0.5f) / steps);
                 GroundMist.Cell c = Cell((int)MathF.Floor(p.X - Head.X), (int)MathF.Floor(p.Y - Head.Y));
                 float z = p.Z - floor(p.X, p.Y);
-                tau += (c.Dust * Profile(z, c.Top) + c.Mist * Profile(z, Sky.W)) * Sigma * dl;
+                tau += (c.Dust * Profile(z, c.Top) + c.Mist * Profile(z, Slab.W)) * Sigma * dl;
             }
             return MathF.Exp(-tau);
         }
@@ -240,7 +239,7 @@ internal static class AirDustMarch
             float span = last - first;
             for (int i = 0; i < Probes; i++)
                 probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + jitter)), pair);
-            Vector3 dusty = room.Ambient, sky = Slab.Z > 0.5f ? dusty : room.Fog + room.Diffuse, added = Vector3.Zero;
+            Vector3 dusty = room.Ambient, sky = Slab.Z > 0.5f ? dusty : room.Ambient + room.Diffuse, added = Vector3.Zero;
             float keep = 1f;
             for (int k = first; k <= last; k++)
             {
