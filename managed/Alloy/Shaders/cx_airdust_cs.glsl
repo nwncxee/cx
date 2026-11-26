@@ -102,6 +102,7 @@ vec3 CxAirLamps(vec3 at)
 {
     vec3 lamps = vec3(0.0);
     int n = min(uLightCount, CX_AIR_LAMPS);
+    // ponytail: no wall shades a lamp here, so a lamp past a wall lights this side's air too; a cube tap per lamp lifts it
     for (int i = 0; i < n; i++)
         lamps += pow(max(uLights[i * 2 + 1].rgb, vec3(0.0)), vec3($SRGB$)) * CxAirLamp(uLights[i * 2], at);
     return lamps * uDayDim;
