@@ -89,27 +89,18 @@ public static unsafe class SceneRay
     private static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
                               out Vector3 hit, out IntPtr gob, bool statics)
     {
-        bool got = Cast(Facade.SceneId(scene), from, to, Facade.ObjectId(ignore), out hit, out DbId obj, statics);
-        // The callers speak in facade pointers (IsPlaceable reads the shell's mirrored
-        // Gob+externalType), so the hit object goes back out as its shell, as a static hit goes back as zero.
-        gob = got && !obj.IsNull ? (IntPtr)Facade.ObjectShell(obj) : IntPtr.Zero;
-        return got;
-    }
-
-    /// <summary>Nearest hit on <paramref name="from"/>-&gt;<paramref name="to"/> in database scene <paramref name="scene"/>,
-    /// skipping <paramref name="ignore"/> (null: nothing); <paramref name="obj"/> is the object hit, null for a static
-    /// one. Allocation-free: the one ignore slot is reused.</summary>
-    public static bool Cast(DbId scene, Vector3 from, Vector3 to, DbId ignore, out Vector3 hit, out DbId obj, bool statics = false)
-    {
         hit = default;
-        obj = default;
-        if (scene.IsNull) return false;
-        HitQuery q = HitQuery.Ray(scene, from, to, statics);
-        _dbIgnore[0] = ignore;
-        if (!ignore.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
+        gob = IntPtr.Zero;
+        DbId s = Facade.SceneId(scene), skip = Facade.ObjectId(ignore);
+        if (s.IsNull) return false;
+        HitQuery q = HitQuery.Ray(s, from, to, statics);
+        _dbIgnore[0] = skip;
+        if (!skip.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
         if (!HitTest.Cast(q, out HitResult r)) return false;
         hit = r.Point;
-        obj = r.Obj;
+        // The callers speak in facade pointers (IsPlaceable reads the shell's mirrored
+        // Gob+externalType), so the hit object goes back out as its shell, as a static hit goes back as zero.
+        gob = r.Obj.IsNull ? IntPtr.Zero : (IntPtr)Facade.ObjectShell(r.Obj);
         return true;
     }
 

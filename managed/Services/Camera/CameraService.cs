@@ -143,7 +143,6 @@ public sealed unsafe class CameraService : IExtenderService
         }
         FrameRegistry.Global.Register(FramePhase.PostPresent, 50, OnFrameEnd, "CameraService", log);
         KnobSurface.Note(Report);
-        SceneRay.Init();
     }
 
     // ---- the DB-mode edges -------------------------------------------------------------------

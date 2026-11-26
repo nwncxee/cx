@@ -6,7 +6,8 @@ namespace CX.Services.Camera;
 
 /// <summary>The offset camera with no spring arm: the rig and the collision flag over a box world, and the arm's four
 /// knobs gone from cx.cfg, chat and the reports. Oracle: the hand positions worked beside each fixture, the flag words,
-/// keys and replies written here as literals. Each case runs twice, as Alloy on and Alloy off feed the settle.</summary>
+/// keys and replies written here as literals. S3 to S5 run once each for Alloy on and Alloy off, as approved; the
+/// settle no longer reads Alloy, so both passes run the same code.</summary>
 internal static class SpringArmGoneApprovedExamples
 {
     /// <summary>The follow focus, and the rig the engine hands back for yaw 0, pitch 90, 5 m: due south of it.</summary>
@@ -49,7 +50,7 @@ internal static class SpringArmGoneApprovedExamples
     /// <paramref name="full"/>, whether the flag word ever lost the bit or changed, and whether the world ever
     /// stood between the camera and the focus.</summary>
     private static (float Off, bool BitLost, bool WordMoved, bool Hidden) Run(Quaternion q, (Vector3, Vector3) box,
-        float offX, float offY, bool alloyOn, Vector3 full, ref int flags, ref bool weSet)
+        float offX, float offY, Vector3 full, ref int flags, ref bool weSet)
     {
         var world = new BoxWorld { Boxes = [box] };
         int start = flags;
@@ -77,7 +78,7 @@ internal static class SpringArmGoneApprovedExamples
             string with = alloyOn ? "Alloy on" : "Alloy off";
             int flags = 0;
             bool weSet = false;
-            var r = Run(q, Wall, 1.5f, 0f, alloyOn, new Vector3(1.5f, -5f, 1f), ref flags, ref weSet);
+            var r = Run(q, Wall, 1.5f, 0f, new Vector3(1.5f, -5f, 1f), ref flags, ref weSet);
             check.Expect(!r.BitLost, $"S3 with an offset and {with}, the engine's pull-in stays off");
             check.Expect(r.Off < 1e-3f, $"S3 with an offset and {with}, the camera keeps its full distance (it came {r.Off:0.###} m off its rig)");
             check.Expect(r.Hidden, $"S3 with an offset and {with}, the wall stands between the camera and the character");
@@ -94,7 +95,7 @@ internal static class SpringArmGoneApprovedExamples
             string with = alloyOn ? "Alloy on" : "Alloy off";
             int flags = 0;
             bool weSet = false;
-            var r = Run(q, Wall, 0f, 0f, alloyOn, Engine, ref flags, ref weSet);
+            var r = Run(q, Wall, 0f, 0f, Engine, ref flags, ref weSet);
             check.Expect(!r.WordMoved && flags == 0, $"S4 with no offset and {with}, the flag stays clear and the engine's pull-in runs (word {flags})");
             check.Expect(r.Off < 1e-3f, $"S4 with no offset and {with}, the camera sits where the engine's own solve put it");
         }
@@ -113,7 +114,7 @@ internal static class SpringArmGoneApprovedExamples
             bool weSet = false;
             bool moved = false;
             foreach (float x in new[] { 1.5f, 0f, 1.5f })
-                moved |= Run(q, Wall, x, 0f, alloyOn, Engine + new Vector3(x, 0f, 0f), ref flags, ref weSet).WordMoved;
+                moved |= Run(q, Wall, x, 0f, Engine + new Vector3(x, 0f, 0f), ref flags, ref weSet).WordMoved;
             check.Expect(!moved && flags == server, $"S5 the server's no-collision flag stays set through 1.5, 0, 1.5 with Alloy {(alloyOn ? "on" : "off")} (word {flags}, want {server})");
         }
     }
@@ -200,10 +201,10 @@ internal static class SpringArmGoneApprovedExamples
         CameraService.PeriodLine(offsetOn: false);
         int flags = 0;
         bool weSet = false;
-        Run(q, Wall, 1.5f, 0f, alloyOn: false, new Vector3(1.5f, -5f, 1f), ref flags, ref weSet);
+        Run(q, Wall, 1.5f, 0f, new Vector3(1.5f, -5f, 1f), ref flags, ref weSet);
         string lineOn = CameraService.PeriodLine(offsetOn: true);
         flags = 0; weSet = false;
-        Run(q, Wall, 0f, 0f, alloyOn: false, Engine, ref flags, ref weSet);
+        Run(q, Wall, 0f, 0f, Engine, ref flags, ref weSet);
         string lineOff = CameraService.PeriodLine(offsetOn: false);
         offset.Set(was);
         check.Expect(lineOn.Contains(OffsetOnField, StringComparison.Ordinal) && lineOff.Contains(OffsetOffField, StringComparison.Ordinal),

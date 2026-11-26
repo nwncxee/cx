@@ -1063,7 +1063,7 @@ is not "the stock one draws", it is "nothing draws". The caveat is what the buil
 | Mouse-look | `<mode>.mouselook` | U · live | `Release()` on the off edge; per mode, not a group. |
 | Tab-target | tabtarget.enabled | U · live | off (the default) = stock Tab and clicks; the lock and a pending preview cast drop on the off edge. |
 | Hotkeys | hotkeys.enabled | U · live | gate the actions, never the hooks or the advertise. |
-| General, About, Preset, Lights, Ambient occlusion, Effects, Image, Walls, Free camera | none | — | the header says why. |
+| General, About, Preset, Lights, Ambient occlusion, Effects, Image, Free camera | none | — | the header says why. |
 
 Framework facts: the window registry is immutable after frame 1, so every live hide is a
 content early-return, never an Unregister.
@@ -1121,7 +1121,7 @@ Each step ships on its own and leaves the client working.
 - Boot/live twins collapsed into one knob: `halos`/`halosize` (`halogain` is gone -- `effects.halos`
   IS the brightness), `probe`,
   `renderscale`, `shadows` (+ the feed's `_enabled`), `partbatch`, `partsamp`, `keydiag`,
-  the four `mouselook*` boot keys, `camera.occlude`.
+  the four `mouselook*` boot keys.
 
 ## 9. Not in this spec
 
