@@ -78,12 +78,12 @@ internal static partial class AirScene
     /// <summary>A step longer than this in one frame is a teleport, metres, and parts nothing.</summary>
     private const float MaxPartStep = 3f;
 
-    /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day; its dust lies whole, gathered
-    /// along the walls and thicker as the area's fog amount rises, laid at Dust 1 and shown at the dial. A forest's
+    /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day, <paramref name="indoors"/> or out;
+    /// its dust lies whole, gathered along the walls and thicker as the fog amount rises, shown at the dial. A forest's
     /// columns hold haze, which each <see cref="Trunk"/> lays; water outdoors holds night mist, whole by night.</summary>
-    internal static void Enter(AirLook look, bool night)
+    internal static void Enter(AirLook look, bool night, bool indoors = false)
     {
-        var s = new AirSceneState { Look = look, Night = night, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
+        var s = new AirSceneState { Look = look, Night = night, Indoors = indoors, Fresh = true, Gen = _s.Gen + 1, Held = Air.Enabled.Enforced, HeldOn = Air.Enabled.V, Dial = Air.Dust.V };
         _s = s;
         if (!GroundMist.Corner(out s.Ox, out s.Oy, out s.Feet)) return;
         s.Laid = true;
@@ -146,7 +146,7 @@ internal static partial class AirScene
         if (fresh && s.Laid) { Reset(); s = _s; }
         if (!s.Laid && GroundMist.Corner(out _, out _, out _))
         {
-            Enter(AirPlaces.Resolve(Loaded(interior)), night);
+            Enter(AirPlaces.Resolve(Loaded(interior)), night, interior);
             foreach (Vector2 t in AirArea.Trunks) Trunk(t);
             s = _s;
         }
@@ -320,6 +320,9 @@ internal static partial class AirScene
     /// <summary>Does the area's dust, haze or mist lie, to be drawn? False with the air off or in a place with none.</summary>
     internal static bool Lies => _s.Laid && On(_s) && (_s.Columns != AirLayer.None || Misty(_s));
 
+    /// <summary>Is the area the air lies in an interior, its air lit by the room and not the sky?</summary>
+    internal static bool Indoors => _s.Indoors;
+
     /// <summary>Is the air on in this area? A hold reads as it stood when the area was entered, so a later change waits
     /// for the next entry; the player's own switch reads live.</summary>
     internal static bool On() => On(_s);
@@ -378,6 +381,9 @@ internal sealed class AirSceneState
     public AirLook Look;
     public bool Night;
     public readonly AirMotes Motes = new();
+
+    /// <summary>Whether the area is an interior, which no sky lights.</summary>
+    public bool Indoors;
 
     /// <summary>The pollen about the player, and the wisps high overhead.</summary>
     public readonly AirPollen Pollen = new();

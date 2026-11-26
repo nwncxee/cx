@@ -24,6 +24,14 @@ internal static class AirDustLookApprovedExamples
     /// <summary>The night's light by the water: a dark fog under a pale moon.</summary>
     private static readonly Shine NightLight = new(new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.05f, 0.06f, 0.1f));
 
+    /// <summary>An interior's light: the dim ambient its lamps work over, under the bright fog colour and sun the area
+    /// still carries though no sky shows in it.</summary>
+    private static readonly Shine HallLight = new(new Vector3(0.03f, 0.03f, 0.04f), new Vector3(0.5f, 0.55f, 0.6f), new Vector3(0.6f, 0.6f, 0.5f));
+
+    /// <summary>The stock fog placeable a module stands in a crypt, its emitter, and the frames it runs before a reading.</summary>
+    private const string StockFog = "silm_fog_50_lo", StockNode = "AuroraEmitter01";
+    private const int Settled = 1200;
+
     /// <summary>A torch's colour as the engine hands it over, sRGB.</summary>
     private static readonly Vector3 Torch = new(1f, 0.55f, 0.2f);
 
@@ -48,6 +56,9 @@ internal static class AirDustLookApprovedExamples
             MistSmooth(check);
             MistSoftWake(check);
             MistLampWhereItIs(check);
+            PlaceableSeenThrough(check);
+            PlaceableLitByTheRoom(check);
+            MistEdgeSoft(check);
         }
         log.Info(check.Ok ? "AirDustLookApprovedExamples.SelfCheck: passed" : "AirDustLookApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
@@ -77,6 +88,17 @@ internal static class AirDustLookApprovedExamples
     {
         Enter(City, Quay(), 0f, true);
         Go(Gather, Vector2.Zero);
+        return Upload();
+    }
+
+    /// <summary><paramref name="tiles"/> as an interior crypt holding the stock fog placeable at <paramref name="at"/>, its
+    /// mist settled.</summary>
+    private static Field Placed(List<Tile> tiles, Vector3 at)
+    {
+        Lay(tiles, Vector3.Zero, true, 0f);
+        AirScene.Enter(AirFixture.Crypt, false, true);
+        EmitterSim.MistEmit(StockFog, new[] { StockNode }, new[] { at }, Settled);
+        Go(3f, Vector2.Zero);
         return Upload();
     }
 
@@ -261,11 +283,11 @@ internal static class AirDustLookApprovedExamples
 
     /// <summary>The air's light on the ray from <paramref name="eye"/> to <paramref name="surf"/> and how far it is over
     /// the brightest the room and the lamps lay where the air is, per channel (at most 0 when bounded).</summary>
-    private static (Vector3 Added, float Keep, float Over) Lit(Field f, Vector3 eye, Vector3 surf, Shine room, Point[] lamps, bool mist)
+    private static (Vector3 Added, float Keep, float Over) Lit(Field f, Vector3 eye, Vector3 surf, Shine room, Point[] lamps, bool mist, bool sky)
     {
         (float keep, Vector3 added) = f.March(eye, surf, room, lamps);
         Vector3 most = Vector3.Zero;
-        Vector3 bed = mist ? room.Fog + room.Diffuse : room.Ambient;
+        Vector3 bed = sky ? room.Fog + room.Diffuse : room.Ambient;
         for (float t = 0f; t <= 1f; t += 0.001f)
         {
             Vector3 p = Vector3.Lerp(eye, surf, t);
@@ -280,17 +302,18 @@ internal static class AirDustLookApprovedExamples
     // When the dust is drawn
     // Then no point of the dust is brighter than the ambient plus the light the lamps actually lay at that point, and a
     // lamp near the floor lights the dust near it.
-    private static void LampWhereDustIs(Checker check) => LampLights(check, Crypted(Room()), CryptLight, false, "F4", 0f);
+    private static void LampWhereDustIs(Checker check) => LampLights(check, Crypted(Room()), CryptLight, false, false, "F4", 0f);
 
     /// <summary>A grazing ray 12 m along the floor centred on <paramref name="x"/>, a torch low by the floor near its far
-    /// end and past the reach of where most of the air on it lies: is the air bounded by the light, and lit by the torch?</summary>
-    private static void LampLights(Checker check, Field f, Shine room, bool mist, string label, float x)
+    /// end and past the reach of where most of the air on it lies: is the air bounded by the light, by the sky's when
+    /// <paramref name="sky"/> lights it, and lit by the torch?</summary>
+    private static void LampLights(Checker check, Field f, Shine room, bool mist, bool sky, string label, float x)
     {
         var eye = new Vector3(x - 6f, 0.3f, Eye);
         var surf = new Vector3(x + 6f, 0.3f, 0f);
         Point[] lamp = { new(new Vector3(x + 3.4f, 0.3f, 0.2f), 1.5f, Torch) };
-        (Vector3 lit, float keep, float over) = Lit(f, eye, surf, room, lamp, mist);
-        (Vector3 dark, _, _) = Lit(f, eye, surf, room, Array.Empty<Point>(), mist);
+        (Vector3 lit, float keep, float over) = Lit(f, eye, surf, room, lamp, mist, sky);
+        (Vector3 dark, _, _) = Lit(f, eye, surf, room, Array.Empty<Point>(), mist, sky);
         Vector3 torch = lit - dark;
         check.Expect(over <= 1e-5f, $"{label} the air adds {lit.X:F4},{lit.Y:F4},{lit.Z:F4}, {over:F5} over what the room and the lamp lay where it is (want none over)");
         check.Expect(torch.X >= 0.02f * (1f - keep) && torch.X > torch.Y && torch.Y > torch.Z,
@@ -333,5 +356,72 @@ internal static class AirDustLookApprovedExamples
     // Given the night mist over water and a lamp by the water
     // When it is drawn
     // Then F4 holds for it too: no point is brighter than the sky and the lamp lay there, and the lamp lights the mist by it.
-    private static void MistLampWhereItIs(Checker check) => LampLights(check, Misted(), NightLight, true, "F5", 10f);
+    private static void MistLampWhereItIs(Checker check) => LampLights(check, Misted(), NightLight, true, true, "F5", 10f);
+
+    // Given a crypt holding the module's stock fog placeable
+    // When the eye looks along the floor across 10 m of the mist it lays
+    // Then F1 holds through it: the floor beyond is still seen, the placeable's mist no denser to the eye than the night's.
+    private static void PlaceableSeenThrough(Checker check)
+    {
+        Field f = Placed(Hall(), new Vector3(-20f, 0.5f, 0.5f));
+        Vector3 eye = new(-25f, 0.5f, Eye);
+        float ten = Keep(f, eye, new Vector3(-15f, 0.5f, 0f), CryptLight);
+        float held = Column(f, -20f, 0.5f, 0f, true).Depth;
+        check.Expect(held > 0f && ten >= 1f / MathF.E,
+            $"G1 through {held:F3} m of the placeable's mist the eye keeps {ten:P0} of the floor 10 m off (want some mist, at least 37% kept)");
+    }
+
+    // Given an interior area whose fog colour and sun are bright, and mist a placeable lays in it
+    // When the mist is drawn
+    // Then no point of it is brighter than the room's ambient plus the lamps at that point: no sky lights a room.
+    private static void PlaceableLitByTheRoom(Checker check)
+        => LampLights(check, Placed(Room(), new Vector3(1f, 0.5f, 0.5f)), HallLight, true, false, "G2", 0f);
+
+    /// <summary>Along y = <paramref name="y"/> from <paramref name="x0"/> on, the night mist's depth falling from what it
+    /// holds at <paramref name="x0"/>: the metres it takes from 90% of it to 10%, and its top where half of it is left
+    /// as a share of its top at <paramref name="x0"/>, each top the height under which 95% of the column lies.</summary>
+    private static (float Fade, float Top) Edge(Field f, float x0, float y)
+    {
+        float full = Column(f, x0, y, 0f, true).Depth, at90 = float.NaN, at10 = float.NaN, half = float.NaN;
+        for (float x = x0; x <= x0 + 4f && float.IsNaN(at10); x += Pace / 5f)
+        {
+            float d = Column(f, x, y, 0f, true).Depth;
+            if (float.IsNaN(at90) && d <= 0.9f * full) at90 = x;
+            if (float.IsNaN(half) && d <= 0.5f * full) half = x;
+            if (d <= 0.1f * full) at10 = x;
+        }
+        if (full <= 0f || float.IsNaN(at10)) return (0f, 1f);
+        return (at10 - at90, Top(f, half, y) / Top(f, x0, y));
+    }
+
+    /// <summary>The height under which 95% of the night mist over (<paramref name="x"/>, <paramref name="y"/>) lies.</summary>
+    private static float Top(Field f, float x, float y)
+    {
+        const float dz = 0.005f;
+        float all = Column(f, x, y, 0f, true).Depth, sum = 0f;
+        for (float z = dz / 2f; z < 2.5f; z += dz)
+        {
+            sum += f.At(new Vector3(x, y, z), 0f).Mist * dz;
+            if (sum >= 0.95f * all) return z;
+        }
+        return 2.5f;
+    }
+
+    // Given the night mist over a channel whose far bank and a stone in it have no floor
+    // When the eye looks across the mist
+    // Then its edge and its top thin out over about a column: no wall stands at the bank or round the stone, no plateau
+    // keeps its full height to a hard rim.
+    private static void MistEdgeSoft(Checker check)
+    {
+        List<Tile> tiles = Ground(40f, 1f, (_, _) => 0f, (x, y) => x >= 6f || x >= 3f && x < 4f && y >= 3f && y < 4f ? Nonwalk : x < 0f ? Stone : MistFixture.Water);
+        Enter(City, tiles, 0f, true);
+        Go(Gather, Vector2.Zero);
+        Field f = Upload();
+        (float bank, float bankTop) = Edge(f, 3.5f, 0.5f);
+        (float stone, float stoneTop) = Edge(f, 1.5f, 3.5f);
+        check.Expect(bank >= 0.75f && stone >= 0.75f,
+            $"G3 the mist thins from 90% to 10% over {bank:F2} m to the bank and {stone:F2} m to the stone (want 0.75 m at least)");
+        check.Expect(bankTop <= 0.75f && stoneTop <= 0.75f,
+            $"G3 where half the mist is left its top stands at {bankTop:P0} of its height off the bank and {stoneTop:P0} by the stone (want 75% at most)");
+    }
 }
