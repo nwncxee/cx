@@ -79,16 +79,31 @@ vec2 CxAirAt(vec3 p, float end)
          + CxAirLayer(c01, w.z, p.z, end, top) + CxAirLayer(c11, w.w, p.z, end, top);
 }
 
+/// The share of its light a lamp of reach pr.w lays at world point at: the lit stage's own falloff over the engine's
+/// attenuation pair, its master gain and light.binreach's window, with no surface to turn toward the lamp.
+float CxAirLamp(vec4 pr, vec3 at)
+{
+    vec3 d = pr.xyz - at;
+    float f2 = dot(d, d) / max(pr.w * pr.w, 1e-8);
+    if (f2 >= 1.0) return 0.0;
+    float fade = 1.0 - f2;
+    if (uReach > 0.0)
+    {
+        float r2 = uReach * uReach;
+        if (f2 > r2) return 0.0;
+        fade *= min((r2 - f2) / (r2 * 0.3), 1.0);
+    }
+    vec2 pair = uAtten.x > 0.0 ? uAtten : vec2(1.0, 1.0);
+    return uFalloff.x * fade / (pair.x + pair.y * f2);
+}
+
 /// The light the lamps of the rig lay on air at world point at, each colour made linear as the lights take it.
 vec3 CxAirLamps(vec3 at)
 {
     vec3 lamps = vec3(0.0);
     int n = min(uLightCount, CX_AIR_LAMPS);
     for (int i = 0; i < n; i++)
-    {
-        vec4 pr = uLights[i * 2];
-        lamps += CxAirLit(vec3(0.0), pow(max(uLights[i * 2 + 1].rgb, vec3(0.0)), vec3($SRGB$)), distance(pr.xyz, at), pr.w);
-    }
+        lamps += pow(max(uLights[i * 2 + 1].rgb, vec3(0.0)), vec3($SRGB$)) * CxAirLamp(uLights[i * 2], at);
     return lamps * uDayDim;
 }
 

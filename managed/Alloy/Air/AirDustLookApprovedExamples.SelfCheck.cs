@@ -272,8 +272,8 @@ internal static class AirDustLookApprovedExamples
     }
 
     /// <summary>Stock's point light at <paramref name="at"/> from <paramref name="lamps"/> over <paramref name="ambient"/>:
-    /// each colour to the power 2.2, times (1 - f2) / (1 + f2) for f2 the squared share of the reach.</summary>
-    private static Vector3 Stock(Vector3 ambient, ReadOnlySpan<Point> lamps, Vector3 at)
+    /// each colour to the power 2.2, times (1 - f2) / (x + y f2) for f2 the squared share of the reach and (x, y) the pair.</summary>
+    private static Vector3 Stock(Vector3 ambient, ReadOnlySpan<Point> lamps, Vector3 at, Vector2 pair)
     {
         Vector3 sum = ambient;
         foreach (Point l in lamps)
@@ -281,7 +281,7 @@ internal static class AirDustLookApprovedExamples
             float f2 = Vector3.DistanceSquared(l.At, at) / (l.Reach * l.Reach);
             if (f2 >= 1f) continue;
             Vector3 c = l.Colour;
-            sum += new Vector3(MathF.Pow(c.X, 2.2f), MathF.Pow(c.Y, 2.2f), MathF.Pow(c.Z, 2.2f)) * ((1f - f2) / (1f + f2));
+            sum += new Vector3(MathF.Pow(c.X, 2.2f), MathF.Pow(c.Y, 2.2f), MathF.Pow(c.Z, 2.2f)) * ((1f - f2) / (pair.X + pair.Y * f2));
         }
         return sum;
     }
@@ -290,29 +290,32 @@ internal static class AirDustLookApprovedExamples
     /// the brightest the room and the lamps lay where the air is, per channel (at most 0 when bounded).</summary>
     private static (Vector3 Added, float Keep, float Over) Lit(Field f, Vector3 eye, Vector3 surf, Shine room, Point[] lamps, bool mist, bool sky)
     {
-        (float keep, Vector3 added) = f.March(eye, surf, room, lamps);
+        (float keep, Vector3 added) = f.March(eye, surf, room, lamps, pair: ShippedPair);
         Vector3 most = Vector3.Zero;
         Vector3 bed = sky ? room.Fog + room.Diffuse : room.Ambient;
         for (float t = 0f; t <= 1f; t += 0.001f)
         {
             Vector3 p = Vector3.Lerp(eye, surf, t);
             (float d, float m) = f.At(p, surf.Z);
-            if ((mist ? m : d) > 0f) most = Vector3.Max(most, Stock(bed, lamps, p));
+            if ((mist ? m : d) > 0f) most = Vector3.Max(most, Stock(bed, lamps, p, ShippedPair));
         }
         Vector3 over = added - (1f - keep) * most;
         return (added, keep, MathF.Max(over.X, MathF.Max(over.Y, over.Z)));
     }
 
-    // Given a crypt with lamps of a given colour
-    // When the dust is drawn
-    // Then no point of the dust is brighter than the ambient plus the light the lamps actually lay at that point, and a
-    // lamp near the floor lights the dust near it.
-    private static void LampWhereDustIs(Checker check) => LampLights(check, Crypted(Room()), CryptLight, false, false, "F4", 0f);
+    // Given a crypt with lamps of a given colour, one low by the floor
+    // When the player looks through the dust beside it
+    // Then no point of the dust is brighter than the ambient plus the light the lamps actually lay at that point, and the
+    // lamp adds at least 0.5% of the cover the air lays, in the torch's hue.
+    private static void LampWhereDustIs(Checker check) => LampLights(check, Crypted(Room()), CryptLight, false, false, "F4", 0f, BesideLamp);
+
+    /// <summary>The least share of the air's cover a torch low by the floor adds beside it under the engine's falloff.</summary>
+    private const float BesideLamp = 0.005f;
 
     /// <summary>A grazing ray 12 m along the floor centred on <paramref name="x"/>, a torch low by the floor near its far
     /// end and past the reach of where most of the air on it lies: is the air bounded by the light, by the sky's when
-    /// <paramref name="sky"/> lights it, and lit by the torch?</summary>
-    private static void LampLights(Checker check, Field f, Shine room, bool mist, bool sky, string label, float x)
+    /// <paramref name="sky"/> lights it, and lit by the torch, by <paramref name="share"/> of its cover at least?</summary>
+    private static void LampLights(Checker check, Field f, Shine room, bool mist, bool sky, string label, float x, float share = 0.02f)
     {
         var eye = new Vector3(x - 6f, 0.3f, Eye);
         var surf = new Vector3(x + 6f, 0.3f, 0f);
@@ -321,8 +324,8 @@ internal static class AirDustLookApprovedExamples
         (Vector3 dark, _, _) = Lit(f, eye, surf, room, Array.Empty<Point>(), mist, sky);
         Vector3 torch = lit - dark;
         check.Expect(over <= 1e-5f, $"{label} the air adds {lit.X:F4},{lit.Y:F4},{lit.Z:F4}, {over:F5} over what the room and the lamp lay where it is (want none over)");
-        check.Expect(torch.X >= 0.02f * (1f - keep) && torch.X > torch.Y && torch.Y > torch.Z,
-            $"{label} the lamp low by the floor adds {torch.X:F4},{torch.Y:F4},{torch.Z:F4} to the {1f - keep:P0} the air covers (want 2% of it in red at least, in the torch's hue)");
+        check.Expect(torch.X >= share * (1f - keep) && torch.X > torch.Y && torch.Y > torch.Z,
+            $"{label} the lamp low by the floor adds {torch.X:F4},{torch.Y:F4},{torch.Z:F4} to the {1f - keep:P0} the air covers (want {share:P1} of it in red at least, in the torch's hue)");
     }
 
     // Given the night mist over water
@@ -378,9 +381,10 @@ internal static class AirDustLookApprovedExamples
 
     // Given an interior area whose fog colour and sun are bright, and mist a placeable lays in it
     // When the mist is drawn
-    // Then no point of it is brighter than the room's ambient plus the lamps at that point: no sky lights a room.
+    // Then no point of it is brighter than the room's ambient plus the lamps at that point: no sky lights a room, and a
+    // lamp low by the floor adds at least 0.5% of the cover the mist lays, in the torch's hue.
     private static void PlaceableLitByTheRoom(Checker check)
-        => LampLights(check, Placed(Room(), new Vector3(1f, 0.5f, 0.5f)), HallLight, true, false, "G2", 0f);
+        => LampLights(check, Placed(Room(), new Vector3(1f, 0.5f, 0.5f)), HallLight, true, false, "G2", 0f, BesideLamp);
 
     /// <summary>Along y = <paramref name="y"/> from <paramref name="x0"/> on, the night mist's depth falling from what it
     /// holds at <paramref name="x0"/>: the metres it takes from 90% of it to 10%, and its top where half of it is left
@@ -483,7 +487,8 @@ internal static class AirDustLookApprovedExamples
             $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
     }
 
-    // Given the dark crypt the live client stands in: a dais 3 m up over a sunken ring, its fog amount 15, its rig of lamps,
+    // Given the dark crypt the live client stands in: a dais 3 m up over a sunken ring, its fog amount 15, its rig of lamps
+    // under the client's lighting settings,
     // the stock fog placeable in the ring and the dust off, the ring's floor showing a hundredth of the light that reaches it
     // When the eye at the dais edge looks down across the ring
     // Then the ring's floor in view reads to the eye on average no brighter than 1.5 times its brightness without the air.
@@ -500,8 +505,8 @@ internal static class AirDustLookApprovedExamples
                 for (float y = -2f; y <= 3f; y += 1f)
                 {
                     var surf = new Vector3(x, y, Dais(x, y));
-                    (float keep, Vector3 added) = f.March(LiveEye, surf, LiveLight, LiveRig);
-                    float bare = LiveFloorShare * Luma(Stock(LiveLight.Ambient, LiveRig, surf));
+                    (float keep, Vector3 added) = f.March(LiveEye, surf, LiveLight, LiveRig, pair: ShippedPair);
+                    float bare = LiveFloorShare * Luma(Stock(LiveLight.Ambient, LiveRig, surf, Vector2.One));
                     float shown = Shown((bare * keep + Luma(added)) / bare);
                     worst = MathF.Max(worst, shown);
                     sum += shown;
@@ -531,7 +536,8 @@ internal static class AirDustLookApprovedExamples
     private static readonly Vector3 LiveEye = new(4.1f, 0f, 3f);
     private static readonly Shine LiveLight = new(new Vector3(0.058f, 0.024f, 0.024f), Vector3.Zero, Vector3.Zero);
 
-    /// <summary>The share of the unshadowed light that reaches it the live crypt's ring floor shows, read off the client.</summary>
+    /// <summary>The share the live crypt's ring floor shows, read off the client, of the light <see cref="Stock"/> lays on it
+    /// over the fallback pair (1, 1), which the reading was taken against.</summary>
     private const float LiveFloorShare = 0.01f;
 
     /// <summary>The first twelve lamps of the live crypt's rig, about its centre, as the client logged them.</summary>
@@ -557,8 +563,8 @@ internal static class AirDustLookApprovedExamples
         for (float x = -2f; x <= 6f; x += 1f)
         {
             var surf = new Vector3(x, 0.3f, 0f);
-            (float keep, Vector3 added) = f.March(new Vector3(x - 8f, 0.3f, Eye), surf, CryptLight, lamps);
-            float bare = Luma(FloorAlbedo * Stock(CryptLight.Ambient, lamps, surf));
+            (float keep, Vector3 added) = f.March(new Vector3(x - 8f, 0.3f, Eye), surf, CryptLight, lamps, pair: ShippedPair);
+            float bare = Luma(FloorAlbedo * Stock(CryptLight.Ambient, lamps, surf, ShippedPair));
             float seen = bare * keep + Luma(added);
             worst = MathF.Max(worst, seen / bare);
             best = MathF.Min(best, seen / bare);

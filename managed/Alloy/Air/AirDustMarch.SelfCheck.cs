@@ -15,6 +15,11 @@ internal static class AirDustMarch
     /// <summary>The room's light: the area's ambient, the sky's fog colour and its sun or moon.</summary>
     internal readonly record struct Shine(Vector3 Ambient, Vector3 Fog, Vector3 Diffuse);
 
+    /// <summary>The attenuation pair the engine latches at its shipped lighting settings: maximum intensity 1.5, intensity
+    /// 0.2 at range and a cutoff range multiplier of 2, the defaults both clients bind, as <see cref="AlloyLights.LatchAtten"/> forms it.</summary>
+    internal static readonly Vector2 ShippedPair = new(MathF.Pow(1.5f, -AlloyLights.SrgbGamma),
+                                                       4f * (MathF.Pow(0.2f, -AlloyLights.SrgbGamma) - MathF.Pow(1.5f, -AlloyLights.SrgbGamma)));
+
     /// <summary>The shipped stage's text.</summary>
     internal static string Stage => ShaderSource.Get(AirScene.ShdCs + ".glsl");
 
@@ -111,24 +116,40 @@ internal static class AirDustMarch
         private static float Profile(float z, float top) => top <= 0f || z < 0f || z >= top ? 0f : 2f * (1f - z / top) / top;
 
         /// <summary>The light the lamps lay on air at <paramref name="at"/>: each colour made linear, falling off as
-        /// <c>CxAirLit</c> does.</summary>
-        internal Vector3 LampsAt(ReadOnlySpan<Point> lamps, Vector3 at)
+        /// <c>CxAirLamp</c> does over the attenuation pair <paramref name="pair"/> (zero: the one the lit stage holds).</summary>
+        internal Vector3 LampsAt(ReadOnlySpan<Point> lamps, Vector3 at, Vector2 pair = default)
         {
             Vector3 sum = Vector3.Zero;
             for (int i = 0; i < Math.Min(lamps.Length, Lamps); i++)
             {
-                float left = lamps[i].Reach > 0f ? Math.Clamp(1f - Vector3.Distance(lamps[i].At, at) / lamps[i].Reach, 0f, 1f) : 0f;
                 Vector3 c = lamps[i].Colour;
-                sum += new Vector3(Lin(c.X), Lin(c.Y), Lin(c.Z)) * (left * left);
+                sum += new Vector3(Lin(c.X), Lin(c.Y), Lin(c.Z)) * Lamp(lamps[i], at, pair);
             }
             return sum;
+        }
+
+        /// <summary><c>CxAirLamp</c>: the lit stage's falloff over the pair, its master gain and light.binreach's window.</summary>
+        internal static float Lamp(Point lamp, Vector3 at, Vector2 pair = default)
+        {
+            float f2 = Vector3.DistanceSquared(lamp.At, at) / MathF.Max(lamp.Reach * lamp.Reach, 1e-8f);
+            if (f2 >= 1f) return 0f;
+            float fade = 1f - f2, reach = AlloyLights.ReachUniform;
+            if (reach > 0f)
+            {
+                float r2 = reach * reach;
+                if (f2 > r2) return 0f;
+                fade *= MathF.Min((r2 - f2) / (r2 * 0.3f), 1f);
+            }
+            if (!(pair.X > 0f)) pair = AlloyLights.Atten.X > 0f ? AlloyLights.Atten : Vector2.One;
+            return Lighting.Gain.V * fade / (pair.X + pair.Y * f2);
         }
 
         private static float Lin(float c) => c > 0f ? MathF.Pow(c, AlloyLights.SrgbGamma) : 0f;
 
         /// <summary>March the eye's ray from <paramref name="eye"/> to the surface <paramref name="surf"/> at step offset
         /// <paramref name="jitter"/>: what it keeps of the surface and the light the air adds over it.</summary>
-        internal (float Keep, Vector3 Added) March(Vector3 eye, Vector3 surf, Shine room, ReadOnlySpan<Point> lamps, float jitter = 0.5f)
+        internal (float Keep, Vector3 Added) March(Vector3 eye, Vector3 surf, Shine room, ReadOnlySpan<Point> lamps, float jitter = 0.5f,
+                                                   Vector2 pair = default)
         {
             Vector3 ray = surf - eye;
             float len = MathF.Min(ray.Length(), Far);
@@ -159,7 +180,7 @@ internal static class AirDustMarch
             Span<Vector3> probe = stackalloc Vector3[Probes];
             float span = last - first;
             for (int i = 0; i < Probes; i++)
-                probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + jitter)));
+                probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + jitter)), pair);
             Vector3 dusty = room.Ambient, sky = Slab.Z > 0.5f ? dusty : room.Fog + room.Diffuse, added = Vector3.Zero;
             float keep = 1f;
             for (int k = first; k <= last; k++)
