@@ -62,6 +62,8 @@ internal static class AirDustLookApprovedExamples
             DenseFogSeenThrough(check);
             PlaceablePoolBounded(check);
             DarkCryptStaysDark(check);
+            MistyCryptStaysDark(check);
+            SoftTop(check);
         }
         log.Info(check.Ok ? "AirDustLookApprovedExamples.SelfCheck: passed" : "AirDustLookApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
@@ -476,7 +478,27 @@ internal static class AirDustLookApprovedExamples
     {
         Enter(AirFixture.Crypt, Room(), MostFog, false);
         Go(3f, Vector2.Zero);
-        Field f = Upload();
+        (float best, float worst) = Grazed(Upload());
+        check.Expect(worst <= 1.5f && best >= 0.5f,
+            $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
+    }
+
+    // Given a crypt floor that reads dark under its green braziers without the air, at fog amount 0, holding the stock fog placeable
+    // When the placeable's mist and the dust lie on it and the eye looks across it grazing
+    // Then the floor seen through them reads no brighter than 1.5 times its own brightness, and no darker than half of it.
+    private static void MistyCryptStaysDark(Checker check)
+    {
+        Field f = Placed(Room(), new Vector3(2f, 0.3f, 0.5f), LongSettled);
+        (float best, float worst) = Grazed(f);
+        float mist = Column(f, 2f, 0.3f, 0f, true).Depth;
+        check.Expect(mist > 0f && worst <= 1.5f && best >= 0.5f,
+            $"J2 through the placeable's mist ({mist:F3} m) and the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want some mist, 0.5 to 1.5)");
+    }
+
+    /// <summary>The least and the most the floor of <paramref name="f"/> reads, seen grazing from 8 m back under two green
+    /// braziers, as a share of its brightness without the air.</summary>
+    private static (float Best, float Worst) Grazed(Field f)
+    {
         Point[] lamps = { new(new Vector3(-2f, 2.5f, 1.5f), 6f, Brazier), new(new Vector3(4f, -2.5f, 1.5f), 6f, Brazier) };
         float worst = 1f, best = 1f;
         for (float x = -2f; x <= 6f; x += 1f)
@@ -488,7 +510,36 @@ internal static class AirDustLookApprovedExamples
             worst = MathF.Max(worst, seen / bare);
             best = MathF.Min(best, seen / bare);
         }
-        check.Expect(worst <= 1.5f && best >= 0.5f,
-            $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
+        return (best, worst);
+    }
+
+    /// <summary>Seen side-on across 10 m of <paramref name="f"/> along y = 0.3 ending at x = <paramref name="x"/>: the
+    /// height band over which the air goes from nine tenths of how much it hides at the floor to a tenth of it, metres.</summary>
+    private static (float Band, float Floor) SideOn(Field f, float x, bool mist)
+    {
+        float Hides(float h)
+        {
+            (float d, float m) = (0f, 0f);
+            for (float t = 0.025f; t < 10f; t += 0.05f) { (float a, float b) = f.At(new Vector3(x - t, 0.3f, h), h); d += a; m += b; }
+            return 1f - MathF.Exp(-f.Sigma * 0.05f * (mist ? m : d));
+        }
+        float floor = Hides(0.01f), h90 = 0f, h10 = 0f;
+        for (float h = 0.01f; h < 2.5f; h += 0.01f)
+        {
+            float o = Hides(h);
+            if (o >= 0.9f * floor) h90 = h;
+            if (o > 0.1f * floor) h10 = h + 0.01f;
+        }
+        return (floor > 0f ? h10 - h90 : 0f, floor);
+    }
+
+    // Given the stock fog placeable's mist in a crypt
+    // When the player looks across it side-on
+    // Then it fades out over at least 0.5 m below its top, rather than stopping at a level line.
+    private static void SoftTop(Checker check)
+    {
+        (float band, float floor) = SideOn(Placed(Room(), new Vector3(0f, 0.3f, 0.5f), LongSettled), 5f, true);
+        check.Expect(floor > 0f && band >= 0.5f,
+            $"J5 side-on the placeable's mist fades out over {band:F2} m (hiding {floor:P0} at the floor) (want some, over 0.5 m at least)");
     }
 }
