@@ -38,7 +38,7 @@ internal static class AirDustMarch
     {
         private readonly byte[] _bytes;
         internal readonly Vector4 Head, Sky, Slab;
-        internal readonly float Sigma, Step, Drop, Wall, Far;
+        internal readonly float Sigma, Albedo, Step, Drop, Wall, Far;
         internal readonly int Steps, Probes, Lamps;
 
         internal Field(byte[] bytes)
@@ -48,6 +48,7 @@ internal static class AirDustMarch
             Sky = MemoryMarshal.Read<Vector4>(bytes.AsSpan(GroundMist.SkyAt));
             Slab = MemoryMarshal.Read<Vector4>(bytes.AsSpan(GroundMist.SlabAt));
             Sigma = Const("CX_AIR_SIGMA");
+            Albedo = Const("CX_AIR_ALBEDO");
             Step = Const("CX_AIR_STEP");
             Drop = Const("CX_AIR_DROP");
             Wall = Const("CX_AIR_WALL");
@@ -58,7 +59,7 @@ internal static class AirDustMarch
         }
 
         /// <summary>Does the stage declare every number the march takes?</summary>
-        internal bool Declared => !float.IsNaN(Sigma + Step + Drop + Wall + Far + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
+        internal bool Declared => !float.IsNaN(Sigma + Albedo + Step + Drop + Wall + Far + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
 
         /// <summary>Column (<paramref name="x"/>, <paramref name="y"/>) of the field, or one with no floor off it.</summary>
         internal GroundMist.Cell Cell(int x, int y)
@@ -169,7 +170,7 @@ internal static class AirDustMarch
                 int i = Math.Min((int)s, Probes - 2);
                 Vector3 lamp = Vector3.Lerp(probe[i], probe[i + 1], s - i);
                 float a = 1f - MathF.Exp(-tau);
-                added += keep * a * (rd[k] * (dusty + lamp) + rm[k] * (sky + lamp)) / tau;
+                added += keep * a * (rd[k] * Albedo * (dusty + lamp) + rm[k] * (sky + lamp)) / tau;
                 keep *= MathF.Exp(-tau);
             }
             return (keep, added);
