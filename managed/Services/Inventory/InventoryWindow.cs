@@ -469,6 +469,7 @@ internal sealed partial class InventoryWindow
             return Contains(px, py);   // outside, the engine hovers as usual: the quickbar button and world object light up
         }
         if (!Contains(px, py)) { _tip.Leave(); Hovered(InventoryModel.Invalid); return false; }
+        if (StoreDrag().W > 0) { _tip.Leave(); return false; }   // the engine moves the store icon it drags on this motion
         HoverTip(px, py);
         return true;
     }

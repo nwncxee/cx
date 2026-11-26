@@ -19,6 +19,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.DropsSelfCheck", Drops);
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
         Suite(log, "InventoryWindow.BuySelfCheck", Buy);
+        Suite(log, "InventoryWindow.StoreMotionSelfCheck", StoreMotion);
         Suite(log, "InventoryWindow.AimSelfCheck", Aim);
         Suite(log, "InventoryWindow.TakeAllSelfCheck", TakeAll);
     }
@@ -292,6 +293,44 @@ internal sealed partial class InventoryWindow
         int right = DropCell(2.76f, 1.50f, 2, 3), left = DropCell(1.00f, 1.50f, 2, 3), cell = DropCell(3.78f, 2.00f, 2, 10);
         check.Expect(right == 1 && left == 0 && cell == 4,
                      $"a helmet past either edge stays in the grid and rounds at 33-pixel cells (right {right}, left {left}, 146 px {cell})");
+    }
+
+    /// <summary>Oracle: the engine moves the store icon it drags on the pointer motion it is handed, and freezes it on
+    /// motion the window takes.</summary>
+    private static void StoreMotion(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        (uint, int, int) drag = default;
+        w.StoreDrag = () => drag;
+
+        // Given the pointer rests on a backpack item, its tooltip up
+        // When the engine starts dragging a store helmet and the pointer moves on the item
+        // Then the tooltip closes, as the engine's drag icon is what the pointer carries
+        w.MouseMove(b.Cx(7), b.Cy(0));
+        bool before = w._tip.Hovering;
+        drag = (StoreHelm, 2, 2);
+        w.MouseMove(b.Cx(7), b.Cy(0));
+        check.Expect(before && !w._tip.Hovering, $"a store drag closes the backpack tooltip (up before {before}, after {w._tip.Hovering})");
+
+        // Given a store is open and the engine is dragging a store helmet
+        // When the pointer moves over the window's grid
+        // Then the window leaves the motion to the engine, so the engine's icon follows the pointer
+        bool taken = w.MouseMove(b.Cx(4), b.Cy(5));
+        check.Expect(!taken, "pointer motion over the window during a store drag reaches the engine");
+
+        // Given the same drag
+        // When the helmet is let go over cell (4, 5)
+        // Then it is bought into the cell the pointer moved to
+        b.Acts.Clear();
+        w.MouseButton(false, 1, b.Cx(4), b.Cy(5), 0);
+        check.Expect(Said(b.Acts) == Said([new InvAction(InvActKind.Buy, StoreHelm, X: 3, Y: 4)]),
+                     $"the helmet is bought where the pointer moved ({Said(b.Acts)})");
+
+        // Given no store drag
+        // When the pointer moves over the grid
+        // Then the window takes the motion, as it does to show its tooltips
+        drag = default;
+        check.Expect(w.MouseMove(b.Cx(4), b.Cy(5)), "with no store drag the window takes motion over it");
     }
 
     private static void Buy(Checker check, Bench b)
