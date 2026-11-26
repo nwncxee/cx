@@ -15,7 +15,7 @@ Live checks: 1. Run `./build.sh` in your worktree. 2. Run `tools/live/run-live.s
 
 ## Self-checks
 
-A self-check's `Expect` must be able to fail. `tools/gates/selfcheck.sh` refuses the shapes that cannot (see `CLAUDE.md`, Gates).
+A self-check's `Expect` must be able to fail. `tools/gates/selfcheck.sh` refuses the shapes that cannot (see `tools/gates/README.md`).
 
 **The independent-oracle rule.** A self-check's expected value comes from an independent oracle: a
 hand-written literal, golden data or a fixture, or a second artifact (the embedded GLSL text, a build

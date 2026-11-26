@@ -1,12 +1,7 @@
 # CLAUDE.md
 
-**NWNCX:EE** (**CX** for short): optional, drop-in **client** extender for NWN:EE. Feature logic in C# (NativeAOT);
-a thin native bootstrap gets it loaded. Optional by design: run the stock client
-and you play vanilla. New client->server packets the server doesn't recognize are
-ignored, so an un-extended client loses nothing.
-
-This is the **client** (`nwmain`), not the server. The server end of any packet lives in the
-server's own extender (NWNX/Anvil); do not conflate the two.
+**NWNCX:EE** (**CX** for short): an optional, drop-in **client** extender for NWN:EE, feature logic in C# (NativeAOT)
+behind a thin native bootstrap. This is the client (`nwmain`), never the server: [`DESIGN.md`](DESIGN.md) says why.
 
 The Vulkan renderer is called **Alloy** (`managed/Alloy/`, namespace
 `CX.Alloy`) -- one of the family: Anvil on the server backend, Crucible the
@@ -17,6 +12,20 @@ one the engine draws. The product is **NWNCX:EE** (full name) / **CX** (shorthan
 which are the override contract with content (a hak or NWSync), and the C# namespaces are
 `CX.*`. The `CX*`/`CX_*` identifiers in C# and GLSL are internal glue -- not
 user-visible, not renamed (#530).
+
+## Where things are
+
+Read the file for the area before working in it.
+
+| File | Holds |
+| --- | --- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | The load path, adding a service, engine memory reads, the binary, the server side, status |
+| [`DESIGN.md`](DESIGN.md) | Optional and client-only by design, the tuning knobs |
+| [`BUILDING.md`](BUILDING.md) | Build and run in full: CI, the staged runtime, `where.sh`, the Windows leg, version-bound numbers |
+| [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | The coding rules, the comment rule and the file-size cap |
+| [`TESTING_STANDARDS.md`](TESTING_STANDARDS.md) | How a change is tested |
+| [`tools/gates/README.md`](tools/gates/README.md) | Every gate and the rule it refuses |
+| [`docs/reverse-engineering.md`](docs/reverse-engineering.md) | `sym.sh` and Ghidra |
 
 ## Agent skills
 
@@ -38,132 +47,12 @@ user-visible, not renamed (#530).
                             # PASS/FAIL + screenshots; nothing reaches the desktop, nothing of the user's
                             # is touched. Runbook + limits: docs/live-harness.md
 
-Per-machine paths -- the game, the decomp dump, the Ghidra project, content corpora, the Windows SDK --
-resolve through `tools/paths.py`: the environment, then `local.env` (gitignored; copy `local.env.example`),
-then a stock default (your Steam library). `$NWN_DECOMP` and `$GHIDRA_PROJECT` below name those keys. No tracked file names one machine's path; `local-paths.sh` refuses it.
+    nix develop .#win -c ./build-win.sh  # the Windows build, cross-built (about a minute): run it for a new hook or offset
 
-CI runs nothing on a draft pull request: its `changes` job fails first, and marking it ready starts the run.
-On a ready one, `tools/ci-changes.sh` maps the changed paths to the jobs they reach: the Linux build for a path
-on either of its lists, the Windows build for one on `both`, and neither for any other path (an allowlist, not
-"unknown paths build"). CI's build runs `build.sh --no-gates`: the rule gates run in `no-decompiled` and the approved examples in `examples`, beside it. When
-`build.sh` or a script it calls reads a new file, add it to the map and a row to
-`tools/ci-changes_approved_examples.sh` in the same change; when `build-win-native.sh` does, put it on `both`.
+Every report of work in a worktree or a branch the user has not checked out ends with the output of
+`tools/where.sh <checkout>`. Rebuild first when it says anything but CURRENT.
 
-`build.sh` stages a runtime folder `cx-linux-x64/` (launcher + 2 `.so` + the audio runtime) and a flat zip
-of its contents -- the install is "unpack into bin/linux-x86". It refuses to build (exit 3, naming the pid)
-while a live process maps a file under this checkout's `cx-linux-x64/`, because restaging that folder swaps
-the libraries out from under a running client; a build in another checkout or worktree is fine, each stages
-its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
-Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
-(Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
-A tree whose code fingerprint (`tools/codehash.py`: comments lexed out of C#, Markdown outside `third_party/` left out) matches the staged
-build's keeps it after the gates and approved examples, and `where.sh` calls it CURRENT, so a comment-only commit
-skips the AOT publish.
-Every report of work that sits in a worktree or a branch the user has not checked out ends with the output of
-`tools/where.sh <checkout>`: its absolute path, whether its `cx-linux-x64/` is the build of that commit
-(`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
-
-First build fetches the funchook submodule and its nested diStorm if missing, then builds it. It also fetches AMD's FidelityFX SDK
-source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1 and depth of field.
-
-Every version-bound number (EngineLayout offsets, SymbolMap `At()` RVAs, build keys) lives in
-`managed/Framework/Builds/<name>.tsv`, one complete file per supported client build; code
-only declares. A new NWN client build = a new file, generated by `tools/update/newbuild.py`;
-runbook `docs/update-day.md`. Snapshot each shipped build
-(`tools/update/snapshot.sh`) while it is installed -- Steam overwrites it.
-
-Windows leg (#48), cross-built on Linux -- no Windows box involved (dev loop only):
-
-    nix develop .#win -c ./build-win.sh  # version.dll (the AOT image IS the proxy) + the audio runtime -> cx-windows-x64/
-    ./build-win-native.sh  # same, natively under MSVC + Git Bash: what the release workflow ships (#504)
-    ./run-proton.sh     # drops them beside bin/win32/nwmain.exe, runs it under Proton (throwaway prefix)
-
-`.#win` is the default shell plus a pinned Windows 10 SDK + MSVC lib tree (`.#winsdk`, fetched by xwin); about a
-minute, so a PR that adds a hook or an offset runs it rather than reporting Windows unbuilt. `SDK`/`MSVC` override. Alloy renders on Windows too (#456); its Windows
-refusal, if any, is `EngineLayout.Require` -- an unresolved offset row anywhere stands it down.
-
-## Tuning knobs (ADR 0025, amending 0013)
-
-There are no `CX_*` environment variables. A knob is **one declaration** (`Knob<T>` in a
-`KnobGroup`: key, label, kind, range, default, tier, effect, help); the settings panel row,
-the `cx.cfg` key and the `/<group> <knob> <value>` chat command are three views of it.
-Nothing else creates a knob. The panel (`/settings`, or the gear at the main menu) is the
-primary surface; chat commands are gated by `general.commands` (off by default, `/settings`
-exempt). `cx.cfg` is the one file, in the client's user directory beside `nwn.ini`; `/knobs`
-prints every declaration, and General → About's *Copy my settings for a bug report* puts the
-same text on the clipboard. Spec: `docs/spec/unified-settings.md`.
-
-The one exemption is `CX_MANAGED`, which the native bootstrap reads before any
-managed code exists.
-
-## Architecture
-
-Load path (the "hard work", you never touch it):
-
-    LD_PRELOAD libcx.so  (native/bootstrap.c: constructor fires on load)
-      -> dlopen cx_managed.so  (C# NativeAOT shared lib)
-      -> CxInit()  ->  ServiceHost.Run()
-                           - discover every IExtenderService (reflection, sorted by InitOrder then name; the seam is first)
-                           - construct each + Initialize(log, hooks)
-                           - HookService.Commit() installs all hooks at once
-
-Read before working in the area: `docs/hook-pattern.md` (a real hook + trampoline),
-`docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
-`docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
-Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
-is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's and FidelityFX DoF's shaders
-are the exception: AMD's GLSL, compiled when `build.sh` runs (`tools/ffx/`) and bound by AMD's backend, so
-`check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd` contract never see them; they change through
-`native/ffx/sdk-1.1.4.patch`.
-
-## Adding a service (the whole contributor workflow)
-
-Drop a class implementing `IExtenderService` in `managed/Services/`; it is discovered and wired
-automatically, no registration. Hook handlers are `[UnmanagedCallersOnly]` statics; `docs/hook-pattern.md`
-has the hook + trampoline mechanics.
-
-Trampolines must be static; mutable state must not be loose. New state goes in the one **lifetime owner**
-for its lifetime -- a `static` field holding a `...State` class -- so a reset (context loss, stand-down,
-area change) replaces the object instead of remembering forty fields. `static readonly`, `const` and the
-owner field itself are free; one more loose `static` is refused by `tools/gates/statics.sh`.
-
-## Engine memory reads
-
-Read engine fields through the typed views in `CX.Engine`
-(`new CNWCCreature(obj).Stats.FirstName`), not `*(T*)(ptr + EngineLayout.X)`.
-A view member exists once its row is typed: `Field<T>` in `EngineLayout*.cs`, where `T` is
-the primitive, the target's view for a pointer to a class, or a value type (`Quat`);
-`count: n` makes it an embedded array (`Span<T>`), `embedded: true` an inline record (its address), and a
-`stride` row gives the class `this[i]` over records laid end to end. A class the engine frees under us is
-listed `TRANSIENT` in the generator and its view is a `ref struct` (#193). Concept members
-go in a hand-written `partial` of the view.
-
-Call engine functions the same way: the signature is declared once, `[Fn("R(T name, ...)")]` on
-the `SymbolMap` symbol or `sig:` on a `vtbl.*` row, and the generator emits `EngineFn.X`, the
-`XFn` pointer type, `hooks.InstallX(&OnX)` / `hooks.ChainX(...)`, and `view.X(...)` for a
-`View this` first parameter; `sret(View this, ...)` (or `sig: "sret(...)"`) orders the hidden buffer per OS. No
-hand-written `delegate* unmanaged` outside `Graphics/` unless its parameter list differs per OS, it is a
-callback with no symbol, or it needs `[SuppressGCTransition]`. `build.sh` refuses a bare hex const anywhere
-in `managed/` that does not say `not-an-offset:` on its line.
-
-`build.sh` regenerates `Framework/Engine/Views.g.cs` (`tools/engine/views.py`); never edit it
-by hand, and settle a merge conflict in it by rerunning the script. `tools/gates/engine-views.sh`
-refuses `ptr +/- EngineLayout.X` outside `Framework/` once row X has a view member, so the
-rule is checked rather than remembered. **Touch a file, port its reads** -- no backlog beyond that (CX-30). Views inline to the raw load, so hot loops use them
-too; resolve an `EngineFn` pointer once into a static field there.
-
-## Comment rule
-
-Every declaration that needs explaining gets a concise XML `<summary>` (one--three
-lines). No prose banners. Inside method bodies, no comments EXCEPT a single terse
-line where omitting it is a footgun -- a magic offset/opcode, a non-obvious ABI
-requirement, or an ordering hazard. Prefer promoting a magic number to a named
-`const` with an XML doc over an inline comment. `ponytail:` markers are allowed and
-name a known ceiling + its upgrade path. A doc comment states the current contract, never its
-history or a ticket number; `tools/gates/comments.sh` refuses a `///` block over 4 text lines or citing a ticket.
-
-Past 1,500 lines a `.cs` file is split by responsibility -- `partial` files or sibling
-classes, one job each, the way `AlloyRenderer`'s are; `tools/gates/file-size.sh` refuses otherwise.
+Per-machine paths, CI, the staged runtime and the Windows leg: [`BUILDING.md`](BUILDING.md).
 
 ## Coding standards (ADR 0031)
 
@@ -173,6 +62,11 @@ the host. A rule the compiler can check is a line in `managed/BannedSymbols.txt`
 exists, and give every "should have gone through X" review finding its ban in the change that fixes it. The
 `standards-reviewer` agent (`.claude/agents/`) reviews a diff against the standards.
 
+- Read engine fields through the typed views in `CX.Engine`, never `*(T*)(ptr + EngineLayout.X)`: [`ARCHITECTURE.md`](ARCHITECTURE.md#engine-memory-reads).
+- Every declaration that needs explaining gets a one-to-three-line XML `<summary>`, and a method body has no comment but a footgun line: [`CODING_STANDARDS.md`](CODING_STANDARDS.md#comments-and-file-size).
+- A setting is one `Knob<T>` declaration, never a `CX_*` environment variable: [`DESIGN.md`](DESIGN.md#tuning-knobs-adr-0025-amending-0013).
+- New mutable state goes in its lifetime owner, a `static` field holding a `...State` class: [`ARCHITECTURE.md`](ARCHITECTURE.md#adding-a-service).
+
 ## Gates (CX-192)
 
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
@@ -181,160 +75,7 @@ it is written. The gates run side by side; the hook passes the edited file (`run
 the gates whose first `# reaches: <globs>` line matches it, and a gate with no such line reaches every path.
 `run.sh --list` names the gates it would run. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gates/ratchet.sh`): it may only
 shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
-the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
-
-- `approved-lines.sh`: an approved-examples script under `tools/` with no Given, When and Then comment lines, in that order, fails;
-  the lines are the example a test proves, so a script that lost them proves nothing a reader can name.
-  Proven by: tools/gate_runner_regression.sh
-- `comments.sh`: a `///` block over 4 text lines, a `///` line citing a ticket (`#n`, `CX-n`, `!n`, `issue n`, `ticket n`), or one marking a ceiling `shortcut:` where the word is `ponytail:`, under `managed/` or in `native/`'s own sources, fails. No baseline.
-- `doc-stack.sh`: a `///` block holding two `<summary>` elements under `managed/` (a doc left behind when its declaration
-  moved or went away) counts against `doc-stack.baseline`, which may only shrink; `python3 tools/gates/doc-stack.py -v` lists each.
-- `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
-  responsibility the way `AlloyRenderer`'s partials are. `*.g.cs` and `SymbolMap.cs` (a flat symbol table
-  that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is
-  one partial class over `EngineLayout*.cs`, and every tool that reads its rows reads all of them: a new block
-  of rows goes in a part of its own once `EngineLayout.cs` would grow past its baseline.
-- `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`, or in
-  `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
-- `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
-  fails; a key `Settings.RetiredKeys` lists (cx.cfg drops it on read) is named on purpose and passes.
-- `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
-  that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
-  feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
-  `group.prefix<...>` row stands for the shape it spells (`chat.w<N>.*` covers `chat.w3.rect`, not a future
-  `chat.wrap`) plus the bag key it is named after, and `<mode>.x` for all three camera modes;
-  `python3 tools/gates/knob-spec-rows.py -v` prints the whole census.
-- `knob-effect.sh`: a knob declared `Effect.Live` whose every reader takes `Boot`, or one declared
-  `Effect.Restart` read through `V` outside the file it is declared in, fails. The declared effect is what the
-  panel badge and the chat reply promise, so a reader on the wrong one is a promise nothing keeps. A read is
-  attributed to its declaration by qualifier, class or file; a bare read of a field several classes declare
-  (`Size.V`, `Fov.V`) names no one declaration and counts against `knob-effect.baseline`, which may only
-  shrink. `python3 tools/gates/knob-effect.py -v` lists each such read.
-- `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
-  `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
-- `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
-  than `statics.baseline` allows fails; a static auto-property with a `set` or `init` accessor counts as one. Free:
-  `static readonly`, `const`, static methods and computed properties, and a lifetime owner -- a plain field whose
-  type is a `...State` class declared under `managed/`.
-- `gl-confined.sh`: a file named in CX0003's `Allowed` that is not in the tree fails. The RULE -- GL only in
-  the files that keep it -- is CX0003 (`tools/analyzers/EngineGl.cs`), which the compiler checks because it can
-  tell a constant from an entry point and an `Init` guard from a call; this gate does the one thing the compiler
-  cannot, and refuses a permission that outlived its file. The list is read out of `EngineGl.cs`, never restated.
-  The only GL CX keeps draws CX's own windows on the engine's renderer in a session Vulkan refused, plus the
-  stubs for the entry points the engine itself imports; new work records on the seam (`managed/Rhi/`, `CX.Rhi`).
-  GL enum numbers the engine's own data speaks are `EngineTokens`, not an entry point, and need no permission.
-- `vma-confined.sh`: a file named in CX0005's `Allowed` that is not in the tree fails. The RULE -- the device is
-  the backend's -- is CX0005 (`tools/analyzers/VulkanDevice.cs`), which the compiler checks because it can tell a
-  `vk*`/`vma*` entry point from an enum member: outside `managed/Graphics/` a Vulkan or VMA call is refused, and
-  the one exception is VMA's virtual-block family, which touches no device, in the files that keep books on it
-  (the mesh arena). This gate refuses a permission that outlived its file; the list is read out of
-  `VulkanDevice.cs`, never restated. Vulkan's enums, structs and handle types are data, and are free anywhere.
-- `alias-lanes.sh`: an alias argument under `managed/` that is a string literal rather than an `AliasLanes`
-  member fails, as does `Alias = "..."`. Equal alias strings make two render targets SHARE one allocation, so a
-  lane is a declaration in `Alloy/Core/AliasLanes.cs` (which says which targets are in which lane, in frame
-  order) and a typo must not buy a second allocation in silence. Any parameter named `alias` declares one, so
-  `ImageDesc`'s 11th positional and each pass's own `Target` helper are covered by the one rule;
-  `managed/Alloy/Golden/` is exempt, its goldens inventing lanes to test the sharing itself.
-- `selfcheck.sh`: inside a `*SelfCheck*` or `*ApprovedExamples*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
-  a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
-  `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
-  comparison -- and so does a hand-written `SKIPPED` log line, and an `if (...) return true;` among the statements of a `bool`
-  method in a `*SelfCheck*` file that an `Expect` there reads (the check passes unasserted whenever the condition holds;
-  `tools/selfcheck_gate_regression.sh` plants it). The const-against-literal shape's standing
-  instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
-
-  The independent-oracle rule and the rest of the testing rules live in `TESTING_STANDARDS.md`.
-- `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
-  describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
-- `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP (a clip to animated WebP: GitHub cannot show a WebM).
-- `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses, or a composite action under `.github/actions/` that zizmor refuses, fails --
-  bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
-  release, a checkout that keeps its token.
-  Proven by: tools/workflows_regression.sh
-- `ssbo-bindings.sh`: an `std430` or `scalar` STORAGE block's binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
-  storage-buffer descriptors `VkBackend` allocates per set -- it reads the budget, so the two are one number),
-  or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
-  Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
-  bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it, and `SsboSlots.CheckDevice`
-  stands Alloy down on a device that seats fewer than the budget rather than finding out at the first bind. The
-  qualifier alone does not say which budget a block answers to, so each gate matches on the declaration kind.
-- `ubo-bindings.sh`: a `std140` or `scalar` UNIFORM block's binding (or one on the layout macro a block whose layout
-  follows the device takes its qualifier from), or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
-  guaranteed `maxPerStageDescriptorUniformBuffers`, which `VkBackend` allocates per set), or a numeric
-  uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
-  passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
-  members to the struct that stages them.
-- `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against
-  `uniform-blocks.baseline`, which may only shrink. Alloy writes the Vulkan uniform block itself
-  (`LooseBlock`), so every site left is the vanilla CX-UI path drawing on the engine's own renderer, where
-  sampler units are opaque and count too; `python3 tools/gates/uniform-blocks.py -v` lists each site.
-- `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}`
-  call site under `managed/` fails. Alloy's objects are Vulkan's, destroyed through the backend, which holds a
-  freed one past its submit ring, and the GL that stays owns its objects for the session -- so
-  `gpu-frees.baseline` is empty and the ratchet now refuses every site;
-  `python3 tools/gates/gpu-frees.py -v` lists any it finds.
-- `span-ptr.sh`: a `new Span<T>(p, n)` / `new ReadOnlySpan<T>(p, n)` outside `managed/Framework/` counts against
-  `span-ptr.baseline`, which may only shrink. Two arguments is always the pointer constructor (the array one takes
-  one or three), and a caller-supplied length checks nothing -- `.Slice(i * size, size)` on it is the pointer plus
-  an offset ADR 0031 refuses. A view builds its span from its count row and a `NativeBuffer<T>` from its
-  allocation; `python3 tools/gates/span-ptr.py -v` lists each site.
-- `lane-index.sh`: an `a[i * N + k]` read outside `managed/Framework/` counts against `lane-index.baseline`,
-  which may only shrink. A record flattened into lanes asks every reader to know the stride and which lane is
-  which, and a wrong `k` stays inside the array; a record type with named fields (`Vector3`, `Vector4`,
-  `CullPlane`) and an array of it says the layout once, and `MemoryMarshal.Cast` reinterprets a byte buffer
-  that arrives from outside. The stride is what makes it a lane read, so lane 0 (`a[i * N]`) and the
-  transposed `a[at + k * N]` count too -- one read spelled three ways must not count three ways. An
-  allocation length is a size, not a lane; `python3 tools/gates/lane-index.py -v` lists each site.
-- `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
-  `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
-- `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
-  (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
-- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` or a `CreateShader(ShaderStage.Compute ...)` under
-  `managed/` outside `VkBackend.Pipeline.cs` fails; a compute pipeline, from GLSL or from SPIR-V, is
-  `VkBackend.CreateCompute`, which frees the module the pipeline no longer needs.
-- `piece-links.sh`: a raw `ObjSeamAppendHead`/`ObjSeamAppendNext`/`ObjSeamAppendOwner` read or write under
-  `managed/` outside `SceneDb.Pieces.cs` and its self-check fails. The columns are keyed by record INDEX, so a
-  second link of one index rings the list and every walk over it then runs forever on the game thread:
-  `SceneDb.PieceLink` refuses that shape, a second owner and a link that closes a cycle, and `SceneDb.Pieces`
-  walks with a cap, a ring check and each piece's next link latched before its body runs.
-- `version-line.sh`: a string literal under `managed/` that IS the version line (`#version 460 core`), outside
-  `VkGlsl.cs` and the self-checks whose hand-written literal is their oracle, fails: `VkGlsl.Version` is its one
-  declaration, so a stage composed in C# and a stage spliced into a shipped library open with the same line. The
-  first line of a stage's own text -- a `.glsl` file, or a multi-line GLSL literal -- is GLSL, not a declaration.
-- `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
-  (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
-  a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.
-- `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
-- `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
-  in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
-  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`, or C# working the decode's
-  terms from the planes anywhere but `WorldDepth.Decode`. The world depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
-  `world_depth_approved_examples.sh` beside it, which `build.sh` runs.
-- `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
-  clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its
-  comparison -- is CX0006 (`tools/analyzers/DepthConvention.cs`); its approved examples need the SDK, so `build.sh` runs them.
-- `sampler-regex.sh`: a file named in CX0008's `Allowed` that is not in the tree fails. The RULE -- no regex reads
-  a GLSL sampler or image declaration -- is CX0008 (`tools/analyzers/SamplerRegex.cs`), which the compiler checks
-  because it can tell a regex pattern argument from any other string and can fold a pattern held in a `const`: a
-  pattern naming `uniform` or `binding` beside `sampler` or `image` is refused outside `VkGlsl` (whose `Opaques`
-  lexes the stage and answers with each declaration's name, binding and bind kind) and the files that REWRITE
-  every declaration or read the general global ones. A `Contains` pin on CX's own embedded stage text is not a
-  read of a declaration and is not refused (`CODING_STANDARDS.md` says why). This gate refuses a permission that
-  outlived its file; the list is read out of `SamplerRegex.cs`, never restated.
-- `cache-io-confined.sh`: a file named in CX0009's `Allowed` that is not in the tree fails. The RULE -- a file under
-  `managed/Alloy/` or `managed/Graphics/` read whole or written goes through `CacheFile`, which checks each cache file's
-  header on read and writes through a temporary name -- is CX0009 (`tools/analyzers/CacheIo.cs`); self-checks are exempt,
-  and the frame snapshot, a diagnostic and not a cache, is allowed. The list is read out of `CacheIo.cs`, never restated.
-- `content-fixtures.sh`: a `cx_fix*` stage the C# self-checks translate that `tools/content_stage.py`'s `FIXTURE` lacks, or the reverse, fails: the two translations answer to one set of stages.
-- `face-normal.sh`: a `.glsl` under `managed/Alloy/Shaders/` that flips a back face's normal inline
-  (`gl_FrontFacing ? n : -n`, its negated spelling, or the sign a caller multiplies by) fails, and so does a lit
-  main that stops taking its shading normal through `CxFaceNormal`. The flip is one declaration, in
-  `cx_lightfrag.glsl`, which a GPU golden runs on the device; a second copy compiles fine and answers to nothing.
-  `ALLOWED` in `face-normal.py` names that file and the content stand-in `cx_content_f.glsl`, which the GUI twin
-  builds without the light library and so cannot reach the function, and `FLIP_CALLERS` names the lit mains.
-- `golden-glsl.sh`: a golden under `managed/Alloy/Golden/`, or in any file under `managed/Alloy/` that extends `GpuGolden`, declaring a `CX_*` constant a shipped shader declares (splice it
-  with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
-  comparing a light record's `w` with 128 (ask `CxLightIsStatic`) counts against `golden-glsl.baseline`, which may only shrink.
+the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line in `tools/gates/README.md`.
 
 ## Hard rules
 
@@ -375,55 +116,3 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
   = `.shd` overrides via hak/NWSync (content, not this repo). Shadows, render bugs,
   draw state = engine-internal: an Alloy pass or a hook, never content.
-
-## The binary is your map
-
-The client binary (`python3 tools/paths.py NWN_BIN`) is an
-**unstripped** ELF (~24k dynamically-exported functions). You hook by name, no
-offset hunting.
-
-The engine renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd), and goes on
-running that code with Alloy on: `NullGl` makes SDL open a Vulkan window and routes every GL entry nwmain
-imports to a CX stub, so the session has no GL context and Vulkan presents (`VkBackend.Present`). Alloy is
-Vulkan's alone -- a refused probe (`VkBackend.Refusal`) stands it down and the engine's own GL renderer draws
-(ADR 0033).
-
-## Reverse engineering (Ghidra)
-
-Two tools, two jobs:
-
-- **`./sym.sh` (nm)** -- fast path for *addresses and signatures*. "What's the
-  symbol? Does it exist? What's its ABI?" This is enough for most hooks.
-- **Ghidra** -- for *logic and layout*: decompiled function bodies, struct field
-  offsets, call graphs, xrefs. Reach for it when you need to know what a function
-  *does* or where a field sits in a struct (raw-pointer reads).
-
-The client is already imported and analyzed:
-
-- Project: `$GHIDRA_PROJECT/nwn-linux.rep`, one project holding `nwmain-linux`, `nwmain.exe` and `nwserver-linux`
-- GUI: `ghidra`. Headless: `tools/ghidra/headless.sh <program> <Script.java> [args]` -- read-only, picks the
-  project from the program, queues on a lock; the scripts in `tools/ghidra/` say their args on line 2
-  (`DecompOne.java out.c Name @addr` decompiles named functions).
-- **Read-only dump:** a full dump from `tools/ghidra/decomp-all.sh` (hours) holds every function
-  (`src/<Class>.c`), `symbols.tsv`, `callgraph.tsv` and a README; addresses are Ghidra's (nm + 0x100000).
-  Grep it before opening Ghidra. `ls $NWN_DECOMP` first: a `-targeted` folder is ad hoc output with
-  no `src/`, so decompile what you need with `DecompOne.java` instead. Never committed (Beamdog's code).
-  The binary + the Ghidra project stay the source of truth. State uncertainty from decompilation honestly; confirm against
-  runtime behavior when it matters.
-- **Stock shaders:** the client runs the CURRENT set, `data/ovr.bif` (`nwn_retail.key`, the same files as
-  github.com/Finaldeath/NWNEEGameData/shaders), over the stale `data/base_shaders.bif` (`nwn_base.key`, which answers
-  only for what ovr.bif lacks). Transcribe and cite the current files; `tools/content_stage.py` reads both in that order.
-
-## The server side
-
-CX is client-only. A server that wants a CX packet implements its receive end in its own extender
-(NWNX/Anvil); a server that does not simply ignores it. The engine classes (`CNWSMessage` and friends) are
-the *same classes* on client and server, so server-side struct/field knowledge transfers; the hook mechanism
-does not (the client uses funchook). Shadows over Westgate's server is the reference implementation of the
-hotkey, UI-policy and nameplate packets (`docs/hotkeys-server-contract.md`, `docs/ui-policy-contract.md`).
-
-## Status
-
-A live hook proves out via `cx-launch`: watch for "first frame presented -- hook is LIVE". There is no
-whole-extender opt-out (ADR 0025): every feature has a master toggle, and "no CX" is an uninstall.
-macOS (`DYLD_INSERT_LIBRARIES`) is blocked by the notarized app's hardened runtime until re-signed (do last).
