@@ -1,4 +1,4 @@
-# ADR-0062: CX tells the player about a newer release and never installs one
+# ADR-0063: CX tells the player about a newer release and never installs one
 
 Category: Security.
 

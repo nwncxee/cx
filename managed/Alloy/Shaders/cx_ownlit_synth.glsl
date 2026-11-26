@@ -160,7 +160,7 @@ void main()
     vec3 V = normalize(uEyePos - vWorld);
     float surfAo = 1.0;   // the height map's own occlusion alone (stock's fAmbientOcclusionModifier)
     float screenAo = 1.0; // the screen-space term alone: the one share of occl the direct terms take
-    // #379: the screen-space term, a lighting input like the map (ADR 0060)
+    // #379: the screen-space term, a lighting input like the map (ADR 0061)
     // ...and only where the visibility at this pixel was computed from THIS surface. The buffer comes
     // from the depth prepass, so a fragment the prepass never drew -- a blended door, anything the
     // sweep skipped, anything drawn over a hole -- would otherwise wear the occlusion of whatever

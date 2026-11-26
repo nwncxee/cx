@@ -1,4 +1,4 @@
-# ADR-0060: Screen-space occlusion darkens ambient and direct light, and AO maps darken ambient alone
+# ADR-0061: Screen-space occlusion darkens ambient and direct light, and AO maps darken ambient alone
 
 Category: Architecture.
 

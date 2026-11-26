@@ -5,7 +5,7 @@
 cd "$(dirname "$0")/../.." || exit 2
 dir=${1:-docs/adr}
 # The last record written in an older shape: every record after it takes the current one.
-last_older=59
+last_older=60
 rc=0
 bash bin/check-adr "$dir"/*.md || rc=1
 for f in "$dir"/[0-9][0-9][0-9][0-9]-*.md; do

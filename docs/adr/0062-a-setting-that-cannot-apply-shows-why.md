@@ -1,4 +1,4 @@
-# ADR-0061: A setting that cannot apply shows why, grey when it can be enabled and red when the device cannot run it
+# ADR-0062: A setting that cannot apply shows why, grey when it can be enabled and red when the device cannot run it
 
 Category: Interface.
 
