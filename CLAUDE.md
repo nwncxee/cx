@@ -33,6 +33,7 @@ Read the file for the area before working in it.
 - Documentation: the repo's GitHub wiki. See `docs/agents/domain.md`.
 - Domain: single-context, one `GLOSSARY.md` and one `docs/adr/` at the root. See `docs/agents/domain.md`.
 - Testing: `TESTING_STANDARDS.md`. See `docs/agents/testing.md`.
+
 ## Build & run
 
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
