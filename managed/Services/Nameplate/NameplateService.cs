@@ -101,7 +101,7 @@ public sealed unsafe class NameplateService : IExtenderService
         _origItemPlate = hooks.InstallItemShowFeedbackBubbleText(&OnItemPlate);
         _origChat = hooks.ChainHandleServerToPlayerChat(&OnServerChat, ChatLatchPriority);
 
-        if (!BandWords.Install(hooks)) log.Info("NameplateService: a TLK hook did not install -- band captions may lag a server's TLK change");
+        if (!BandWords.Install(hooks)) log.Info("NameplateService: a TLK or rules hook did not install -- band captions may lag a server's TLK or 2da change");
 
         _chatHooked = _origChat != null;
         if (!_chatHooked) log.Info("NameplateService: channel styling disabled (chat handler unhooked)");
@@ -290,7 +290,6 @@ public sealed unsafe class NameplateService : IExtenderService
 
     private static readonly (float r, float g, float b, float a) PlateBg = (0.03f, 0.04f, 0.06f, 0.78f);
     private static readonly (float r, float g, float b, float a) BubbleBg = (0.04f, 0.05f, 0.08f, 0.80f);
-    private static readonly (float r, float g, float b, float a) BarTrack = (0.10f, 0.11f, 0.14f, 0.9f);
 
     /// <summary>Chrome padding inside a bubble box, design px.</summary>
     private const float BubblePadPx = 5f;
@@ -527,7 +526,6 @@ public sealed unsafe class NameplateService : IExtenderService
                    + $"alpha={e.Alpha.ToString("F2", CultureInfo.InvariantCulture)} "
                    + $"yoff={e.YOff.ToString("F1", CultureInfo.InvariantCulture)} "
                    + $"plated={e.Plated} bubble={e.ShowBubble} alive={e.Alive} band={e.Damage} "
-                   + $"health={e.Health.ToString("F3", CultureInfo.InvariantCulture)} "
                    + $"ovmode={e.OverrideMode} ovparas={e.ParaCount} ov='{e.OverrideText.Replace("\n", "\\n")}'");
         }
     }
@@ -580,9 +578,6 @@ public sealed unsafe class NameplateService : IExtenderService
     /// <summary>The max width a plate name column and a bubble box share -- one knob, <c>nameplate.width</c>.</summary>
     private static float TextMaxW(float scale) => NameplateKnobs.Width.V * scale;
 
-    /// <summary>The health bar's width from <c>nameplate.barwidth</c>, scaled as the text width is; 0 = the column's.</summary>
-    private static float BarW(float scale) => NameplateKnobs.BarWidth.V * scale;
-
     private static void MeasurePlate(PlateTable.Entry e, GlyphAtlas atlas, float scale, float lineH,
                                      bool portraits, out float w, out float h)
     {
@@ -592,9 +587,8 @@ public sealed unsafe class NameplateService : IExtenderService
         bool portrait = portraits && e.PortraitResref.Length != 0;
         OverrideLayout ov = LayoutOverride(e, atlas, scale, nameLines, band, bandW);
         PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, ov.ShowName ? nameLines : 0,
-                                             bandW, portrait, ov.ShowBand,
-                                             NameplateKnobs.HealthBar.V && e.Damage >= 0, lineH, scale,
-                                             ov.PreLines, ov.PostLines, ov.ExtraW, BarW(scale));
+                                             bandW, portrait, ov.ShowBand, lineH, scale,
+                                             ov.PreLines, ov.PostLines, ov.ExtraW);
         w = m.W; h = m.H;
     }
 
@@ -905,7 +899,6 @@ public sealed unsafe class NameplateService : IExtenderService
                                   bool portraits, bool background, Hit[] hits, ref int hitN)
     {
         bool band = NameplateKnobs.HealthBand.V && e.Damage >= 0;
-        bool bar = NameplateKnobs.HealthBar.V && e.Damage >= 0;
         float nameW = MeasureName(e, atlas, TextMaxW(scale), out int nameLines);
         string bandText = band ? PlateLayout.BandText(BandWords.Current, e.Damage) : "";
         float bandW = band ? MeasureRunes(atlas, bandText) : 0f;
@@ -913,8 +906,8 @@ public sealed unsafe class NameplateService : IExtenderService
         OverrideLayout ov = LayoutOverride(e, atlas, scale, nameLines, band, bandW);
         band = ov.ShowBand;
         if (!ov.ShowName) nameLines = 0;
-        PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, nameLines, bandW, portrait, band, bar,
-                                             lineH, scale, ov.PreLines, ov.PostLines, ov.ExtraW, BarW(scale));
+        PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, nameLines, bandW, portrait, band,
+                                             lineH, scale, ov.PreLines, ov.PostLines, ov.ExtraW);
 
         if (background) EmitRect(ref n, su, sv, x, y, x + m.W, y + m.H, PlateBg.r, PlateBg.g, PlateBg.b, PlateBg.a * a);
 
@@ -961,16 +954,6 @@ public sealed unsafe class NameplateService : IExtenderService
 
         // ... and the ones below it (append mode).
         EmitParas(ref n, atlas, e, ov.PostFrom, ov.PostTo, colX, m.TextW, y + m.PostY, a, lineH);
-
-        if (bar && m.BarW > 0f)
-        {
-            (float r, float g, float b) bc = PlateLayout.BandColor(e.Damage);
-            float frac = e.Health < 0f ? 0f : e.Health;
-            EmitRect(ref n, su, sv, x + m.BarX, y + m.BarY, x + m.BarX + m.BarW, y + m.BarY + m.BarH,
-                     BarTrack.r, BarTrack.g, BarTrack.b, BarTrack.a * a);
-            EmitRect(ref n, su, sv, x + m.BarX, y + m.BarY, x + m.BarX + m.BarW * frac, y + m.BarY + m.BarH,
-                     bc.r, bc.g, bc.b, a);
-        }
 
         if (portrait)
             AddPortrait(ref pn, e.PortraitResref, x + m.PortraitX, y + m.PortraitY,

@@ -33,7 +33,6 @@ public sealed class NameplateConfig
     public bool  Background    = true;   // independent of Mode; Mode 2 forces it on at defaults
     public bool  Portraits     = true;
     public bool  HealthBand    = true;
-    public bool  HealthBar     = false;  // thin bar under the name (ours, not vanilla)
     public float MaxDistance   = 45f;    // metres; 0 = unlimited
     public float FadeDistance  = 10f;    // fade band before MaxDistance
     public int   BubbleLines   = 3;      // max wrapped lines kept per bubble
@@ -51,7 +50,7 @@ public sealed class NameplateConfig
 // --- B owns; A calls per frame, per entry. Pure, no allocation, no GL. ---
 public readonly struct PlateMetrics   // design-px, pre-scale
 {
-    public readonly float W, H, PortraitX, PortraitY, PortraitSize, NameX, NameY, BandX, BandY, BarX, BarY, BarW, BarH;
+    public readonly float W, H, PortraitX, PortraitY, PortraitSize, NameX, NameY, BandX, BandY;
     public readonly float TextW;          // added: the column a centred line is centred in
 }
 public static class PlateLayout
@@ -59,17 +58,16 @@ public static class PlateLayout
     /// Anchor is the engine's projected point (screen px). Returns the top-left the
     /// caller should draw at, given a plate of size (w,h) drawn ABOVE the anchor.
     public static void Place(float anchorX, float anchorY, float w, float h, out float x, out float y);
-    public static PlateMetrics Measure(float nameW, float bandW, bool portrait, bool band, bool bar, float lineH, float scale);
+    public static PlateMetrics Measure(float nameW, float bandW, bool portrait, bool band, float lineH, float scale);
     /// added: an N-line name (PlateLayout.BreakName / SplitLines); the one-line form delegates here.
-    public static PlateMetrics Measure(float nameW, int nameLines, float bandW, bool portrait, bool band, bool bar, float lineH, float scale);
+    public static PlateMetrics Measure(float nameW, int nameLines, float bandW, bool portrait, bool band, float lineH, float scale);
     /// added: left edge of one line in the text column. EVERY line of EVERY plate type centres there --
     /// name lines, the health band and every override line -- as vanilla does. The column, never the whole
-    /// box: centring in the box would slide the text under the portrait. The health bar spans the column
-    /// outright, so it is centred by construction.
+    /// box: centring in the box would slide the text under the portrait.
     public static float LineX(float colX, float textW, float lineW);
     /// added: top edge of the portrait -- vertically centred against the content column, clamped to the pad
     /// so a portrait at least as tall as its content never gains empty space above it. The SIZE rule is
-    /// unchanged: min(nameLines, 2) * lineH + band/bar.
+    /// unchanged: min(nameLines, 2) * lineH + band.
     public static float PortraitTop(float pad, float contentH, float portraitSize);
     /// added, COLD: normalise LF / CR / CRLF / literal backslash-n / 3+ spaces down to single LF breaks.
     public static string BreakName(string s);
@@ -263,13 +261,8 @@ Deliberate divergences from vanilla, to be stated in the commit message:
   Reuse the chat's existing entry/tell path; do not invent a second one. **Off by default**, and the plate
   window publishes **no `HitTestOverride`**: a plate must never take the cursor from the engine's contextual
   pointer, nor take a click the game world would have had.
-- **Health bar** — optional thin bar under the name, coloured by band. Off by default.
-  `nameplate.barwidth` gives every bar one width, centred on the text column, which widens to hold it;
-  0, the default, makes the bar as wide as the column. The fill is the
-  creature's EXACT HP (`(current + temporary) / max`, `CNWCCreatureStats +0x88/+0x86/+0x8a`) where the
-  server sent it -- the player's own creature and party members only (update flag `0x400`, RE §4.5) -- and
-  only while it lands in the band the server last sent, which is how HP left stale by a creature leaving
-  the party is caught. Everyone else fills to the band's midpoint.
+- **No health bar** (ADR-0060). The plate shows the server's damage level, its `damagelevels.2da` caption and
+  colour, and nothing more, as the stock game does.
 - **Speech card** — `nameplate.speaker`: name and portrait (default), name only, portrait only, or neither. With either,
   a bubble is one card: the speaker's portrait top-left (`nameplate.portraitsize` lines tall, 2–6, default 3), their name as a header
   in the reaction colour (wrapped as the plate wraps it, so "name + title" keeps both lines), then every queued line oldest first, left-aligned. The engine's

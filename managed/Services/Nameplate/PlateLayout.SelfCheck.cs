@@ -31,8 +31,6 @@ public static partial class PlateLayout
             end2 = PortraitEnd(plateOf, 4, end1, 2), end3 = PortraitEnd(plateOf, 3, end2, 3);
         check.Expect(end0 == 1 && end1 == 1 && end2 == 3 && end3 == 3,
                      $"each plate draws its own portraits and no other's, up to the queued count: {end0}, {end1}, {end2}, {end3}");
-        PlateMetrics fixedBar = Measure(20f, 1, 0f, true, false, true, 16f, 1f, 0, 0, 0f, 100f);
-        check.Expect(Near(fixedBar.W, fixedBar.BarX + 100f + 4f), "a fixed bar wider than the name sets the box's right edge, portrait or not");
 
         // ---- Place: centred, above, and clamped into the viewport at every corner ----
         Place(640f, 400f, 100f, 40f, 1280f, 800f, out float px, out float py);
@@ -129,55 +127,50 @@ public static partial class PlateLayout
         check.Expect(off < 14f && off > 0f, "a sub-tau-floor interval still eases at the floor rather than dividing by zero");
 
         // ---- Measure ----
-        PlateMetrics m = Measure(80f, 60f, portrait: true, band: true, bar: true, lineH: 18f, scale: 1f);
-        check.Expect(Near(m.PortraitSize, 18f + 18f + 4f + 3f),
+        PlateMetrics m = Measure(80f, 60f, portrait: true, band: true, lineH: 18f, scale: 1f);
+        check.Expect(Near(m.PortraitSize, 18f + 18f),
           "a ONE-line name spans the whole content column, exactly as it always did");
         check.Expect(Near(m.PortraitSize * 0.64f, m.NameX - 12f), "and keeps the 0.64 aspect at that height");
         check.Expect(Near(m.NameX, 4f + m.PortraitSize * 0.64f + 8f), "name column clears the portrait");
         check.Expect(Near(m.BandX, m.NameX) && Near(m.BandY, 4f + 18f), "band sits on the second line, same column");
-        check.Expect(Near(m.BarW, 80f) && Near(m.BarH, 3f), "bar spans the text column at the bar thickness");
-        check.Expect(Near(m.BarY, 4f + 18f + 18f + 4f), "bar sits under the band");
         check.Expect(Near(m.H, m.PortraitSize + 8f), "height = content + both pads");
         check.Expect(Near(m.PortraitY, 4f),
           "a portrait as tall as its content centres to exactly the pad -- unchanged from the top-aligned rule");
-        check.Expect(Near(m.BarX, 4f + m.PortraitSize * 0.64f + 8f), "the bar starts at the text column, not at the plate edge");
         check.Expect(Near(m.W, m.NameX + 80f + 4f), "width = column + widest text + pad");
 
-        PlateMetrics tex = Measure(80f, 60f, portrait: false, band: false, bar: false, lineH: 18f, scale: 1f);
+        PlateMetrics tex = Measure(80f, 60f, portrait: false, band: false, lineH: 18f, scale: 1f);
         check.Expect(tex.PortraitSize == 0f && Near(tex.NameX, 4f), "no portrait: text starts at the pad");
         check.Expect(Near(tex.H, 26f), "text-only height is one line plus pads");
-        check.Expect(tex.BarW == 0f && tex.BarH == 0f, "no bar: zero bar box");
 
-        PlateMetrics sc = Measure(80f, 60f, portrait: false, band: false, bar: false, lineH: 36f, scale: 2f);
+        PlateMetrics sc = Measure(80f, 60f, portrait: false, band: false, lineH: 36f, scale: 2f);
         check.Expect(Near(sc.NameX, 8f), "chrome pads scale, glyph metrics do not");
         check.Expect(Near(sc.H, 36f + 16f), "scaled height = the given line height plus scaled pads");
         check.Expect(Near(m.TextW, 80f) && Near(tex.TextW, 80f), "the text column is the widest of name and band");
 
         // ---- Measure with an N-line name ----
-        PlateMetrics m3 = Measure(80f, 3, 60f, portrait: true, band: true, bar: true, lineH: 18f, scale: 1f);
+        PlateMetrics m3 = Measure(80f, 3, 60f, portrait: true, band: true, lineH: 18f, scale: 1f);
         check.Expect(Near(m3.H, m.H + 18f * 2f), "two extra name lines add exactly two line heights to the box");
-        check.Expect(Near(m3.PortraitSize, 18f * 2f + 18f + 4f + 3f),
-          "a creature's portrait grows by ONE more name line and no further, band and bar still on top");
+        check.Expect(Near(m3.PortraitSize, 18f * 2f + 18f),
+          "a creature's portrait grows by ONE more name line and no further, the band still on top");
         check.Expect(Near(m3.NameX, 4f + m3.PortraitSize * 0.64f + 8f), "the text column clears the WIDER portrait");
         check.Expect(Near(m3.W - m.W, m3.NameX - m.NameX), "and the box widens by exactly that, nothing else moving");
         check.Expect(Near(m3.BandY, 4f + 18f * 3f), "the band follows the LAST name line");
-        check.Expect(Near(m3.BarY, m3.BandY + 18f + 4f), "and the bar follows the band");
-        check.Expect(Near(m3.PortraitY, 4f + (18f * 3f + 18f + 4f + 3f - m3.PortraitSize) * 0.5f) && Near(m3.PortraitY, 13f),
+        check.Expect(Near(m3.PortraitY, 4f + (18f * 3f + 18f - m3.PortraitSize) * 0.5f) && Near(m3.PortraitY, 13f),
           "a three-line name outgrows the capped portrait, which centres in the taller column");
         check.Expect(Near(m3.PortraitY + m3.PortraitSize * 0.5f, m3.H * 0.5f),
           "and the portrait's centre is the box's centre, the pads being equal");
-        check.Expect(Near(Measure(80f, 1, 60f, true, true, true, 18f, 1f).H, m.H), "one line is the one-line overload");
-        check.Expect(Near(Measure(80f, 0, 60f, true, true, true, 18f, 1f).H, m.H), "a zero line count is treated as one");
+        check.Expect(Near(Measure(80f, 1, 60f, true, true, 18f, 1f).H, m.H), "one line is the one-line overload");
+        check.Expect(Near(Measure(80f, 0, 60f, true, true, 18f, 1f).H, m.H), "a zero line count is treated as one");
 
-        // ---- the portrait grows with the name, up to two lines ---- (a placeable: no band, no bar)
-        PlateMetrics p1 = Measure(80f, 1, 0f, portrait: true, band: false, bar: false, lineH: 18f, scale: 1f);
+        // ---- the portrait grows with the name, up to two lines ---- (a placeable: no band)
+        PlateMetrics p1 = Measure(80f, 1, 0f, portrait: true, band: false, lineH: 18f, scale: 1f);
         check.Expect(Near(p1.PortraitSize, 18f), "a one-line plate gets a ONE-line portrait, unchanged");
-        PlateMetrics p2 = Measure(80f, 2, 0f, portrait: true, band: false, bar: false, lineH: 18f, scale: 1f);
+        PlateMetrics p2 = Measure(80f, 2, 0f, portrait: true, band: false, lineH: 18f, scale: 1f);
         check.Expect(Near(p2.PortraitSize, 36f), "a second name line grows the portrait to two lines");
-        PlateMetrics p5 = Measure(80f, 5, 0f, portrait: true, band: false, bar: false, lineH: 18f, scale: 1f);
+        PlateMetrics p5 = Measure(80f, 5, 0f, portrait: true, band: false, lineH: 18f, scale: 1f);
         check.Expect(Near(p5.PortraitSize, p2.PortraitSize), "a fifth line does not grow it any further");
         check.Expect(Near(p5.H, 5f * 18f + 8f), "and the box still grows to the whole name");
-        check.Expect(Near(Measure(80f, 1, 60f, true, true, true, 18f, 1f).PortraitSize, 18f + 18f + 4f + 3f),
+        check.Expect(Near(Measure(80f, 1, 60f, true, true, 18f, 1f).PortraitSize, 18f + 18f),
           "a one-line CREATURE portrait is byte-identical to the pre-change rule (never shrunk by the cap)");
         check.Expect(Near(p1.NameX, 4f + 18f * 0.64f + 8f) && Near(p2.NameX, 4f + 36f * 0.64f + 8f)
           && Near(p5.NameX, p2.NameX), "the text column clears the portrait at every height, at the 0.64 aspect");
@@ -194,28 +187,28 @@ public static partial class PlateLayout
           "a portrait TALLER than its content pins to the pad -- no negative top, no empty space above it");
 
         // ---- Measure with the ObjectTextBubbleOverride bands ----
-        PlateMetrics ovNone = Measure(80f, 1, 60f, true, true, true, 18f, 1f, 0, 0, 0f);
+        PlateMetrics ovNone = Measure(80f, 1, 60f, true, true, 18f, 1f, 0, 0, 0f);
         check.Expect(Near(ovNone.H, m.H) && Near(ovNone.W, m.W) && Near(ovNone.NameY, m.NameY)
           && Near(ovNone.BandY, m.BandY) && Near(ovNone.PortraitY, m.PortraitY),
           "no override lines is byte-identical to the plate that never had the feature");
-        PlateMetrics post = Measure(80f, 1, 60f, true, true, true, 18f, 1f, 0, 2, 0f);
+        PlateMetrics post = Measure(80f, 1, 60f, true, true, 18f, 1f, 0, 2, 0f);
         check.Expect(Near(post.H, m.H + 36f), "two appended lines add exactly two line heights");
         check.Expect(Near(post.NameY, m.NameY) && Near(post.BandY, m.BandY),
           "and nothing above them moves -- append grows the box downward only");
-        check.Expect(Near(post.PostY, 4f + 18f + 18f + 4f + 3f), "the appended lines start below the band AND the bar");
-        PlateMetrics pre = Measure(80f, 1, 60f, true, true, true, 18f, 1f, 2, 0, 0f);
+        check.Expect(Near(post.PostY, 4f + 18f + 18f), "the appended lines start below the band");
+        PlateMetrics pre = Measure(80f, 1, 60f, true, true, 18f, 1f, 2, 0, 0f);
         check.Expect(Near(pre.H, m.H + 36f) && Near(pre.PreY, 4f), "prepended lines start at the pad and grow the box");
-        check.Expect(Near(pre.NameY, m.NameY + 36f) && Near(pre.BandY, m.BandY + 36f) && Near(pre.BarY, m.BarY + 36f),
-          "and push the name, band and bar down by exactly their height");
-        check.Expect(Near(pre.PortraitY, 4f + (79f - pre.PortraitSize) * 0.5f) && Near(pre.PortraitY, 22f),
+        check.Expect(Near(pre.NameY, m.NameY + 36f) && Near(pre.BandY, m.BandY + 36f),
+          "and push the name and band down by exactly their height");
+        check.Expect(Near(pre.PortraitY, 4f + (72f - pre.PortraitSize) * 0.5f) && Near(pre.PortraitY, 22f),
           "the portrait centres against the WHOLE composed column, pre-lines included");
         check.Expect(Near(pre.PortraitSize, m.PortraitSize), "and is not stretched by the extra lines");
         check.Expect(Near(post.PortraitY, pre.PortraitY),
           "an append of the same line count centres the portrait identically -- it is the height that counts");
-        PlateMetrics wide = Measure(80f, 1, 60f, true, true, true, 18f, 1f, 0, 1, 140f);
+        PlateMetrics wide = Measure(80f, 1, 60f, true, true, 18f, 1f, 0, 1, 140f);
         check.Expect(Near(wide.TextW, 140f) && Near(wide.W, wide.NameX + 140f + 4f),
           "an override line wider than name and band widens the text column");
-        PlateMetrics repl = Measure(0f, 0, 0f, true, false, false, 18f, 1f, 2, 0, 90f);
+        PlateMetrics repl = Measure(0f, 0, 0f, true, false, 18f, 1f, 2, 0, 90f);
         check.Expect(Near(repl.H, 36f + 8f), "replace mode's lines ARE the plate: no name line and no band survive");
         check.Expect(Near(repl.PortraitSize, 36f), "and the portrait spans them exactly as it would name lines");
 
@@ -228,9 +221,9 @@ public static partial class PlateLayout
         check.Expect(shortX > longX, "a short line sits further right than a long one");
         check.Expect(shortX >= 20f && shortX + 30f <= 120f && longX + 90f <= 120f, "both stay inside the text column");
 
-        // Every line type, on both plate shapes: a creature (name + band + bar, band the narrower line) and a
+        // Every line type, on both plate shapes: a creature (name + band, band the narrower line) and a
         // placeable (two name lines, no band). The layout takes no object type at all -- that is the point.
-        PlateMetrics cre = Measure(80f, 1, 60f, true, true, true, 18f, 1f, 0, 1, 50f);
+        PlateMetrics cre = Measure(80f, 1, 60f, true, true, 18f, 1f, 0, 1, 50f);
         check.Expect(Near(cre.TextW, 80f), "the creature's text column is its widest line, the 80-wide name");
         check.Expect(Near(LineX(cre.NameX, cre.TextW, 80f), cre.NameX), "a creature's widest name line starts at the column");
         check.Expect(Near(LineX(cre.BandX, cre.TextW, 60f), cre.NameX + 10f),
@@ -240,7 +233,7 @@ public static partial class PlateLayout
         float hitL = LineX(cre.NameX, cre.TextW, 30f);
         check.Expect(hitL >= cre.NameX && hitL + 30f <= cre.NameX + cre.TextW,
           "the click-to-tell rect is the whole text column, so a centred short name line still lands inside it");
-        PlateMetrics plc = Measure(80f, 2, 0f, true, false, false, 18f, 1f, 1, 0, 40f);
+        PlateMetrics plc = Measure(80f, 2, 0f, true, false, 18f, 1f, 1, 0, 40f);
         check.Expect(Near(plc.TextW, 80f) && Near(LineX(plc.NameX, plc.TextW, 30f), plc.NameX + 25f)
           && Near(LineX(plc.NameX, plc.TextW, 40f), plc.NameX + 20f),
           "a placeable insets its name and override lines by half their own slack too -- no per-type rule survives");
@@ -487,15 +480,21 @@ public static partial class PlateLayout
         check.Expect(got[1] == "" && got[2] == "", "a blank or whitespace-only caption stays empty, the server chose no word");
         check.Expect(got[3] == "", "a cell that did not parse draws no caption, never a typed-in word");
         check.Expect(got[4] == "Hurt", "a caption loses its stray edge spaces");
-        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine" && BandText(got, 12) == "Gone", "out-of-range band index clamps");
+        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine", "a negative band index reads the first row");
+        check.Expect(BandText(got, 12) == "", "a level past the table's last row draws no caption, not the last row's word");
+        string[] custom = BandCaptions(new string?[] { "Fine", "Barely", "Injured", "Badly", "Near", "Dead", "Bleeding", "Hidden" });
+        check.Expect(custom.Length == 8, "a server's table keeps every row it has, not only the vanilla six");
+        check.Expect(BandText(custom, 6) == "Bleeding" && BandText(custom, 7) == "Hidden",
+                     "a server's own damage level shows its own row's caption, not Dead");
+        check.Expect(BandColor(7) == BandColor(5), "a row past the vanilla six takes the colour vanilla gives row 5 and above");
         check.Expect(ReferenceEquals(BandText(got, 0), BandText(got, 0)), "band text is a cached string, not built per call");
 
         // ---- A blank caption measures no width ----
-        PlateMetrics withBlank = Measure(40f, 1, 0f, false, true, false, 10f, 1f);
-        PlateMetrics noBand = Measure(40f, 1, 0f, false, false, false, 10f, 1f);
+        PlateMetrics withBlank = Measure(40f, 1, 0f, false, true, 10f, 1f);
+        PlateMetrics noBand = Measure(40f, 1, 0f, false, false, 10f, 1f);
         check.Expect(Near(withBlank.W, noBand.W), "a blank band caption does not widen the plate");
         check.Expect(Near(withBlank.H - noBand.H, 10f), "a blank band caption keeps its line, where a spliced override can sit");
-        PlateMetrics wideBand = Measure(40f, 1, 90f, false, true, false, 10f, 1f);
+        PlateMetrics wideBand = Measure(40f, 1, 90f, false, true, 10f, 1f);
         check.Expect(Near(wideBand.W - withBlank.W, 50f), "a caption wider than the name widens the plate by the difference");
 
         var b0 = BandColor(0);
@@ -513,25 +512,6 @@ public static partial class PlateLayout
         check.Expect(ReactionColor(0) == ReactionColor(200), "every other reaction is the same neutral");
         var neutral = ReactionColor(0);
         check.Expect(Near(neutral.b, 1f) && Near(neutral.r, 128f / 255f), "neutral is blue");
-
-        // ---- BandOf: CNWSObject::GetDamageLevel's float thresholds, replayed ----
-        check.Expect(BandOf(20, 20) == 0 && BandOf(19, 20) == 0, "exactly 0.95 is still uninjured (ucomiss 0.95f)");
-        check.Expect(BandOf(189, 200) == 1 && BandOf(15, 20) == 1, "under 0.95 down to 0.75 is barely injured");
-        check.Expect(BandOf(149, 200) == 2 && BandOf(10, 20) == 2, "under 0.75 down to 0.5 is injured");
-        check.Expect(BandOf(99, 200) == 3 && BandOf(5, 20) == 3, "under 0.5 down to 0.25 is badly wounded");
-        check.Expect(BandOf(1, 20) == 4, "alive under 0.25 is near death");
-        check.Expect(BandOf(0, 20) == 5 && BandOf(-7, 20) == 5, "zero or below is dead");
-        check.Expect(BandOf(0, 0) == 0 && BandOf(5, 0) == 0 && BandOf(-5, 0) == 5,
-                     "a zero max replays the engine's NaN (uninjured), +inf (uninjured) and -inf (dead)");
-
-        // ---- HealthFraction: exact HP when the server sent it and it agrees with the band, else the band ----
-        check.Expect(Near(HealthFraction(37, 0, 50, BandOf(37, 50)), 0.74f), "exact HP drives the bar when it agrees with the band");
-        check.Expect(Near(HealthFraction(30, 10, 50, BandOf(40, 50)), 0.8f), "temporary HP counts, as the band and the party bar count it");
-        check.Expect(Near(HealthFraction(0, 0, 0, 2), 0.625f), "no HP from the server: the band's midpoint");
-        check.Expect(Near(HealthFraction(50, 0, 50, 3), 0.375f), "stale HP that contradicts the band loses to the band");
-        check.Expect(HealthFraction(60, 0, 50, 0) == 1f, "an overfull pool never draws past the track");
-        check.Expect(HealthFraction(0, 0, 0, 0) == 1f && HealthFraction(0, 0, 0, 5) == 0f, "band 0 is a full bar, dead an empty one");
-        check.Expect(HealthFraction(0, 0, 0, 42) == 0f && HealthFraction(0, 0, 0, -1) == 1f, "an out-of-range band clamps");
 
         // ---- SpeakerPrefixLen: the engine's "[name]: " on a placeable/door line ----
         static System.Collections.Generic.List<System.Text.Rune> R(string s)

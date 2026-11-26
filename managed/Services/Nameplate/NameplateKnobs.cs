@@ -10,14 +10,12 @@ namespace CX.Services.Nameplate;
 internal static class NameplateKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Portraits, Background, HealthBand, HealthBar, ChannelStyle, ClickToTell,
+    internal static readonly Knob<bool> Enabled, Portraits, Background, HealthBand, ChannelStyle, ClickToTell,
                                         WhileTalking, Apart, Titles;
     /// <summary>The plate names' text (<c>nameplate.font</c> / <c>typeface</c> / <c>outline</c>, the outline the old
     /// toggle's key) and the chat bubbles' (<c>nameplate.bubble*</c>).</summary>
     internal static readonly TextStyle Plate, Bubble;
     internal static readonly Knob<float> MaxDist, Width, FadeDist;
-    /// <summary>Design-px width every health bar takes; 0 = each as wide as its plate's text column.</summary>
-    internal static readonly Knob<float> BarWidth;
     internal static readonly Knob<int> Queue, Lines, Anim, PortraitLines;
     /// <summary>Percent of a plate's or bubble's alpha left while the scene hides its creature; 100 = no scene test.</summary>
     internal static readonly Knob<int> BehindWalls;
@@ -54,11 +52,6 @@ internal static class NameplateKnobs
         G.Section("Nameplates");
         Portraits = G.Toggle("portraits", "Portrait", true, help: "A portrait beside the name.");
         HealthBand = G.Toggle("healthband", "Health colour", true, help: "The name is tinted by the creature's health, as in the stock game.");
-        HealthBar = G.Toggle("healthbar", "Health bar", false,
-                             help: "A thin bar under the name. Exact for you and your party; others by injury level. Not in the stock game.");
-        BarWidth = G.Slider("barwidth", "Health bar width", 0f, 200f, 10f, 0f, "px",
-                            help: "Every health bar is this wide. 0 makes each as wide as its name.");
-        BarWidth.ShowIf = static () => HealthBar.V;
         Apart = G.Toggle("apart", "Keep names apart", false,
                          help: "Nameplates that would overlap move apart and stack. Off, each stays over its creature and they overlap, as in the stock game.");
         Titles = G.Toggle("titles", "Titles on their own line", true, Tier.Advanced,

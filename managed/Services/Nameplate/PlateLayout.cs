@@ -10,22 +10,21 @@ namespace CX.Services.Nameplate;
 /// again. All coordinates are relative to the plate's top-left.</summary>
 public readonly struct PlateMetrics
 {
-    public readonly float W, H, PortraitX, PortraitY, PortraitSize, NameX, NameY, BandX, BandY, BarX, BarY, BarW, BarH;
+    public readonly float W, H, PortraitX, PortraitY, PortraitSize, NameX, NameY, BandX, BandY;
     /// <summary>Width of the text column (the widest of name, band and any override line). The span a centred
     /// line is centred in -- never the whole box, which would slide the text under the portrait.</summary>
     public readonly float TextW;
     /// <summary>Top of the override lines that sit ABOVE the name (prepend mode), and of the ones BELOW the
-    /// band and bar (append mode). Both are the text column's x (<see cref="NameX"/>).</summary>
+    /// band (append mode). Both are the text column's x (<see cref="NameX"/>).</summary>
     public readonly float PreY, PostY;
 
     public PlateMetrics(float w, float h, float portraitX, float portraitY, float portraitSize,
-                        float nameX, float nameY, float bandX, float bandY,
-                        float barX, float barY, float barW, float barH, float textW,
+                        float nameX, float nameY, float bandX, float bandY, float textW,
                         float preY = 0f, float postY = 0f)
     {
         W = w; H = h; PortraitX = portraitX; PortraitY = portraitY; PortraitSize = portraitSize;
         NameX = nameX; NameY = nameY; BandX = bandX; BandY = bandY;
-        BarX = barX; BarY = barY; BarW = barW; BarH = barH; TextW = textW;
+        TextW = textW;
         PreY = preY; PostY = postY;
     }
 }
@@ -54,18 +53,15 @@ public static partial class PlateLayout
 {
     /// <summary>Inner padding around the plate content, design px.</summary>
     private const float PadPx = 4f;
-    /// <summary>Gap above the health bar. Design px.</summary>
-    private const float GapPx = 4f;
-    /// <summary>Gap between the portrait and the text column, design px. Wider than <see cref="GapPx"/>: a
+    /// <summary>Gap between the portrait and the text column, design px. Wider than <see cref="PadPx"/>: a
     /// portrait is a picture butting against a centred text column, and 4px reads as the two touching.</summary>
     private const float PortraitGapPx = 8f;
-    /// <summary>Health-bar thickness, design px.</summary>
-    private const float BarHPx = 3f;
     /// <summary>NWN portrait aspect (w:h). Mirrors <see cref="TextRig.PortraitAspect"/>; duplicated as a local
     /// const so this file stays pure math and self-checks with no UI state.</summary>
     private const float PortraitAspect = 0.64f;
 
-    /// <summary>Number of health bands (<c>CNWCCreatureStats + 0x8e</c> is 0..5).</summary>
+    /// <summary>The vanilla health bands, 0..5, the rows the engine's HP thresholds land in. A server can set a
+    /// creature to any later <c>damagelevels.2da</c> row; those take their caption from that row alone.</summary>
     public const int BandCount = 6;
 
     /// <summary>Band colours as flat 0..255 (r,g,b) triplets in band order; normalised by
@@ -171,29 +167,26 @@ public static partial class PlateLayout
         }
     }
 
-    /// <summary>Lay out portrait, name, health band and optional health bar into one plate box, with a
-    /// single-line name. Kept as the one-line door so every caller that has no line count reads unchanged.</summary>
-    public static PlateMetrics Measure(float nameW, float bandW, bool portrait, bool band, bool bar,
-                                       float lineH, float scale) =>
-        Measure(nameW, 1, bandW, portrait, band, bar, lineH, scale);
+    /// <summary>Lay out portrait, name and health band into one plate box, with a single-line name. Kept as the
+    /// one-line door so every caller that has no line count reads unchanged.</summary>
+    public static PlateMetrics Measure(float nameW, float bandW, bool portrait, bool band, float lineH, float scale) =>
+        Measure(nameW, 1, bandW, portrait, band, lineH, scale);
 
     /// <summary>As above for a name of <paramref name="nameLines"/> lines (<see cref="SplitLines"/>);
     /// <paramref name="nameW"/> is then the WIDEST line. <paramref name="bandW"/> and <paramref name="lineH"/> are
     /// measured glyph metrics used as given; <paramref name="scale"/> scales only the chrome. The portrait spans at
-    /// most <see cref="PortraitMaxLines"/> name lines plus band and bar, vertically centred on the whole column.</summary>
+    /// most <see cref="PortraitMaxLines"/> name lines plus the band, vertically centred on the whole column.</summary>
     public static PlateMetrics Measure(float nameW, int nameLines, float bandW, bool portrait, bool band,
-                                       bool bar, float lineH, float scale) =>
-        Measure(nameW, nameLines, bandW, portrait, band, bar, lineH, scale, 0, 0, 0f);
+                                       float lineH, float scale) =>
+        Measure(nameW, nameLines, bandW, portrait, band, lineH, scale, 0, 0, 0f);
 
     /// <summary>As above with the <c>ObjectTextBubbleOverride</c> bands folded in: <paramref name="preLines"/> above the
-    /// name, <paramref name="postLines"/> below band and bar, <paramref name="extraW"/> the widest override line PLUS the
-    /// line it extends. <paramref name="nameLines"/> is 0 only in replace mode. <paramref name="barW"/> is the bar's
-    /// scaled width, 0 = the column's: a wider bar widens the column, a narrower one is centred in it.</summary>
+    /// name, <paramref name="postLines"/> below the band, <paramref name="extraW"/> the widest override line PLUS the
+    /// line it extends. <paramref name="nameLines"/> is 0 only in replace mode.</summary>
     public static PlateMetrics Measure(float nameW, int nameLines, float bandW, bool portrait, bool band,
-                                       bool bar, float lineH, float scale,
-                                       int preLines, int postLines, float extraW, float barW = 0f)
+                                       float lineH, float scale, int preLines, int postLines, float extraW)
     {
-        float pad = PadPx * scale, gap = GapPx * scale, barH = BarHPx * scale, pgap = PortraitGapPx * scale;
+        float pad = PadPx * scale, pgap = PortraitGapPx * scale;
         if (preLines < 0) preLines = 0;
         if (postLines < 0) postLines = 0;
         if (nameLines < 1 && preLines + postLines == 0) nameLines = 1;
@@ -203,12 +196,10 @@ public static partial class PlateLayout
         if (band && bandW > textW) textW = bandW;
         if (extraW > textW) textW = extraW;
         if (textW < 0f) textW = 0f;
-        barW = bar ? (barW > 0f ? barW : textW) : 0f;
-        if (barW > textW) textW = barW;
 
         float preH = lineH * preLines, postH = lineH * postLines;
         float nameH = lineH * nameLines;
-        float below = (band ? lineH : 0f) + (bar ? gap + barH : 0f);
+        float below = band ? lineH : 0f;
         float contentH = preH + nameH + below + postH;
 
         // The portrait tracks the NAME lines; in replace mode there are none, so the override lines stand in.
@@ -224,14 +215,12 @@ public static partial class PlateLayout
 
         float nameY = pad + preH;
         float bandY = nameY + nameH;
-        float barY = bandY + (band ? lineH : 0f) + gap;
         float postY = nameY + nameH + below;
 
         return new PlateMetrics(w, h,
             pad, PortraitTop(pad, contentH, portraitSize), portraitSize,
             colX, nameY,
-            colX, bandY,
-            LineX(colX, textW, barW), barY, barW, bar ? barH : 0f, textW,
+            colX, bandY, textW,
             pad, postY);
     }
 
@@ -276,12 +265,12 @@ public static partial class PlateLayout
         return 0;
     }
 
-    /// <summary>NAME lines a portrait may grow with (the band and bar are always added on top). Past this a
+    /// <summary>NAME lines a portrait may grow with (the band is always added on top). Past this a
     /// longer name grows the box downward and the portrait, capped, centres against the taller column.</summary>
     public const int PortraitMaxLines = 2;
 
     /// <summary>Top edge of the portrait: vertically centred against the content column, never above the pad. The
-    /// clamp is defensive -- the size rule (<see cref="PortraitMaxLines"/> name lines plus the same band/bar term
+    /// clamp is defensive -- the size rule (<see cref="PortraitMaxLines"/> name lines plus the same band term
     /// the content carries) cannot exceed <paramref name="contentH"/> today, and where the two are equal this is
     /// exactly <paramref name="pad"/>.</summary>
     public static float PortraitTop(float pad, float contentH, float portraitSize)
@@ -644,55 +633,22 @@ public static partial class PlateLayout
         return (BandRgb[o] / 255f, BandRgb[o + 1] / 255f, BandRgb[o + 2] / 255f);
     }
 
-    /// <summary>The damage band <paramref name="hp"/> of <paramref name="max"/> falls in: <c>CNWSObject::GetDamageLevel</c>
-    /// (Linux nm @0xb6dc70) replayed test for test -- float divide, <c>f &lt; t</c> against the same float thresholds,
-    /// so a zero <paramref name="max"/> lands where the engine's NaN/infinity does.</summary>
-    public static int BandOf(int hp, int max)
-    {
-        float f = (float)hp / max;
-        if (!(f < 0.95f)) return 0;
-        if (!(f < 0.75f)) return 1;
-        if (!(f < 0.5f)) return 2;
-        if (!(f < 0.25f)) return 3;
-        return f <= 0f ? 5 : 4;
-    }
-
-    /// <summary>The health bar's fill for a band alone: its midpoint, full for uninjured, empty for dead.</summary>
-    private static readonly float[] BandFill = { 1f, 0.85f, 0.625f, 0.375f, 0.125f, 0f };
-
-    /// <summary>The health bar's fill, 0..1: <c>(cur + temp) / max</c> while <paramref name="max"/> is set and the
-    /// pool lands in <paramref name="band"/> (only self and party are ever sent HP, and a leaver's goes stale),
-    /// else the band's midpoint. ponytail: stale HP that still agrees with the band draws a stale fill within it;
-    /// checking party membership (<c>CPanelPartyBar::FindMemberPanel</c>) is the upgrade if that reads wrong.</summary>
-    public static float HealthFraction(int cur, int temp, int max, int band)
-    {
-        int b = band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band;
-        if (max > 0)
-        {
-            int hp = (short)(cur + temp);   // the engine sums the two shorts as a short
-            if (BandOf(hp, max) == b)
-            {
-                float f = (float)hp / max;
-                return f < 0f ? 0f : f > 1f ? 1f : f;
-            }
-        }
-        return BandFill[b];
-    }
-
-    /// <summary>One caption per band from what the client's table resolved to, trimmed: a null entry (the cell
+    /// <summary>One caption per table row from what the client's table resolved to, trimmed: a null entry (the cell
     /// did not parse) or a blank one is <c>""</c>, no caption. Cold: allocates the array once per resolve.</summary>
     public static string[] BandCaptions(string?[] resolved)
     {
-        var captions = new string[BandCount];
-        for (int i = 0; i < BandCount; i++) captions[i] = resolved[i]?.Trim() ?? "";
+        var captions = new string[resolved.Length];
+        for (int i = 0; i < resolved.Length; i++) captions[i] = resolved[i]?.Trim() ?? "";
         return captions;
     }
 
-    /// <summary>Health-band caption from <paramref name="captions"/>, a <see cref="BandCaptions"/> result.
-    /// Out-of-range indices clamp to the nearest band; the returned string is a
-    /// cached one, never built (hot path), and may be empty.</summary>
-    public static string BandText(string[] captions, int band) =>
-        captions[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
+    /// <summary>The caption of damage level <paramref name="band"/>, the table row the engine reads too: a negative
+    /// level reads row 0, one past the last row has none. A cached string, never built (hot path); may be empty.</summary>
+    public static string BandText(string[] captions, int band)
+    {
+        int i = band < 0 ? 0 : band;
+        return i < captions.Length ? captions[i] : "";
+    }
 
     /// <summary>Name colour by reaction byte (<c>CNWCCreature + 0x3a8</c>): 1 friend green, 2 enemy red,
     /// anything else neutral blue. 0..1.</summary>

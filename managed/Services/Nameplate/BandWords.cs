@@ -5,21 +5,21 @@ using CX.Framework;
 
 namespace CX.Services.Nameplate;
 
-/// <summary>
-/// The health-band captions a plate draws: each row of the client's <c>damagelevels.2da</c> names a strref in
-/// its <c>STRING_REF</c> column, and the TLK lookup answers with whatever the hak table, a custom TLK or a
-/// server override says. Resolved once and cached; the TLK entry points and the module edge invalidate the
-/// cache and the next frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.
-/// </summary>
+/// <summary>The band captions: each <c>damagelevels.2da</c> row's <c>STRING_REF</c>, as the hak table, a custom TLK
+/// or a server override resolves it. Cached; the TLK hooks, the rules reload and the module edge invalidate it,
+/// and the next frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.</summary>
 internal static unsafe class BandWords
 {
     /// <summary>The 2da column holding each band's strref.</summary>
     private static ReadOnlySpan<byte> StringRefColumn => "STRING_REF\0"u8;
 
+    /// <summary>The rows a damage level can name: the server sends it as one byte.</summary>
+    private const int MaxRows = 256;
+
     /// <summary>The cache and the counter behind it; one object, so nothing here is a loose static.</summary>
     private sealed class BandWordsState
     {
-        public string[] Words = PlateLayout.BandCaptions(new string?[PlateLayout.BandCount]);
+        public string[] Words = [];
         /// <summary>Bumped by every invalidation; the cache is current when <see cref="SeenGeneration"/> matches it.</summary>
         public int Generation;
         public int SeenGeneration = -1;
@@ -33,16 +33,18 @@ internal static unsafe class BandWords
         public TlkOpenFileAlternateFn OpenFileAlternate;
         public TlkCloseFileAlternateFn CloseFileAlternate;
         public TlkReloadFn Reload;
+        public RulesReloadAllFn ReloadRules;
     }
 
     private static readonly BandWordsState _state = new();
     private static readonly OriginalCalls _originals = new();
 
-    /// <summary>The captions to draw, one per band. All empty until the first resolve succeeds.</summary>
+    /// <summary>The captions to draw, one per table row. Empty until the first resolve succeeds.</summary>
     public static string[] Current => _state.Words;
 
-    /// <summary>Hook every TLK entry point that can change what a strref resolves to. A server sends overrides
-    /// at login and can send more later; a module opens or closes a custom TLK. Each handler runs the original
+    /// <summary>Hook every TLK entry point that can change what a strref resolves to, and the rules reload that
+    /// can replace the table (a hak re-attached mid-session). A server sends overrides at login and can send more
+    /// later; a module opens or closes a custom TLK. Each handler runs the original
     /// and marks the cache stale. False when any hook did not take.</summary>
     public static bool Install(HookService hooks)
     {
@@ -51,8 +53,10 @@ internal static unsafe class BandWords
         _originals.OpenFileAlternate = hooks.InstallTlkOpenFileAlternate(&OnOpenFileAlternate);
         _originals.CloseFileAlternate = hooks.InstallTlkCloseFileAlternate(&OnCloseFileAlternate);
         _originals.Reload = hooks.InstallTlkReload(&OnReload);
+        _originals.ReloadRules = hooks.InstallRulesReloadAll(&OnReloadRules);
         return _originals.SetOverride != null && _originals.ClearOverrides != null && _originals.OpenFileAlternate != null
-            && _originals.CloseFileAlternate != null && _originals.Reload != null;
+            && _originals.CloseFileAlternate != null && _originals.Reload != null
+            && _originals.ReloadRules != null;
     }
 
     /// <summary>Marks the cache stale: the next <see cref="Refresh"/> resolves again.</summary>
@@ -78,8 +82,12 @@ internal static unsafe class BandWords
     private static int OnReload(IntPtr self)
     { int r = _originals.Reload(self); Stale(); return r; }
 
+    [UnmanagedCallersOnly]
+    private static void OnReloadRules(IntPtr self)
+    { _originals.ReloadRules(self); Stale(); }
+
     /// <summary>Re-resolve the captions when the cache is stale. One int compare when nothing changed; the
-    /// resolve itself is six table reads and six TLK lookups. If the tables are not reachable yet the cache
+    /// resolve itself is one table read and one TLK lookup per row. If the tables are not reachable yet the cache
     /// stays stale and the next call tries again.</summary>
     public static void Refresh()
     {
@@ -105,7 +113,8 @@ internal static unsafe class BandWords
         if (table == IntPtr.Zero || EngineFn.C2DAGetINTEntry == null || EngineFn.ExoStringInit == null
             || EngineFn.ExoStringDtor == null) return null;
 
-        var words = new string?[PlateLayout.BandCount];
+        int rows = new C2DA(table).Rows;
+        var words = new string?[rows < 0 ? 0 : rows > MaxRows ? MaxRows : rows];
         byte* col = stackalloc byte[Native.ExoScratch];
         NativeMemory.Clear(col, Native.ExoScratch);
         fixed (byte* name = StringRefColumn) EngineFn.ExoStringInit((IntPtr)col, name, uint.MaxValue);

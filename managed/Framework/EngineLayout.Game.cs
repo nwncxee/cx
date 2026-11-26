@@ -232,16 +232,6 @@ public static unsafe partial class EngineLayout
     /// <c>STRING_REF</c> cell of the row the damage byte names.</summary>
     public static readonly int TwoDimDamageLevels = Field<IntPtr>("CTwoDimArrays", "damageLevels");
 
-    /// <summary>CNWCCreatureStats: current HP (temporary excluded), temporary HP and max HP, shorts. One
-    /// creature-update flag is their only writer (Linux nm @0x7a1550, Windows rva 0x781e80: four
-    /// <c>ReadSHORT</c>s beside <c>CPanelPartyBar::SetMemberHealth</c>), and the server sends it for the
-    /// player's own creature and party members only. Same offsets on both builds.</summary>
-    public static readonly int StatsCurHp = Field<short>("CNWCCreatureStats", "curHp");
-    /// <inheritdoc cref="StatsCurHp"/>
-    public static readonly int StatsTempHp = Field<short>("CNWCCreatureStats", "tempHp");
-    /// <inheritdoc cref="StatsCurHp"/>
-    public static readonly int StatsMaxHp = Field<short>("CNWCCreatureStats", "maxHp");
-
     /// <summary>CGuiInGamePopUpBubble: the projected screen anchor, whole-pixel snapped.
     /// <c>CGuiInGamePopUpBubble::Show(Vector)</c> (Linux nm @0x6a05a0, Windows rva 0x6e9820) stores the vector
     /// there -- x and y as one 8-byte store, z after. NOT the space a <c>Window</c> draws in: see

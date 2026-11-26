@@ -299,24 +299,13 @@ public static unsafe class NameplateNative
         return intern.IsNull ? 0 : intern.FeedbackWord;
     }
 
-    /// <summary>Damage-level index 0..5 for a creature (5 = dead), or -1 when it has no stats.</summary>
+    /// <summary>A creature's damage level, its <c>damagelevels.2da</c> row as the server sent it: 0..5 vanilla
+    /// (5 = dead), any later row a server's own. -1 when it has no stats.</summary>
     public static int DamageLevel(IntPtr obj, byte type)
     {
         if (obj == IntPtr.Zero || type != TypeCreature) return -1;
         CNWCCreatureStats stats = new CNWCCreature(obj).Stats;
-        if (stats.IsNull) return -1;
-        int lvl = stats.Damage;
-        return lvl > 5 ? 5 : lvl;
-    }
-
-    /// <summary>The health bar's fill 0..1 for a creature in <paramref name="band"/> (<see cref="PlateLayout.HealthFraction"/>:
-    /// exact HP where the server sent it and it agrees with the band, else the band), or -1 with no band. HOT: three
-    /// short reads.</summary>
-    public static float Health(IntPtr obj, byte type, int band)
-    {
-        if (band < 0 || obj == IntPtr.Zero || type != TypeCreature) return -1f;
-        CNWCCreatureStats stats = new CNWCCreature(obj).Stats;
-        return stats.IsNull ? -1f : PlateLayout.HealthFraction(stats.CurHp, stats.TempHp, stats.MaxHp, band);
+        return stats.IsNull ? -1 : stats.Damage;
     }
 
     /// <summary>Reaction byte for the name colour: 1 friend, 2 enemy, anything else neutral.</summary>
