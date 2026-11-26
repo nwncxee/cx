@@ -24,7 +24,7 @@ const float CX_AIR_FAR = 64.0;
 /// How strongly a metre of dust per metre of path dims and scatters, per unit of the profile: the floor 10 m off a
 /// standing eye stays in sight through the dust.
 const float CX_AIR_SIGMA = 0.5;
-/// The share of the light the dust dims that it scatters back toward the eye: dull grit, so a dark floor stays dark.
+/// The share of the light the dust, and an interior's mist, dim that they scatter back toward the eye: a dark floor stays dark.
 const float CX_AIR_ALBEDO = 0.4;
 /// The rise between neighbouring columns past which their floors do not join (GroundMist.MaxStep), metres.
 const float CX_AIR_STEP = 1.0;
@@ -130,6 +130,7 @@ void main()
     for (int i = 0; i < CX_AIR_PROBES; i++)
         probe[i] = CxAirLamps(uEyePos + dir * (t0 + dl * (float(first) + span * float(i) / float(CX_AIR_PROBES - 1) + jit)));
     vec3 dust = CxAirLit(uAreaAmbient, vec3(0.0), 0.0, 0.0), sky = uAirSlab.z > 0.5 ? dust : CxAirSky(uAirSky.rgb, uAreaDiffuse), lit = vec3(0.0);
+    float mistAlbedo = uAirSlab.z > 0.5 ? CX_AIR_ALBEDO : 1.0;
     float keep = 1.0;
     for (int k = first; k <= last; k++)
     {
@@ -138,7 +139,7 @@ void main()
         float s = span > 0.0 ? float(k - first) / span * float(CX_AIR_PROBES - 1) : 0.0;
         int i = min(int(s), CX_AIR_PROBES - 2);
         vec3 lamp = mix(probe[i], probe[i + 1], s - float(i));
-        lit += keep * (1.0 - exp(-all)) * (tau[k].x * CX_AIR_ALBEDO * (dust + lamp) + tau[k].y * (sky + lamp)) / all;
+        lit += keep * (1.0 - exp(-all)) * (tau[k].x * CX_AIR_ALBEDO * (dust + lamp) + tau[k].y * mistAlbedo * (sky + lamp)) / all;
         keep *= exp(-all);
     }
     vec4 hdr = imageLoad(uHdr, id);

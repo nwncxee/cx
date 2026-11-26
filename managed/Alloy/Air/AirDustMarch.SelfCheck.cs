@@ -170,7 +170,7 @@ internal static class AirDustMarch
                 int i = Math.Min((int)s, Probes - 2);
                 Vector3 lamp = Vector3.Lerp(probe[i], probe[i + 1], s - i);
                 float a = 1f - MathF.Exp(-tau);
-                added += keep * a * (rd[k] * Albedo * (dusty + lamp) + rm[k] * (sky + lamp)) / tau;
+                added += keep * a * (rd[k] * Albedo * (dusty + lamp) + rm[k] * (Slab.Z > 0.5f ? Albedo : 1f) * (sky + lamp)) / tau;
                 keep *= MathF.Exp(-tau);
             }
             return (keep, added);
