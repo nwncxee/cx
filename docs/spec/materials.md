@@ -95,7 +95,7 @@ leather in one texture, with ambient occlusion from its R channel.
 `/ao map 0` turns the map's occlusion off for a comparison, and `/alloy viz 54` shows the map alone.
 
 That occlusion channel shades the ambient term and nothing else, the same term the engine's own height-map
-occlusion scales ([ADR 0056](../adr/0056-screen-space-occlusion-darkens-direct-light.md)). It does not darken the
+occlusion scales ([ADR 0061](../adr/0061-screen-space-occlusion-darkens-direct-light.md)). It does not darken the
 sun, a lamp or the baked light, so an AO map cannot leave a surface dark under a light that reaches it.
 
 ## Example: a velvet cloak and a varnished table

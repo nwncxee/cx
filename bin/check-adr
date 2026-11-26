@@ -1,42 +1,94 @@
 #!/usr/bin/env bash
-# Copied from vicky-skills@110ddfc3d0c9f9ebda50268773e29f05945d0732,
-# plugins/vicky-skills/skills/engineering/true-names/scripts/check-adr.sh.
-# Every repository carries this same copy. Fix a bug upstream, then copy it
-# here.
-# Checks decision records against ADR-FORMAT.md: a "# ADR-NNNN: " title, a
-# "Category: <name>." line from the fixed list and a "Decided YYYY-MM-DD." line,
-# then a "## Brief" and a "## Rationale" section of one paragraph each, in at
-# most 100 words. The older shape, a "Because " line in place of the two
-# sections and at most 55 words, still passes. Either takes an optional last
-# "Superseded by [<repo> ]ADR-NNNN." line. No other line and no backticks.
-# Prints one line per problem and exits 1 when any record fails.
+# Copied from vicky-skills, plugins/vicky-skills/skills/planning/decision-record/scripts/check-adr.sh.
+# CI runs it without the plugin, so the repo keeps this copy. Fix a bug upstream, then copy it here.
+# Checks decision records against decision-record's FORMAT.md: the current shape and the two older ones.
+# Prints one line per problem, exits 1 on any.
+# shellcheck disable=SC2013 # the loops read single tokens, kept as upstream wrote them
 set -u
-[ $# -gt 0 ] || { echo "usage: check-adr.sh <record>..." >&2; exit 2; }
+# --template: the record follows a repo's own template, so check only the
+# rules that hold in any shape.
+tpl=0; [ "${1:-}" = "--template" ] && { tpl=1; shift; }
+[ $# -gt 0 ] || { echo "usage: check-adr.sh [--template] <record>..." >&2; exit 2; }
 categories='Architecture|Data|Interface|Infrastructure|Security|Dependencies|Tooling|Process|Other'
+ref='([a-z0-9][a-z0-9-]* )?ADR-[0-9]{4}'
+date='[0-9]{4}-[0-9]{2}-[0-9]{2}'
+# Records accepted before the date rule landed keep their undated forces, as FORMAT.md's Context rule says.
+dated_since=2026-11-19
 fail=0
 for f in "$@"; do
   [ -r "$f" ] || { echo "$f: cannot read"; fail=1; continue; }
-  # One word per line or paragraph. Text inside a section is a paragraph,
-  # however many lines it wraps over; text outside one is "other".
-  shape=$(awk -v cats="$categories" '
-    /^[[:space:]]*$/ { inpara = 0; next }
-    /^# ADR-[0-9][0-9][0-9][0-9]: ./ { print "what"; next }
-    $0 ~ "^Category: (" cats ")\\.$" { print "category"; next }
-    /^Decided [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\.$/ { print "when"; next }
-    /^Superseded by ([a-z0-9][a-z0-9-]* )?ADR-[0-9][0-9][0-9][0-9]\.$/ { print "superseded"; sec = 0; next }
-    /^## Brief$/ { print "brief"; sec = 1; inpara = 0; next }
-    /^## Rationale$/ { print "rationale"; sec = 1; inpara = 0; next }
-    /^#/ { print "other"; sec = 0; next }
-    sec { if (!inpara) print "para"; inpara = 1; next }
-    /^Because ./ { print "why"; next }
-    { print "other" }
-  ' "$f" | uniq -c | awk '{ printf "%s%s ", $2, ($1 > 1 ? "(x" $1 ")" : "") }')
-  limit=100
-  case "$shape" in
-    "what category when brief para rationale para "|"what category when brief para rationale para superseded ") ;;
-    "what category when why "|"what category when why superseded ") limit=55 ;;
-    *) echo "$f: needs what, category, when, then a Brief and a Rationale of one paragraph each, and nothing else; found: $shape"; fail=1 ;;
-  esac
+  limit=180
+  if [ $tpl -eq 1 ]; then
+    grep -qE '^While .' "$f" || { echo "$f: no Decision line opens with While and its forces"; fail=1; }
+    grep -qE '^#+ .*Consequences' "$f" || { echo "$f: no Consequences heading"; fail=1; }
+    grep -qE '^#+ .*Guard' "$f" || { echo "$f: no Guard heading"; fail=1; }
+  else
+    # One token per line or paragraph. Text inside a section is a paragraph,
+    # however many lines it wraps over; text outside one is "other".
+    tokens=$(awk -v cats="$categories" -v ref="$ref" -v date="$date" '
+      /^[[:space:]]*$/ { inpara = 0; next }
+      /^# ADR-[0-9][0-9][0-9][0-9]: ./ { print "what"; sec = ""; next } # mutant-ok: the sec reset only changes tokens after a line the shape already refuses or that opens the file
+      $0 ~ "^Category: (" cats ")\\.$" { print "category"; next }
+      /^Decided [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\.$/ { print "when"; next }
+      $0 ~ "^Superseded by " ref "\\.$" && sec != "status" { print "superseded"; sec = ""; next } # mutant-ok: the sec reset only changes tokens after a line the shape already refuses or that opens the file
+      /^## (Brief|Rationale|Status|Context|Decision|Consequences|Guard)$/ {
+        sec = tolower($2); print sec; inpara = 0; next }
+      /^#/ { print "other"; sec = ""; next } # mutant-ok: the sec reset only changes tokens after a line the shape already refuses or that opens the file
+      sec == "status" {
+        if ($0 ~ "^Accepted " date "\\.$") print "accepted"
+        else if ($0 ~ "^Superseded by " ref " on " date ": F[0-9]+ no longer holds\\.$") print "later"
+        else if ($0 ~ "^Amended by " ref " on " date "\\.$") print "later"
+        else print "other"
+        next }
+      sec == "context" { print ($0 ~ /^- F[0-9]+( \([^)]*\))?: ./ ? "force" : "other"); next }
+      sec == "decision" && !inpara { print ($0 ~ /^While ./ ? "while" : "para"); inpara = 1; next }
+      sec != "" { if (!inpara) print "para"; inpara = 1; next }
+      /^Because ./ { print "why"; next }
+      { print "other" }
+    ' "$f")
+    # The shape folds repeated force and later lines; the report counts every run.
+    report=$(printf '%s\n' "$tokens" | uniq -c | awk '{ printf "%s%s ", $2, ($1 > 1 ? "(x" $1 ")" : "") }')
+    shape=$(printf '%s\n' "$tokens" | awk '$0 == "later" || $0 == "force" { if (prev == $0) next } { print; prev = $0 }' | tr '\n' ' ')
+    limit=100
+    case "$shape" in
+      "what category when brief para rationale para "|"what category when brief para rationale para superseded ") ;;
+      "what category when why "|"what category when why superseded ") limit=55 ;;
+      "what category status accepted context force decision while consequences para guard para "|\
+      "what category status accepted later context force decision while consequences para guard para ")
+        limit=180
+        forces=$(grep -oE '^- F[0-9]+( \([^)]*\))?:' "$f" | grep -oE 'F[0-9]+' | sort)
+        [ "$(printf '%s\n' "$forces" | uniq -d)" = "" ] || { echo "$f: a force number is used twice in Context"; fail=1; }
+        cited=$(awk '/^## Decision$/{d=1;next} /^## /{d=0} d' "$f" | grep -oE '\bF[0-9]+\b' | sort -u)
+        [ -n "$cited" ] || { echo "$f: the Decision names no force it rests on"; fail=1; }
+        for c in $cited; do printf '%s\n' "$forces" | grep -qx "$c" || { echo "$f: the Decision cites $c, which Context lacks"; fail=1; }; done
+        for c in $(grep -oE 'F[0-9]+ no longer holds' "$f" | grep -oE '^F[0-9]+'); do
+          printf '%s\n' "$forces" | grep -qx "$c" || { echo "$f: Status cites $c, which Context lacks"; fail=1; }; done
+        # A force's tag says where it came from: an incident, linked, or a foreseen failure.
+        while read -r n tag; do
+          case "$tag" in
+            foreseen) ;;
+            incident|incident\ *) [[ "${tag#incident}" =~ ^\ ([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+|$ref|\[\[.+\]\]|https?://[^[:space:]]+)$ ]] || { echo "$f: $n is tagged incident but links no ticket or post-mortem"; fail=1; } ;;
+            *) echo "$f: $n has an unknown tag: use (incident <ticket>) or (foreseen)"; fail=1 ;;
+          esac
+        done < <(grep -oE '^- F[0-9]+ \([^)]*\):' "$f" | sed -E 's/^- (F[0-9]+) \((.*)\):$/\1 \2/')
+        # A kept record is never edited, so only records accepted once the
+        # date rule landed must date every force.
+        accepted=$(grep -m1 -oE "^Accepted $date\." "$f" | grep -oE "$date")
+        if [[ ! "$accepted" < "$dated_since" ]]; then
+          while read -r n line; do
+            [[ "$line" =~ $date ]] || { echo "$f: $n has no date"; fail=1; }
+          done < <(awk '/^## Context$/{c=1;next} /^## /{c=0} c && /^- F[0-9]+/' "$f" | sed -E 's/^- (F[0-9]+)[^:]*: /\1 /')
+        fi ;;
+      *) echo "$f: needs what, category, Status, Context, Decision, Consequences and Guard (or an older shape), and nothing else; found: $report"; fail=1 ;;
+    esac
+  fi
+  # A record replaced in full is deleted once a Retires line names it.
+  for n in $(grep -oE 'Retires ADR-[0-9]{4}([^0-9]|$)' "$f" | grep -oE '[0-9]{4}'); do
+    grep -qE "Retires ADR-$n: [^[:space:]]" "$f" || { echo "$f: Retires ADR-$n gives no reason: write Retires ADR-$n: <why>."; fail=1; }
+    for old in "$(dirname "$f")/$n"-*.md; do
+      [ -e "$old" ] && { echo "$f: ADR-$n is retired but still present: delete it"; fail=1; }
+    done
+  done
   grep -q '`' "$f" && { echo "$f: names code in backticks: that belongs in the code"; fail=1; }
   words=$(wc -w < "$f")
   [ "$words" -le "$limit" ] || { echo "$f: $words words, the limit is $limit"; fail=1; }

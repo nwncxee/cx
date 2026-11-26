@@ -131,7 +131,10 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
   (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
   a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.
-- `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
+- `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, its word limit) fails, and so does
+  a record numbered past ADR-0060 in an older shape: a new record takes decision-record's current one. A Superseded
+  line must name a record that exists or one a Retires line names, since a kept record is never edited.
+  Proven by: tools/adr_regression.sh
 - `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
   in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
   in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`, or C# working the decode's

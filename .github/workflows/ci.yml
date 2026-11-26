@@ -150,7 +150,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Every decision record is what, category, when and why (docs/adr). Plain bash, so it runs before Nix installs.
+      # Every decision record keeps decision-record's format (docs/adr). Plain bash, so it runs before Nix installs.
       - name: Decision records
         run: bash bin/check-adr docs/adr/*.md
 

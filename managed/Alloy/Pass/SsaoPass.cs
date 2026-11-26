@@ -36,7 +36,7 @@ internal struct SsaoBlock
     }
 }
 
-/// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0056). The client's SSAO
+/// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0061). The client's SSAO
 /// option is bit 0 of <c>Camera::m_nFramebufferEffectsEnabled</c>; vanilla runs its pass over the finished
 /// frame and darkens direct light with it, while Alloy computes horizon-based visibility (GTAO) from the depth
 /// prepass and scales the lit stage's ambient and direct terms by it. <c>/ao direct</c> is the direct share.</summary>
@@ -149,7 +149,7 @@ internal static unsafe class SsaoPass
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("float dirOcc = mix(1.0, screenAo, uAoDirect);")
               && AlloyRenderer.OwnedLitFsMain.Contains("vec3 diffuse = (sun + sunSss + point) * dirOcc;"),
               "/ao direct is the only route to the DIRECT terms, and it spends the screen-space term alone: an AO map stays on the ambient");
-            check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1, so a lit corner shows its occlusion (ADR 0056)");
+            check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1, so a lit corner shows its occlusion (ADR 0061)");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;")
               && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) screenAo =") && AlloyRenderer.OwnedLitFsMain.Contains("float occl = screenAo;"),
               "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth, "

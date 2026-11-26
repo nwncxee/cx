@@ -5,7 +5,7 @@ namespace CX.Alloy;
 /// <summary>The <c>ao</c> group (spec §4.3): the storage <see cref="SsaoPass"/> reads. No master -- the
 /// game's own Ambient Occlusion video option is the switch; <see cref="On"/> is the chat-only bypass for an
 /// A/B. <c>radius</c> is world-space (NWN units are metres), so 0.6 is contact occlusion rather than
-/// room-scale gloom, and <c>direct</c> ships at 1, as ADR 0056 has it.</summary>
+/// room-scale gloom, and <c>direct</c> ships at 1, as ADR 0061 has it.</summary>
 internal static class Ao
 {
     internal static readonly KnobGroup G;

@@ -43,7 +43,7 @@ uniform sampler2D uSsao;       // #379: this frame's screen-space visibility (Ss
 uniform int uSsaoOn;           // >0 when this BATCH is in the depth SsaoPass read; <0 names why not (viz 35)
 uniform int uSsaoHalf;         // post.halfres: 1 = uSsao is half the frame's extent, read bilaterally
 uniform sampler2D uSceneDepth; // the prepass depth SsaoPass read, to check the pixel is OURS (viz 37)
-uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0056)
+uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0061)
 uniform int uShaderQuality;    // the engine's SHADER_QUALITY_MODE
 uniform float uAoMapOff;       // /ao map 0: 1 takes the material AO map out of the occlusion factor
 uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver takes (leaf cards over leaf cards)

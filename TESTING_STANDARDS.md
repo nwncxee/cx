@@ -4,6 +4,7 @@ How testing is done in this repo. Every testing skill reads this file first, and
 
 Test surface: the stub host that `./run-demo.sh` boots, with no GPU and no engine, for every self-check. The real client, run headless by `tools/live/run-live.sh` from a worktree's staged `cx-linux-x64/`, for anything only the game can show. The user's own client, saves and settings are never a test surface
 Boot command: `./build.sh`, then `./run-demo.sh`. It worked when it ends with `>> <n> SelfCheck lines, none failed` and lists any SKIPPED suite. The fast path, `tools/selfcheck/run.sh` inside `nix develop`, compiles `managed/` to IL and boots the same self-checks in a JIT host, inside a 2G cap, and ends on the same line; it adds to `./run-demo.sh` and never replaces it, since CI and the client run the AOT image. Its examples are `tools/selfcheck/fast_approved_examples.sh`, run by hand. `tools/live/run-live.sh` boots the real client and exits 0 for PASS, 1 for FAIL and 2 for a setup problem
+Test harness: `tools/live/run-live.sh`, which boots the real client headless into a playable area, grades the session PASS or FAIL and saves screenshots
 Test props: fixtures a self-check needs are embedded beside it under `managed/`. A throwaway script or capture goes in `.scratch/`, which git ignores
 Never holds test props: `managed/` outside a self-check's own fixtures, `media/`, and the staged `cx-linux-x64/` and `cx-windows-x64/` folders, which ship
 Commit test cruft: no
