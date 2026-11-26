@@ -50,7 +50,9 @@ void main()
     if (GetCurrentlyRunningEvent() == EVENT_SCRIPT_MODULE_ON_PLAYER_TARGET)
     {
         object oPicked = GetTargetingModeSelectedObject();
-        Mark("targeted " + (GetIsObjectValid(oPicked) ? GetTag(oPicked) : "nothing"));
+        string sPicked = GetIsObjectValid(oPicked) ? GetTag(oPicked) : "nothing";
+        Mark("targeted " + sPicked);
+        FloatingTextStringOnCreature("Targeted: " + sPicked, GetLastPlayerToSelectTarget(), FALSE);
         return;
     }
     object oPC = GetEnteringObject();
