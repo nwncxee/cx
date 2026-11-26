@@ -45,7 +45,7 @@ internal static partial class GroundMist
 
     /// <summary>Write the field and the air's dust and mist for the fog stage into <paramref name="into"/>: a head (the
     /// corner, the side, 1 while either shows; the <paramref name="sky"/>'s fog colour and the mist's height; the heights
-    /// the air lies between and 1 indoors), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/>
+    /// the air lies between and 1 indoors), then a <see cref="Cell"/> per column and its quarters' floors. Returns the bytes written, 0 when <paramref name="gen"/>
     /// says the stage already has them; with nothing showing, the head alone.</summary>
     internal static int Pack(ref int gen, Span<byte> into, Vector3 sky = default)
     {
@@ -60,7 +60,8 @@ internal static partial class GroundMist
         MemoryMarshal.Write(into[SkyAt..], new Vector4(sky, AirScene.MistTop));
         MemoryMarshal.Write(into[SlabAt..], new Vector4(0f, -1f, 0f, 0f));
         if (!shows) return Head;
-        Span<Cell> cells = MemoryMarshal.Cast<byte, Cell>(into[Head..]);
+        Span<Cell> cells = MemoryMarshal.Cast<byte, Cell>(into[Head..QuartersAt]);
+        Span<Vector4> quarters = MemoryMarshal.Cast<byte, Vector4>(into[QuartersAt..PackedBytes]);
         float lo = float.MaxValue, hi = float.MinValue;
         for (int y = 0; y < Side; y++)
             for (int x = 0; x < Side; x++)
@@ -71,6 +72,7 @@ internal static partial class GroundMist
                 float wet = dust ? AirScene.MistAt(wx, wy) : 0f;
                 float floor = float.IsNaN(s.Floor[c]) ? NoFloor : s.Floor[c];
                 cells[c] = new Cell(floor, wet, lies, top);
+                quarters[c] = new Vector4(QuarterAt(s, 2 * x, 2 * y), QuarterAt(s, 2 * x + 1, 2 * y), QuarterAt(s, 2 * x, 2 * y + 1), QuarterAt(s, 2 * x + 1, 2 * y + 1));
                 if (floor == NoFloor || lies <= 0f && wet <= 0f) continue;
                 lo = MathF.Min(lo, floor);
                 hi = MathF.Max(hi, floor + MathF.Max(lies > 0f ? top : 0f, wet > 0f ? AirScene.MistTop : 0f));
@@ -88,6 +90,15 @@ internal static partial class GroundMist
     /// area is indoors) start, bytes.</summary>
     internal const int SkyAt = sizeof(float) * 4, SlabAt = sizeof(float) * 8;
 
-    /// <summary>The bytes of the field's head, of one <see cref="Cell"/>, and of the whole field as <see cref="Pack"/> writes it.</summary>
-    internal const int Head = sizeof(float) * 12, CellBytes = sizeof(float) * 4, PackedBytes = Head + Side * Side * CellBytes;
+    /// <summary>The floor of half-metre cell (<paramref name="x"/>, <paramref name="y"/>) as the fog stage reads it.</summary>
+    private static float QuarterAt(GroundMistState s, int x, int y)
+    {
+        float f = s.Quarter[y, x];
+        return float.IsNaN(f) ? NoFloor : f;
+    }
+
+    /// <summary>The bytes of the field's head and of one <see cref="Cell"/>; where the columns' quarter floors start (four
+    /// per column, its low x low y quarter first); and the whole field as <see cref="Pack"/> writes it.</summary>
+    internal const int Head = sizeof(float) * 12, CellBytes = sizeof(float) * 4, QuartersAt = Head + Side * Side * CellBytes,
+                       PackedBytes = QuartersAt + Side * Side * sizeof(float) * 4;
 }

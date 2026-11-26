@@ -15,7 +15,7 @@ layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(std430, binding = 8) readonly buffer CxLightBuf { vec4 uLights[]; };
 /// The field: its corner (x, y), its side in columns and 1 while anything shows; the sky's fog colour and the mist's
 /// height; the lowest floor and the highest top the air reaches, and 1 indoors; then per column its floor, its mist's depth, its
-/// dust's depth and the height that dust reaches, metres.
+/// dust's depth and the height that dust reaches, metres; then per column the floors of its four half-metre quarters.
 layout(std430, binding = 12) readonly buffer CxAirBuf { vec4 uAirHead; vec4 uAirSky; vec4 uAirSlab; vec4 uAirCells[]; };
 
 /// Steps along the part of the ray the air lies across, and the farthest the march looks, metres.
@@ -50,18 +50,50 @@ bool CxAirBlends(float a, float b)
     return CxAirJoined(a, b, CX_AIR_STEP) || min(a, b) < CX_AIR_WALL;
 }
 
-/// The dust (x) and mist (y) per metre one cell lays at height z by its share w, its mist reaching `top` of its height;
-/// none on a ray that ends in a drop below it.
-vec2 CxAirLayer(vec4 cell, float w, float z, float end, float top)
+/// The dust (x) and mist (y) per metre one cell lays at height z by its share w over the quarter floor `here`, its mist
+/// reaching `top` of its height; none on a ray that ends in a drop below it.
+vec2 CxAirLayer(vec4 cell, float w, float z, float end, float top, float here)
 {
     if (w <= 0.0 || end < cell.x - CX_AIR_DROP) return vec2(0.0);
-    return w * vec2(cell.z * CxAirDust(z - cell.x, cell.w), cell.y * CxAirDust(z - cell.x, uAirSky.w * top));
+    float h = z - CxAirBase(cell.x, here);
+    return w * vec2(cell.z * CxAirDust(h, cell.w), cell.y * CxAirDust(h, uAirSky.w * top));
 }
 
 /// The share w of a cell when it has a floor, nothing when it has none: the mist comes down as it fades off a floor.
 float CxAirFloored(vec4 cell, float w)
 {
     return cell.x < CX_AIR_WALL ? 0.0 : w;
+}
+
+/// The floor of half-metre quarter q of the field, or none off it.
+float CxAirQuarterAt(ivec2 q)
+{
+    int side = int(uAirHead.z);
+    ivec2 c = q >> 1, k = q & 1;
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ivec2(side)))) return -1e9;
+    return uAirCells[side * side + c.y * side + c.x][k.y * 2 + k.x];
+}
+
+/// The floor under world point p from the four nearest quarters, blended across the joins as the columns are; none
+/// where none of them has one.
+float CxAirQuarter(vec2 p)
+{
+    vec2 q = (p - uAirHead.xy) * 2.0 - 0.5;
+    ivec2 c = ivec2(floor(q));
+    vec2 f = q - vec2(c);
+    float a = CxAirQuarterAt(c), b = CxAirQuarterAt(c + ivec2(1, 0)), d = CxAirQuarterAt(c + ivec2(0, 1)), e = CxAirQuarterAt(c + ivec2(1, 1));
+    vec2 x0 = CxAirPair(f.x, CxAirBlends(a, b)), x1 = CxAirPair(f.x, CxAirBlends(d, e));
+    vec2 y0 = CxAirPair(f.y, CxAirBlends(a, d)), y1 = CxAirPair(f.y, CxAirBlends(b, e));
+    vec4 w = vec4(CxAirFloored(vec4(a), x0.x * y0.x), CxAirFloored(vec4(b), x0.y * y1.x),
+                  CxAirFloored(vec4(d), x1.x * y0.y), CxAirFloored(vec4(e), x1.y * y1.y));
+    float sum = w.x + w.y + w.z + w.w;
+    return sum > 0.0 ? dot(w, vec4(a, b, d, e)) / sum : -1e9;
+}
+
+/// The floor a cell of floor a lays its air over where the quarters' floor is here: theirs, when the two join.
+float CxAirBase(float a, float here)
+{
+    return here > CX_AIR_WALL && CxAirJoined(a, here, CX_AIR_STEP) ? here : a;
 }
 
 /// The dust (x) and mist (y) per metre at world point p on a ray that ends at height end, from the four nearest columns.
@@ -75,8 +107,9 @@ vec2 CxAirAt(vec3 p, float end)
     vec2 y0 = CxAirPair(f.y, CxAirBlends(c00.x, c01.x)), y1 = CxAirPair(f.y, CxAirBlends(c10.x, c11.x));
     vec4 w = vec4(x0.x * y0.x, x0.y * y1.x, x1.x * y0.y, x1.y * y1.y);
     float top = CxAirFloored(c00, w.x) + CxAirFloored(c10, w.y) + CxAirFloored(c01, w.z) + CxAirFloored(c11, w.w);
-    return CxAirLayer(c00, w.x, p.z, end, top) + CxAirLayer(c10, w.y, p.z, end, top)
-         + CxAirLayer(c01, w.z, p.z, end, top) + CxAirLayer(c11, w.w, p.z, end, top);
+    float here = CxAirQuarter(p.xy);
+    return CxAirLayer(c00, w.x, p.z, end, top, here) + CxAirLayer(c10, w.y, p.z, end, top, here)
+         + CxAirLayer(c01, w.z, p.z, end, top, here) + CxAirLayer(c11, w.w, p.z, end, top, here);
 }
 
 /// The share of its light a lamp of reach pr.w lays at world point at: the lit stage's own falloff over the engine's

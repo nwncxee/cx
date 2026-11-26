@@ -17,6 +17,9 @@ internal static partial class GroundMist
     /// <summary>The columns along each side of the field, one metre each.</summary>
     internal const int Side = 256;
 
+    /// <summary>The half-metre cells along each side of the field, whose floors the air lies over.</summary>
+    internal const int QuarterSide = Side * 2;
+
     /// <summary>The field recentres on the feet in steps of this many metres, so the floors are laid again rarely.</summary>
     private const int Snap = 16;
 
@@ -99,34 +102,55 @@ internal static partial class GroundMist
     }
 
     /// <summary>Each column's floor: the highest face over its centre at or below the feet plus the headroom, and
-    /// whether that face is water.</summary>
+    /// whether that face is water; and the same floor over each quarter of it.</summary>
     private static void LayFloors(GroundMistState s)
     {
         Array.Fill(s.Floor, float.NaN);
         Array.Clear(s.Wet);
-        float top = s.FeetZ + Headroom;
-        foreach ((Vector3 a, Vector3 b, Vector3 c, bool wet) in s.Tri)
+        for (int y = 0; y < QuarterSide; y++)
+            for (int x = 0; x < QuarterSide; x++) s.Quarter[y, x] = float.NaN;
+        Lay(s, 1);
+        Lay(s, 2);
+    }
+
+    /// <summary>Lay the floors <paramref name="per"/> cells to the metre (1: the columns and their water, 2: the
+    /// quarters), each the highest face over its centre at or below the feet plus the headroom.</summary>
+    private static void Lay(GroundMistState s, int per)
+    {
+        float top = s.FeetZ + Headroom, cell = 1f / per;
+        int side = Side * per;
+        foreach ((Vector3 a, Vector3 b, Vector3 c, bool water) in s.Tri)
         {
-            int x0 = Math.Max((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))) - s.Ox, 0);
-            int x1 = Math.Min((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))) - s.Ox, Side - 1);
-            int y0 = Math.Max((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y))) - s.Oy, 0);
-            int y1 = Math.Min((int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))) - s.Oy, Side - 1);
+            int x0 = Math.Max((int)MathF.Floor((MathF.Min(a.X, MathF.Min(b.X, c.X)) - s.Ox) * per), 0);
+            int x1 = Math.Min((int)MathF.Ceiling((MathF.Max(a.X, MathF.Max(b.X, c.X)) - s.Ox) * per), side - 1);
+            int y0 = Math.Max((int)MathF.Floor((MathF.Min(a.Y, MathF.Min(b.Y, c.Y)) - s.Oy) * per), 0);
+            int y1 = Math.Min((int)MathF.Ceiling((MathF.Max(a.Y, MathF.Max(b.Y, c.Y)) - s.Oy) * per), side - 1);
             float det = (b.X - a.X) * (c.Y - a.Y) - (c.X - a.X) * (b.Y - a.Y);
             if (MathF.Abs(det) < 1e-8f) continue;
             float inv = 1f / det;
             for (int y = y0; y <= y1; y++)
                 for (int x = x0; x <= x1; x++)
                 {
-                    float px = s.Ox + x + 0.5f - a.X, py = s.Oy + y + 0.5f - a.Y;
+                    float px = s.Ox + (x + 0.5f) * cell - a.X, py = s.Oy + (y + 0.5f) * cell - a.Y;
                     float u = (px * (c.Y - a.Y) - (c.X - a.X) * py) * inv;
                     float v = ((b.X - a.X) * py - px * (b.Y - a.Y)) * inv;
                     const float Edge = -1e-4f;
                     if (u < Edge || v < Edge || u + v > 1f - Edge) continue;
                     float z = a.Z + u * (b.Z - a.Z) + v * (c.Z - a.Z);
+                    if (per > 1) { Raise(ref s.Quarter[y, x], z, top); continue; }
                     int at = y * Side + x;
-                    if (z <= top && (float.IsNaN(s.Floor[at]) || z > s.Floor[at])) (s.Floor[at], s.Wet[at]) = (z, wet);
+                    if (Raise(ref s.Floor[at], z, top)) s.Wet[at] = water;
                 }
         }
+    }
+
+    /// <summary>Take <paramref name="z"/> as <paramref name="floor"/> when it is no higher than <paramref name="top"/> and
+    /// above the floor so far (NaN: none); whether it did.</summary>
+    private static bool Raise(ref float floor, float z, float top)
+    {
+        if (z > top || !float.IsNaN(floor) && z <= floor) return false;
+        floor = z;
+        return true;
     }
 
     /// <summary>The area's fog, as its current palette sets it: the even floor of mist it lays, filled whole until the
@@ -537,6 +561,9 @@ internal sealed class GroundMistState
     public float[] Depth = new float[GroundMist.Side * GroundMist.Side];
     public float[] Spare = new float[GroundMist.Side * GroundMist.Side];
     public float[] Target = new float[GroundMist.Side * GroundMist.Side];
+
+    /// <summary>Per half-metre cell, by row then column from the corner: the floor over its centre (NaN for none).</summary>
+    public readonly float[,] Quarter = new float[GroundMist.QuarterSide, GroundMist.QuarterSide];
 
     /// <summary>Per column, whether its floor is open water.</summary>
     public readonly bool[] Wet = new bool[GroundMist.Side * GroundMist.Side];

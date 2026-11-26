@@ -74,6 +74,35 @@ internal static class AirDustMarch
             return MemoryMarshal.Cast<byte, GroundMist.Cell>(_bytes.AsSpan(GroundMist.Head)).Slice(y * side, side)[x];
         }
 
+        /// <summary><c>CxAirQuarterAt</c>: the floor of half-metre quarter (<paramref name="x"/>, <paramref name="y"/>), or none off the field.</summary>
+        private float QuarterAt(int x, int y)
+        {
+            int side = (int)Head.Z, cx = x >> 1, cy = y >> 1;
+            if ((uint)cx >= (uint)side || (uint)cy >= (uint)side) return -1e9f;
+            Vector4 q = MemoryMarshal.Cast<byte, Vector4>(_bytes.AsSpan(GroundMist.QuartersAt)).Slice(cy * side, side)[cx];
+            return ((y & 1) * 2 + (x & 1)) switch { 0 => q.X, 1 => q.Y, 2 => q.Z, _ => q.W };
+        }
+
+        /// <summary><c>CxAirQuarter</c>: the floor under (<paramref name="x"/>, <paramref name="y"/>) from the four nearest
+        /// quarters, blended across the joins; none where none has one.</summary>
+        internal float Quarter(float x, float y)
+        {
+            float qx = (x - Head.X) * 2f - 0.5f, qy = (y - Head.Y) * 2f - 0.5f;
+            int ix = (int)MathF.Floor(qx), iy = (int)MathF.Floor(qy);
+            float fx = qx - ix, fy = qy - iy;
+            float a = QuarterAt(ix, iy), b = QuarterAt(ix + 1, iy), d = QuarterAt(ix, iy + 1), e = QuarterAt(ix + 1, iy + 1);
+            (float a0, float b0) = Pair(fx, Joined(a, b));
+            (float a1, float b1) = Pair(fx, Joined(d, e));
+            (float l0, float u0) = Pair(fy, Joined(a, d));
+            (float l1, float u1) = Pair(fy, Joined(b, e));
+            float wa = a < Wall ? 0f : a0 * l0, wb = b < Wall ? 0f : b0 * l1, wd = d < Wall ? 0f : a1 * u0, we = e < Wall ? 0f : b1 * u1;
+            float sum = wa + wb + wd + we;
+            return sum > 0f ? (wa * a + wb * b + wd * d + we * e) / sum : -1e9f;
+        }
+
+        /// <summary><c>CxAirBase</c>: the floor a cell of floor <paramref name="a"/> lays its air over where the quarter's is <paramref name="here"/>.</summary>
+        private float Base(float a, float here) => here > Wall && MathF.Abs(a - here) <= Step ? here : a;
+
         /// <summary>Do two neighbouring columns with floors <paramref name="a"/> and <paramref name="b"/> blend: one floor,
         /// or a floor beside a column with none?</summary>
         internal bool Joined(float a, float b) => MathF.Abs(a - b) <= Step || MathF.Min(a, b) < Wall;
@@ -95,21 +124,22 @@ internal static class AirDustMarch
             (float l1, float u1) = Pair(fy, Joined(c10.Floor, c11.Floor));
             float w00 = a0 * l0, w10 = b0 * l1, w01 = a1 * u0, w11 = b1 * u1;
             float top = Floored(c00, w00) + Floored(c10, w10) + Floored(c01, w01) + Floored(c11, w11);
-            float dust = 0f, mist = 0f;
-            Add(c00, w00, p.Z, end, top, ref dust, ref mist);
-            Add(c10, w10, p.Z, end, top, ref dust, ref mist);
-            Add(c01, w01, p.Z, end, top, ref dust, ref mist);
-            Add(c11, w11, p.Z, end, top, ref dust, ref mist);
+            float dust = 0f, mist = 0f, here = Quarter(p.X, p.Y);
+            Add(c00, w00, p.Z, end, top, here, ref dust, ref mist);
+            Add(c10, w10, p.Z, end, top, here, ref dust, ref mist);
+            Add(c01, w01, p.Z, end, top, here, ref dust, ref mist);
+            Add(c11, w11, p.Z, end, top, here, ref dust, ref mist);
             return (dust, mist);
         }
 
         private float Floored(GroundMist.Cell c, float w) => c.Floor < Wall ? 0f : w;
 
-        private void Add(GroundMist.Cell c, float w, float z, float end, float top, ref float dust, ref float mist)
+        private void Add(GroundMist.Cell c, float w, float z, float end, float top, float here, ref float dust, ref float mist)
         {
             if (w <= 0f || end < c.Floor - Drop) return;
-            dust += w * c.Dust * Profile(z - c.Floor, c.Top);
-            mist += w * c.Mist * Profile(z - c.Floor, Sky.W * top);
+            float h = z - Base(c.Floor, here);
+            dust += w * c.Dust * Profile(h, c.Top);
+            mist += w * c.Mist * Profile(h, Sky.W * top);
         }
 
         /// <summary><c>CxAirDust</c>: thickest on the floor, nothing at <paramref name="top"/>, integrating to 1.</summary>
