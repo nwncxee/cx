@@ -53,6 +53,12 @@ bool CxAirBlends(float a, float b)
     return CxAirJoined(a, b, CX_AIR_STEP) || min(a, b) < CX_AIR_WALL;
 }
 
+/// The floor a cell of floor a lays its air over where the quarters' floor is here: theirs, when the two join.
+float CxAirBase(float a, float here)
+{
+    return here > CX_AIR_WALL && CxAirJoined(a, here, CX_AIR_STEP) ? here : a;
+}
+
 /// The dust (x) and mist (y) per metre one cell lays at height z by its share w over the quarter floor `here`, its mist
 /// reaching `top` of its height; none on a ray that ends in a drop below it.
 vec2 CxAirLayer(vec4 cell, float w, float z, float end, float top, float here)
@@ -102,12 +108,6 @@ float CxAirQuarter(vec2 p)
                   CxAirFloored(vec4(d), x1.x * y0.y), CxAirFloored(vec4(e), x1.y * y1.y));
     float sum = w.x + w.y + w.z + w.w;
     return sum > 0.0 ? dot(w, vec4(a, b, d, e)) / sum : -1e9;
-}
-
-/// The floor a cell of floor a lays its air over where the quarters' floor is here: theirs, when the two join.
-float CxAirBase(float a, float here)
-{
-    return here > CX_AIR_WALL && CxAirJoined(a, here, CX_AIR_STEP) ? here : a;
 }
 
 /// The dust (x) and mist (y) per metre at world point p on a ray that ends at height end, from the four nearest columns.
