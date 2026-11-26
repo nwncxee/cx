@@ -69,6 +69,9 @@ internal sealed partial class InventoryWindow
     /// <summary>The store item the engine is dragging and its size in cells (<c>W</c> 0 when none). The service asks the
     /// engine's mouse captor; the self-check sets its own.</summary>
     public Func<(uint Oid, int W, int H)> StoreDrag = static () => default;
+    /// <summary>Whether the engine is dragging anything (a store item, a quickbar button, a stock panel's item). The service
+    /// asks the engine; the self-check sets its own.</summary>
+    public Func<bool> EngineDragging = static () => false;
     /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
     /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
     public Action<uint>? HoverItem;
@@ -469,7 +472,7 @@ internal sealed partial class InventoryWindow
             return Contains(px, py);   // outside, the engine hovers as usual: the quickbar button and world object light up
         }
         if (!Contains(px, py)) { _tip.Leave(); Hovered(InventoryModel.Invalid); return false; }
-        if (StoreDrag().W > 0) { _tip.Leave(); return false; }   // the engine moves the store icon it drags on this motion
+        if (EngineDragging()) { _tip.Leave(); return false; }   // the engine moves the icon it drags on this motion
         HoverTip(px, py);
         return true;
     }

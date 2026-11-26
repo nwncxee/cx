@@ -295,13 +295,15 @@ internal sealed partial class InventoryWindow
                      $"a helmet past either edge stays in the grid and rounds at 33-pixel cells (right {right}, left {left}, 146 px {cell})");
     }
 
-    /// <summary>Oracle: the engine moves the store icon it drags on the pointer motion it is handed, and freezes it on
-    /// motion the window takes.</summary>
+    /// <summary>Oracle: the engine moves the icon it drags (a store item, a quickbar button) on the pointer motion it is
+    /// handed, and freezes it on motion the window takes.</summary>
     private static void StoreMotion(Checker check, Bench b)
     {
         InventoryWindow w = b.W;
         (uint, int, int) drag = default;
+        bool button = false;
         w.StoreDrag = () => drag;
+        w.EngineDragging = () => drag.Item2 > 0 || button;
 
         // Given the pointer rests on a backpack item, its tooltip up
         // When the engine starts dragging a store helmet and the pointer moves on the item
@@ -326,10 +328,17 @@ internal sealed partial class InventoryWindow
         check.Expect(Said(b.Acts) == Said([new InvAction(InvActKind.Buy, StoreHelm, X: 3, Y: 4)]),
                      $"the helmet is bought where the pointer moved ({Said(b.Acts)})");
 
-        // Given no store drag
+        // Given the engine is dragging a quickbar button, no store item
+        // When the pointer moves over the window's grid
+        // Then the window leaves the motion to the engine, so the button's icon follows the pointer too
+        drag = default;
+        button = true;
+        check.Expect(!w.MouseMove(b.Cx(4), b.Cy(5)), "pointer motion over the window during any engine drag reaches the engine");
+
+        // Given no engine drag
         // When the pointer moves over the grid
         // Then the window takes the motion, as it does to show its tooltips
-        drag = default;
+        button = false;
         check.Expect(w.MouseMove(b.Cx(4), b.Cy(5)), "with no store drag the window takes motion over it");
     }
 
