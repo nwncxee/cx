@@ -98,9 +98,9 @@ internal static class AirDustLookApprovedExamples
 
     /// <summary><paramref name="tiles"/> as an interior crypt holding the stock fog placeable at <paramref name="at"/>, its
     /// mist settled.</summary>
-    private static Field Placed(List<Tile> tiles, Vector3 at, int frames = Settled)
+    private static Field Placed(List<Tile> tiles, Vector3 at, int frames = Settled, float amount = 0f)
     {
-        Lay(tiles, Vector3.Zero, true, 0f);
+        Lay(tiles, Vector3.Zero, true, amount);
         AirScene.Enter(AirFixture.Crypt, false, true);
         EmitterSim.MistEmit(StockFog, new[] { StockNode }, new[] { at }, frames);
         Go(3f, Vector2.Zero);
@@ -483,17 +483,70 @@ internal static class AirDustLookApprovedExamples
             $"H3 through the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want 0.5 to 1.5)");
     }
 
-    // Given a crypt floor that reads dark under its green braziers without the air, at fog amount 0, holding the stock fog placeable
-    // When the placeable's mist and the dust lie on it and the eye looks across it grazing
-    // Then the floor seen through them reads no brighter than 1.5 times its own brightness, and no darker than half of it.
+    // Given the dark crypt the live client stands in: a dais 3 m up over a sunken ring, its fog amount 15, its rig of lamps,
+    // the stock fog placeable in the ring and the dust off, the ring's floor showing a hundredth of the light that reaches it
+    // When the eye at the dais edge looks down across the ring
+    // Then the ring's floor in view reads to the eye on average no brighter than 1.5 times its brightness without the air.
     private static void MistyCryptStaysDark(Checker check)
     {
-        Field f = Placed(Room(), new Vector3(2f, 0.3f, 0.5f), LongSettled);
-        (float best, float worst) = Grazed(f);
-        float mist = Column(f, 2f, 0.3f, 0f, true).Depth;
-        check.Expect(mist > 0f && worst <= 1.5f && best >= 0.5f,
-            $"J2 through the placeable's mist ({mist:F3} m) and the dust the crypt floor reads {best:F2} to {worst:F2} times its brightness without the air (want some mist, 0.5 to 1.5)");
+        float was = Air.Dust.V;
+        Air.Dust.V = 0f;
+        try
+        {
+            Field f = Placed(Ground(20f, 1f, Dais, (x, y) => Ring(x, y) >= 14f ? Nonwalk : Stone), new Vector3(9.5f, 3f, 0.5f), LongSettled, MostFog);
+            float mist = Column(f, 9.5f, 0.5f, 0f, true).Depth, worst = 0f, sum = 0f;
+            int n = 0;
+            for (float x = 7.5f; x <= 10.5f; x += 0.5f)
+                for (float y = -2f; y <= 3f; y += 1f)
+                {
+                    var surf = new Vector3(x, y, Dais(x, y));
+                    (float keep, Vector3 added) = f.March(LiveEye, surf, LiveLight, LiveRig);
+                    float bare = LiveFloorShare * Luma(Stock(LiveLight.Ambient, LiveRig, surf));
+                    float shown = Shown((bare * keep + Luma(added)) / bare);
+                    worst = MathF.Max(worst, shown);
+                    sum += shown;
+                    n++;
+                }
+            check.Expect(mist > 0f && sum / n <= 1.5f,
+                $"J2 through the placeable's mist ({mist:F3} m) the live crypt's ring floor reads on average {sum / n:F2} times its brightness without the air to the eye, at most {worst:F2} (want some mist, 1.5 at most on average)");
+        }
+        finally
+        {
+            Air.Dust.V = was;
+        }
     }
+
+    /// <summary>How far from the live crypt's centre (<paramref name="x"/>, <paramref name="y"/>) is, by its square plan, metres.</summary>
+    private static float Ring(float x, float y) => MathF.Max(MathF.Abs(x), MathF.Abs(y));
+
+    /// <summary>The live crypt's floor: a dais 3 m up within 3.5 m of the centre, a ramp down to the ring at 7.5 m, the ring
+    /// at 0 out to 11 m and a 0.2 m step beyond it.</summary>
+    private static float Dais(float x, float y)
+    {
+        float r = Ring(x, y);
+        return r >= 11f ? 0.2f : 3f * Math.Clamp((7.5f - r) / 4f, 0f, 1f);
+    }
+
+    /// <summary>The live crypt's eye, at the dais edge, and its area ambient, as the client logged them.</summary>
+    private static readonly Vector3 LiveEye = new(4.1f, 0f, 3f);
+    private static readonly Shine LiveLight = new(new Vector3(0.058f, 0.024f, 0.024f), Vector3.Zero, Vector3.Zero);
+
+    /// <summary>The share of the unshadowed light that reaches it the live crypt's ring floor shows, read off the client.</summary>
+    private const float LiveFloorShare = 0.01f;
+
+    /// <summary>The first twelve lamps of the live crypt's rig, about its centre, as the client logged them.</summary>
+    private static readonly Point[] LiveRig =
+    {
+        new(new Vector3(-15f, -5f, 5f), 20f, new Vector3(0.72f, 0.87f, 0.56f)), new(new Vector3(-12.6f, -6.4f, 4f), 19f, new Vector3(1f, 0.895f, 0.032f)),
+        new(new Vector3(-12.8f, 6.4f, 4f), 19f, new Vector3(1f, 0.895f, 0.032f)), new(new Vector3(-15f, 5f, 5f), 20f, new Vector3(0.72f, 0.87f, 0.56f)),
+        new(new Vector3(-5f, 15f, 5f), 20f, new Vector3(0.72f, 0.87f, 0.56f)), new(new Vector3(1.8f, 14.1f, 4f), 18.5f, new Vector3(0.065f, 1f, 0.227f)),
+        new(new Vector3(7.3f, 2.3f, 2.1f), 14f, new Vector3(0.72f, 0.87f, 0.56f)), new(new Vector3(-7.3f, 2.3f, 2.1f), 14f, new Vector3(0.72f, 0.87f, 0.56f)),
+        new(new Vector3(-2.3f, 7.3f, 2.1f), 14f, new Vector3(0.72f, 0.87f, 0.56f)), new(new Vector3(-13.9f, 2f, 2.2f), 14f, new Vector3(0.72f, 0.87f, 0.56f)),
+        new(new Vector3(7.3f, -2.3f, 2.1f), 14f, new Vector3(0.72f, 0.87f, 0.56f)), new(new Vector3(2.3f, -7.3f, 2.1f), 14f, new Vector3(0.72f, 0.87f, 0.56f)),
+    };
+
+    /// <summary>A linear brightness ratio as the eye sees it on screen: to the power 1 / 2.2.</summary>
+    private static float Shown(float ratio) => MathF.Pow(ratio, 1f / 2.2f);
 
     /// <summary>The least and the most the floor of <paramref name="f"/> reads, seen grazing from 8 m back under two green
     /// braziers, as a share of its brightness without the air.</summary>
