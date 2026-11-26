@@ -308,15 +308,6 @@ public static unsafe class NameplateNative
         return stats.IsNull ? -1 : stats.Damage;
     }
 
-    /// <summary>The health bar's fill 0..1 for a creature in <paramref name="band"/> (<see cref="PlateLayout.HealthFraction"/>),
-    /// or -1 for no bar: no band, or a server's own band with no HP sent. HOT: three short reads.</summary>
-    public static float Health(IntPtr obj, byte type, int band)
-    {
-        if (band < 0 || obj == IntPtr.Zero || type != TypeCreature) return -1f;
-        CNWCCreatureStats stats = new CNWCCreature(obj).Stats;
-        return stats.IsNull ? -1f : PlateLayout.HealthFraction(stats.CurHp, stats.TempHp, stats.MaxHp, band);
-    }
-
     /// <summary>Reaction byte for the name colour: 1 friend, 2 enemy, anything else neutral.</summary>
     public static byte Reaction(IntPtr obj, byte type)
         => obj != IntPtr.Zero && type == TypeCreature ? new CNWCCreature(obj).Attitude : (byte)0;

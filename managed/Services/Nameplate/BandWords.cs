@@ -5,12 +5,9 @@ using CX.Framework;
 
 namespace CX.Services.Nameplate;
 
-/// <summary>
-/// The health-band captions a plate draws: each row of the client's <c>damagelevels.2da</c> names a strref in
-/// its <c>STRING_REF</c> column, and the TLK lookup answers with whatever the hak table, a custom TLK or a
-/// server override says. Resolved once and cached; the TLK entry points and the module edge invalidate the
-/// cache and the next frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.
-/// </summary>
+/// <summary>The band captions: each <c>damagelevels.2da</c> row's <c>STRING_REF</c>, as the hak table, a custom TLK
+/// or a server override resolves it. Cached; the TLK hooks, the rules reload and the module edge invalidate it,
+/// and the next frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.</summary>
 internal static unsafe class BandWords
 {
     /// <summary>The 2da column holding each band's strref.</summary>
@@ -36,6 +33,7 @@ internal static unsafe class BandWords
         public TlkOpenFileAlternateFn OpenFileAlternate;
         public TlkCloseFileAlternateFn CloseFileAlternate;
         public TlkReloadFn Reload;
+        public RulesReloadAllFn ReloadRules;
     }
 
     private static readonly BandWordsState _state = new();
@@ -44,8 +42,9 @@ internal static unsafe class BandWords
     /// <summary>The captions to draw, one per table row. Empty until the first resolve succeeds.</summary>
     public static string[] Current => _state.Words;
 
-    /// <summary>Hook every TLK entry point that can change what a strref resolves to. A server sends overrides
-    /// at login and can send more later; a module opens or closes a custom TLK. Each handler runs the original
+    /// <summary>Hook every TLK entry point that can change what a strref resolves to, and the rules reload that
+    /// can replace the table (a hak re-attached mid-session). A server sends overrides at login and can send more
+    /// later; a module opens or closes a custom TLK. Each handler runs the original
     /// and marks the cache stale. False when any hook did not take.</summary>
     public static bool Install(HookService hooks)
     {
@@ -54,8 +53,10 @@ internal static unsafe class BandWords
         _originals.OpenFileAlternate = hooks.InstallTlkOpenFileAlternate(&OnOpenFileAlternate);
         _originals.CloseFileAlternate = hooks.InstallTlkCloseFileAlternate(&OnCloseFileAlternate);
         _originals.Reload = hooks.InstallTlkReload(&OnReload);
+        _originals.ReloadRules = hooks.InstallRulesReloadAll(&OnReloadRules);
         return _originals.SetOverride != null && _originals.ClearOverrides != null && _originals.OpenFileAlternate != null
-            && _originals.CloseFileAlternate != null && _originals.Reload != null;
+            && _originals.CloseFileAlternate != null && _originals.Reload != null
+            && _originals.ReloadRules != null;
     }
 
     /// <summary>Marks the cache stale: the next <see cref="Refresh"/> resolves again.</summary>
@@ -80,6 +81,10 @@ internal static unsafe class BandWords
     [UnmanagedCallersOnly]
     private static int OnReload(IntPtr self)
     { int r = _originals.Reload(self); Stale(); return r; }
+
+    [UnmanagedCallersOnly]
+    private static void OnReloadRules(IntPtr self)
+    { _originals.ReloadRules(self); Stale(); }
 
     /// <summary>Re-resolve the captions when the cache is stale. One int compare when nothing changed; the
     /// resolve itself is one table read and one TLK lookup per row. If the tables are not reachable yet the cache

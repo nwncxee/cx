@@ -108,6 +108,7 @@ global using unsafe TlkClearOverridesFn = delegate* unmanaged<nint, void>;
 global using unsafe TlkOpenFileAlternateFn = delegate* unmanaged<nint, nint, int>;
 global using unsafe TlkCloseFileAlternateFn = delegate* unmanaged<nint, void>;
 global using unsafe TlkReloadFn = delegate* unmanaged<nint, int>;
+global using unsafe RulesReloadAllFn = delegate* unmanaged<nint, void>;
 global using unsafe GetViewPortFn = delegate* unmanaged<float*, void>;
 global using unsafe GuiObjectHitCheckFn = delegate* unmanaged<nint, int, int, int, int, nint>;
 global using unsafe GuiManHandleGuiTimerFn = delegate* unmanaged<nint, int, void>;
@@ -2038,8 +2039,6 @@ public readonly unsafe partial struct CNWCCreatureStats(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.StatsCurHp"/>
-    public ref short CurHp => ref *(short*)(Ptr + EngineLayout.StatsCurHp);
     /// <inheritdoc cref="EngineLayout.StatsDamage"/>
     public ref byte Damage => ref *(byte*)(Ptr + EngineLayout.StatsDamage);
     /// <inheritdoc cref="EngineLayout.StatsFirstName"/>
@@ -2050,14 +2049,10 @@ public readonly unsafe partial struct CNWCCreatureStats(IntPtr ptr)
     public ref IntPtr LastName => ref *(IntPtr*)(Ptr + EngineLayout.StatsLastName);
     /// <inheritdoc cref="EngineLayout.StatsLastNameLen"/>
     public ref uint LastNameLen => ref *(uint*)(Ptr + EngineLayout.StatsLastNameLen);
-    /// <inheritdoc cref="EngineLayout.StatsMaxHp"/>
-    public ref short MaxHp => ref *(short*)(Ptr + EngineLayout.StatsMaxHp);
     /// <inheritdoc cref="EngineLayout.StatsOverrideName"/>
     public ref IntPtr OverrideName => ref *(IntPtr*)(Ptr + EngineLayout.StatsOverrideName);
     /// <inheritdoc cref="EngineLayout.StatsOverrideNameLen"/>
     public ref uint OverrideNameLen => ref *(uint*)(Ptr + EngineLayout.StatsOverrideNameLen);
-    /// <inheritdoc cref="EngineLayout.StatsTempHp"/>
-    public ref short TempHp => ref *(short*)(Ptr + EngineLayout.StatsTempHp);
 }
 
 /// <summary>Typed view of an engine <c>CNWCItem*</c>.</summary>
@@ -4407,6 +4402,10 @@ public static unsafe class EngineFn
     private static bool _TlkReloadDone;
     /// <inheritdoc cref="SymbolMap.TlkReload"/>
     public static TlkReloadFn TlkReload => (TlkReloadFn)(_TlkReloadDone ? _TlkReload : Resolve(ref _TlkReload, ref _TlkReloadDone, SymbolMap.TlkReload));
+    private static IntPtr _RulesReloadAll;
+    private static bool _RulesReloadAllDone;
+    /// <inheritdoc cref="SymbolMap.RulesReloadAll"/>
+    public static RulesReloadAllFn RulesReloadAll => (RulesReloadAllFn)(_RulesReloadAllDone ? _RulesReloadAll : Resolve(ref _RulesReloadAll, ref _RulesReloadAllDone, SymbolMap.RulesReloadAll));
     private static IntPtr _GetViewPort;
     private static bool _GetViewPortDone;
     /// <inheritdoc cref="SymbolMap.GetViewPort"/>
@@ -6500,6 +6499,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.TlkReload"/>; returns the slot holding the next layer, or null.</summary>
     public static TlkReloadFn* ChainTlkReload(this HookService h, TlkReloadFn handler, int priority) =>
         (TlkReloadFn*)h.Chain(SymbolMap.TlkReload, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.RulesReloadAll"/>; returns the original, or null.</summary>
+    public static RulesReloadAllFn InstallRulesReloadAll(this HookService h, RulesReloadAllFn handler) =>
+        (RulesReloadAllFn)h.Install(SymbolMap.RulesReloadAll, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.RulesReloadAll"/>; returns the slot holding the next layer, or null.</summary>
+    public static RulesReloadAllFn* ChainRulesReloadAll(this HookService h, RulesReloadAllFn handler, int priority) =>
+        (RulesReloadAllFn*)h.Chain(SymbolMap.RulesReloadAll, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GetViewPort"/>; returns the original, or null.</summary>
     public static GetViewPortFn InstallGetViewPort(this HookService h, GetViewPortFn handler) =>
         (GetViewPortFn)h.Install(SymbolMap.GetViewPort, (IntPtr)handler);

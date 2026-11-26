@@ -490,6 +490,10 @@ internal static unsafe class SymbolMap
     /// <summary>CTlkTable::Reload() -- re-reads the base TLK (a language change). Hooked like <see cref="TlkSetOverride"/>.</summary>
     [Fn("int(IntPtr self)")]
     public const string TlkReload = "_ZN9CTlkTable6ReloadEv";
+    /// <summary>CNWRules::ReloadAll() -- re-reads the rules' 2das, damagelevels.2da among them, when a module
+    /// loads or a hak is re-attached. Hooked like <see cref="TlkSetOverride"/>.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string RulesReloadAll = "_ZN8CNWRules9ReloadAllEv";
 
     /// <summary>RenderInterface::GetViewPort(float*) @0x45d0b0 -- tail-jumps to GLRender::GetViewPort, which
     /// widens the four ints of <c>GLRender::m_viewport</c> into the caller's float[4] {x, y, w, h}. The same
@@ -2889,6 +2893,7 @@ internal static unsafe class SymbolMap
         [TlkOpenFileAlternate] = Nm("?OpenFileAlternate@CTlkTable@@QEAAHAEBVCExoString@@@Z"),
         [TlkCloseFileAlternate] = Nm("?CloseFileAlternate@CTlkTable@@QEAAXXZ"),
         [TlkReload]          = Nm("?Reload@CTlkTable@@QEAAHXZ"),
+        [RulesReloadAll]     = Nm("?ReloadAll@CNWRules@@QEAAXXZ"),
         [GetViewPort]        = Nm("?GetViewPort@RenderInterface@@SAXPEAM@Z"),
         [GetGameObject]      = At(),
         [GetObjectName]      = At(),

@@ -158,8 +158,6 @@ public sealed partial class PlateTable
         public float AnchorX, AnchorY;
         public bool Plated;
         public int Damage = -1;
-        /// <summary>The health bar's fill 0..1 (<see cref="NameplateNative.Health"/>), or -1 with no band.</summary>
-        public float Health = -1f;
         public float Distance;
         public float DistanceFade;
         /// <summary>The object's world position this frame, for the scene test; <see cref="HasWorld"/> false with no camera.</summary>
@@ -219,7 +217,7 @@ public sealed partial class PlateTable
         /// mid-fade alpha would lend it to whatever object claims the slot next.</summary>
         public void Release()
         {
-            Used = false; LineCount = 0; TopLine = -1; Damage = -1; Health = -1f; LastStackH = 0f; LastBubble = false;
+            Used = false; LineCount = 0; TopLine = -1; Damage = -1; LastStackH = 0f; LastBubble = false;
             OverrideMode = 0; OverrideText = ""; ParaCount = 0;
             Alive = false; ShowBubble = false;
             Alpha = 0f; YOff = 0f; LastH = 0f; LastPush = 0f; AnimNew = true;
@@ -591,7 +589,6 @@ public sealed partial class PlateTable
             }
 
             e.Damage = NameplateNative.DamageLevel(obj, e.Type);
-            e.Health = NameplateNative.Health(obj, e.Type, e.Damage);
             // A live chat line wins over the plate, and un-hovering does not cut it short.
             // (Vanilla enforces that through bubble+0x14c, which our own reset clears -- see the hook.)
             // Latched while alive: a dying bubble must not flip to plate chrome half way through its fade.
