@@ -348,6 +348,12 @@ AMD takes the device down for, so it is worth an instrumented run on NVIDIA hard
 Run it outside `nix develop`. Inside, the stub host finds no ICD and every golden SKIPs, which the script
 refuses to call a pass -- it counts the `GpuGolden` lines and fails if any stood down.
 
+The goldens alone, without the layer, are `run-demo.sh` outside `nix develop` with the pinned ICU and Vulkan
+loader on `ICU_LIB`, which `run-demo.sh` puts on the library path; a host with neither aborts on ICU or skips
+every golden:
+
+    ICU_LIB="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#icu.out)/lib:$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#vulkan-loader)/lib" ./run-demo.sh
+
 The layer is on no default loader path. It comes from the repository's own pinned nixpkgs
 (`nix build --inputs-from . nixpkgs#vulkan-validation-layers`), so its version moves with `flake.lock` and
 nothing else; `CX_VK_LAYER_DIR` points at another `explicit_layer.d`. `DISABLE_GAMESCOPE_WSI=1` is set because

@@ -12,8 +12,8 @@ internal static class AirDustMarch
     /// <summary>A lamp of the rig: where it stands, how far it reaches and its colour as the engine hands it over.</summary>
     internal readonly record struct Point(Vector3 At, float Reach, Vector3 Colour);
 
-    /// <summary>The room's light: the area's ambient, the sky's fog colour (which lights no air) and its sun or moon.</summary>
-    internal readonly record struct Shine(Vector3 Ambient, Vector3 Fog, Vector3 Diffuse);
+    /// <summary>The room's light: the area's ambient and its sun or moon.</summary>
+    internal readonly record struct Shine(Vector3 Ambient, Vector3 Diffuse);
 
     /// <summary>The attenuation pair the engine latches at its shipped lighting settings: maximum intensity 1.5, intensity
     /// 0.2 at range and a cutoff range multiplier of 2, the defaults both clients bind, as <see cref="AlloyLights.LatchAtten"/> forms it.</summary>

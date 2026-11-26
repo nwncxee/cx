@@ -54,7 +54,7 @@ internal static partial class GpuGolden
                 uOut[o] = c.r; uOut[o + 1u] = c.g; uOut[o + 2u] = c.b;
             """, 8, 3, cases, label);
 
-    /// <summary>Per case of <see cref="AirSky"/>: the area's fog colour rgb, its sun or moon diffuse rgb.</summary>
+    /// <summary>Per case of <see cref="AirSky"/>: the area's ambient rgb, its sun or moon diffuse rgb.</summary>
     private static float[]? AirSky(VkBackend vk, Checker check, ExtenderLog log, float[] cases, string label)
         => AirRun(vk, check, log, "vec3 CxAirSky(", """
                 vec3 c = CxAirSky(vec3(uIn[i], uIn[i + 1u], uIn[i + 2u]), vec3(uIn[i + 3u], uIn[i + 4u], uIn[i + 5u]));

@@ -164,7 +164,7 @@ internal static class AirWaterMistRegressions
         int gen = int.MinValue;
         GroundMist.Pack(ref gen, Sent);
         var field = new AirDustMarch.Field(Sent);
-        var room = new AirDustMarch.Shine(new Vector3(0.04f, 0.04f, 0.05f), new Vector3(0.02f, 0.05f, 0.6f), new Vector3(0.05f, 0.06f, 0.1f));
+        var room = new AirDustMarch.Shine(new Vector3(0.04f, 0.04f, 0.05f), new Vector3(0.05f, 0.06f, 0.1f));
         (_, Vector3 added) = field.March(new Vector3(4f, 0.3f, 1.7f), new Vector3(16f, 0.3f, 0f), room, ReadOnlySpan<AirDustMarch.Point>.Empty);
         Vector3 ground = room.Ambient + room.Diffuse;
         check.Expect(added.X > 0f && added.Z / added.X <= 1.05f * ground.Z / ground.X,

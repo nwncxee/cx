@@ -19,14 +19,14 @@ internal static class AirDustLookApprovedExamples
     private const float Pace = 0.05f;
 
     /// <summary>The crypt's light: a dim cold ambient and no sky.</summary>
-    private static readonly Shine CryptLight = new(new Vector3(0.03f, 0.03f, 0.04f), Vector3.Zero, Vector3.Zero);
+    private static readonly Shine CryptLight = new(new Vector3(0.03f, 0.03f, 0.04f), Vector3.Zero);
 
-    /// <summary>The night's light by the water: a dark fog under a pale moon.</summary>
-    private static readonly Shine NightLight = new(new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.05f, 0.06f, 0.1f));
+    /// <summary>The night's light by the water: a dark ambient under a pale moon.</summary>
+    private static readonly Shine NightLight = new(new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.05f, 0.06f, 0.1f));
 
-    /// <summary>An interior's light: the dim ambient its lamps work over, under the bright fog colour and sun the area
-    /// still carries though no sky shows in it.</summary>
-    private static readonly Shine HallLight = new(new Vector3(0.03f, 0.03f, 0.04f), new Vector3(0.5f, 0.55f, 0.6f), new Vector3(0.6f, 0.6f, 0.5f));
+    /// <summary>An interior's light: the dim ambient its lamps work over, under the bright sun the area still carries
+    /// though no sky shows in it.</summary>
+    private static readonly Shine HallLight = new(new Vector3(0.03f, 0.03f, 0.04f), new Vector3(0.6f, 0.6f, 0.5f));
 
     /// <summary>The stock fog placeable a module stands in a crypt, its emitter, and the frames it runs before a reading.</summary>
     private const string StockFog = "silm_fog_50_lo", StockNode = "AuroraEmitter01";
@@ -317,7 +317,7 @@ internal static class AirDustLookApprovedExamples
     {
         (float keep, Vector3 added) = f.March(eye, surf, room, lamps, pair: ShippedPair);
         Vector3 most = Vector3.Zero;
-        Vector3 bed = sky ? room.Fog + room.Diffuse : room.Ambient;
+        Vector3 bed = sky ? room.Ambient + room.Diffuse : room.Ambient;
         for (float t = 0f; t <= 1f; t += 0.001f)
         {
             Vector3 p = Vector3.Lerp(eye, surf, t);
@@ -559,7 +559,7 @@ internal static class AirDustLookApprovedExamples
 
     /// <summary>The live crypt's eye, at the dais edge, and its area ambient, as the client logged them.</summary>
     private static readonly Vector3 LiveEye = new(4.1f, 0f, 3f);
-    private static readonly Shine LiveLight = new(new Vector3(0.058f, 0.024f, 0.024f), Vector3.Zero, Vector3.Zero);
+    private static readonly Shine LiveLight = new(new Vector3(0.058f, 0.024f, 0.024f), Vector3.Zero);
 
     /// <summary>The share the live crypt's ring floor shows, read off the client, of the light <see cref="Stock"/> lays on it
     /// over the fallback pair (1, 1), which the reading was taken against.</summary>
