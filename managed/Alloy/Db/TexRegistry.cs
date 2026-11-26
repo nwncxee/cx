@@ -99,6 +99,8 @@ internal static unsafe partial class TexRegistry
     /// pixels on the worker, once, and kept across a context loss: it is a property of the content, not of
     /// the name it was uploaded under.</summary>
     private static readonly TexCoverage[] _cov = new TexCoverage[MaxSlots];
+    /// <summary>The layers a PLT uses (<see cref="PltImage.LayerMask"/>), 0 until it is decoded.</summary>
+    private static readonly ushort[] _pltLayers = new ushort[MaxSlots];
     /// <summary>Each slot's mean colour as decoded (its own encoding), and whether one was taken: the sky
     /// texture's average that the sky-matched fog converges on (SceneFog), which is available only here --
     /// no engine upload funnel runs to read it off.</summary>
@@ -367,7 +369,7 @@ internal static unsafe partial class TexRegistry
     private static void ResetImageProperties(int i)
     {
         _kind[i] = _requestedKind[i];
-        _retryAt[i] = 0; _meanOk[i] = false; _cov[i] = TexCoverage.Unknown;
+        _retryAt[i] = 0; _meanOk[i] = false; _cov[i] = TexCoverage.Unknown; _pltLayers[i] = 0;
         _bumpyShiny[i] = false; _envMap[i] = false; _txiBlend[i] = 0; _txiDecal[i] = false;
         _cycle[i] = null; _artState.Slots[i] = null; _samplerWish[i] = false;
         if ((_samplerOverrides[i] & SamplerOverrides.Clamp) == 0) _clamp[i] = false;
@@ -653,6 +655,9 @@ internal static unsafe partial class TexRegistry
     /// <summary>What the slot turned out to be. <see cref="TexKind.Plt"/> is what tells a record feed to stage
     /// the per-instance palette rows (<see cref="PltColors.Stage"/>) instead of clearing them.</summary>
     internal static TexKind KindOf(TexId id) => Valid(id) ? _kind[id.Index] : TexKind.Plain;
+
+    /// <summary>The layers a landed PLT uses, one bit each; 0 for one not decoded yet, or not a PLT.</summary>
+    internal static int PltLayersOf(TexId id) => Valid(id) ? _pltLayers[id.Index] : 0;
 
     /// <summary>Is this slot's answer FINAL -- will it stay what it is until something bumps
     /// <see cref="TableSerial"/>? True only for a slot that can never become resident on its own: a null id and a

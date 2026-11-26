@@ -208,8 +208,11 @@ public sealed unsafe partial class AlloyRenderer
                 if (env) _dbEnv++;
             }
             // main only: the route is shared, and a slot that is or was a PLT never stages on a worker (refused above)
-            byte slotCls = main ? DbClsOf(part, recipe, _oWash[i] != 0, _oDecal[i] != 0) : _oCls[i];
+            byte slotCls = main ? DbClsOf(part, recipe, WashPulls(_oWash[i]), _oDecal[i] != 0) : _oCls[i];
             if (slotCls != _oCls[i]) { _oCls[i] = slotCls; UnstampRecord(i); DbSetGen++; }
+            // ...and a palette part's split with it, which rides the class and not the recipe's wash
+            byte slotWash = main && !WashPulls(_oWash[i]) ? DbWashOf(part, recipe, false, _oCls[i], _oDecal[i] != 0) : _oWash[i];
+            if (slotWash != _oWash[i]) { _oWash[i] = slotWash; UnstampRecord(i); DbSetGen++; }
             // the owned name, not the registry id: `tid` is the batch sort key AND what the bind path binds
             TexRegistry.TryDrawable(diffuse, out uint diffuseName, out _);
             tid = (int)diffuseName;

@@ -57,6 +57,8 @@ internal static unsafe partial class TexRegistry
         public uint GlFmt;
         public bool Compressed, GenMips, Clamp, Nearest, Mip;
         public TexCoverage Cov;
+        /// <summary>A PLT's layers (<see cref="PltImage.LayerMask"/>), 0 for any other kind.</summary>
+        public ushort PltLayers;
         /// <summary>Which decode answered <see cref="Cov"/>, in the words the <c>texcov:</c> line prints -- the
         /// route by which a texture that draws solid can be named out of <c>cx.log</c>. Null until a decode sets it.</summary>
         public string? CovWhy;
@@ -104,7 +106,7 @@ internal static unsafe partial class TexRegistry
     /// it uploaded against, and either a name and handle or the reason there is none, and whether asking again may fix it.</summary>
     private readonly record struct Landed(TexId Id, uint Revision, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
-                                         bool Preview = false, string? CovWhy = null, bool Retry = false);
+                                         bool Preview = false, string? CovWhy = null, bool Retry = false, ushort PltLayers = 0);
 
     private static readonly Queue<Job> _in = new(), _out = new();
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
@@ -164,7 +166,7 @@ internal static unsafe partial class TexRegistry
         TxiSampler(i, txi);
         j.Pixels = null; j.FullW = 0; j.Ripple = null;
         TxiMaterial(i, txi, j);
-        j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
+        j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.PltLayers = 0; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
         j.BumpyShiny = TxiNamesBumpyShiny(txi);
         j.EnvMap = TxiNamesEnvMap(txi);
@@ -342,9 +344,10 @@ internal static unsafe partial class TexRegistry
         if (j.Fast && j.Kind != TexKind.Plt && j.Loc.ResType != TgaResType && j.GridX * j.GridY <= 1 && TryTail(j, raw)) return;
         if (j.Kind == TexKind.Plt)
         {
-            byte* rg = PltImage.Decode(raw, out int w, out int h, out int levels, out string? pw);
+            byte* rg = PltImage.Decode(raw, out int w, out int h, out int levels, out int layerMask, out string? pw);
             if (rg == null) { j.Why = pw ?? "not a PLT"; return; }
             j.Data = rg; j.W = w; j.H = h; j.Levels = levels;
+            j.PltLayers = (ushort)layerMask;
             j.GlFmt = EngineTokens.RG8;
             j.Compressed = false; j.GenMips = false;
             j.Bytes = PltImage.ChainBytes(w, h, levels);
@@ -363,10 +366,11 @@ internal static unsafe partial class TexRegistry
             // Opaque is that verdict. (The sheen itself still waits on an env map -- DrawRecipe's ponytail marker.)
             // ...on an env-mapped gob. A gob the game gives NO env map (a cloakmodel.2da row whose ENVMAP is
             // ****, CNWCCreatureAppearance::CreateCloak @0x736c90) is asked HasAlpha, which a PLT always answers
-            // yes, so there the palette alpha is coverage; that is per instance, so AlloyRenderer.DbClsOf says it.
+            // yes, so there the palette alpha is coverage; that is per instance (and per colour: a graded row
+            // blends), so AlloyRenderer.DbClsOf says it.
             j.Cov = TexCoverage.Opaque;
             j.CovWhy = "PLT -> Opaque where its gob is env-mapped (palette alpha = reflectivity); a cutout on the "
-                     + "palette alpha where it is not";
+                     + "palette alpha where it is not, blended where it wears a graded colour";
             return;
         }
         if (j.Loc.ResType == TgaResType)
@@ -645,7 +649,7 @@ internal static unsafe partial class TexRegistry
         ulong handle = MintHandle(name, j.Resref);
         if (FramePump.Debug)
             _log?.Always($"TexRegistry: [gpudebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
-        Publish(new Landed(id, j.Revision, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
+        Publish(new Landed(id, j.Revision, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy, PltLayers: j.PltLayers));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
@@ -668,7 +672,7 @@ internal static unsafe partial class TexRegistry
         }
         if (l.Why != null) Fail(id.Index, l.Why, l.Retry);
         else if (l.Preview) { LandPreview(id, l.Name, l.Handle, l.Cov); Enqueue(id.Index); }
-        else Land(id, l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
+        else Land(id, l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy, l.PltLayers);
     }
 
     // ---- the game thread's half ----
@@ -737,7 +741,7 @@ internal static unsafe partial class TexRegistry
     /// check drives it with a synthetic name.</summary>
     internal static void Land(TexId id, uint name, long bytes, ulong handle = 0,
                               TexCoverage cov = TexCoverage.Unknown, bool bumpyShiny = false,
-                              bool envMap = false, string? covWhy = null)
+                              bool envMap = false, string? covWhy = null, ushort pltLayers = 0)
     {
         TexNote(id, cov, envMap, covWhy);
         lock (_lock)
@@ -756,6 +760,7 @@ internal static unsafe partial class TexRegistry
             if (_state[i] == TexState.Idle) { IdleUnlink(i); _idleBytes -= _bytes[i]; }
             MaskSettled(i);
             _cov[i] = cov;
+            _pltLayers[i] = pltLayers;
             _bumpyShiny[i] = bumpyShiny;
             CoverageSerial++; TableSerial++;
             if (bumpyShiny) _bumpyShinySeen++;

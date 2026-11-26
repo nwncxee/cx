@@ -104,6 +104,21 @@ public static partial class DbFeed
         FrameZones.Add(FrameZones.Zone.DbDirty, tDirty);
     }
 
+    /// <summary>The colour writes and palette loads the slot classes were last asked against: a palette part
+    /// blends or cuts by the rows it wears (<see cref="AlloyRenderer.PltClass"/>), so either moving re-asks them.</summary>
+    private sealed class PltClassState { public long Writes = -1, Loads = -1; }
+    private static readonly PltClassState _pltClass = new();
+
+    /// <summary>Did a colour or a palette move since the last ask? Once per frame at most, and a still frame asks
+    /// nothing.</summary>
+    private static bool PltClassMoved()
+    {
+        long w = PltColors.ColourWrites, l = PltPalettes.Loads;
+        if (w == _pltClass.Writes && l == _pltClass.Loads) return false;
+        (_pltClass.Writes, _pltClass.Loads) = (w, l);
+        return true;
+    }
+
     /// <summary>The fold's three pumps, each bracketed: a still frame writes ~15 records yet the fold reads
     /// 0,7 ms, and one zone holding the record walk AND three drains cannot say which of them that is. Nested
     /// in <see cref="FrameZones.Zone.DbDirty"/> and not subtracted from it, so the period line carries both
@@ -123,7 +138,7 @@ public static partial class DbFeed
         FrameZones.Add(FrameZones.Zone.ChartDrip, t);
         t = FrameZones.Now;
         DrawRecipe.Pump();
-        if (DrawRecipe.Reclassify() > 0) AlloyRenderer.DbReclassified();
+        if (DrawRecipe.Reclassify() > 0 | PltClassMoved()) AlloyRenderer.DbReclassified();
         FrameZones.Add(FrameZones.Zone.RecipePump, t);
     }
 

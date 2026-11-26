@@ -187,6 +187,7 @@ internal static partial class ContentStage
         check.Expect(!Issue.SplitsSolid(wash: 0, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOne), "an additive part splits");
         check.Expect(!Issue.SplitsSolid(AlloyRenderer.WashWhole, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a whole wash splits");
         check.Expect(Issue.SplitsSolid(AlloyRenderer.WashSplit, twin: false, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a split wash stops splitting");
+        check.Expect(Issue.SplitsSolid(AlloyRenderer.WashGradedPlt, twin: false, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a graded cloak draws all of itself blended");
         Result Plain(string n) => Translate(n, true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         Result global = Plain("cx_fixsetsglobal");
         check.Expect(global.Refused == null && global.ForwardOnly, "a post body writing a global beside its alpha gets a twin");
