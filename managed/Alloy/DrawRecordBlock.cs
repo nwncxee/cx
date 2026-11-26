@@ -38,7 +38,4 @@ internal struct DrawRecordBlock
     public float FeatX, FeatY, FeatZ, FeatW;
     public Matrix4x4 Prev;
     public MaterialExt Ext;
-    /// <summary>The occluder cut: x the share of <see cref="Alpha"/> the lit stage takes away inside the cylinder,
-    /// y the cylinder's radius; 0 = no cut, so an unwritten record draws whole.</summary>
-    public Vector4 Occ;
 }

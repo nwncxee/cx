@@ -522,18 +522,13 @@ public sealed unsafe partial class AlloyRenderer
         /// is bumped by every wholesale invalidation, some landing AFTER the frame's record build, while what a
         /// bake must not trust is a record built for a DIFFERENT PART. <c>_enrollGen</c> starts at 1.</summary>
         public int RecEnroll, EnrollGen;
-        /// <summary>How far toward the floor the part is faded, 0 = not at all. Zero is the row's default, so
-        /// a fresh slot needs no seeding and a re-tenanted one is cleared in <see cref="UnstampChase"/>.</summary>
-        public float OccFade;
-        /// <summary>Seconds of <see cref="OccludeFan.Hold"/> left since the last hit; cleared with the fade.</summary>
-        public float OccHeld;
         /// <summary>The record's owned texture name RETIRED under it (the transcode drip swapping a raw upload
         /// for its compressed copy): the engine pointer is unchanged, so a pointer compare alone would keep the
         /// record sampling a dropped handle. Routed and re-resolved regardless of the frustum, then cleared
         /// where the three memos it invalidates are rewritten -- <c>StageDbPart</c>'s tail. Per slot, not global.</summary>
         public bool TexStale;
     }
-    /// <summary>29 bytes of fields, padded to a 32-byte stride (0,47 MiB of padding over
+    /// <summary>17 bytes of fields, padded to a 32-byte stride (2,34 MiB of padding over
     /// <see cref="MaxOwned"/>). Declared as the struct's <c>Size</c>, so a field appended past it cannot load;
     /// raise it with the field and <see cref="ChaseSelfCheck"/>'s loud line takes over.
     /// not-an-offset: a size, not an engine layout.</summary>
@@ -583,10 +578,6 @@ public sealed unsafe partial class AlloyRenderer
     /// interior tile fogged to black (<c>RenderDrawBucket</c> @0x46d060); Alloy fades it by alpha at the same
     /// 4/s rate. ponytail: alpha, not fog-to-black -- a per-draw fog scale in the record is the upgrade.</summary>
     private static float TileFade(int i, IntPtr tri) => SceneDb.PartFade[_oDbPart[i]];
-
-    /// <summary>A re-tenanted slot's caches describe the previous tenant.</summary>
-    private static void UnstampChase(int i)
-    { _gate[i].OccFade = 0f; _gate[i].OccHeld = 0f; }
 
     /// <summary>The [alloy] line's clause.</summary>
     private static string ChaseNote()

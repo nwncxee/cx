@@ -555,7 +555,7 @@ public sealed partial class KnobPanel
         float labelW = LabelW(r);
         if (k.Kind != KnobKind.Button) r.Label = Wrap(Body, k.Label, labelW);
         if (k is KnobLink link) r.Help = Wrap(Small, link.Url, labelW + r.ExtraW);
-        else r.Help = [.. (k.Unavailable ?? (!adv && k.Help.Length > 0 ? k.Help : null)) is { } h ? Wrap(Small, h, labelW + r.ExtraW) : [], .. k.Note?.Invoke() is { Length: > 0 } note ? note.Split(Knob.NoteBreak).SelectMany(l => Wrap(Small, l, labelW + r.ExtraW)) : []];
+        else r.Help = [.. (!adv && k.Help.Length > 0 ? k.Help : null) is { } h ? Wrap(Small, h, labelW + r.ExtraW) : [], .. k.Note?.Invoke() is { Length: > 0 } note ? note.Split(Knob.NoteBreak).SelectMany(l => Wrap(Small, l, labelW + r.ExtraW)) : []];
         r.H = RowH(r, adv) + (master ? MasterTop + MasterBottom : 0f);
         r.Refresh();
         y += r.H;

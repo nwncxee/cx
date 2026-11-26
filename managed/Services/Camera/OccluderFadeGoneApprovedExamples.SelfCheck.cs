@@ -44,30 +44,21 @@ internal static class OccluderFadeGoneApprovedExamples
     // Partner: the Free camera group is still there, with its Enter the free camera button
     private static void NoPanelRows(Checker check)
     {
-        foreach (bool alloyOff in new[] { false, true })
+        bool walls = false, free = false, enter = false;
+        foreach (KnobGroup g in KnobGroup.All)
         {
-            bool was = KnobNeeds.AssumeAlloyOff(alloyOff);
-            try
+            if (g.Submenu != "Camera") continue;
+            walls |= g.Name == "walls" || g.Title == "Walls";
+            if (g.Name == "free" && g.Title == "Free camera")
             {
-                string with = alloyOff ? "with Alloy off" : "with Alloy on";
-                bool walls = false, free = false, enter = false;
-                foreach (KnobGroup g in KnobGroup.All)
-                {
-                    if (g.Submenu != "Camera") continue;
-                    walls |= g.Name == "walls" || g.Title == "Walls";
-                    if (g.Name == "free" && g.Title == "Free camera")
-                    {
-                        free = true;
-                        foreach (Knob k in g.Knobs) enter |= k is KnobButton && k.Label == "Enter the free camera";
-                    }
-                    foreach (Knob k in g.Knobs)
-                        check.Expect(Array.IndexOf(FadeRows, k.Label) < 0, $"R1 {with} the Camera tab has no {k.Label} row");
-                }
-                check.Expect(!walls, $"R1 {with} the Camera tab has no Walls group");
-                check.Expect(free && enter, $"R1 {with} the Camera tab still has Free camera and its Enter the free camera button");
+                free = true;
+                foreach (Knob k in g.Knobs) enter |= k is KnobButton && k.Label == "Enter the free camera";
             }
-            finally { KnobNeeds.AssumeAlloyOff(was); }
+            foreach (Knob k in g.Knobs)
+                check.Expect(Array.IndexOf(FadeRows, k.Label) < 0, $"R1 the Camera tab has no {k.Label} row");
         }
+        check.Expect(!walls, "R1 the Camera tab has no Walls group");
+        check.Expect(free && enter, "R1 the Camera tab still has Free camera and its Enter the free camera button");
     }
 
     // Given a cx.cfg that holds walls.fade, walls.floor and walls.radius, one of them in mixed case

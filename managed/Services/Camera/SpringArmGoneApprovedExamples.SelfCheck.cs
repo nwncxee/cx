@@ -58,7 +58,7 @@ internal static class SpringArmGoneApprovedExamples
         for (int i = 0; i < Frames; i++)
         {
             Vector3 at = CameraService.Rig(Engine, q, offX, offY, out bool on);
-            CameraService.SettleFlag(ref flags, on, alloyOn && Walls.Fade.Default, ref weSet);
+            CameraService.SettleFlag(ref flags, on, ref weSet);
             off = MathF.Max(off, Vector3.Distance(at, full));
             lost |= (flags & EngineLayout.CameraFlagDisableCollision) == 0;
             moved |= flags != start;
