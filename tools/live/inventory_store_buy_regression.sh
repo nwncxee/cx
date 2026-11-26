@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Regression: a store item dragged onto a free cell of the CX inventory's backpack is bought into that cell, in the Linux
 # client. The showcase invstore opens a stock store 25 s after login; the key opens the CX window at 15 s and the drag runs
-# at 28 s, from the leather armour in the store's first tab onto the backpack's empty top rows. Exit 0 PASS, 1 FAIL, 2
-# when the run could not be made.
+# at 28 s, from the leather armour in the store's first tab onto the backpack's empty top rows; drag.png is the frame before
+# the release, with the cells it is bought into lit. Exit 0 PASS, 1 FAIL, 2 when the run could not be made.
 #
 #   tools/live/inventory_store_buy_regression.sh [--out DIR]
 # Given an open store and the CX inventory window open, with free backpack cells
@@ -17,7 +17,7 @@ out="$ROOT/.scratch/inventory-store-buy"
 [ "${1:-}" = --out ] && out="${2:?--out needs a folder}"
 # The harness's 1280x720 with the window centred: the store's leather armour, then a path into the backpack's top rows.
 drag="move:180,235;sleep:400;down:180,235;sleep:200;move:190,245;sleep:200;move:300,300;sleep:200;move:450,380;sleep:200"
-drag="$drag;move:560,400;sleep:600;up:560,400"
+drag="$drag;move:560,400;sleep:600;shot:$out/drag.png;up:560,400"
 inventory_store_run "$out" "sleep:15000;key:i;sleep:13000;$drag;sleep:3000;shot:$out/after.png" --cfg 'chat.enabled=0' || exit $?
 buy="$(grep -aoE '\[inv\] act Buy oid=0x[0-9a-f]+ mask=0x[0-9a-f]+ x=[0-9]+ y=[0-9]+' "$INV_LOG" | head -1)"
 x="$(echo "$buy" | grep -oE 'x=[0-9]+' | cut -d= -f2)" y="$(echo "$buy" | grep -oE 'y=[0-9]+' | cut -d= -f2)"
