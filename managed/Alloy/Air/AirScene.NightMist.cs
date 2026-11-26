@@ -13,8 +13,9 @@ internal static partial class AirScene
     /// <summary>How tall the mist stands over its floor, metres: past a standing character's waist.</summary>
     internal const float MistTop = 1.2f;
 
-    /// <summary>The share of an emitter's held mist shown: its full depth as thin to the eye as the night's own lay.</summary>
-    private const float PlacedShare = BaseMist;
+    /// <summary>The share of an emitter's held mist shown: its full depth a little thinner to the eye than the night's own
+    /// lay, since it pools in hollows an eye looks down into.</summary>
+    private const float PlacedShare = 0.25f;
 
     /// <summary>How fast the mist thins away from the water, metres, and the farthest onto land it creeps, metres.</summary>
     private const float Creep = 2f, CreepReach = 6f;
@@ -105,9 +106,10 @@ internal static partial class AirScene
     }
 
     /// <summary>The mist shown on column <paramref name="c"/> at world (<paramref name="x"/>, <paramref name="y"/>), metres of
-    /// full density: the night's share of what lies, less what passers cleared, and its share of what an emitter laid there.</summary>
+    /// full density: the night's share of what lies, less what passers cleared, and its share of what an emitter laid there,
+    /// no more than an emitter's own disc holds however deep a hollow pools it.</summary>
     private static float MistShown(AirSceneState s, int c, float x, float y)
-        => s.Dusk * s.Mist[c] * (1f - s.Gap[c]) + PlacedShare * GroundMist.Laid(x, y);
+        => s.Dusk * s.Mist[c] * (1f - s.Gap[c]) + PlacedShare * MathF.Min(GroundMist.Laid(x, y), GroundMist.SourceDepth);
 
     /// <summary>The mist shown on the column holding world (<paramref name="x"/>, <paramref name="y"/>), metres of full
     /// density; 0 off the air's floor or with the air off.</summary>

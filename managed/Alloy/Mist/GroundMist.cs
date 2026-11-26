@@ -29,8 +29,11 @@ internal static partial class GroundMist
     /// <summary>Metres of mist one metre of the area's fog amount lays, and the deepest floor area fog lays.</summary>
     private const float DepthPerAmount = 1f / 3f, MaxArea = 2f;
 
-    /// <summary>The depth a mist emitter's disc fills to, and the limits on the disc's radius.</summary>
-    private const float SourceDepth = 1f, MinReach = 2f, MaxReach = 10f;
+    /// <summary>The depth a mist emitter's disc fills to.</summary>
+    internal const float SourceDepth = 1f;
+
+    /// <summary>The limits on an emitter disc's radius.</summary>
+    private const float MinReach = 2f, MaxReach = 10f;
 
     /// <summary>Seconds a column takes to rise toward what lays it, and to settle once nothing does.</summary>
     private const float RiseTau = 4f, SettleTau = 20f;
