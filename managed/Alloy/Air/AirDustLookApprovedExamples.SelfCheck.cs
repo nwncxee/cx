@@ -170,7 +170,8 @@ internal static class AirDustLookApprovedExamples
     // Given dust on a crypt's floor, and an eye looking down along it to the floor 12 m off; and dust on a stair of
     // 0.5 m treads and 0.25 m risers, seen from above
     // When neighbouring pixels march it, each from its own offset along the ray, and the eye looks along the stair
-    // Then they see the floor through it alike, and each tread alike: no band shows where the steps or the columns fall.
+    // Then they see the floor through it alike, and each tread as its own floor gives it: no band shows where the steps
+    // or the columns fall.
     private static void NoBands(Checker check)
     {
         Field f = Crypted(Room());
@@ -188,19 +189,26 @@ internal static class AirDustLookApprovedExamples
         for (int k = 0; k < 8; k++) Deck(stair, Tread * k, -RoomHalf, RoomHalf, RoomHalf, Riser * (k + 1), Stone);
         Field s = Crypted(stair);
         var above = new Vector3(-6f, 0.3f, 9f);
-        float jump = 0f, most = 1f, was = float.NaN;
+        float off = 0f, most = 1f;
         for (float x = 0.0625f; x < 3.5f; x += 0.125f)
         {
-            float keep = s.March(above, new Vector3(x, 0.3f, Riser * (MathF.Floor(x / Tread) + 1f)), CryptLight, ReadOnlySpan<Point>.Empty).Keep;
-            if (!float.IsNaN(was)) jump = MathF.Max(jump, MathF.Abs(keep - was));
+            var tread = new Vector3(x, 0.3f, StairFloor(x, 0f));
+            float keep = s.March(above, tread, CryptLight, ReadOnlySpan<Point>.Empty).Keep;
+            off = MathF.Max(off, MathF.Abs(keep - s.ExactKeep(above, tread, StairFloor, ExactSteps)));
             most = MathF.Min(most, keep);
-            was = keep;
         }
-        check.Expect(most < 1f && jump <= 0.02f, $"F2 along the stair the eye's keep of the treads changes by {jump:P1} from one 0.125 m sample to the next (want 2 points at most, some dust)");
+        check.Expect(most < 1f && off <= 0.005f, $"F2 along the stair the eye's keep of the treads strays {off:P2} from the stair's own floor marched exactly (want 0.5 points at most, some dust)");
     }
 
     /// <summary>A stair's tread, and its riser, metres.</summary>
     private const float Tread = 0.5f, Riser = 0.25f;
+
+    /// <summary>The samples the exact march of the stair takes along one ray.</summary>
+    private const int ExactSteps = 2048;
+
+    /// <summary>The stair's floor at (<paramref name="x"/>, <paramref name="y"/>): eight treads up from x = 0, the
+    /// top one running on to the wall.</summary>
+    private static float StairFloor(float x, float y) => x < 0f ? 0f : Riser * (MathF.Min(MathF.Floor(x / Tread), 7f) + 1f);
 
     // Given a crypt floor with a dais half a metre up
     // When the dust is drawn

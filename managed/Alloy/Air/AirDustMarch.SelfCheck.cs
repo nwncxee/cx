@@ -146,6 +146,22 @@ internal static class AirDustMarch
 
         private static float Lin(float c) => c > 0f ? MathF.Pow(c, AlloyLights.SrgbGamma) : 0f;
 
+        /// <summary>What the eye at <paramref name="eye"/> keeps of <paramref name="surf"/> over the exact floor
+        /// <paramref name="floor"/>: each of <paramref name="steps"/> samples lays its own column's air from that floor.</summary>
+        internal float ExactKeep(Vector3 eye, Vector3 surf, Func<float, float, float> floor, int steps)
+        {
+            Vector3 ray = surf - eye;
+            float dl = ray.Length() / steps, tau = 0f;
+            for (int k = 0; k < steps; k++)
+            {
+                Vector3 p = eye + ray * ((k + 0.5f) / steps);
+                GroundMist.Cell c = Cell((int)MathF.Floor(p.X - Head.X), (int)MathF.Floor(p.Y - Head.Y));
+                float z = p.Z - floor(p.X, p.Y);
+                tau += (c.Dust * Profile(z, c.Top) + c.Mist * Profile(z, Sky.W)) * Sigma * dl;
+            }
+            return MathF.Exp(-tau);
+        }
+
         /// <summary>March the eye's ray from <paramref name="eye"/> to the surface <paramref name="surf"/> at step offset
         /// <paramref name="jitter"/>: what it keeps of the surface and the light the air adds over it.</summary>
         internal (float Keep, Vector3 Added) March(Vector3 eye, Vector3 surf, Shine room, ReadOnlySpan<Point> lamps, float jitter = 0.5f,
