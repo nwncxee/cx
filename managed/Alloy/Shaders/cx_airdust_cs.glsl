@@ -2,7 +2,7 @@
 // the point lights: it marches the part of the eye's ray that crosses the heights the air lies between (AirScene,
 // packed by GroundMist.Pack), reads the dust and the mist there from the four nearest columns of the field by cx_air's
 // profile, and lays over what the HDR target holds the light each scatters on the way -- the dust by the area's
-// ambient, the mist by the sky, both by the lamps where the air is.
+// ambient, the mist by the sky outdoors and by the ambient indoors, both by the lamps where the air is.
 #version 460 core
 layout(local_size_x = 16, local_size_y = 16) in;
 
@@ -14,7 +14,7 @@ layout(binding = 7) uniform sampler2D uGbDepth;
 layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(std430, binding = 8) readonly buffer CxLightBuf { vec4 uLights[]; };
 /// The field: its corner (x, y), its side in columns and 1 while anything shows; the sky's fog colour and the mist's
-/// height; the lowest floor and the highest top the air reaches; then per column its floor, its mist's depth, its
+/// height; the lowest floor and the highest top the air reaches, and 1 indoors; then per column its floor, its mist's depth, its
 /// dust's depth and the height that dust reaches, metres.
 layout(std430, binding = 12) readonly buffer CxAirBuf { vec4 uAirHead; vec4 uAirSky; vec4 uAirSlab; vec4 uAirCells[]; };
 
@@ -28,6 +28,8 @@ const float CX_AIR_SIGMA = 0.5;
 const float CX_AIR_STEP = 1.0;
 /// How far under a column's floor a ray may end before that floor is the lip of a drop its air does not hang over.
 const float CX_AIR_DROP = 2.0;
+/// A column whose floor lies below this has none: the air beside it fades out across it, a column wide.
+const float CX_AIR_WALL = -1e8;
 /// Points along the air a ray crosses where the lamps' light is taken, and lamps of the rig each walks.
 const int CX_AIR_PROBES = 4;
 const int CX_AIR_LAMPS = 32;
@@ -40,11 +42,24 @@ vec4 CxAirCell(ivec2 c)
     return uAirCells[c.y * side + c.x];
 }
 
-/// The dust (x) and mist (y) per metre one cell lays at height z by its share w, none on a ray that ends in a drop below it.
-vec2 CxAirLayer(vec4 cell, float w, float z, float end)
+/// Do neighbouring columns with floors a and b blend: one floor, or a floor beside a column with none.
+bool CxAirBlends(float a, float b)
+{
+    return CxAirJoined(a, b, CX_AIR_STEP) || min(a, b) < CX_AIR_WALL;
+}
+
+/// The dust (x) and mist (y) per metre one cell lays at height z by its share w, its mist reaching `top` of its height;
+/// none on a ray that ends in a drop below it.
+vec2 CxAirLayer(vec4 cell, float w, float z, float end, float top)
 {
     if (w <= 0.0 || end < cell.x - CX_AIR_DROP) return vec2(0.0);
-    return w * vec2(cell.z * CxAirDust(z - cell.x, cell.w), cell.y * CxAirDust(z - cell.x, uAirSky.w));
+    return w * vec2(cell.z * CxAirDust(z - cell.x, cell.w), cell.y * CxAirDust(z - cell.x, uAirSky.w * top));
+}
+
+/// The share w of a cell when it has a floor, nothing when it has none: the mist comes down as it fades off a floor.
+float CxAirFloored(vec4 cell, float w)
+{
+    return cell.x < CX_AIR_WALL ? 0.0 : w;
 }
 
 /// The dust (x) and mist (y) per metre at world point p on a ray that ends at height end, from the four nearest columns.
@@ -54,10 +69,12 @@ vec2 CxAirAt(vec3 p, float end)
     ivec2 c = ivec2(floor(q));
     vec2 f = q - vec2(c);
     vec4 c00 = CxAirCell(c), c10 = CxAirCell(c + ivec2(1, 0)), c01 = CxAirCell(c + ivec2(0, 1)), c11 = CxAirCell(c + ivec2(1, 1));
-    vec2 x0 = CxAirPair(f.x, CxAirJoined(c00.x, c10.x, CX_AIR_STEP)), x1 = CxAirPair(f.x, CxAirJoined(c01.x, c11.x, CX_AIR_STEP));
-    vec2 y0 = CxAirPair(f.y, CxAirJoined(c00.x, c01.x, CX_AIR_STEP)), y1 = CxAirPair(f.y, CxAirJoined(c10.x, c11.x, CX_AIR_STEP));
-    return CxAirLayer(c00, x0.x * y0.x, p.z, end) + CxAirLayer(c10, x0.y * y1.x, p.z, end)
-         + CxAirLayer(c01, x1.x * y0.y, p.z, end) + CxAirLayer(c11, x1.y * y1.y, p.z, end);
+    vec2 x0 = CxAirPair(f.x, CxAirBlends(c00.x, c10.x)), x1 = CxAirPair(f.x, CxAirBlends(c01.x, c11.x));
+    vec2 y0 = CxAirPair(f.y, CxAirBlends(c00.x, c01.x)), y1 = CxAirPair(f.y, CxAirBlends(c10.x, c11.x));
+    vec4 w = vec4(x0.x * y0.x, x0.y * y1.x, x1.x * y0.y, x1.y * y1.y);
+    float top = CxAirFloored(c00, w.x) + CxAirFloored(c10, w.y) + CxAirFloored(c01, w.z) + CxAirFloored(c11, w.w);
+    return CxAirLayer(c00, w.x, p.z, end, top) + CxAirLayer(c10, w.y, p.z, end, top)
+         + CxAirLayer(c01, w.z, p.z, end, top) + CxAirLayer(c11, w.w, p.z, end, top);
 }
 
 /// The light the lamps of the rig lay on air at world point at, each colour made linear as the lights take it.
@@ -110,7 +127,7 @@ void main()
     vec3 probe[CX_AIR_PROBES];
     for (int i = 0; i < CX_AIR_PROBES; i++)
         probe[i] = CxAirLamps(uEyePos + dir * (t0 + dl * (float(first) + span * float(i) / float(CX_AIR_PROBES - 1) + jit)));
-    vec3 dust = CxAirLit(uAreaAmbient, vec3(0.0), 0.0, 0.0), sky = CxAirSky(uAirSky.rgb, uAreaDiffuse), lit = vec3(0.0);
+    vec3 dust = CxAirLit(uAreaAmbient, vec3(0.0), 0.0, 0.0), sky = uAirSlab.z > 0.5 ? dust : CxAirSky(uAirSky.rgb, uAreaDiffuse), lit = vec3(0.0);
     float keep = 1.0;
     for (int k = first; k <= last; k++)
     {

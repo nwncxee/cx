@@ -38,7 +38,7 @@ internal static class AirDustMarch
     {
         private readonly byte[] _bytes;
         internal readonly Vector4 Head, Sky, Slab;
-        internal readonly float Sigma, Step, Drop, Far;
+        internal readonly float Sigma, Step, Drop, Wall, Far;
         internal readonly int Steps, Probes, Lamps;
 
         internal Field(byte[] bytes)
@@ -50,6 +50,7 @@ internal static class AirDustMarch
             Sigma = Const("CX_AIR_SIGMA");
             Step = Const("CX_AIR_STEP");
             Drop = Const("CX_AIR_DROP");
+            Wall = Const("CX_AIR_WALL");
             Far = Const("CX_AIR_FAR");
             Steps = (int)Const("CX_AIR_STEPS");
             Probes = (int)Const("CX_AIR_PROBES");
@@ -57,7 +58,7 @@ internal static class AirDustMarch
         }
 
         /// <summary>Does the stage declare every number the march takes?</summary>
-        internal bool Declared => !float.IsNaN(Sigma + Step + Drop + Far + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
+        internal bool Declared => !float.IsNaN(Sigma + Step + Drop + Wall + Far + Const("CX_AIR_STEPS") + Const("CX_AIR_PROBES") + Const("CX_AIR_LAMPS"));
 
         /// <summary>Column (<paramref name="x"/>, <paramref name="y"/>) of the field, or one with no floor off it.</summary>
         internal GroundMist.Cell Cell(int x, int y)
@@ -67,8 +68,9 @@ internal static class AirDustMarch
             return MemoryMarshal.Cast<byte, GroundMist.Cell>(_bytes.AsSpan(GroundMist.Head)).Slice(y * side, side)[x];
         }
 
-        /// <summary>Do two neighbouring columns with floors <paramref name="a"/> and <paramref name="b"/> join into one floor?</summary>
-        internal bool Joined(float a, float b) => MathF.Abs(a - b) <= Step;
+        /// <summary>Do two neighbouring columns with floors <paramref name="a"/> and <paramref name="b"/> blend: one floor,
+        /// or a floor beside a column with none?</summary>
+        internal bool Joined(float a, float b) => MathF.Abs(a - b) <= Step || MathF.Min(a, b) < Wall;
 
         /// <summary>The share each of two neighbouring column centres takes a fraction <paramref name="f"/> of the way across.</summary>
         internal static (float A, float B) Pair(float f, bool joined)
@@ -85,19 +87,23 @@ internal static class AirDustMarch
             (float a1, float b1) = Pair(fx, Joined(c01.Floor, c11.Floor));
             (float l0, float u0) = Pair(fy, Joined(c00.Floor, c01.Floor));
             (float l1, float u1) = Pair(fy, Joined(c10.Floor, c11.Floor));
+            float w00 = a0 * l0, w10 = b0 * l1, w01 = a1 * u0, w11 = b1 * u1;
+            float top = Floored(c00, w00) + Floored(c10, w10) + Floored(c01, w01) + Floored(c11, w11);
             float dust = 0f, mist = 0f;
-            Add(c00, a0 * l0, p.Z, end, ref dust, ref mist);
-            Add(c10, b0 * l1, p.Z, end, ref dust, ref mist);
-            Add(c01, a1 * u0, p.Z, end, ref dust, ref mist);
-            Add(c11, b1 * u1, p.Z, end, ref dust, ref mist);
+            Add(c00, w00, p.Z, end, top, ref dust, ref mist);
+            Add(c10, w10, p.Z, end, top, ref dust, ref mist);
+            Add(c01, w01, p.Z, end, top, ref dust, ref mist);
+            Add(c11, w11, p.Z, end, top, ref dust, ref mist);
             return (dust, mist);
         }
 
-        private void Add(GroundMist.Cell c, float w, float z, float end, ref float dust, ref float mist)
+        private float Floored(GroundMist.Cell c, float w) => c.Floor < Wall ? 0f : w;
+
+        private void Add(GroundMist.Cell c, float w, float z, float end, float top, ref float dust, ref float mist)
         {
             if (w <= 0f || end < c.Floor - Drop) return;
             dust += w * c.Dust * Profile(z - c.Floor, c.Top);
-            mist += w * c.Mist * Profile(z - c.Floor, Sky.W);
+            mist += w * c.Mist * Profile(z - c.Floor, Sky.W * top);
         }
 
         /// <summary><c>CxAirDust</c>: thickest on the floor, nothing at <paramref name="top"/>, integrating to 1.</summary>
@@ -153,7 +159,7 @@ internal static class AirDustMarch
             float span = last - first;
             for (int i = 0; i < Probes; i++)
                 probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + jitter)));
-            Vector3 dusty = room.Ambient, sky = room.Fog + room.Diffuse, added = Vector3.Zero;
+            Vector3 dusty = room.Ambient, sky = Slab.Z > 0.5f ? dusty : room.Fog + room.Diffuse, added = Vector3.Zero;
             float keep = 1f;
             for (int k = first; k <= last; k++)
             {

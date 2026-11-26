@@ -275,13 +275,14 @@ internal static class AirDustRegressions
 
     // Given a crypt room laid before any area load is seen
     // When the renderer frames it as an interior
-    // Then its dust lies: the frame's interior flag picks the crypt.
+    // Then its dust lies and is lit as indoors: the frame's interior flag picks the crypt and keeps the sky off it.
     private static void FrameFlag(Checker check)
     {
         Lay(Room(), Vector3.Zero, true, 0f);
         AirScene.Frame(new DbId(0x7a3u), 1, true, false, Frame, Vector2.Zero);
         AirScene.Frame(new DbId(0x7a3u), 2, true, false, Frame, Vector2.Zero);
-        check.Expect(AirScene.Lies, $"an interior framed with no area load seen lies {AirScene.Lies} (want dust)");
+        check.Expect(AirScene.Lies && AirScene.Indoors,
+            $"an interior framed with no area load seen lies {AirScene.Lies}, indoors {AirScene.Indoors} (want dust, indoors)");
     }
 
     /// <summary>A crypt at fog amount <paramref name="amount"/> through a three-second gust: the highest the feet's dust

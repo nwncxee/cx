@@ -45,7 +45,7 @@ internal static partial class GroundMist
 
     /// <summary>Write the field and the air's dust and mist for the fog stage into <paramref name="into"/>: a head (the
     /// corner, the side, 1 while either shows; the <paramref name="sky"/>'s fog colour and the mist's height; the heights
-    /// the air lies between), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/>
+    /// the air lies between and 1 indoors), then a <see cref="Cell"/> per column. Returns the bytes written, 0 when <paramref name="gen"/>
     /// says the stage already has them; with nothing showing, the head alone.</summary>
     internal static int Pack(ref int gen, Span<byte> into, Vector3 sky = default)
     {
@@ -75,7 +75,7 @@ internal static partial class GroundMist
                 lo = MathF.Min(lo, floor);
                 hi = MathF.Max(hi, floor + MathF.Max(lies > 0f ? top : 0f, wet > 0f ? AirScene.MistTop : 0f));
             }
-        if (lo <= hi) MemoryMarshal.Write(into[SlabAt..], new Vector4(lo, hi, 0f, 0f));
+        if (lo <= hi) MemoryMarshal.Write(into[SlabAt..], new Vector4(lo, hi, AirScene.Indoors ? 1f : 0f, 0f));
         return PackedBytes;
     }
 
@@ -84,7 +84,8 @@ internal static partial class GroundMist
     [StructLayout(LayoutKind.Sequential)]
     internal readonly record struct Cell(float Floor, float Mist, float Dust, float Top);
 
-    /// <summary>Where the head's sky and its slab (the lowest floor and the highest top the air reaches) start, bytes.</summary>
+    /// <summary>Where the head's sky and its slab (the lowest floor and the highest top the air reaches, and whether the
+    /// area is indoors) start, bytes.</summary>
     internal const int SkyAt = sizeof(float) * 4, SlabAt = sizeof(float) * 8;
 
     /// <summary>The bytes of the field's head, of one <see cref="Cell"/>, and of the whole field as <see cref="Pack"/> writes it.</summary>
