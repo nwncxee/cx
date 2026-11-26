@@ -328,13 +328,17 @@ internal static unsafe class InventoryNative
     }
 
     /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
-    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
-    public static void FireTarget(uint oid)
+    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up. Returns
+    /// what became of the click, for the log.</summary>
+    public static string FireTarget(uint oid)
     {
         IntPtr app = App(), mode = TargetFire.Live();
-        if (app == IntPtr.Zero || mode == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return;
+        if (app == IntPtr.Zero) return "no app";
+        if (mode == IntPtr.Zero) return "no target mode is up";
+        if (Item(app, oid) == IntPtr.Zero) return "not an item";
         CNWCObject obj = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
-        if (!obj.IsNull) TargetFire.Fire(mode, obj.Ptr);
+        if (obj.IsNull || !TargetFire.Fire(mode, obj.Ptr)) return "the fire hooks are not up";
+        return TargetFire.Live() == IntPtr.Zero ? "resolved" : "the mode refused it and stays up";
     }
 
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;

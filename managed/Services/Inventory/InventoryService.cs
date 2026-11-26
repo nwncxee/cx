@@ -240,7 +240,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
                 return;
             case InvActKind.Gold: OpenGold(); return;
             case InvActKind.Drop: DropInWorld(a); return;
-            case InvActKind.Target: InventoryNative.FireTarget(a.Oid); return;
+            case InvActKind.Target: _log?.Info($"[inv] target fire: {InventoryNative.FireTarget(a.Oid)}"); return;
         }
         string name = a.Kind.ToString().ToLowerInvariant();
         int h = Math.Max(1, a.Kind == InvActKind.Buy ? _inv.StoreDrag().H : _inv.Info(a.Oid).H);
