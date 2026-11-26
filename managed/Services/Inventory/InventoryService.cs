@@ -66,6 +66,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
         _inv.HoverItem = InventoryNative.PriceInStore;
         _inv.StoreDrag = InventoryNative.StoreDrag;
+        _inv.EngineGuiScale = static () => Metrics.GameUiScale;
         TargetFire.SetCover(static (out IntPtr obj) => InventoryNative.Cover(_inv, out obj));
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
         _window = NewWindow();
@@ -381,7 +382,11 @@ public sealed unsafe partial class InventoryService : IExtenderService
         TextRig.DrawBatch(_gridOver.AsSpan(), _gridOver.VertexCount, clip: true, cx: gx, cy: gy, cw: gw, ch: gh);
         TextRig.DrawBatch(_lootOver.AsSpan(), _lootOver.VertexCount, clip: true, cx: lx, cy: ly, cw: lw, ch: lh);
         TextRig.DrawBatch(_over.AsSpan(), _over.VertexCount);
-        if (_inv.DragIcon(out InvIcon d)) RadialIcons.Draw((IntPtr)d.Oid, d.X, d.Y, d.W, d.H, d.Alpha, d.CellsW, d.CellsH);
+        if (_inv.DragIcon(out InvIcon d))
+        {
+            _inv.WindowClip(out int wx, out int wy, out int ww, out int wh);
+            RadialIcons.Draw((IntPtr)d.Oid, d.X, d.Y, d.W, d.H, d.Alpha, d.CellsW, d.CellsH, d.Clip == InventoryWindow.ClipWindow, wx, wy, ww, wh);
+        }
     }
 
     /// <summary>Over every window and NUI: the item tooltip, which must not stay in the inventory's own band.</summary>

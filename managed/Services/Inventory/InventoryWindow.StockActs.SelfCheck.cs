@@ -19,6 +19,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.DropsSelfCheck", Drops);
         Suite(log, "InventoryWindow.BarterSelfCheck", Barter);
         Suite(log, "InventoryWindow.BuySelfCheck", Buy);
+        Suite(log, "InventoryWindow.StoreIconSelfCheck", StoreIcon);
         Suite(log, "InventoryWindow.AimSelfCheck", Aim);
         Suite(log, "InventoryWindow.TakeAllSelfCheck", TakeAll);
     }
@@ -292,6 +293,41 @@ internal sealed partial class InventoryWindow
         int right = DropCell(2.76f, 1.50f, 2, 3), left = DropCell(1.00f, 1.50f, 2, 3), cell = DropCell(3.78f, 2.00f, 2, 10);
         check.Expect(right == 1 && left == 0 && cell == 4,
                      $"a helmet past either edge stays in the grid and rounds at 33-pixel cells (right {right}, left {left}, 146 px {cell})");
+    }
+
+    /// <summary>Oracle: the engine's dragged store icon as the Linux client draws it, measured off a screenshot: 32 px a cell
+    /// at GUI scale 1, centred on the pointer.</summary>
+    private static void StoreIcon(Checker check, Bench b)
+    {
+        InventoryWindow w = b.W;
+        (uint, int, int) drag = default;
+        float scale = 1f;
+        w.StoreDrag = () => drag;
+        w.EngineGuiScale = () => scale;
+
+        // Given a store is open and the engine is dragging a 2x3 store armour
+        // When the pointer rests just left of the window, the icon reaching over its edge
+        // Then the window draws the armour over itself as the engine draws it: 64 by 96, centred on the pointer, clipped to the window
+        drag = (StoreHelm, 2, 3);
+        float px = w.X - 6f, py = w.Y + w.H / 2f;
+        w.MouseMove(px, py);
+        bool shown = w.DragIcon(out InvIcon icon);
+        check.Expect(shown && icon == new InvIcon(StoreHelm, px - 32f, py - 48f, 64f, 96f, 1f, 2, 3, ClipWindow),
+                     $"a dragged 2x3 store armour draws over the window at 64x96 centred on the pointer, clipped to it (shown {shown}, {icon})");
+
+        // Given the engine's GUI scale is 1.5
+        // When the same armour is dragged
+        // Then the icon is 96 by 144, as the engine's own grows with the scale
+        scale = 1.5f;
+        w.DragIcon(out InvIcon big);
+        check.Expect(big.W == 96f && big.H == 144f && big.X == px - 48f && big.Y == py - 72f,
+                     $"at GUI scale 1.5 the store armour draws at 96x144, still centred ({big})");
+
+        // Given the engine drags no store item
+        // When the window draws
+        // Then it draws no store icon
+        drag = default;
+        check.Expect(!w.DragIcon(out _), "with no store drag the window draws no store icon");
     }
 
     private static void Buy(Checker check, Bench b)

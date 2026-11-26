@@ -309,6 +309,13 @@ internal sealed partial class InventoryWindow
         }
     }
 
+    /// <summary>The window's screen rect, in whole px, for the owner's scissor.</summary>
+    public void WindowClip(out int x, out int y, out int w, out int h)
+    {
+        x = (int)MathF.Floor(X); y = (int)MathF.Floor(Y);
+        w = (int)MathF.Ceiling(X + W) - x; h = (int)MathF.Ceiling(Y + H) - y;
+    }
+
     /// <summary>The grid's screen rect, in whole px, for the owner's scissor.</summary>
     public void GridClip(out int x, out int y, out int w, out int h)
     {
@@ -374,13 +381,28 @@ internal sealed partial class InventoryWindow
     public void DrawTip(VertexBatch b, GlyphAtlas small)
         => _tip.Draw(b, small, small.Ascent, C(SubBg), _tipRgb == Nameplate.PlateLayout.Plain ? Tx : _tipRgb, Math.Max(X + W, LootShown ? LootX + LootW : 0f) + 400f * S, Y + H + 200f * S);
 
-    /// <summary>The drag ghost: the dragged item's icon under the pointer, where the grabbed cell was.</summary>
+    /// <summary>The drag ghost: the dragged item's icon under the pointer, where the grabbed cell was. During the engine's
+    /// store drag, the store item's icon as the engine draws it, which the window would cover: clipped to the window.</summary>
     public bool DragIcon(out InvIcon icon)
     {
         icon = default;
-        if (!_drag) return false;
+        if (!_drag) return StoreIcon(out icon);
         float c = Cell * S;
         icon = new InvIcon(_dragOid, _mx - (_grabCx + 0.5f) * c, _my - (_grabCy + 0.5f) * c, _dragW * c, _dragH * c, 0.85f, _dragW, _dragH, 0);
+        return true;
+    }
+
+    /// <summary>Pixels a cell of the icon the engine drags, at GUI scale 1: the stock sheet's own cell.</summary>
+    private const float EngineIconCellPx = 32f;
+
+    /// <summary>The engine's dragged store icon: <see cref="EngineIconCellPx"/> a cell at its GUI scale, centred on the pointer.</summary>
+    private bool StoreIcon(out InvIcon icon)
+    {
+        icon = default;
+        (uint oid, int w, int h) = StoreDrag();
+        if (w <= 0) return false;
+        float c = EngineIconCellPx * EngineGuiScale();
+        icon = new InvIcon(oid, _mx - w * c / 2f, _my - h * c / 2f, w * c, h * c, 1f, w, h, ClipWindow);
         return true;
     }
 

@@ -16,8 +16,8 @@ internal sealed partial class InventoryWindow
     /// <summary>A <see cref="InvActKind.Take"/>'s cell when the server picks it: the stock container double-click sends
     /// <c>RepositoryMove(item, 0xff, 0xff, INVALID)</c> (<c>CGuiContainer::HandleDoubleClick</c> @0x68c1f0).</summary>
     public const int AutoCell = 0xff;   // not-an-offset: a wire cell
-    /// <summary><see cref="InvIcon.Clip"/>: clipped to the backpack grid, or to the loot grid.</summary>
-    internal const int ClipGrid = 1, ClipLoot = 2;
+    /// <summary><see cref="InvIcon.Clip"/>: clipped to the backpack grid, the loot grid, or the window.</summary>
+    internal const int ClipGrid = 1, ClipLoot = 2, ClipWindow = 3;
 
     private float _lootTop, _lootTarget;
     private bool _lootScrolling;
