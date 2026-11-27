@@ -187,7 +187,7 @@ internal static partial class GroundMist
         GroundMistState s = _s;
         s.AreaLevel = on ? Math.Clamp(amount * DepthPerAmount, 0f, MaxArea) : 0f;
         s.Amount = on ? amount : 0f;
-        if (s.Stepped || !On()) return;
+        if (s.Stepped || !AirScene.On()) return;
         for (int c = 0; c < s.Depth.Length; c++) s.Depth[c] = float.IsNaN(s.Floor[c]) ? 0f : s.AreaLevel;
         s.Any = s.AreaLevel > Trace;
         s.Over = false;
@@ -238,7 +238,7 @@ internal static partial class GroundMist
         GroundMistState s = _s;
         int sources = s.Sources;
         s.Sources = 0;
-        if (!On())
+        if (!AirScene.On())
         {
             s.Stepped = false;
             return;
@@ -372,7 +372,7 @@ internal static partial class GroundMist
     private const float PartStride = 0.1f;
 
     /// <summary>A step longer than this in one frame is a teleport, not a walk, and parts nothing.</summary>
-    private const float MaxPartStep = 3f;
+    internal const float MaxPartStep = 3f;
 
     /// <summary>Walkers part the mist only this far from the player along either axis: the air box.</summary>
     private const float PartBox = 32f;
@@ -383,7 +383,7 @@ internal static partial class GroundMist
     {
         GroundMistState s = _s;
         float moved = Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y));
-        if (!On() || LiesStill() || !s.Any || moved > MaxPartStep) return;
+        if (!AirScene.On() || LiesStill() || !s.Any || moved > MaxPartStep) return;
         if (MathF.Abs(now.X - s.Player.X) > PartBox || MathF.Abs(now.Y - s.Player.Y) > PartBox) return;
         float take = MathF.Min(moved / PartStride, 1f);
         var ahead = new Vector2(now.X - was.X, now.Y - was.Y);
@@ -399,7 +399,7 @@ internal static partial class GroundMist
     internal static void Blast(Vector3 at, float radius)
     {
         GroundMistState s = _s;
-        if (!On() || LiesStill() || !s.Any || !(radius > 0f)) return;
+        if (!AirScene.On() || LiesStill() || !s.Any || !(radius > 0f)) return;
         radius = MathF.Min(radius, MaxBlast);
         var lobes = new Lobes(at);
         if (!Push(s, at, radius, radius + BlastRim, radius * BlastWind, 1f, Vector2.Zero, lobes, Ragged)) return;
@@ -539,12 +539,9 @@ internal static partial class GroundMist
         return s.Laid;
     }
 
-    /// <summary>Is the air switched on, which the mist and the dust it carries follow?</summary>
-    internal static bool On() => AirScene.On();
-
     /// <summary>Does the field hold mist this frame: the air on and an area that lays some? It marks the packed field as
     /// showing and fills each column's mist depth there.</summary>
-    internal static bool Shows() => On() && _s.Any;
+    internal static bool Shows() => AirScene.On() && _s.Any;
 
     /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
     internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1, Lays = _s.Lays + 1 };

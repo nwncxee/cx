@@ -81,9 +81,6 @@ internal static partial class AirScene
     /// fast the dust closes back over it, seconds.</summary>
     private const float Parted = 0.7f, PartRadius = 0.6f, PartTau = 3f;
 
-    /// <summary>A step longer than this in one frame is a teleport, metres, and parts nothing.</summary>
-    private const float MaxPartStep = 3f;
-
     /// <summary>Take <paramref name="look"/> for the area just laid, by night or by day, <paramref name="indoors"/> or out;
     /// its dust lies whole, gathered along the walls and thicker as the fog amount rises, shown at the dial. A forest's
     /// columns hold haze, which each <see cref="Trunk"/> lays; water outdoors holds night mist, whole by night.</summary>
@@ -266,7 +263,7 @@ internal static partial class AirScene
     {
         AirSceneState s = _s;
         if (!s.Laid || !On(s) || Air.Still) return;
-        if (Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y)) > MaxPartStep) return;
+        if (Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y)) > GroundMist.MaxPartStep) return;
         int x0 = (int)MathF.Floor(now.X - PartRadius) - s.Ox, x1 = (int)MathF.Floor(now.X + PartRadius) - s.Ox;
         int y0 = (int)MathF.Floor(now.Y - PartRadius) - s.Oy, y1 = (int)MathF.Floor(now.Y + PartRadius) - s.Oy;
         for (int y = Math.Max(y0, 0); y <= Math.Min(y1, GroundMist.Side - 1); y++)

@@ -246,46 +246,11 @@ public sealed unsafe partial class AlloyRenderer
             cl.EndLabel();
             cl.EndLabel();
         }
-        int packed = motes ? AirScene.PackMotes(d.MoteData) : 0;
-        if (packed > 1)
-        {
-            cl.UpdateBuffer(d.Motes!.Own, 0, MemoryMarshal.AsBytes(d.MoteData.AsSpan(0, packed)));
-            cl.BeginLabel("air motes"u8);
-            cl.SetPipeline(d.Motes!.Pipe);
-            VkDefBindSet(cl, d.Motes, s.Hdr, default, looseMotes, pass, slots);
-            cl.Dispatch((packed - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
-            cl.EndLabel();
-        }
-        int grains = pollen ? AirScene.PackPollen(d.PollenData) : 0;
-        if (grains > 1)
-        {
-            cl.UpdateBuffer(d.Pollen!.Own, 0, MemoryMarshal.AsBytes(d.PollenData.AsSpan(0, grains)));
-            cl.BeginLabel("air pollen"u8);
-            cl.SetPipeline(d.Pollen!.Pipe);
-            VkDefBindSet(cl, d.Pollen, s.Hdr, default, loosePollen, pass, slots);
-            cl.Dispatch((grains - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
-            cl.EndLabel();
-        }
-        int fallen = leaves ? AirScene.PackLeaves(d.LeafData) : 0;
-        if (fallen > 1)
-        {
-            cl.UpdateBuffer(d.Leaves!.Own, 0, MemoryMarshal.AsBytes(d.LeafData.AsSpan(0, fallen)));
-            cl.BeginLabel("air leaves"u8);
-            cl.SetPipeline(d.Leaves!.Pipe);
-            VkDefBindSet(cl, d.Leaves, s.Hdr, default, looseLeaves, pass, slots);
-            cl.Dispatch((fallen - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
-            cl.EndLabel();
-        }
-        int sheet = wisps ? AirScene.PackWisps(d.WispData) : 0;
-        if (sheet > 0)
-        {
-            cl.UpdateBuffer(d.Wisps!.Own, 0, MemoryMarshal.AsBytes(d.WispData.AsSpan(0, sheet)));
-            cl.BeginLabel("air wisps"u8);
-            cl.SetPipeline(d.Wisps!.Pipe);
-            VkDefBindSet(cl, d.Wisps, s.Hdr, default, looseWisps, pass, slots);
-            cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
-            cl.EndLabel();
-        }
+        if (motes) VkDefAirPass(cl, d.Motes!, d.MoteData, AirScene.PackMotes(d.MoteData), "air motes"u8, s.Hdr, looseMotes, pass, slots, 0, 0);
+        if (pollen) VkDefAirPass(cl, d.Pollen!, d.PollenData, AirScene.PackPollen(d.PollenData), "air pollen"u8, s.Hdr, loosePollen, pass, slots, 0, 0);
+        if (leaves) VkDefAirPass(cl, d.Leaves!, d.LeafData, AirScene.PackLeaves(d.LeafData), "air leaves"u8, s.Hdr, looseLeaves, pass, slots, 0, 0);
+        if (wisps) VkDefAirPass(cl, d.Wisps!, d.WispData, AirScene.PackWisps(d.WispData), "air wisps"u8, s.Hdr, looseWisps, pass, slots,
+                                (w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
         if (sample)
         {
             cl.CopyBuffer(new CopyBufferCmd(d.Stats, 0, d.StatsRead, 0, VkDefStatsWords * sizeof(uint)));
@@ -330,6 +295,21 @@ public sealed unsafe partial class AlloyRenderer
         d.DustFailed = true;
         log.Always("AlloyRenderer: the air's dust stages did NOT build (logged above) -- no dust shows on this device");
         return false;
+    }
+
+    /// <summary>Send the <paramref name="n"/> records an air stage packed and dispatch it over the frame: <paramref name="gx"/>
+    /// by <paramref name="gy"/> groups, or with both 0 one invocation a record past the head, none when only the head was packed.</summary>
+    private static void VkDefAirPass(CommandList cl, VkDefStage st, Vector4[] data, int n, ReadOnlySpan<byte> label, ImageId hdr,
+                                     int loose, int pass, BufferId slots, int gx, int gy)
+    {
+        if (n <= (gx == 0 ? 1 : 0)) return;
+        cl.UpdateBuffer(st.Own, 0, MemoryMarshal.AsBytes(data.AsSpan(0, n)));
+        cl.BeginLabel(label);
+        cl.SetPipeline(st.Pipe);
+        VkDefBindSet(cl, st, hdr, default, loose, pass, slots);
+        if (gx == 0) cl.Dispatch((n - 1 + VkMoteGroup - 1) / VkMoteGroup, 1);
+        else cl.Dispatch(gx, gy);
+        cl.EndLabel();
     }
 
     /// <summary>The define that builds the mote stage lit by the sky rather than the lamps, for a meadow's pollen.</summary>

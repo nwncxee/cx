@@ -23,8 +23,8 @@ public sealed unsafe class AirArea : IExtenderService
     /// <summary>The place table's resref and its two columns.</summary>
     private const string Table = "cx_airplace", TilesetColumn = "Tileset", PlaceColumn = "Place";
 
-    /// <summary>How wide a tile is, metres, and where its trunks stand within it, metres from its low corner.</summary>
-    private const float TileMetres = 10f, TrunkNear = 2.5f, TrunkFar = 7.5f;
+    /// <summary>Where a tile's trunks stand within it, metres from its low corner.</summary>
+    private const float TrunkNear = 2.5f, TrunkFar = 7.5f;
 
     /// <summary>The features of the area loaded last; empty until one loads.</summary>
     internal static AreaFeatures Features => _s.Features;
@@ -102,7 +102,7 @@ public sealed unsafe class AirArea : IExtenderService
     /// <summary>Seat four trunks on the tile in column <paramref name="x"/>, row <paramref name="y"/>, one in each quarter.</summary>
     private static void Seat(List<Vector2> trunks, int x, int y)
     {
-        Vector2 low = new(x * TileMetres, y * TileMetres);
+        Vector2 low = new(x * CX.Alloy.Db.TileBuild.TileSize, y * CX.Alloy.Db.TileBuild.TileSize);
         trunks.Add(low + new Vector2(TrunkNear, TrunkNear));
         trunks.Add(low + new Vector2(TrunkFar, TrunkNear));
         trunks.Add(low + new Vector2(TrunkNear, TrunkFar));

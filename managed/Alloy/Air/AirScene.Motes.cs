@@ -108,11 +108,7 @@ internal static partial class AirScene
 
     /// <summary>A fixed number from 0 to 1 for <paramref name="key"/>'s draw <paramref name="n"/>.</summary>
     private static float Hash(uint key, uint n)
-    {
-        uint x = key + n * 0x632BE5ABu;
-        x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
-        return (x >> 8) * (1f / (1 << 24));
-    }
+        => (GrassField.Hash(key + n * 0x632BE5ABu) >> 8) * (1f / (1 << 24));
 
     /// <summary>Move every lit mote on by <paramref name="dt"/>: its own wander, the air's drift and a live front's rush; a
     /// mote that left the light floats in it again once the air has been calm a while. Hot: allocates nothing.</summary>
@@ -189,9 +185,9 @@ internal static partial class AirScene
         AirSceneState s = _s;
         AirMotes m = s.Motes;
         if (!s.Laid || !On(s) || Air.Still || !(radius > 0f)) return;
-        if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius, BlastSpeed, false);
-        if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius, BlastSpeed, false);
-        if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, BlastSpeed, true);
+        if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius, false);
+        if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius, false);
+        if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, true);
         if (s.Columns == AirLayer.Haze) Clear(s, at, radius);
     }
 
@@ -211,15 +207,15 @@ internal static partial class AirScene
     }
 
     /// <summary>Throw the first <paramref name="n"/> grains of <paramref name="g"/> out from a blast at <paramref name="at"/>,
-    /// at <paramref name="speed"/> at its heart; a <paramref name="floored"/> grain the ground keeps from being thrown down into it.</summary>
-    private static void Throw(AirGrains g, int n, Vector3 at, float radius, float speed, bool floored)
+    /// at <see cref="BlastSpeed"/> at its heart; a <paramref name="floored"/> grain the ground keeps from being thrown down into it.</summary>
+    private static void Throw(AirGrains g, int n, Vector3 at, float radius, bool floored)
     {
         for (int i = 0; i < n; i++)
         {
             Vector3 off = g.Pos[i] - at;
             float d = off.Length();
             if (g.Dark[i] || d >= radius || d == 0f) continue;
-            Vector3 thrown = off * (speed * (1f - d / radius) / d);
+            Vector3 thrown = off * (BlastSpeed * (1f - d / radius) / d);
             if (floored) thrown.Z = MathF.Max(thrown.Z, 0f);
             if (thrown.LengthSquared() <= g.Kick[i].LengthSquared()) continue;
             g.Kick[i] = thrown;
@@ -240,7 +236,6 @@ internal static partial class AirScene
     internal static void Lamps(Vector4[] posRange, bool[] isStatic, int count)
     {
         // ponytail: the walk's first static lights hold the motes; the lamps nearest the player once an area has more than MaxLamps
-        if (posRange == null || isStatic == null) return;
         int n = Math.Min(count, Math.Min(posRange.Length, isStatic.Length));
         for (int i = 0; i < n && _s.Motes.Lamps < MaxLamps; i++)
             if (isStatic[i]) Lamp(new Vector3(posRange[i].X, posRange[i].Y, posRange[i].Z), posRange[i].W);

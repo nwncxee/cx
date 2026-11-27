@@ -5,15 +5,8 @@ using CX.Services.Sound;
 namespace CX.Alloy;
 
 /// <summary>What an area offers the place resolver: its tileset, its ARE flags and each tile's corner and edge terrain.</summary>
-internal readonly struct AreaFeatures
+internal readonly record struct AreaFeatures(string Tileset, uint Flags, List<string[]> Corners, List<string[]> Edges)
 {
-    internal readonly string Tileset;
-    internal readonly uint Flags;
-    internal readonly List<string[]> Corners, Edges;
-
-    private AreaFeatures(string tileset, uint flags, List<string[]> corners, List<string[]> edges)
-    { Tileset = tileset; Flags = flags; Corners = corners; Edges = edges; }
-
     /// <summary>The features of an area with <paramref name="tileset"/>, its flags and its tiles' terrain.</summary>
     internal static AreaFeatures Of(string tileset, uint flags, List<string[]> corners, List<string[]> edges)
         => new(tileset, flags, corners, edges);
@@ -52,9 +45,9 @@ internal static class AirPlaces
     {
         bool indoor = SoundScene.Indoor(f.Flags);
         bool cave = SoundScene.Material(f.Flags) == SoundScene.CaveRock;
-        bool water = !indoor && (Any(f.Corners, "water") || AnyOf(f.Edges, WaterEdges));
+        bool water = !indoor && (AnyOf(f.Corners, ["water"]) || AnyOf(f.Edges, WaterEdges));
         string? row = _table.Rows.TryGetValue(f.Tileset, out string? r) ? r : null;
-        bool winter = row == "winter" || Any(f.Corners, "snow");
+        bool winter = row == "winter" || AnyOf(f.Corners, ["snow"]);
         AirPlace place = Held() ?? Named(row) ?? Featured(f, indoor);
         return new AirLook(place, winter, water, cave);
     }
@@ -72,15 +65,6 @@ internal static class AirPlaces
 
     /// <summary>Does a tile whose corners are <paramref name="corners"/> hold trees?</summary>
     internal static bool Treed(string[] corners) => Holds(corners, TreeCorners);
-
-    /// <summary>Does any tile in <paramref name="tiles"/> hold <paramref name="terrain"/>?</summary>
-    private static bool Any(List<string[]> tiles, string terrain)
-    {
-        foreach (string[] tile in tiles)
-            foreach (string t in tile)
-                if (Is(t, terrain)) return true;
-        return false;
-    }
 
     /// <summary>Does any tile in <paramref name="tiles"/> hold one of <paramref name="terrains"/>?</summary>
     private static bool AnyOf(List<string[]> tiles, string[] terrains)

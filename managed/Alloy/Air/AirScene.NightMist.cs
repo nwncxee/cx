@@ -107,9 +107,7 @@ internal static partial class AirScene
     /// <summary>The mist column (<paramref name="x"/>, <paramref name="y"/>) holds, none off the grid or off the floor.</summary>
     private static float Held(AirSceneState s, float[] mist, int x, int y)
     {
-        if ((uint)x >= GroundMist.Side || (uint)y >= GroundMist.Side) return 0f;
-        int c = y * GroundMist.Side + x;
-        return float.IsNaN(s.Floor[c]) ? 0f : mist[c];
+        return (uint)x >= GroundMist.Side || (uint)y >= GroundMist.Side ? 0f : mist[y * GroundMist.Side + x];
     }
 
     /// <summary>The mist shown on column <paramref name="c"/> at world (<paramref name="x"/>, <paramref name="y"/>), metres of
