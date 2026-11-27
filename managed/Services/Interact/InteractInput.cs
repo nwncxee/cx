@@ -12,7 +12,8 @@ internal sealed class InteractState
     internal IInteractWorld? World;
     /// <summary>The engine's world, which <see cref="InteractInput.Resume"/> puts back after a self-check's double.</summary>
     internal IInteractWorld? Live;
-    /// <summary>The locked objects an Interact press tried, passed over until they read unlocked.</summary>
+    /// <summary>The locked objects and the items an Interact press tried: a locked one is passed over until it reads
+    /// unlocked, an item while it lies on the ground.</summary>
     internal readonly HashSet<uint> Tried = new();
     /// <summary>An Interact press is running its default action, so the click-to-lock leaves the lock alone.</summary>
     internal bool Acting;
@@ -77,6 +78,7 @@ internal static class InteractInput
         if (code == KeyNames.Code(InteractKnobs.Key.V)) return InteractKey.Interact;
         if (code == KeyNames.Code(InteractKnobs.TransitionKey.V)) return InteractKey.Transition;
         if (code == KeyNames.Code(InteractKnobs.LootKey.V)) return InteractKey.Loot;
+        if (code == KeyNames.Code(InteractKnobs.PickUpKey.V)) return InteractKey.PickUp;
         return null;
     }
 

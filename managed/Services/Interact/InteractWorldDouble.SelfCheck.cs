@@ -198,6 +198,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
     internal Thing Of(uint id) => _things[IndexOf(id)];
     internal void Change(uint id, Func<Thing, Thing> to) { int i = IndexOf(id); _things[i] = to(_things[i]); }
     internal void Remove(uint id) => _things.RemoveAt(IndexOf(id));
+    /// <summary>Puts <paramref name="t"/> back on the list under its own id, as an object that left and came back.</summary>
+    internal void Put(Thing t) => _things.Add(t);
     internal void Clear() { _things.Clear(); _walls.Clear(); }
 
     /// <summary>Moves the player so <paramref name="id"/> is <paramref name="m"/> away, on the far side from it.</summary>

@@ -1173,4 +1173,5 @@ offset	CNWCTrigger	isTrap	0x1a8	0x188	# TriggerIsTrap
 offset	CNWCTrigger	areaTransition	0x1ac	0x18c	# TriggerAreaTransition
 offset	CNWCTrigger	vertexCount	0x1c0	0x1a0	# TriggerVertexCount
 offset	CNWCTrigger	vertices	0x1c8	0x1a8	# TriggerVertices
+offset	CNWCItem	equippedBy	0x27c	0x25c	# ItemEquippedBy
 offset	CGameObject	vtbl.AsNWCTrigger	0x80	0x78	# GameObjAsNWCTriggerSlot

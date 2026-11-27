@@ -53,4 +53,13 @@ public static unsafe partial class EngineLayout
     /// <summary>Virtual slot of <c>CGameObject::AsNWCTrigger()</c>: the base answers null and <c>CNWCTrigger</c>'s
     /// override is an identity <c>return this</c>. Linux <c>vtbl+0x80</c>, Windows <c>vtbl+0x78</c>.</summary>
     public static readonly int GameObjAsNWCTriggerSlot = Field("CGameObject", "vtbl.AsNWCTrigger", Expect.VtblSlot, sig: "IntPtr()");
+
+    // ---- ground items (CX-755) ----
+    // Read 2026-11-27 off both programs: CClientExoAppInternal::PerformDefaultActionOnItem (Linux nm @0x65e500,
+    // inlined on Windows in PerformDefaultActionOnObject rva 0x6efec0), CNWCItem::SetEquippedBy (Linux nm @0x7cb850)
+    // and CNWCItem::GetEquippedBy (Linux nm @0x7cb880, Windows rva 0x83d7e0).
+
+    /// <summary>CNWCItem -&gt; the id of the creature wearing it, 0x7f000000 when none. An item's default action on a worn
+    /// item runs the wearer's, which attacks a hostile one.</summary>
+    public static readonly int ItemEquippedBy = Field<uint>("CNWCItem", "equippedBy");
 }

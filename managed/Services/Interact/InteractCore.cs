@@ -34,6 +34,9 @@ internal struct Thing
     /// <summary>Another player's character.</summary>
     public bool OtherPlayer;
     public Attitude Attitude;
+    /// <summary>An item whose pickup the client sent and the server has not answered: the character may still be
+    /// walking to it.</summary>
+    public bool Pending;
 }
 
 /// <summary>Everything a press reads and does, so the same entry runs on the engine and on a self-check's double.
@@ -71,17 +74,19 @@ internal static class InteractCore
     internal const float TransitionReach = 2f;
 
     /// <summary>The rules in the fixed order the Interact key runs them.</summary>
-    private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot };
+    private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot, InteractKey.PickUp };
 
     /// <summary>The rules a pointed target is held to, in order: Talk qualifies a target the player points at, though
     /// no press searches for the nearest creature to talk to.</summary>
     private static readonly InteractKey[] PointedRules = { InteractKey.Transition, InteractKey.Loot, InteractKey.Talk };
 
     /// <summary>The object <paramref name="key"/> acts on in <paramref name="world"/>, or null. An object under the
-    /// crosshair, else a tab-target lock, in the area is the only object the press may act on.</summary>
+    /// crosshair, else a tab-target lock, in the area is the only object the press may act on. A tried object no
+    /// longer listed is forgotten.</summary>
     internal static Thing? Pick(InteractKey key, IInteractWorld world, InteractState state)
     {
         IReadOnlyList<Thing> things = world.Things;
+        state.Tried.RemoveWhere(id => Find(things, id) == null);
         if ((Find(things, world.Crosshair) ?? Find(things, world.Lock)) is { } pointed) return Pointed(key, pointed, world.Player);
         foreach (InteractKey rule in Rules)
         {
@@ -120,12 +125,13 @@ internal static class InteractCore
     {
         InteractKey.Transition => InteractKnobs.Transitions.V,
         InteractKey.Loot => InteractKnobs.Loot.V,
+        InteractKey.PickUp => InteractKnobs.PickUp.V,
         InteractKey.Talk => InteractKnobs.Talk.V,
         _ => false,
     };
 
-    /// <summary>The nearest object of <paramref name="things"/> in reach and in sight that <paramref name="rule"/> takes. A locked winner is
-    /// recorded as tried and passed over after that; an object read unlocked leaves the tried memory.</summary>
+    /// <summary>The nearest object of <paramref name="things"/> in reach and in sight that <paramref name="rule"/> takes. A locked winner or an
+    /// item is recorded as tried and passed over after that.</summary>
     private static Thing? Nearest(InteractKey rule, IReadOnlyList<Thing> things, IInteractWorld world, InteractState state)
     {
         int best = -1;
@@ -133,8 +139,7 @@ internal static class InteractCore
         for (int i = 0; i < things.Count; i++)
         {
             Thing t = things[i];
-            if (!t.Locked) state.Tried.Remove(t.Id);
-            if (t.Locked && state.Tried.Contains(t.Id)) continue;
+            if (PassedOver(t, state)) continue;
             if (!Qualifies(rule, t)) continue;
             Vector3 at = MeasuredAt(t, world.Player);
             float dist = Vector3.Distance(at, world.Player);
@@ -142,8 +147,17 @@ internal static class InteractCore
             best = i; bestDist = dist;
         }
         if (best < 0) return null;
-        if (things[best].Locked) state.Tried.Add(things[best].Id);
+        if (things[best].Locked || things[best].Kind == ThingKind.Item) state.Tried.Add(things[best].Id);
         return things[best];
+    }
+
+    /// <summary>Whether a press passes over <paramref name="t"/> as tried: a locked object tried while locked, or an item
+    /// tried once, still on the ground and no longer pending. An object read unlocked leaves the tried memory.</summary>
+    private static bool PassedOver(in Thing t, InteractState state)
+    {
+        if (t.Kind == ThingKind.Item) return !t.Pending && state.Tried.Contains(t.Id);
+        if (!t.Locked) state.Tried.Remove(t.Id);
+        return t.Locked && state.Tried.Contains(t.Id);
     }
 
     /// <summary>How far past a trigger's nearest edge a walk into it heads, in metres.</summary>
@@ -181,6 +195,7 @@ internal static class InteractCore
         InteractKey.Transition => (t.Kind == ThingKind.Transition || t.Kind == ThingKind.Door) && t.LeadsAway && !t.TrapFound,
         InteractKey.Talk => t.Kind == ThingKind.Creature && !t.Dead && t.Attitude != Attitude.Hostile,
         InteractKey.Loot => (t.Kind == ThingKind.BodyBag || (t.Kind == ThingKind.Creature && t.Dead)) && t.Lootable && !t.TrapFound,
+        InteractKey.PickUp => t.Kind == ThingKind.Item,
         _ => false,
     };
 }

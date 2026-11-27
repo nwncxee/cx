@@ -2147,6 +2147,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public IntPtr DeleteFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.ItemDeleteSlot);
     /// <inheritdoc cref="EngineLayout.ItemEquipSlot"/>
     public ref uint EquipSlot => ref *(uint*)(Ptr + EngineLayout.ItemEquipSlot);
+    /// <inheritdoc cref="EngineLayout.ItemEquippedBy"/>
+    public ref uint EquippedBy => ref *(uint*)(Ptr + EngineLayout.ItemEquippedBy);
     /// <inheritdoc cref="EngineLayout.ItemGender"/>
     public ref byte Gender => ref *(byte*)(Ptr + EngineLayout.ItemGender);
     /// <inheritdoc cref="EngineLayout.ItemGhost"/>

@@ -152,6 +152,7 @@ internal static class PickUpApprovedExamples
             InteractWorldDouble.Defaults();
             InteractInput.Use(null);
         }
+        log.Info(check.Ok ? "PickUpApprovedExamples.SelfCheck: passed" : "PickUpApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }

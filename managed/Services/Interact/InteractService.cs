@@ -27,7 +27,7 @@ public sealed unsafe class InteractService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         if (!EngineLayout.Require(log, "Interact", "CNWCObject", "CNWCArea", "CNWCCreature", "CNWCPlaceable", "CNWCDoor",
-                                  "CNWCTrigger", "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp")) return;
+                                  "CNWCTrigger", "CNWCItem", "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp")) return;
         if (!SymbolMap.Require(log, "Interact", SymbolMap.WinMessageHandler, SymbolMap.PerformDefaultActionOnObject,
                                SymbolMap.ClearLineOfSightOneWay, SymbolMap.GetGameObject, SymbolMap.GetModule,
                                SymbolMap.AppManager, SymbolMap.WalkPlayerToPoint)) return;
@@ -181,8 +181,15 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 return t;
             }
             case TypeItem:
+            {
+                IntPtr cast = go.AsNWCItem();
+                if (cast == IntPtr.Zero) return null;
+                var item = new CNWCItem(cast);
+                if (item.EquippedBy != TypingSignal.ObjectInvalid) return null;
                 t.Kind = ThingKind.Item;
+                t.Pending = item.Ghost != 0;
                 return t;
+            }
             case TabTargetCore.TypePlaceable:
             {
                 if (obj.Retired == 1) return null;
