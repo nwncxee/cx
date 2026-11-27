@@ -552,8 +552,6 @@ internal static partial class GroundMist
     /// <summary>Runs on each time the field's floors are laid afresh: a re-centre, a climb or a new area's walk.</summary>
     internal static int Lays => _s.Lays;
 
-
-
     /// <summary>The field's corner along one axis for feet at <paramref name="feet"/>: the snap they stand in, less half the side.</summary>
     internal static int CornerFor(float feet) => (int)MathF.Floor(feet / Snap) * Snap - Side / 2;
 }
@@ -600,8 +598,7 @@ internal sealed class GroundMistState
     /// <summary>Per column, whether its floor is open water.</summary>
     public readonly bool[] Wet = new bool[GroundMist.Side * GroundMist.Side];
 
-    /// <summary>The depth the area's fog lays, whether the field has stepped since the area began or Volumetric fog came
-    /// back on, and whether any column holds mist.</summary>
+    /// <summary>The depth the area's fog lays.</summary>
     public float AreaLevel;
 
     /// <summary>The area's fog amount as its palette sets it, 0 with the area's fog off.</summary>
@@ -609,6 +606,8 @@ internal sealed class GroundMistState
 
     /// <summary>The air's upload generation the field last folded into its own.</summary>
     public int AirGen = int.MinValue;
+
+    /// <summary>Whether the field has stepped since the area began or the air came back on, and whether any column holds mist.</summary>
     public bool Stepped, Any;
 
     /// <summary>Whether any column holds mist over the area's floor of it.</summary>

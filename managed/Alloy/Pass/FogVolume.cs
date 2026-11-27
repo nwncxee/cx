@@ -145,7 +145,6 @@ internal static unsafe partial class FogVolume
         return haveSky ? Vector3.Lerp(a, sky, skyMix) : a;
     }
 
-
     /// <summary>The share (w) of the medium's light that arrives as the sun's beam, and the sun's hue times it (xyz): the
     /// fog colour is the lit fog averaged over view directions, so a beam gains what its shade loses. Scales with <paramref name="day"/> (0 = the
     /// moon, which lights no air) and the sun's luminance up to 1; nothing indoors, under blind lights or unread.</summary>

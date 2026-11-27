@@ -98,11 +98,18 @@ internal static class AirPlaces
     private static AirPlace? Held() => !Air.Place.Enforced ? null : Named(Air.Place.V);
 
     /// <summary>The place <paramref name="name"/> names; null for no name, <c>winter</c>, <c>auto</c> or one unknown.</summary>
-    private static AirPlace? Named(string? name) => name switch
+    private static AirPlace? Named(string? name)
     {
-        "none" => AirPlace.None, "crypt" => AirPlace.Crypt, "city" => AirPlace.City,
-        "forest" => AirPlace.Forest, "meadow" => AirPlace.Meadow, _ => null,
-    };
+        foreach ((string n, AirPlace place) in Kinds) if (n == name) return place;
+        return null;
+    }
+
+    /// <summary>The places <c>air.place</c> can name, by the name it spells them with.</summary>
+    internal static readonly (string Name, AirPlace Place)[] Kinds =
+    [
+        ("none", AirPlace.None), ("crypt", AirPlace.Crypt), ("city", AirPlace.City),
+        ("forest", AirPlace.Forest), ("meadow", AirPlace.Meadow),
+    ];
 
     /// <summary>Replace the content table's rows, merged over the defaults; null restores the shipped table.</summary>
     internal static void Load(IEnumerable<(string Tileset, string Place)>? rows) => _table = Table(rows);

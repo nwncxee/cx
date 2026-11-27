@@ -1,3 +1,4 @@
+using System;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -18,7 +19,7 @@ internal static class Air
     /// <summary>Does the air lie still at the user's Air detail: at Low no gust, blast or walker stirs it.</summary>
     internal static bool Still => Quality.V == Levels[0];
     /// <summary>The <see cref="Place"/> values: <c>auto</c> reads the area, the rest name a place's look.</summary>
-    internal static readonly string[] Places = { "auto", "none", "crypt", "city", "forest", "meadow" };
+    internal static readonly string[] Places = ["auto", .. Array.ConvertAll(AirPlaces.Kinds, k => k.Name)];
 
     static Air()
     {
