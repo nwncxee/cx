@@ -101,6 +101,7 @@ internal static partial class GpuGolden
         WetSelfCheck(vk, check, log);
         AirApprovedSelfCheck(vk, check, log);
         AirDustUpSelfCheck(vk, check, log);
+        AirDustWallSelfCheck(vk, check, log);
         WetNearLamp(vk, check, log);
         HaloFadeSelfCheck(vk, check, log);
         PipelineTallySelfCheck(vk, check, log);

@@ -7,8 +7,9 @@ using static CX.Alloy.MistFixture;
 
 namespace CX.Alloy;
 
-/// <summary>Where the crypt dust meets the end of the walkable floor, through the stage's march over the field the air
-/// uploads. Oracle: what the live crypt showed, a line across the floor where the walkmesh ends.</summary>
+/// <summary>Where the air meets the end of the walkable floor, through the stage's march over the field the air uploads.
+/// Oracle: what the live client showed, a line across the crypt's floor where the walkmesh ends, and black boxes by a
+/// city's walls at night.</summary>
 internal static class AirDustEdgeRegressions
 {
     /// <summary>The crypt's light: a dim cold ambient and no sky.</summary>
@@ -26,6 +27,7 @@ internal static class AirDustEdgeRegressions
         var check = new Checker(log, "AirDustEdgeRegressions.SelfCheck");
         using var switches = AirFixture.Switches.Force();
         FadesToTheEdge(check);
+        NothingFromAWall(check);
         log.Info(check.Ok ? "AirDustEdgeRegressions.SelfCheck: passed" : "AirDustEdgeRegressions.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -51,6 +53,22 @@ internal static class AirDustEdgeRegressions
         }
         check.Expect(inland < 1f && worst <= MostChange,
             $"F2 the eye keeps {inland:P1} of the floor 2 m short of the edge, and one {Stride} m stride changes it by {worst:P2} at x {at:F1} (want some dust, {MostChange:P1} at most)");
+    }
+
+    // Given night mist over the water of a quay, a building's unwalkable base past x = 4
+    // When the march reads a step's span of height over the water's last column, beside the building's columns
+    // Then the mist there is a number, and some: the building, which has no floor, lays no air, and no pixel by its
+    // wall turns black.
+    private static void NothingFromAWall(Checker check)
+    {
+        Enter(City, Ground(40f, 1f, (_, _) => 0f, (x, _) => x < 0f ? Stone : x < 4f ? MistFixture.Water : Nonwalk), 0f, true);
+        Go(Gather, Vector2.Zero);
+        int gen = int.MinValue;
+        GroundMist.Pack(ref gen, Sent);
+        var f = new Field(Sent);
+        (float dust, float mist) = f.At(new Vector3(3.9f, 0.5f, 0.1f), 0f, 0.1f, 0.05f);
+        check.Expect(float.IsFinite(dust) && float.IsFinite(mist) && mist > 0f,
+            $"F3 the air by the building's wall reads dust {dust}, mist {mist} a step's span over the water (want numbers, some mist)");
     }
 
     /// <summary>What the eye keeps of the floor at x = <paramref name="x"/> on its line of sight.</summary>

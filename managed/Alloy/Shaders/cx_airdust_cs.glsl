@@ -71,7 +71,7 @@ float CxAirBase(float a, float here)
 /// The dust profile's mean over heights h give or take hz, or its value at h on a level step.
 float CxAirProfile(float h, float hz, float top)
 {
-    return hz > 1e-4 ? CxAirDustSpan(h - hz, h + hz, top) : CxAirDust(h, top);
+    return hz > 1e-4 ? CxAirDustSpan(h, hz, top) : CxAirDust(h, top);
 }
 
 /// The dust (x) and mist (y) per metre one cell lays over heights z give or take hz by its share w over the quarter

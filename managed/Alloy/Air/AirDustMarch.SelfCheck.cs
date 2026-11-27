@@ -236,14 +236,14 @@ internal static class AirDustMarch
 
         /// <summary><c>CxAirProfile</c>: the profile's mean over heights <paramref name="h"/> give or take
         /// <paramref name="hz"/>, or its value at <paramref name="h"/> on a level step.</summary>
-        private static float Layer(float h, float hz, float top) => hz > 1e-4f ? DustSpan(h - hz, h + hz, top) : Profile(h, top);
+        private static float Layer(float h, float hz, float top) => hz > 1e-4f ? DustSpan(h, hz, top) : Profile(h, top);
 
-        /// <summary><c>CxAirDustSpan</c>: the profile's exact mean from height <paramref name="a"/> up to <paramref name="b"/>.</summary>
-        private static float DustSpan(float a, float b, float top)
+        /// <summary><c>CxAirDustSpan</c>: the profile's exact mean over heights <paramref name="h"/> give or take <paramref name="hz"/>.</summary>
+        private static float DustSpan(float h, float hz, float top)
         {
             if (top <= 0f) return 0f;
-            float lo = Math.Clamp(a, 0f, top) / top, hi = Math.Clamp(b, 0f, top) / top;
-            return (2f * (hi - lo) - (hi * hi - lo * lo)) / (b - a);
+            float lo = Math.Clamp(h - hz, 0f, top) / top, hi = Math.Clamp(h + hz, 0f, top) / top;
+            return (2f * (hi - lo) - (hi * hi - lo * lo)) / (2f * hz);
         }
 
         /// <summary><c>CxAirDust</c>: thickest on the floor, nothing at <paramref name="top"/>, integrating to 1.</summary>
