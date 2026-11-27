@@ -59,16 +59,7 @@ public static unsafe class PlayerIdentity
         CClientExoAppInternal intern = Internal();
         if (intern.IsNull) return IntPtr.Zero;
         uint localObj = intern.PlayerCreatureId;
-        if (localObj == 0) return IntPtr.Zero;
-        IntPtr listBase = intern.Players;
-        int count = intern.PlayerCount;
-        if (listBase == IntPtr.Zero || count <= 0 || count > MaxPlayers) return IntPtr.Zero;
-        for (int i = 0; i < count; i++)
-        {
-            var player = new CNWCPlayer(*(IntPtr*)(listBase + i * 8));
-            if (!player.IsNull && player.CreatureId == localObj) return player.Ptr;
-        }
-        return IntPtr.Zero;
+        return localObj == 0 ? IntPtr.Zero : PlayerOf(intern, localObj);
     }
 
     /// <summary>True when <paramref name="id"/> is a creature some player in the roster plays, the local one too: what
@@ -76,16 +67,22 @@ public static unsafe class PlayerIdentity
     public static bool IsPlayerCreature(uint id)
     {
         CClientExoAppInternal intern = Internal();
-        if (intern.IsNull) return false;
+        return !intern.IsNull && PlayerOf(intern, id) != IntPtr.Zero;
+    }
+
+    /// <summary>The roster entry (CNWCPlayer*) that plays creature <paramref name="id"/>, or zero when none does or the
+    /// roster does not read as one.</summary>
+    private static IntPtr PlayerOf(CClientExoAppInternal intern, uint id)
+    {
         IntPtr listBase = intern.Players;
         int count = intern.PlayerCount;
-        if (listBase == IntPtr.Zero || count <= 0 || count > MaxPlayers) return false;
+        if (listBase == IntPtr.Zero || count <= 0 || count > MaxPlayers) return IntPtr.Zero;
         for (int i = 0; i < count; i++)
         {
             var player = new CNWCPlayer(*(IntPtr*)(listBase + i * 8));
-            if (!player.IsNull && player.CreatureId == id) return true;
+            if (!player.IsNull && player.CreatureId == id) return player.Ptr;
         }
-        return false;
+        return IntPtr.Zero;
     }
 
     /// <summary>The local <c>CNWCCreature*</c> when it exists and carries a stats block (what the engine's own
