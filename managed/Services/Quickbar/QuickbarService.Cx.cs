@@ -107,14 +107,7 @@ public sealed unsafe partial class QuickbarService
         if (bad > 0) Notice.Show(_log, $"quickbar: {bad} key(s) in the key rows are not SDL key names and stay unbound");
     }
 
-    private static int KeyOf(string name)
-    {
-        if (EngineFn.SdlGetKeyFromName == null) return 0;
-        // A key event's sym is the LOWER-case letter, while SDL names a one-character key in upper case.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        fixed (byte* p = utf8) return EngineFn.SdlGetKeyFromName(p);
-    }
+    private static int KeyOf(string name) => KeyNames.Code(name);
 
     /// <summary>The CX quickbar's window, registered at the back of the UI host on creation; the self-checks build one
     /// of their own.</summary>

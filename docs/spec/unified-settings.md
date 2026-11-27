@@ -977,6 +977,27 @@ Master off gates `Fire/Emit`, `Prompt` (an open modal is `Reset`) and capture; n
 wipe every `[token=…]` section (no packet; #418's fail-closed rule) plus, in session, today's
 Revoke-all. Both revoke rows confirm on a second click within 3 s. `MaxArmed` stays a const.
 
+**Interact** — group `interact` (545), its own submenu beside Hotkeys. Kind K is a press-to-bind
+key row: a press waits for a key or a thumb button, Backspace unbinds, a key in use warns first.
+
+| key | label | kind | range · default | tier | eff | section | help |
+|---|---|---|---|---|---|---|---|
+| interact.enabled | Enable the Interact keys | T | on | U | L | — | One key acts on the nearest thing worth acting on: an exit, loot, an item, a door or someone to talk to, as clicking it would. Off, every Interact key reaches the game. |
+| interact.key | Interact | K | Unbound | U | L | Keys | Runs every rule below in order and acts on the first thing that qualifies. |
+| interact.transitionkey | Transition | K | Unbound | U | L | Keys | Takes an area transition within 2m. |
+| interact.lootkey | Loot | K | Unbound | U | L | Keys | Opens the nearest corpse or body bag within 10m. |
+| interact.pickupkey | Pick up | K | Unbound | U | L | Keys | Picks up the nearest item on the ground within 10m. |
+| interact.doorkey | Door | K | Unbound | U | L | Keys | Opens the nearest closed door within 10m. |
+| interact.talkkey | Talk | K | Unbound | U | L | Keys | Talks to the nearest friendly or neutral creature within 10m. |
+| interact.transition | Area transitions | T | on | U | L | The Interact key runs | An exit within 2m comes before everything else. |
+| interact.loot | Loot | T | on | U | L | The Interact key runs | A corpse or body bag you can loot, within 10m. |
+| interact.pickup | Pick up | T | on | U | L | The Interact key runs | An item on the ground, within 10m. |
+| interact.door | Doors | T | on | U | L | The Interact key runs | A closed door, within 10m. |
+| interact.talk | Talk | T | on | U | L | The Interact key runs | A friendly or neutral creature outside your party, within 10m. |
+| interact.feedbacktext | Show a line | T | on | U | L | When nothing qualifies | A short line at the top of the screen says why nothing happened. |
+| interact.feedbacksound | Play a sound | T | on | U | L | When nothing qualifies | A quiet sound plays. |
+| interact.sound | Sound | X | gui_nowalk | U | L | When nothing qualifies | The sound's resref. The default is the one the game plays when it refuses a move. |
+
 ### 4.6 Quality presets
 
 `quality.preset` ladders the eight area dropdowns, and every real knob ladders on its area
@@ -1063,6 +1084,7 @@ is not "the stock one draws", it is "nothing draws". The caveat is what the buil
 | Mouse-look | `<mode>.mouselook` | U · live | `Release()` on the off edge; per mode, not a group. |
 | Tab-target | tabtarget.enabled | U · live | off (the default) = stock Tab and clicks; the lock and a pending preview cast drop on the off edge. |
 | Hotkeys | hotkeys.enabled | U · live | gate the actions, never the hooks or the advertise. |
+| Interact | interact.enabled | U · live | off = every Interact key reaches the game; no line, no sound. |
 | General, About, Preset, Lights, Ambient occlusion, Effects, Image, Free camera | none | — | the header says why. |
 
 Framework facts: the window registry is immutable after frame 1, so every live hide is a

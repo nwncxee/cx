@@ -6,8 +6,9 @@ namespace CX.Framework;
 
 /// <summary>How the panel renders a knob (ADR 0025). A Button has no value and is never persisted; a Link is
 /// an address the row copies to the clipboard on press (spec §3), never persisted either. A List holds a
-/// <see cref="TextList"/>: one text box per item and a trailing box that adds one.</summary>
-public enum KnobKind { Toggle, Slider, Dropdown, Swatch, Button, Text, Link, List }
+/// <see cref="TextList"/>: one text box per item and a trailing box that adds one. A Key row binds the key or thumb
+/// button pressed while it waits, and reads Unbound when empty.</summary>
+public enum KnobKind { Toggle, Slider, Dropdown, Swatch, Button, Text, Link, List, Key }
 
 /// <summary>Who sees a knob: a User row (help mandatory), a collapsed Advanced row, a chat command and
 /// <c>/knobs</c> line only, or persisted state with no surface at all.</summary>

@@ -413,15 +413,8 @@ public sealed unsafe class TabTargetService : IExtenderService
 
     private static int Code(string? name)
     {
-        name = (name ?? "").Trim();
-        if (name.Length == 0 || EngineFn.SdlGetKeyFromName == null) return 0;
-        // SDL_GetKeyFromName answers a one-character name with that character, but a key event's sym is the
-        // LOWER-case letter: "F" would never match the F key.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        int code;
-        fixed (byte* p = utf8) code = EngineFn.SdlGetKeyFromName(p);
-        if (code == 0) _log?.Info($"TabTarget: '{name}' is not an SDL key name; nothing bound");
+        int code = KeyNames.Code(name);
+        if (code == 0 && !string.IsNullOrWhiteSpace(name)) _log?.Info($"TabTarget: '{name}' is not an SDL key name; nothing bound");
         return code;
     }
 

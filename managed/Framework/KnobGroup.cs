@@ -125,6 +125,11 @@ public sealed partial class KnobGroup
         => Add(new Knob<string>(this, key, label, KnobKind.Text, tier, effect, _section, help ?? "", false,
                                 def, "", "", "", "", null, null, null, null), changed);
 
+    /// <summary>A press-to-bind key row: the stored value is the key's SDL name or Mouse4 / Mouse5, "" unbound.</summary>
+    public Knob<string> KeyBind(string key, string label, Tier tier = Tier.User, string? help = null, Action? changed = null)
+        => Add(new Knob<string>(this, key, label, KnobKind.Key, tier, Effect.Live, _section, help ?? "", false,
+                                "", "", "", "", "", null, null, null, null), changed);
+
     /// <summary>An editable list of text items (<see cref="TextList"/>): the panel shows one text box per item with a
     /// remove button and a trailing empty box, <paramref name="hint"/> its placeholder, that appends one. The cfg key
     /// and the chat form hold the items joined with <c>|</c>.</summary>

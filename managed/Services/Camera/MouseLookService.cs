@@ -274,17 +274,8 @@ public sealed unsafe class MouseLookService : IExtenderService
 
     private static int ParseKey(string? name)
     {
-        name = (name ?? "").Trim();
-        if (name.Length == 0) return 0;
-        if (name.StartsWith("mouse", StringComparison.OrdinalIgnoreCase) && int.TryParse(name.AsSpan(5), out int btn) && btn is >= 1 and <= 5)
-            return -btn;
-        if (EngineFn.SdlGetKeyFromName == null) return 0;
-        // SDL_GetKeyFromName answers a one-character name with that character; a key event's sym is lower-case.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        int code;
-        fixed (byte* p = utf8) code = EngineFn.SdlGetKeyFromName(p);
-        if (code == 0) _log?.Info($"MouseLook: actionkey '{name}' is not an SDL key name; nothing bound");
+        int code = KeyNames.Code(name);
+        if (code == 0 && !string.IsNullOrWhiteSpace(name)) _log?.Info($"MouseLook: actionkey '{name}' is not an SDL key name; nothing bound");
         return code;
     }
 

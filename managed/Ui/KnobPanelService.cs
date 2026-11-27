@@ -26,6 +26,9 @@ public sealed unsafe class KnobPanelService : IExtenderService
 
     public static bool IsOpen => _panel.Open;
 
+    /// <summary>The service's own panel, for a self-check that presses it through the UI host as the pump does.</summary>
+    internal static KnobPanel Panel => _panel;
+
     /// <summary>Where the panel draws and takes input: in game, at the main menu, or over the in-game Options
     /// panel (the gear's two surfaces) -- never the loading screen. The ESC menu with a sub-panel up hides it;
     /// Resume brings it back in game.</summary>
