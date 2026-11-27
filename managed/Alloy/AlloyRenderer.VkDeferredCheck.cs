@@ -10,14 +10,14 @@ namespace CX.Alloy;
 public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>Every set-0 binding the deferred dispatches may declare, by kind, written out by hand from
-    /// <c>cx_deferred_cs</c> and <c>cx_defshadow_cs</c> -- the contract <see cref="VkDefBindSet"/> implements. A
+    /// <c>cx_deferred_cs</c>, <c>cx_defshadow_cs</c> and the air dust stages -- the contract <see cref="VkDefBindSet"/> implements. A
     /// stage that decorates one not listed here is a descriptor the host leaves unwritten.</summary>
     private static readonly (VkBindKind Kind, uint[] Bindings)[] VkDefContract =
     [
         (VkBindKind.UniformBlock, [UboSlots.Pass, UboSlots.ProbeSh, UboSlots.Deferred, VkGlsl.LooseBinding]),
         (VkBindKind.StorageBlock, [SsboSlots.Draw, SsboSlots.DrawIdx, SsboSlots.Lights, SsboSlots.ClusterCount,
                                    SsboSlots.ClusterIdx, SsboSlots.Movers, SsboSlots.Chart,
-                                   SsboSlots.DeferredStats]),
+                                   SsboSlots.DeferredStats, SsboSlots.Air]),
         (VkBindKind.Sampled, [TextureSlots.LocalShadow, TextureSlots.Gbuf0, TextureSlots.Gbuf1, TextureSlots.Gbuf2,
                               TextureSlots.GbufDepth, TextureSlots.ShadowVis, TextureSlots.ShadowKey,
                               TextureSlots.LocalShadowDyn, TextureSlots.LocalShadowRaw, TextureSlots.LocalShadowDynRaw,
@@ -45,11 +45,19 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(sh.Contains("layout(rgba8, binding = 0) uniform writeonly image2D uOutVis;")
                   && sh.Contains("layout(rg32ui, binding = 1) uniform writeonly uimage2D uOutKey;"),
             "the record writer stores into an rgba8 visibility lane and an rg32ui key, the formats the pass allocates");
+        string dust = ShaderStages.Source(AirScene.ShdCs), up = ShaderStages.Source(AirScene.DustUpCs);
+        check.Expect(dust.Contains("layout(rgba16f, binding = 0) uniform writeonly image2D uAirOut;")
+                  && up.Contains("layout(binding = 8) uniform sampler2D uAirDust;"),
+            "the air dust stage stores into an rgba16f block image the lay-over stage samples, the format the pass allocates");
+        foreach (string stage in (ReadOnlySpan<string>)[dust, up])
+            check.Expect(stage.Contains($"const int CX_AIR_DIV = {AirScene.DustDiv};"),
+                $"both air dust stages take a block of {AirScene.DustDiv} pixels a side, the size the pass allocates the block image at");
 
         foreach ((string Ref, string? Define, string Label) s in (ReadOnlySpan<(string, string?, string)>)
                  [(DeferredLights.ShdCs, null, "deferred walk"), (DeferredLights.ShdCs, "CX_FILM_PASS 1", "deferred film"),
                   (DeferredShadows.ShdCs, null, "deferred shadow record"),
-                  (MoverDebt.ShdCs, null, "mover debt"), (MoverDebt.ApplyCs, null, "mover debt apply")])
+                  (MoverDebt.ShdCs, null, "mover debt"), (MoverDebt.ApplyCs, null, "mover debt apply"),
+                  (AirScene.ShdCs, null, "air dust"), (AirScene.DustUpCs, null, "air dust up")])
         {
             if (VkDefText(s.Ref, s.Define, s.Label, log) is not ({ } t, { } src)) { check.Expect(false, $"{s.Label}: its record contract holds"); continue; }
             if (t.Error != null) { check.Expect(false, $"{s.Label} translates -- {t.Error}"); continue; }
@@ -63,8 +71,8 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(listed != null && Array.IndexOf(listed, o.Binding) >= 0,
                     $"{s.Label}: {o.Name} declares {o.Kind} binding {o.Binding}, which VkDefBindSet has no row for");
             }
-            // the apply stage walks no light, so the lighting libraries' loose terms are not its to carry
-            if (s.Ref == MoverDebt.ApplyCs) continue;
+            // the apply and air stages walk no light, so the lighting libraries' loose terms are not theirs to carry
+            if (s.Ref is MoverDebt.ApplyCs or AirScene.ShdCs or AirScene.DustUpCs) continue;
             var names = new List<string>(t.Loose.Count);
             foreach (VkLoose u in t.Loose) names.Add(u.Name);
             var block = VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names);

@@ -1,9 +1,9 @@
-// The dust lying over a crypt's floor and the night mist over water, one invocation per pixel of the main view after
-// the point lights: it marches the part of the eye's ray that crosses the heights the air lies between (AirScene,
-// packed by GroundMist.Pack), reads the dust and the mist there from the four nearest columns of the field by cx_air's
-// profile, and lays over what the HDR target holds the light each scatters on the way -- the dust by the area's
-// ambient, the mist by the ambient and the sun or moon outdoors and by the ambient indoors, both by the lamps where the
-// air is.
+// The dust lying over a crypt's floor and the night mist over water, one invocation per CX_AIR_DIV-square block of the
+// main view after the point lights: it marches the eye's ray through the block's middle pixel across the heights the
+// air lies between (AirScene, packed by GroundMist.Pack), reads the dust and the mist there from the four nearest
+// columns of the field by cx_air's profile, and stores the light each scatters on the way and the share of the surface
+// it keeps -- the dust lit by the area's ambient, the mist by the ambient and the sun or moon outdoors and by the
+// ambient indoors, both by the lamps where the air is. cx_airdustup lays it over the HDR target at full resolution.
 #version 460 core
 layout(local_size_x = 16, local_size_y = 16) in;
 
@@ -12,7 +12,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 #include "cx_air.glsl"
 
 layout(binding = 7) uniform sampler2D uGbDepth;
-layout(rgba16f, binding = 0) uniform image2D uHdr;
+layout(rgba16f, binding = 0) uniform writeonly image2D uAirOut;
 layout(std430, binding = 8) readonly buffer CxLightBuf { vec4 uLights[]; };
 /// The field: its corner (x, y), its side in columns and 1 while anything shows; the lowest floor and the highest top
 /// the air reaches, 1 indoors and the mist's height; then per column its floor, its mist's depth, its
@@ -38,6 +38,12 @@ const float CX_AIR_CLIMB = 0.55;
 /// Points along the air a ray crosses where the lamps' light is taken, and lamps of the rig each walks.
 const int CX_AIR_PROBES = 4;
 const int CX_AIR_LAMPS = 32;
+/// The side of the block of the main view one ray stands for, pixels (AirScene.DustDiv, cx_airdustup).
+const int CX_AIR_DIV = 4;
+
+/// The group's lamps: where each stands and its reach, and its colour made linear, read once for every ray of the group.
+shared vec4 sLampAt[CX_AIR_LAMPS];
+shared vec3 sLampLin[CX_AIR_LAMPS];
 
 /// The cell of column c, or a cell with no floor off the field.
 vec4 CxAirCell(ivec2 c)
@@ -151,20 +157,21 @@ vec3 CxAirLamps(vec3 at)
     int n = min(uLightCount, CX_AIR_LAMPS);
     // ponytail: no wall shades a lamp here, so a lamp past a wall lights this side's air too; a cube tap per lamp lifts it
     for (int i = 0; i < n; i++)
-        lamps += pow(max(uLights[i * 2 + 1].rgb, vec3(0.0)), vec3($SRGB$)) * CxAirLamp(uLights[i * 2], at);
+        lamps += sLampLin[i] * CxAirLamp(sLampAt[i], at);
     return lamps * uDayDim;
 }
 
-void main()
+/// The air over block q: the light it adds (rgb) and the share of the surface behind it it keeps (a).
+vec4 CxAirMarch(ivec2 q)
 {
-    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, uvec2(uRect.zw))) || uAirHead.w < 0.5) return;
-    ivec2 id = ivec2(gl_GlobalInvocationID.xy) + uRect.xy;
-    float d = texelFetch(uGbDepth, id, 0).r;
-    vec4 w = uInvVp * vec4(2.0 * (vec2(gl_GlobalInvocationID.xy) + 0.5) / vec2(uRect.zw) - 1.0, d, 1.0);
+    if (uAirHead.w < 0.5) return vec4(0.0, 0.0, 0.0, 1.0);
+    ivec2 px = min(q * CX_AIR_DIV + CX_AIR_DIV / 2, uRect.zw - 1);
+    float d = texelFetch(uGbDepth, px + uRect.xy, 0).r;
+    vec4 w = uInvVp * vec4(2.0 * (vec2(px) + 0.5) / vec2(uRect.zw) - 1.0, d, 1.0);
     vec3 surf = w.xyz / w.w;
     vec3 ray = surf - uEyePos;
     float len = min(length(ray), CX_AIR_FAR);
-    if (len <= 0.0) return;
+    if (len <= 0.0) return vec4(0.0, 0.0, 0.0, 1.0);
     vec3 dir = normalize(ray);
     float t0 = 0.0, t1 = len;
     if (abs(dir.z) > 1e-6)
@@ -173,11 +180,11 @@ void main()
         t0 = max(t0, min(ta, tb));
         t1 = min(t1, max(ta, tb));
     }
-    else if (uEyePos.z < uAirSlab.x || uEyePos.z > uAirSlab.y) return;
-    if (t1 <= t0) return;
+    else if (uEyePos.z < uAirSlab.x || uEyePos.z > uAirSlab.y) return vec4(0.0, 0.0, 0.0, 1.0);
+    if (t1 <= t0) return vec4(0.0, 0.0, 0.0, 1.0);
     float dl = (t1 - t0) / float(CX_AIR_STEPS);
-    // interleaved gradient noise: each pixel's steps start at their own offset, so the steps dither instead of banding
-    float jit = fract(52.9829189 * fract(dot(vec2(id), vec2(0.06711056, 0.00583715))));
+    // interleaved gradient noise: each block's steps start at their own offset, so the steps dither instead of banding
+    float jit = fract(52.9829189 * fract(dot(vec2(q), vec2(0.06711056, 0.00583715))));
     vec2 tau[CX_AIR_STEPS];
     int first = -1, last = -1;
     for (int k = 0; k < CX_AIR_STEPS; k++)
@@ -187,7 +194,7 @@ void main()
         if (first < 0) first = k;
         last = k;
     }
-    if (first < 0) return;
+    if (first < 0) return vec4(0.0, 0.0, 0.0, 1.0);
     float span = float(last - first);
     vec3 probe[CX_AIR_PROBES];
     for (int i = 0; i < CX_AIR_PROBES; i++)
@@ -205,6 +212,19 @@ void main()
         lit += keep * (1.0 - exp(-all)) * (tau[k].x * CX_AIR_ALBEDO * (dust + lamp) + tau[k].y * mistAlbedo * (sky + lamp)) / all;
         keep *= exp(-all);
     }
-    vec4 hdr = imageLoad(uHdr, id);
-    imageStore(uHdr, id, vec4(hdr.rgb * keep + lit, hdr.a));
+    return vec4(lit, keep);
+}
+
+void main()
+{
+    uint l = gl_LocalInvocationIndex;
+    if (int(l) < min(uLightCount, CX_AIR_LAMPS))
+    {
+        sLampAt[l] = uLights[l * 2u];
+        sLampLin[l] = pow(max(uLights[l * 2u + 1u].rgb, vec3(0.0)), vec3($SRGB$));
+    }
+    barrier();
+    ivec2 q = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(q, imageSize(uAirOut)))) return;
+    imageStore(uAirOut, q, CxAirMarch(q));
 }

@@ -12,8 +12,14 @@ internal static partial class AirScene
 {
     private static AirSceneState _s = new();
 
-    /// <summary>The stage that lays the dust over the lit frame.</summary>
+    /// <summary>The stage that marches the dust and the mist, one ray a block of the main view.</summary>
     internal const string ShdCs = "cx_airdust_cs";
+
+    /// <summary>The stage that lays the marched air over the lit frame at full resolution.</summary>
+    internal const string DustUpCs = "cx_airdustup";
+
+    /// <summary>The side of the block of the main view one ray of the dust stage stands for, pixels (both stages' <c>CX_AIR_DIV</c>).</summary>
+    internal const int DustDiv = 4;
 
     /// <summary>Dust a column holds at Dust 1, metres of full density.</summary>
     private const float BaseDust = 0.1f;

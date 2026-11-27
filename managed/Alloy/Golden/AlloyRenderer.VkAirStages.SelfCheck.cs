@@ -5,13 +5,14 @@ namespace CX.Alloy;
 
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Every air stage the frame builds compiles on this device, the dust, the motes, the sky-lit motes and the
+    /// <summary>Every air stage the frame builds compiles on this device, the dust and its lay-over, the motes, the sky-lit motes and the
     /// wisps, as each is built the first frame its layer shows. Oracle: the device's own compiler.</summary>
     internal static void VkAirStagesSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         (string Resref, string? Define, string Label)[] stages =
         [
             (AirScene.ShdCs, null, "golden air dust"),
+            (AirScene.DustUpCs, null, "golden air dust up"),
             (AirScene.MoteCs, null, "golden air motes"),
             (AirScene.MoteCs, VkAirSky, "golden air pollen"),
             (AirScene.WispCs, null, "golden air wisps"),
