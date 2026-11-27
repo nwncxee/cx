@@ -64,4 +64,27 @@ public static unsafe partial class EngineLayout
     /// <summary>CNWCItem -&gt; the id of the creature wearing it, 0x7f000000 when none. An item's default action on a worn
     /// item runs the wearer's, which attacks a hostile one.</summary>
     public static readonly int ItemEquippedBy = Field<uint>("CNWCItem", "equippedBy");
+
+    // Read 2026-11-27 off both programs: CClientExoAppInternal::SetEventDescriptions (Linux nm @0x63ce80, Windows rva
+    // 0x6df630), CExoInputInternal::AddInputEventDesc (Linux nm @0x51eb30, Windows rva 0x16fd00), ::AddEvent (Linux nm
+    // @0x51f370, Windows rva 0x16f880), ::GetEvents (Linux nm @0x51efc0) and the CExoInputInternal constructor (Linux nm
+    // @0x51f840, Windows rva 0x16ecb0), which alone fills the key table, with the same values on both.
+
+    /// <summary>CExoInput -&gt; its CExoInputInternal, what every CExoInput call forwards to.</summary>
+    public static readonly int ExoInputInternal = Field<CX.Engine.CExoInputInternal>("CExoInput", "internal");
+    /// <summary>CExoInputInternal -&gt; its input event lists, an array of one CExoLinkedListInternal* per device, each
+    /// holding the CExoInputEventDesc records SetEventDescriptions adds for that device.</summary>
+    public static readonly int ExoInputDescLists = Field<CX.Engine.CExoInputDescLists>("CExoInputInternal", "descLists");
+    /// <summary>The event list array -&gt; device 0's, the keyboard's: every description in it is a key's.</summary>
+    public static readonly int DescListsKeyboard = Field<CX.Engine.CExoLinkedListInternal>("CExoInputDescLists", "keyboard");
+    /// <summary>CExoInputInternal -&gt; the engine's key table: entry i is the SDL scancode of engine key i. AddEvent
+    /// looks a key-down's scancode up in entries 10 to 0x69, the keyboard's keys.</summary>
+    public static readonly int ExoInputKeyScancodes = Field<int>("CExoInputInternal", "keyScancodes", count: 0x6a);
+    /// <summary>CExoInputEventDesc -&gt; the action it runs (uint): 37 to 108 are keymap.2da's rows Action37 to Action108.</summary>
+    public static readonly int InputDescAction = Field<uint>("CExoInputEventDesc", "action");
+    /// <summary>CExoInputEventDesc -&gt; its key (uint): the engine key in the low byte, the modifier above it (0 none).</summary>
+    public static readonly int InputDescKey = Field<uint>("CExoInputEventDesc", "key");
+    /// <summary>The 2DA table -&gt; keymap.2da, the table SetEventDescriptions and the Key Mapping panel read a
+    /// remappable action's default key and its name strref from, the same hop on both builds.</summary>
+    public static readonly int TwoDimKeymap = Field<IntPtr>("CTwoDimArrays", "keymap");
 }

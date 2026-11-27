@@ -1174,4 +1174,11 @@ offset	CNWCTrigger	areaTransition	0x1ac	0x18c	# TriggerAreaTransition
 offset	CNWCTrigger	vertexCount	0x1c0	0x1a0	# TriggerVertexCount
 offset	CNWCTrigger	vertices	0x1c8	0x1a8	# TriggerVertices
 offset	CNWCItem	equippedBy	0x27c	0x25c	# ItemEquippedBy
+offset	CExoInput	internal	0x8	0x8	# ExoInputInternal
+offset	CExoInputInternal	descLists	0x28	0x28	# ExoInputDescLists
+offset	CExoInputDescLists	keyboard	0x0	0x0	# DescListsKeyboard
+offset	CExoInputInternal	keyScancodes	0x58	0x58	# ExoInputKeyScancodes
+offset	CExoInputEventDesc	action	0x10	0x10	# InputDescAction
+offset	CExoInputEventDesc	key	0x1c	0x1c	# InputDescKey
+offset	CTwoDimArrays	keymap	0x228	0x228	# TwoDimKeymap
 offset	CGameObject	vtbl.AsNWCTrigger	0x80	0x78	# GameObjAsNWCTriggerSlot

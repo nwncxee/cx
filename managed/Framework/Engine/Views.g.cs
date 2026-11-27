@@ -74,6 +74,7 @@ global using unsafe OkCancelCtorFn = delegate* unmanaged<nint, void>;
 global using unsafe OkCancelActivateFn = delegate* unmanaged<nint, nint, uint, uint, void>;
 global using unsafe SdlGetKeyNameFn = delegate* unmanaged<int, byte*>;
 global using unsafe SdlGetKeyFromNameFn = delegate* unmanaged<byte*, int>;
+global using unsafe SdlGetScancodeFromKeyFn = delegate* unmanaged<int, int>;
 global using unsafe WalkPlayerToPointFn = delegate* unmanaged<nint, float, float, float, int, uint, int, int>;
 global using unsafe FeedbackHitCheckHostileFn = delegate* unmanaged<nint, nint*, nint, int*, int, int>;
 global using unsafe FeedbackHitCheckNonHostileFn = delegate* unmanaged<nint, nint*, nint, int*, int, int>;
@@ -174,6 +175,7 @@ global using unsafe AreaLoadAreaFn = delegate* unmanaged<nint, nint, nint, int>;
 global using unsafe AreaAddPlaceableStaticFn = delegate* unmanaged<nint, uint, ushort, CX.Engine.VectorArg, CX.Engine.VectorArg, int>;
 global using unsafe C2DAGetCExoStringEntryFn = delegate* unmanaged<nint, int, nint, nint, int>;
 global using unsafe C2DAGetINTEntryFn = delegate* unmanaged<nint, int, nint, int*, int>;
+global using unsafe C2DAGetINTEntryByLabelFn = delegate* unmanaged<nint, nint, nint, int*, int>;
 global using unsafe TwoDimGetCached2DAFn = delegate* unmanaged<nint, nint, int, nint>;
 global using unsafe AreaGetSurfaceMaterialFn = delegate* unmanaged<nint, CX.Engine.VectorArg, int>;
 global using unsafe SoundPlay3DOneShotFn = delegate* unmanaged<nint, CX.Engine.ResRef*, CX.Engine.VectorArg, float, byte, uint, byte, void>;
@@ -1171,6 +1173,54 @@ public readonly unsafe partial struct CExoEncapsulatedFile(IntPtr ptr)
     public ref IntPtr Entries => ref *(IntPtr*)(Ptr + EngineLayout.EncapFileEntries);
     /// <inheritdoc cref="EngineLayout.EncapFileName"/>
     public ref IntPtr Name => ref *(IntPtr*)(Ptr + EngineLayout.EncapFileName);
+}
+
+/// <summary>Typed view of an engine <c>CExoInput*</c>.</summary>
+public readonly unsafe partial struct CExoInput(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ExoInputInternal"/>
+    public ref CExoInputInternal Internal => ref *(CExoInputInternal*)(Ptr + EngineLayout.ExoInputInternal);
+}
+
+/// <summary>Typed view of an engine <c>CExoInputDescLists*</c>.</summary>
+public readonly unsafe partial struct CExoInputDescLists(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.DescListsKeyboard"/>
+    public ref CExoLinkedListInternal Keyboard => ref *(CExoLinkedListInternal*)(Ptr + EngineLayout.DescListsKeyboard);
+}
+
+/// <summary>Typed view of an engine <c>CExoInputEventDesc*</c>.</summary>
+public readonly unsafe partial struct CExoInputEventDesc(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.InputDescAction"/>
+    public ref uint Action => ref *(uint*)(Ptr + EngineLayout.InputDescAction);
+    /// <inheritdoc cref="EngineLayout.InputDescKey"/>
+    public ref uint Key => ref *(uint*)(Ptr + EngineLayout.InputDescKey);
+}
+
+/// <summary>Typed view of an engine <c>CExoInputInternal*</c>.</summary>
+public readonly unsafe partial struct CExoInputInternal(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ExoInputDescLists"/>
+    public ref CExoInputDescLists DescLists => ref *(CExoInputDescLists*)(Ptr + EngineLayout.ExoInputDescLists);
+    /// <inheritdoc cref="EngineLayout.ExoInputKeyScancodes"/>
+    public Span<int> KeyScancodes { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.ExoInputKeyScancodes), 106); }
 }
 
 /// <summary>Typed view of an engine <c>CExoKeyTable*</c>.</summary>
@@ -2694,6 +2744,8 @@ public readonly unsafe partial struct CTwoDimArrays(IntPtr ptr)
     public ref IntPtr FootstepSounds => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimFootstepSounds);
     /// <inheritdoc cref="EngineLayout.TwoDimItemVisualEffects"/>
     public ref IntPtr ItemVisualEffects => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimItemVisualEffects);
+    /// <inheritdoc cref="EngineLayout.TwoDimKeymap"/>
+    public ref IntPtr Keymap => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimKeymap);
     /// <inheritdoc cref="EngineLayout.TwoDimPlaceables"/>
     public ref IntPtr Placeables => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimPlaceables);
     /// <inheritdoc cref="EngineLayout.TwoDimVisualEffects"/>
@@ -4377,6 +4429,10 @@ public static unsafe class EngineFn
     private static bool _SdlGetKeyFromNameDone;
     /// <inheritdoc cref="SymbolMap.SdlGetKeyFromName"/>
     public static SdlGetKeyFromNameFn SdlGetKeyFromName => (SdlGetKeyFromNameFn)(_SdlGetKeyFromNameDone ? _SdlGetKeyFromName : Resolve(ref _SdlGetKeyFromName, ref _SdlGetKeyFromNameDone, SymbolMap.SdlGetKeyFromName));
+    private static IntPtr _SdlGetScancodeFromKey;
+    private static bool _SdlGetScancodeFromKeyDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetScancodeFromKey"/>
+    public static SdlGetScancodeFromKeyFn SdlGetScancodeFromKey => (SdlGetScancodeFromKeyFn)(_SdlGetScancodeFromKeyDone ? _SdlGetScancodeFromKey : Resolve(ref _SdlGetScancodeFromKey, ref _SdlGetScancodeFromKeyDone, SymbolMap.SdlGetScancodeFromKey));
     private static IntPtr _WalkPlayerToPoint;
     private static bool _WalkPlayerToPointDone;
     /// <inheritdoc cref="SymbolMap.WalkPlayerToPoint"/>
@@ -4786,6 +4842,10 @@ public static unsafe class EngineFn
     private static bool _C2DAGetINTEntryDone;
     /// <inheritdoc cref="SymbolMap.C2DAGetINTEntry"/>
     public static C2DAGetINTEntryFn C2DAGetINTEntry => (C2DAGetINTEntryFn)(_C2DAGetINTEntryDone ? _C2DAGetINTEntry : Resolve(ref _C2DAGetINTEntry, ref _C2DAGetINTEntryDone, SymbolMap.C2DAGetINTEntry));
+    private static IntPtr _C2DAGetINTEntryByLabel;
+    private static bool _C2DAGetINTEntryByLabelDone;
+    /// <inheritdoc cref="SymbolMap.C2DAGetINTEntryByLabel"/>
+    public static C2DAGetINTEntryByLabelFn C2DAGetINTEntryByLabel => (C2DAGetINTEntryByLabelFn)(_C2DAGetINTEntryByLabelDone ? _C2DAGetINTEntryByLabel : Resolve(ref _C2DAGetINTEntryByLabel, ref _C2DAGetINTEntryByLabelDone, SymbolMap.C2DAGetINTEntryByLabel));
     private static IntPtr _TwoDimGetCached2DA;
     private static bool _TwoDimGetCached2DADone;
     /// <inheritdoc cref="SymbolMap.TwoDimGetCached2DA"/>
@@ -6467,6 +6527,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGetKeyFromName"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGetKeyFromNameFn* ChainSdlGetKeyFromName(this HookService h, SdlGetKeyFromNameFn handler, int priority) =>
         (SdlGetKeyFromNameFn*)h.Chain(SymbolMap.SdlGetKeyFromName, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetScancodeFromKey"/>; returns the original, or null.</summary>
+    public static SdlGetScancodeFromKeyFn InstallSdlGetScancodeFromKey(this HookService h, SdlGetScancodeFromKeyFn handler) =>
+        (SdlGetScancodeFromKeyFn)h.Install(SymbolMap.SdlGetScancodeFromKey, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetScancodeFromKey"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetScancodeFromKeyFn* ChainSdlGetScancodeFromKey(this HookService h, SdlGetScancodeFromKeyFn handler, int priority) =>
+        (SdlGetScancodeFromKeyFn*)h.Chain(SymbolMap.SdlGetScancodeFromKey, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.WalkPlayerToPoint"/>; returns the original, or null.</summary>
     public static WalkPlayerToPointFn InstallWalkPlayerToPoint(this HookService h, WalkPlayerToPointFn handler) =>
         (WalkPlayerToPointFn)h.Install(SymbolMap.WalkPlayerToPoint, (IntPtr)handler);
@@ -7067,6 +7133,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.C2DAGetINTEntry"/>; returns the slot holding the next layer, or null.</summary>
     public static C2DAGetINTEntryFn* ChainC2DAGetINTEntry(this HookService h, C2DAGetINTEntryFn handler, int priority) =>
         (C2DAGetINTEntryFn*)h.Chain(SymbolMap.C2DAGetINTEntry, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.C2DAGetINTEntryByLabel"/>; returns the original, or null.</summary>
+    public static C2DAGetINTEntryByLabelFn InstallC2DAGetINTEntryByLabel(this HookService h, C2DAGetINTEntryByLabelFn handler) =>
+        (C2DAGetINTEntryByLabelFn)h.Install(SymbolMap.C2DAGetINTEntryByLabel, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.C2DAGetINTEntryByLabel"/>; returns the slot holding the next layer, or null.</summary>
+    public static C2DAGetINTEntryByLabelFn* ChainC2DAGetINTEntryByLabel(this HookService h, C2DAGetINTEntryByLabelFn handler, int priority) =>
+        (C2DAGetINTEntryByLabelFn*)h.Chain(SymbolMap.C2DAGetINTEntryByLabel, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.TwoDimGetCached2DA"/>; returns the original, or null.</summary>
     public static TwoDimGetCached2DAFn InstallTwoDimGetCached2DA(this HookService h, TwoDimGetCached2DAFn handler) =>
         (TwoDimGetCached2DAFn)h.Install(SymbolMap.TwoDimGetCached2DA, (IntPtr)handler);

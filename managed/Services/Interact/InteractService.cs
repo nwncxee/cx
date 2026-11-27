@@ -30,7 +30,8 @@ public sealed unsafe class InteractService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         if (!EngineLayout.Require(log, "Interact", "CNWCObject", "CNWCArea", "CNWCCreature", "CNWCPlaceable", "CNWCDoor",
-                                  "CNWCTrigger", "CNWCItem", "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp")) return;
+                                  "CNWCTrigger", "CNWCItem", "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp",
+                                  "CExoInput", "CExoInputInternal", "CExoInputDescLists", "CExoInputEventDesc", "CNWRules", "CTwoDimArrays")) return;
         if (!SymbolMap.Require(log, "Interact", SymbolMap.WinMessageHandler, SymbolMap.PerformDefaultActionOnObject,
                                SymbolMap.ClearLineOfSightOneWay, SymbolMap.GetGameObject, SymbolMap.GetModule,
                                SymbolMap.AppManager, SymbolMap.WalkPlayerToPoint)) return;
@@ -130,7 +131,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         return EngineFn.ResManExists(resMan, &name, ResTypes.Wav, null) != 0;
     }
 
-    public string? GameKeyAction(int code) => null;
+    public string? GameKeyAction(int code) => GameKeymap.Action(code);
 
     public void DefaultAction(uint id)
     {

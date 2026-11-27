@@ -297,6 +297,10 @@ internal static unsafe class SymbolMap
     public const string SdlGetKeyName   = "SDL_GetKeyName";
     [Fn("int(byte* name)")]
     public const string SdlGetKeyFromName = "SDL_GetKeyFromName";                        // action-camera toggle key by name
+    /// <summary><c>SDL_GetScancodeFromKey(SDL_Keycode)</c>: the physical key a key code sits on in the current layout,
+    /// which is what the engine's key table (<see cref="EngineLayout.ExoInputKeyScancodes"/>) holds.</summary>
+    [Fn("int(int key)")]
+    public const string SdlGetScancodeFromKey = "SDL_GetScancodeFromKey";
     /// <summary><c>CClientExoAppInternal::WalkPlayerToPoint(float, float, float, int, uint, int)</c> @0x663950: the one
     /// seam every left-click walk goes through (the action camera refuses it). Windows: the only function referencing
     /// "gui_nowalk" on both builds (StringRefs).</summary>
@@ -832,6 +836,10 @@ internal static unsafe class SymbolMap
     /// Windows): <c>PlayFootstep</c>'s appearance.2da reads. Nonzero = the cell held an int.</summary>
     [Fn("int(IntPtr twoda, int row, IntPtr column, int* result)")]
     public const string C2DAGetINTEntry = "_ZN4C2DA11GetINTEntryEiRK10CExoStringPi";
+    /// <summary><c>C2DA::GetINTEntry(CExoString const&amp; row, CExoString const&amp; column, int* out)</c> @0x545840 (exported on
+    /// Windows): a cell by its row label, how SetEventDescriptions reads keymap.2da's "ActionN" rows. Nonzero = an int.</summary>
+    [Fn("int(IntPtr twoda, IntPtr row, IntPtr column, int* result)")]
+    public const string C2DAGetINTEntryByLabel = "_ZN4C2DA11GetINTEntryERK10CExoStringS2_Pi";
     /// <summary><c>CTwoDimArrays::GetCached2DA(CExoString name, int cached)</c> @0x11bfe60 (exported on Windows) -- the 2DA
     /// a script's <c>Get2DAString</c> reads, loaded through the resource manager into the engine's own LRU cache (with
     /// <c>cached</c> 0); null when no such 2DA loads. The name is by value: the caller destroys it on Itanium, the callee
@@ -2754,6 +2762,7 @@ internal static unsafe class SymbolMap
         [ExoStringInit]     = Nm("?InitFromCharArray@CExoString@@AEAAAEAV1@PEBDI@Z"),
         [C2DAGetCExoStringEntry] = Nm("?GetCExoStringEntry@C2DA@@QEAAHHAEBVCExoString@@PEAV2@@Z"),
         [C2DAGetINTEntry]   = Nm("?GetINTEntry@C2DA@@QEAAHHAEBVCExoString@@PEAH@Z"),
+        [C2DAGetINTEntryByLabel] = Nm("?GetINTEntry@C2DA@@QEAAHAEBVCExoString@@0PEAH@Z"),
         [TwoDimGetCached2DA] = Nm("?GetCached2DA@CTwoDimArrays@@QEAAPEAVC2DA@@VCExoString@@H@Z"),
         [SoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
         [SoundPlayOneShot]  = Nm("?PlayOneShotSound@CExoSound@@QEAAXAEBVCResRef@@EIE@Z"),
@@ -2818,6 +2827,7 @@ internal static unsafe class SymbolMap
         [GetGuiScale]     = Nm("?GetGUIScale@CAurora@@SAMXZ"),   // CAurora shared-engine class -> name-exported
         [SdlGetKeyName]   = Nm("SDL_GetKeyName"),
         [SdlGetKeyFromName] = Nm("SDL_GetKeyFromName"),
+        [SdlGetScancodeFromKey] = Nm("SDL_GetScancodeFromKey"),
         [WalkPlayerToPoint] = At(),          // action camera: "gui_nowalk" string, unique on both builds
         [FeedbackHitCheckHostile] = At(),    // action camera: the picker with GetHeightTransition (Callees)
         [FeedbackHitCheckNonHostile] = At(), // action camera: the other picker, same caller cluster
