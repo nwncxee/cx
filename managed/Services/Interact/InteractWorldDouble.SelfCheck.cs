@@ -4,6 +4,7 @@ using System.Numerics;
 using CX.Framework;
 using CX.Services.Camera;
 using CX.Services.Chat.Core;
+using CX.Services.Dialog;
 using CX.Ui;
 
 namespace CX.Services.Interact;
@@ -72,15 +73,36 @@ internal sealed class InteractWorldDouble : IInteractWorld
     public void ShowLine(string text) => Lines.Add(text);
     public void PlaySound(string resref) => Sounds.Add(resref);
 
-    /// <summary>The world the first <see cref="Install"/> replaced, which <see cref="Restore"/> puts back.</summary>
-    private sealed class SavedState { public IInteractWorld? World; public bool Held; }
+    /// <summary>What the first <see cref="Install"/> found, which <see cref="Restore"/> puts back: the world, and each
+    /// setting the suites touch as the player stored it, with its raw cx.cfg text.</summary>
+    private sealed class SavedState
+    {
+        public IInteractWorld? World;
+        public bool Held;
+        public Knob[] Knobs = Array.Empty<Knob>();
+        public string[] Stored = Array.Empty<string>();
+        public string?[] Raw = Array.Empty<string?>();
+    }
 
     private static readonly SavedState Saved = new();
 
-    /// <summary>A fresh double installed as the world, every Interact setting at its default, the master on and
-    /// F bound to the Interact key.</summary>
+    /// <summary>The settings the suites change: every Interact one, and the tab-target, camera and dialog ones some set.</summary>
+    private static Knob[] Touched()
+    {
+        var all = new List<Knob>(InteractKnobs.G.Knobs) { TabTarget.Enabled, CameraModes.Chase.ActionKey, MouseLook.Action, DialogKnobs.Enabled };
+        return all.ToArray();
+    }
+
+    /// <summary>A fresh double installed as the world, every setting the suites touch at its default, the master on and
+    /// F bound to the Interact key. The first one keeps the player's settings for <see cref="Restore"/>.</summary>
     internal static InteractWorldDouble Install()
     {
+        if (!Saved.Held)
+        {
+            Saved.Knobs = Touched();
+            Saved.Stored = Array.ConvertAll(Saved.Knobs, k => k.FormatStored());
+            Saved.Raw = Array.ConvertAll(Saved.Knobs, k => Settings.Raw(k.Key));
+        }
         Defaults();
         InteractKnobs.Key.Set("F");
         var w = new InteractWorldDouble();
@@ -89,20 +111,28 @@ internal sealed class InteractWorldDouble : IInteractWorld
         return w;
     }
 
-    /// <summary>Every Interact setting back to its default and the world the first <see cref="Install"/> replaced back
-    /// in: the engine's on the client, none in the stub host. A suite ends here.</summary>
+    /// <summary>Every setting the suites touch back as the player stored it, a value already there left unset so it arms
+    /// no cx.cfg write, and the world the first <see cref="Install"/> replaced back in. A suite ends here.</summary>
     internal static void Restore()
     {
-        Defaults();
+        for (int i = 0; i < Saved.Knobs.Length; i++)
+        {
+            Knob k = Saved.Knobs[i];
+            if (k.FormatStored() != Saved.Stored[i]) k.Parse(Saved.Stored[i]);
+            if (Saved.Raw[i] is { } raw) Settings.Read($"{k.Key}={raw}\n");
+            else Settings.Forget(k.Key);
+        }
+        Saved.Knobs = Array.Empty<Knob>();
         InteractInput.Use(Saved.World);
         Saved.World = null;
         Saved.Held = false;
     }
 
-    /// <summary>Every Interact setting back to its default; the examples end here so no binding leaks out.</summary>
+    /// <summary>Every setting the suites touch at its default and the Interact master on: the state each example
+    /// starts from.</summary>
     internal static void Defaults()
     {
-        foreach (Knob k in InteractKnobs.G.Knobs) k.Reset();
+        foreach (Knob k in Touched()) k.Reset();
         InteractKnobs.Enabled.Set(true);
     }
 

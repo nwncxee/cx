@@ -184,7 +184,6 @@ internal static class TargetApprovedExamples
         }
         finally
         {
-            TabTarget.Enabled.Reset();
             InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "TargetApprovedExamples.SelfCheck: passed" : "TargetApprovedExamples.SelfCheck: FAILED");

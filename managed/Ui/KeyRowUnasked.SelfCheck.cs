@@ -119,19 +119,14 @@ public sealed partial class KnobPanel
                 check.Expect(clash == null, $"U7 a name with no key code clashes with nothing, not with an unbound camera toggle ('{clash}')");
             }
             {
-                bool tab = TabTarget.Enabled.V;
-                try
-                {
-                    TabTarget.Enabled.Set(true);
-                    KnobPanel p = Fresh();
-                    InteractKnobs.Key.Set("");
-                    Wait(p, InteractKnobs.Key);
-                    p.Key('f');
-                    string? warn = p.KeyWarning;
-                    check.Expect(warn != null && warn.Contains(TabTarget.LockKey.Label) && InteractKnobs.Key.V == "",
-                        $"U9 binding Interact to F, tab-target's lock-on key, warns naming that setting and binds nothing yet: '{warn}', bound '{InteractKnobs.Key.V}'");
-                }
-                finally { TabTarget.Enabled.Set(tab); }
+                KnobPanel p = Fresh();
+                TabTarget.Enabled.Set(true);
+                InteractKnobs.Key.Set("");
+                Wait(p, InteractKnobs.Key);
+                p.Key('f');
+                string? warn = p.KeyWarning;
+                check.Expect(warn != null && warn.Contains(TabTarget.LockKey.Label) && InteractKnobs.Key.V == "",
+                    $"U9 binding Interact to F, tab-target's lock-on key, warns naming that setting and binds nothing yet: '{warn}', bound '{InteractKnobs.Key.V}'");
             }
             {
                 KnobPanel p = Fresh();
@@ -157,8 +152,6 @@ public sealed partial class KnobPanel
         finally
         {
             KnobPanelService.Close();
-            CameraModes.Chase.ActionKey.Reset();
-            MouseLook.Action.Reset();
             InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "KeyRowUnasked.SelfCheck: passed" : "KeyRowUnasked.SelfCheck: FAILED");

@@ -307,8 +307,6 @@ public sealed partial class KnobPanel
         {
             KnobPanelService.Close();
             GameGate.InGame = inGame;
-            CameraModes.Chase.ActionKey.Reset();
-            MouseLook.Action.Reset();
             InteractWorldDouble.Restore();
         }
         return check.Ok;

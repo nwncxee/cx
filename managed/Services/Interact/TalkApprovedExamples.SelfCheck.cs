@@ -203,8 +203,6 @@ internal static class TalkApprovedExamples
         }
         finally
         {
-            TabTarget.Enabled.Reset();
-            DialogKnobs.Enabled.Reset();
             InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "TalkApprovedExamples.SelfCheck: passed" : "TalkApprovedExamples.SelfCheck: FAILED");

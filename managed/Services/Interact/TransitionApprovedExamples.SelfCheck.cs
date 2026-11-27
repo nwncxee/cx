@@ -166,7 +166,6 @@ internal static class TransitionApprovedExamples
         }
         finally
         {
-            TabTarget.Enabled.Reset();
             InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "TransitionApprovedExamples.SelfCheck: passed" : "TransitionApprovedExamples.SelfCheck: FAILED");
