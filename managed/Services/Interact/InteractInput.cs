@@ -62,12 +62,7 @@ internal static class InteractInput
     /// <summary>Reads each key setting's press code into <see cref="InteractState.Codes"/>. Cold: a setting's edit.</summary>
     internal static void KeysChanged()
     {
-        S.Codes[(int)InteractKey.Interact] = KeyNames.Code(InteractKnobs.Key.V);
-        S.Codes[(int)InteractKey.Transition] = KeyNames.Code(InteractKnobs.TransitionKey.V);
-        S.Codes[(int)InteractKey.Loot] = KeyNames.Code(InteractKnobs.LootKey.V);
-        S.Codes[(int)InteractKey.PickUp] = KeyNames.Code(InteractKnobs.PickUpKey.V);
-        S.Codes[(int)InteractKey.Door] = KeyNames.Code(InteractKnobs.DoorKey.V);
-        S.Codes[(int)InteractKey.Talk] = KeyNames.Code(InteractKnobs.TalkKey.V);
+        for (int i = 0; i < InteractState.Bindable; i++) S.Codes[i] = KeyNames.Code(InteractKnobs.Keys[i].V);
     }
 
     /// <summary>The note the sound row shows when the game has no sound by its resref.</summary>

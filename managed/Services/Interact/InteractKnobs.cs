@@ -9,6 +9,8 @@ internal static class InteractKnobs
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
     internal static readonly Knob<string> Key, TransitionKey, LootKey, PickUpKey, DoorKey, TalkKey;
+    /// <summary>The key settings by <see cref="InteractKey"/>.</summary>
+    internal static readonly Knob<string>[] Keys;
     internal static readonly Knob<bool> Transitions, Loot, PickUp, Doors, Talk;
     internal static readonly Knob<bool> FeedbackText, FeedbackSound;
     internal static readonly Knob<string> Sound;
@@ -35,6 +37,7 @@ internal static class InteractKnobs
         DoorKey = G.KeyBind("doorkey", "Door", help: $"Opens the nearest closed door within {Far}.", changed: InteractInput.KeysChanged);
         TalkKey = G.KeyBind("talkkey", "Talk", help: $"Talks to the nearest friendly or neutral creature within {Far}.",
                            changed: InteractInput.KeysChanged);
+        Keys = new[] { Key, TransitionKey, LootKey, PickUpKey, DoorKey, TalkKey };
         G.Section("The Interact key runs");
         Transitions = G.Toggle("transition", "Area transitions", true, help: $"An exit within {Near} comes before everything else.");
         Loot = G.Toggle("loot", "Loot", true, help: $"A corpse or body bag you can loot, within {Far}.");
