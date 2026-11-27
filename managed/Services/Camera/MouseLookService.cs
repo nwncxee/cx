@@ -48,11 +48,13 @@ public sealed unsafe partial class MouseLookService : IExtenderService
     private static SdlGetModStateFn _modState;
     /// <summary>SDL <c>KMOD_LALT | KMOD_RALT</c>: the hold that frees the cursor.</summary>
     private const int KmodAlt = 0x300;  // not-an-offset: SDL key/event code
-    private const uint SdlKeyDown = 0x300;  // not-an-offset: SDL key/event code
+    private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301;  // not-an-offset: SDL key/event code
     /// <summary>SDL_KeyboardEvent: <c>repeat</c> byte and <c>keysym.sym</c>; the Alt keycodes.</summary>
     private const uint SdlkLAlt = 0x400000E2, SdlkRAlt = 0x400000E6;  // not-an-offset: SDL key/event code
     /// <summary>Alt as a toggle (the mode's <c>alttoggle</c>): the cursor is freed until the next Alt press.</summary>
     private static bool _altFree;
+    /// <summary>The cursor key that frees the cursor under the action camera.</summary>
+    private static readonly CursorKeyState _cursor = new();
     private static WalkPlayerToPointFn _walkOrig;
     private static FeedbackHitCheckHostileFn _pickHostileOrig;
     private static FeedbackHitCheckNonHostileFn _pickNonHostileOrig;
