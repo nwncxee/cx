@@ -144,7 +144,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         CGameObject go = exo.GetGameObject(id);
         if (go.IsNull) return;
         CNWCObject obj = go.AsNWCObject();
-        if (!obj.IsNull) exo.Internal.PerformDefaultActionOnObject(obj.Ptr);
+        if (!obj.IsNull) TabTargetService.VanillaDefaultAction(exo.Internal.Ptr, obj.Ptr);
     }
 
     public void WalkTo(uint id, Vector3 point)

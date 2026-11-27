@@ -52,20 +52,6 @@ internal static class LootEdges
                 check.Expect(w.Did(bag, bag, bag), $"a bag read unlocked leaves the tried memory, so relocked it is tried afresh: {w.Seen}");            }
             {
                 var w = InteractWorldDouble.Install();
-                bool tab = TabTarget.Enabled.V;
-                TabTarget.Enabled.Set(true);
-                try
-                {
-                    uint bag = w.Bag(3f); uint other = w.Bag(6f);
-                    w.Press('F');
-                    check.Expect(w.Did(bag) && w.LockChanges.Count == 0, $"Interact's own default action leaves the tab-target lock alone: {w.LockChanges.Count} lock change(s), {w.Seen}");
-                    w.DefaultAction(other);
-                    check.Expect(w.LockChanges.Count == 1 && w.Lock == other, $"control: a click's default action still locks: {w.LockChanges.Count} lock change(s)");
-                }
-                finally { TabTarget.Enabled.Set(tab); }
-            }
-            {
-                var w = InteractWorldDouble.Install();
                 uint bag = w.Bag(10f);
                 w.Change(bag, t => { t.Pos = w.Player + new Vector3(10f, 0f, 0f); return t; });
                 w.Press('F');

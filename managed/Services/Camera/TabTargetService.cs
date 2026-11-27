@@ -5,7 +5,6 @@ using System.Threading;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Chat.Core;
-using CX.Services.Interact;
 using CX.Ui;
 
 namespace CX.Services.Camera;
@@ -319,9 +318,11 @@ public sealed unsafe partial class TabTargetService : IExtenderService
 
     // ---- click-to-lock ----
 
-    /// <summary>The engine's own default action on <paramref name="obj"/>; nothing when the engine call does not resolve.</summary>
+    /// <summary>The engine's own default action on <paramref name="obj"/>, past click-to-lock: the trampoline once the hook
+    /// is in, else the engine call, nothing when neither resolves. Interact acts through it, so a press never moves the lock.</summary>
     internal static int VanillaDefaultAction(IntPtr self, IntPtr obj) =>
-        EngineFn.PerformDefaultActionOnObject != null ? new CClientExoAppInternal(self).PerformDefaultActionOnObject(obj) : 0;
+        _defaultActionOrig != null ? _defaultActionOrig(self, obj)
+        : EngineFn.PerformDefaultActionOnObject != null ? new CClientExoAppInternal(self).PerformDefaultActionOnObject(obj) : 0;
 
     [UnmanagedCallersOnly]
     private static int OnDefaultAction(IntPtr self, IntPtr obj)
@@ -331,7 +332,7 @@ public sealed unsafe partial class TabTargetService : IExtenderService
         CClientExoAppInternal intern = app != IntPtr.Zero ? new CClientExoApp(app).Internal : default;
         var target = new CNWCObject(obj);
         uint id = target.Id;
-        if (intern.IsNull || id == intern.PlayerCreatureId || !InteractInput.ClickLocks(id)) return _defaultActionOrig(self, obj);
+        if (intern.IsNull || id == intern.PlayerCreatureId) return _defaultActionOrig(self, obj);
         byte kind = target.Type;
         // A corpse is loot, not a target: its click keeps the vanilla UseObject.
         bool lockable = (kind == TabTargetCore.TypeCreature && !Dead(target))

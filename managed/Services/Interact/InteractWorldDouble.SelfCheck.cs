@@ -38,7 +38,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
     internal readonly HashSet<uint> Barks = new();
     /// <summary>Every conversation that opened, and whether it opened in the game's own window.</summary>
     internal readonly List<(uint Id, bool GameWindow)> Conversations = new();
-    /// <summary>Every lock TabTarget's click-to-lock took after a default action.</summary>
+    /// <summary>Every lock a default action moved: none, as Interact's goes past click-to-lock (TabTargetVanillaAction
+    /// proves that on the service); E123 reads it.</summary>
     internal readonly List<uint> LockChanges = new();
     /// <summary>The default actions the server refused, which leave the object as it was.</summary>
     internal readonly List<uint> ServerRefused = new();
@@ -67,7 +68,6 @@ internal sealed class InteractWorldDouble : IInteractWorld
         Acts.Add(id);
         InteractInput.DefaultActionSeen(id);
         if (PossessedBarred) ServerRefused.Add(id);
-        if (TabTarget.Enabled.V && InteractInput.ClickLocks(id)) { LockChanges.Add(id); Lock = id; }
     }
     public void WalkTo(uint id, Vector3 point) { Acts.Add(id); Walks.Add(point); }
     public void ShowLine(string text) => Lines.Add(text);

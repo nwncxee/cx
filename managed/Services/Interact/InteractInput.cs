@@ -17,8 +17,6 @@ internal sealed class InteractState
     /// <summary>The locked objects, items and creatures an Interact press tried: a locked one is passed over until it
     /// reads unlocked, an item while it lies on the ground, a creature until it opens a conversation.</summary>
     internal readonly HashSet<uint> Tried = new();
-    /// <summary>An Interact press is running its default action, so the click-to-lock leaves the lock alone.</summary>
-    internal bool Acting;
     /// <summary>Whether the world has the feedback sound's resref, as the last edit or press found it; null until one
     /// looked.</summary>
     internal bool? SoundFound;
@@ -91,9 +89,7 @@ internal static class InteractInput
         if (code > 0) S.Held = code;
         Thing? picked = InteractCore.Pick(key, world, S, out bool refused);
         if (picked is not { } t) { Feedback(world, refused ? RefusedLine : Lines[(int)key]); return took; }
-        S.Acting = true;
-        try { Act(world, t); }
-        finally { S.Acting = false; }
+        Act(world, t);
         return took;
     }
 
@@ -129,10 +125,6 @@ internal static class InteractInput
 
     /// <summary>Every default action the engine runs on an object, a mouse click's as well as Interact's own.</summary>
     internal static void DefaultActionSeen(uint id) { }
-
-    /// <summary>Whether TabTarget's click-to-lock takes the object a default action just ran on: false when the action
-    /// was an Interact press, which never moves the lock.</summary>
-    internal static bool ClickLocks(uint id) => !S.Acting;
 
     /// <summary>A conversation window opened with <paramref name="id"/> in CX's dialog.</summary>
     internal static void ConversationOpened(uint id) => S.Tried.Remove(id);
