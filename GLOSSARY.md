@@ -174,6 +174,19 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   second abstraction. A non-focusable Window is skipped by focus hit-testing but still
   drawn and still drives the cursor. Not a **capability** (see Server NUI primitives).
 
+## Controls
+
+- **Interact** — the key, and the feature behind it, that does the next non-combat thing within
+  reach with one press: the first **Interact rule**, in their fixed order, that finds a target runs
+  that object's own default action, the one a click gives. With the action camera on or a
+  tab-target lock held, it acts on that target only. Avoid: use key, action key.
+- **Interact rule** — one filter, one range and one key of its own: Transition (2m), Loot, Pick up,
+  Door and Talk (10m each). Inside a rule the nearest candidate in line of sight wins, and the rule
+  ends in the object's default action. A rule never fights.
+- **Feedback line** — the one red line at the top centre of the screen that says an Interact press
+  found nothing it may act on, one wording per key. It holds 2.5s, fades over 0.6s, and a repeat
+  press restarts the hold rather than stacking a line.
+
 ## Settings
 
 - **Knob** — one user-adjustable value the extender exposes, declared once by the feature that owns
