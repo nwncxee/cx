@@ -206,14 +206,14 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
-        internal struct Pool { internal ModelDef Water, Stock, Deck; internal int WaterPart, StockPart, DeckPart; }
+        internal struct Pool { internal ModelDef Water, Stock, Deck, Pond; internal int WaterPart, StockPart, DeckPart, PondPart; }
 
         /// <summary>The pool's stock-water diffuse: no render hint names it water, only its bumpy-shiny <c>.txi</c>.</summary>
         private const string StockWater = "cxpoolstock";
 
-        /// <summary>A walkmesh bed at z 0 under three static trimesh surfaces at z 1, each holding a recipe interned
-        /// and assigned as the seam feed does: render hint <c>water</c> at x -3.4, stock water (no hint, a
-        /// bumpy-shiny diffuse) at x 0, and a plain deck at x 3.4.</summary>
+        /// <summary>A walkmesh bed at z 0 under four trimesh surfaces at z 1, each holding a recipe interned and assigned
+        /// as the seam feed does: statics with render hint <c>water</c> at x -3.4, stock water (no hint, a bumpy-shiny
+        /// diffuse) at x 0 and a plain deck at x 3.4, and a placeable's <c>water</c> pond at (0, -3.4).</summary>
         internal static Pool BuildPool(DbId scene, Vector3 pos)
         {
             DbId bed = Obj(scene, Model("poolbed", HitTest.ClassTile, Quad(0f, 0f, 5f, 2), NodeKind.Aabb),
@@ -221,23 +221,25 @@ public static unsafe partial class HitTestCheck
             var pool = new Pool
             {
                 Water = Surface("poolwater", -3.4f, "water", ""), Stock = Surface("poolstock", 0f, "", StockWater),
-                Deck = Surface("pooldeck", 3.4f, "", ""),
+                Deck = Surface("pooldeck", 3.4f, "", ""), Pond = Surface("poolpond", 0f, "water", ""),
             };
             TexId stock = TexRegistry.Acquire(StockWater);
             TexRegistry.Land(stock, 0xE7000001u, 64, bumpyShiny: true);
             pool.WaterPart = Surfaced(scene, pool.Water, pos);
             pool.StockPart = Surfaced(scene, pool.Stock, pos);
             pool.DeckPart = Surfaced(scene, pool.Deck, pos);
+            pool.PondPart = Surfaced(scene, pool.Pond, pos + new Vector3(0f, -3.4f, 0f), isStatic: false);
             TexRegistry.Release(stock);
             Array.Resize(ref _objs, _objs.Length + 1);
             _objs[^1] = bed;
             return pool;
         }
 
-        /// <summary>Place <paramref name="model"/> as a static and give its part the recipe the seam feed would.</summary>
-        private static int Surfaced(DbId scene, ModelDef model, Vector3 pos)
+        /// <summary>Place <paramref name="model"/>, a static tile part or a placeable, and give its part the recipe the
+        /// seam feed would.</summary>
+        private static int Surfaced(DbId scene, ModelDef model, Vector3 pos, bool isStatic = true)
         {
-            DbId o = Obj(scene, model, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            DbId o = Obj(scene, model, pos, Quaternion.Identity, 1f, isStatic ? HitTest.ClassTile : (byte)0, isStatic);
             Array.Resize(ref _objs, _objs.Length + 1);
             _objs[^1] = o;
             int p = SceneDb.ObjPartFirst[o.Index];

@@ -501,12 +501,15 @@ public static unsafe partial class HitTestCheck
         Vector3 water = at + new Vector3(-3.4f, 0f, 0f), deck = at + new Vector3(3.4f, 0f, 0f);
         int recipes = DrawRecipe.Count, inUse = DrawRecipe.RetiredInUse;
         Fixture.Pool pool = Fixture.BuildPool(world.Scene, at);
-        if (!HitTest.IsWater(pool.WaterPart) || !HitTest.IsWater(pool.StockPart) || HitTest.IsWater(pool.DeckPart))
-            ok = Fail(log, "the hinted water and the stock water did not both read as water, or the deck did");
+        if (!HitTest.IsWater(pool.WaterPart) || !HitTest.IsWater(pool.StockPart) || !HitTest.IsWater(pool.PondPart)
+            || HitTest.IsWater(pool.DeckPart))
+            ok = Fail(log, "the hinted water, the stock water and the placeable's pond did not all read as water, or the deck did");
         ok &= LandsAt(log, world.Scene, water, false, 1f, "a plain cast onto water");
         ok &= LandsAt(log, world.Scene, water, true, 0f, "a foot cast onto water");
         ok &= LandsAt(log, world.Scene, at, true, 0f, "a foot cast onto stock water with shiny water off");
         ok &= LandsAt(log, world.Scene, deck, true, 1f, "a foot cast onto a plain deck");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(0f, -3.4f, 0f), false, 1f, "a plain cast onto a placeable's pond");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(0f, -3.4f, 0f), true, 0f, "a foot cast onto a placeable's pond");
         ok &= FootCastThroughWater(log, world.Scene, water);
         Fixture.Tear();
         if (DrawRecipe.Count != recipes || DrawRecipe.RetiredInUse != inUse)
