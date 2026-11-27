@@ -17,9 +17,6 @@ public sealed unsafe class AirArea : IExtenderService
     /// <summary>Outside the tile window <c>TexStream</c> closes after the original, so the tile lookups pass straight through.</summary>
     private const int ChainPriority = 60;
 
-    /// <summary>Below the links that serve the call: this one only notes which tileset answered to which resref.</summary>
-    private const int TileSetPriority = 4;
-
     /// <summary>The place table's resref and its two columns.</summary>
     private const string Table = "cx_airplace", TilesetColumn = "Tileset", PlaceColumn = "Place";
 
@@ -43,23 +40,8 @@ public sealed unsafe class AirArea : IExtenderService
                                              SymbolMap.ExoStringInit, SymbolMap.ExoStringDtor);
         _s.Rules = Native.Sym(SymbolMap.Rules);
         _s.ResMan = Native.Sym(SymbolMap.ExoResMan);
-        _s.Set = hooks.ChainTileSetGet(&OnGetTileSet, TileSetPriority);
         _s.Load = hooks.ChainAreaLoadArea(&OnLoadArea, ChainPriority);
-        if (_s.Set == null || _s.Load == null) log.Always("AirArea: the area load did not chain -- every area's air reads as an outdoor meadow with no tileset");
-    }
-
-    [UnmanagedCallersOnly]
-    private static IntPtr OnGetTileSet(IntPtr mgr, IntPtr resref)
-    {
-        IntPtr set = (*_s.Set)(mgr, resref);
-        if (set != IntPtr.Zero && resref != IntPtr.Zero)
-        {
-            int n = 0; byte* p = (byte*)resref;
-            while (n < ResRef.Chars && p[n] != 0) n++;
-            _s.SetPtr = set;
-            _s.SetName = System.Text.Encoding.ASCII.GetString(p, n);
-        }
-        return set;
+        if (_s.Load == null) log.Always("AirArea: the area load did not chain -- every area's air reads as an outdoor meadow with no tileset");
     }
 
     [UnmanagedCallersOnly]
@@ -75,7 +57,7 @@ public sealed unsafe class AirArea : IExtenderService
     {
         AirAreaState s = _s;
         IntPtr set = area.TileSet.Ptr;
-        string tileset = set != IntPtr.Zero && set == s.SetPtr ? s.SetName : string.Empty;
+        string tileset = set != IntPtr.Zero ? Weather.Tileset : string.Empty;
         var corners = new List<string[]>();
         var edges = new List<string[]>();
         var trunks = new List<Vector2>();
@@ -140,15 +122,13 @@ public sealed unsafe class AirArea : IExtenderService
     }
 }
 
-/// <summary>The lifetime owner: the chain slots, the last tileset the load named and the last area's features and trunks.</summary>
+/// <summary>The lifetime owner: the chain slot and the last area's features and trunks.</summary>
 internal sealed unsafe class AirAreaState
 {
     internal ExtenderLog? Log;
-    internal TileSetGetFn* Set;
     internal AreaLoadAreaFn* Load;
-    internal IntPtr Rules, ResMan, SetPtr;
+    internal IntPtr Rules, ResMan;
     internal bool TableReady;
-    internal string SetName = string.Empty;
     internal AreaFeatures Features = AreaFeatures.Of(string.Empty, 0, [], []);
     internal Vector2[] Trunks = [];
 }
