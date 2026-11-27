@@ -12,13 +12,13 @@ internal static class AirWispMarch
 
     /// <summary>The share of what lies behind the wisps that a ray from <paramref name="eye"/> along <paramref name="dir"/>
     /// keeps, out to <paramref name="reach"/> metres, as the stage marches the band <paramref name="w"/> describes.</summary>
-    internal static float Keep(ReadOnlySpan<Vector4> w, Vector3 eye, Vector3 dir, float reach = float.MaxValue)
+    internal static float Keep(in AirWisp w, Vector3 eye, Vector3 dir, float reach = float.MaxValue)
     {
         string stage = Stage;
         int steps = (int)AirDustMarch.Const("CX_WISP_STEPS", stage);
         float far = AirDustMarch.Const("CX_WISP_FAR", stage), clear = AirDustMarch.Const("CX_WISP_CLEAR", stage) * far;
         reach = MathF.Min(reach, far);
-        float lo = w[0].X, depth = w[0].Y, t0 = 0f, t1 = reach;
+        float lo = w.Floor, depth = w.Depth, t0 = 0f, t1 = reach;
         if (MathF.Abs(dir.Z) > 1e-4f)
         {
             float a = (lo - eye.Z) / dir.Z, b = (lo + depth - eye.Z) / dir.Z;
@@ -32,9 +32,9 @@ internal static class AirWispMarch
         {
             Vector3 p = eye + dir * (t0 + (k + 0.5f) * dt);
             float z = p.Z - lo;
-            float left = Vector2.Dot(new Vector2(p.X, p.Y) - new Vector2(w[2].Z, w[2].W), new Vector2(w[2].X, w[2].Y)) > w[0].W ? w[3].Y : w[3].X;
+            float left = Vector2.Dot(new Vector2(p.X, p.Y) - w.Feet, w.Heading) > w.Line ? w.Ahead : w.Behind;
             float t = t0 + (k + 0.5f) * dt, s = Math.Clamp((t - clear) / (far - clear), 0f, 1f), fade = 1f - s * s * (3f - 2f * s);
-            tau += w[0].Z * left * fade * MathF.Sin(MathF.PI * Math.Clamp(z / depth, 0f, 1f)) * AirScene.StreakAt(p.X, p.Y) * dt;
+            tau += w.Thick * left * fade * MathF.Sin(MathF.PI * Math.Clamp(z / depth, 0f, 1f)) * AirScene.StreakAt(p.X, p.Y) * dt;
         }
         return MathF.Exp(-tau);
     }

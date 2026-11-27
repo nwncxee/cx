@@ -11,8 +11,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         (string Resref, string? Define, string Label)[] stages =
         [
-            (AirScene.ShdCs, null, "golden air dust"),
-            (AirScene.DustUpCs, null, "golden air dust up"),
+            (AirScene.ShdCs, VkAirDiv, "golden air dust"),
+            (AirScene.DustUpCs, VkAirDiv, "golden air dust up"),
             (AirScene.MoteCs, null, "golden air motes"),
             (AirScene.MoteCs, VkAirSky, "golden air pollen"),
             (AirScene.WispCs, null, "golden air wisps"),

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace CX.Alloy;
 
@@ -7,9 +8,8 @@ namespace CX.Alloy;
 /// thin by a gust front and filling back once it passes. Nothing on the ground touches them.</summary>
 internal static partial class AirScene
 {
-    /// <summary>The stage that lays the wisps over the lit frame, and the records <see cref="PackWisps"/> writes.</summary>
+    /// <summary>The stage that lays the wisps over the lit frame.</summary>
     internal const string WispCs = "cx_airwisp_cs";
-    internal const int WispsPacked = 5;
 
     /// <summary>How far over the floor the wisps' band starts and how deep it is, metres: thickest at its middle.</summary>
     private const float WispLow = 30f, WispDepth = 60f;
@@ -94,7 +94,6 @@ internal static partial class AirScene
         return 2f * float.Lerp(lo, hi, v) - 1f;
     }
 
-
     /// <summary>The lattice point (<paramref name="ix"/>, <paramref name="iy"/>)'s value, 0 to 1.</summary>
     private static float WispLattice(int ix, int iy)
     {
@@ -110,26 +109,32 @@ internal static partial class AirScene
     /// <summary>Do wisps hang over this frame: the air on, in a place that hangs them?</summary>
     internal static bool Hung => _s.Laid && On(_s) && (_s.Look.Layers(_s.Night) & AirLayer.Wisps) != 0;
 
-    /// <summary>Write the wisps into <paramref name="into"/> as the wisp stage reads them: their band, how thick, the front's
-    /// line and heading from the feet, how far carried and stretched, what is left behind and ahead of the line, and the
-    /// streaks' sizes and wander. Returns the records written, 0 when none hang.
-    /// Hot: allocates nothing.</summary>
-    internal static int PackWisps(Span<Vector4> into)
+    /// <summary>Fill <paramref name="into"/> as the wisp stage reads it: their band, how thick, the front's line and heading
+    /// from the feet, how far carried and stretched, what is left behind and ahead of the line, and the streaks' sizes and
+    /// wander. False when no wisps hang. Hot: allocates nothing.</summary>
+    internal static bool PackWisps(out AirWisp into)
     {
-        if (!Hung || into.Length < WispsPacked) return 0;
+        into = default;
+        if (!Hung) return false;
         AirSceneState s = _s;
         AirWispSheet w = s.Sheet;
         int c = Column(s, s.Feet.X, s.Feet.Y);
         float floor = c >= 0 ? s.Floor[c] : 0f;
-        float line = s.Front.Live ? s.Line : float.MaxValue;
-        into[0] = new Vector4(floor + WispLow, WispDepth, WispBase * s.Hold, line);
-        into[1] = new Vector4(w.Carried.X, w.Carried.Y, w.Stretch.X, w.Stretch.Y);
-        into[2] = new Vector4(s.Front.Dir.X, s.Front.Dir.Y, s.Feet.X, s.Feet.Y);
-        into[3] = new Vector4(w.Fill, w.Ahead, WispLong, WispWideA);
-        into[4] = new Vector4(WispWideB, WispWarp, WispKnot, 0f);
-        return WispsPacked;
+        into = new AirWisp(floor + WispLow, WispDepth, WispBase * s.Hold, s.Front.Live ? s.Line : float.MaxValue,
+                           w.Carried, w.Stretch, s.Front.Dir, new Vector2(s.Feet.X, s.Feet.Y),
+                           w.Fill, w.Ahead, WispLong, WispWideA, WispWideB, WispWarp, WispKnot, 0f);
+        return true;
     }
 }
+
+/// <summary>The wisp stage's one record, as its <c>CxWisp</c> reads it: the band's floor and depth, metres, how thick at its
+/// middle, per metre, and the front's line from the feet; how far carried and stretched; the front's heading and the feet;
+/// what is left behind the line and ahead of it, a streak's length and its wide width across the wind; its narrow width,
+/// how far it wanders across the wind and the span of one wander. The last float pads the record to five vec4.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal readonly record struct AirWisp(float Floor, float Depth, float Thick, float Line, Vector2 Carried, Vector2 Stretch,
+                                        Vector2 Heading, Vector2 Feet, float Behind, float Ahead, float Long, float WideA,
+                                        float WideB, float Warp, float Knot, float Pad);
 
 /// <summary>The wisps over one area: how far the wind carried them and how fast, how far it stretches them, and how
 /// much of them is left behind and ahead of a front.</summary>

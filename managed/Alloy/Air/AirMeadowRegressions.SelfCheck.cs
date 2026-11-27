@@ -164,19 +164,18 @@ internal static class AirMeadowRegressions
     private static void GrazingKeepsSky(Checker check)
     {
         Settled(0f);
-        Span<Vector4> w = stackalloc Vector4[AirScene.WispsPacked];
-        AirScene.PackWisps(w);
-        var eye = new Vector3(w[2].Z, w[2].W, 1.7f);
+        AirScene.PackWisps(out AirWisp w);
+        var eye = new Vector3(w.Feet.X, w.Feet.Y, 1.7f);
         float worst = 1f, low = 0f, up = 0f;
         for (int a = 0; a < 16; a++)
         {
             float az = a * MathF.Tau / 16f;
             for (int e = 2; e <= 15; e++)
             {
-                float keep = AirWispMarch.Keep(w, eye, Heading(az, e));
+                float keep = AirWispMarch.Keep(in w, eye, Heading(az, e));
                 if (keep < worst) (worst, low) = (keep, e);
             }
-            up += AirWispMarch.Keep(w, eye, Heading(az, 85f)) / 16f;
+            up += AirWispMarch.Keep(in w, eye, Heading(az, 85f)) / 16f;
         }
         check.Expect(worst >= 0.6f && up < 0.9f,
             $"a ray {low:F0} degrees over the horizon keeps {worst:P0} of the sky behind the wisps, and rays 85 degrees up keep {up:P0} (want 60% at least low down, under 90% overhead)");

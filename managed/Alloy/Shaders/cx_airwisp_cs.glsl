@@ -15,7 +15,15 @@ layout(rgba16f, binding = 0) uniform image2D uHdr;
 /// feet; how far carried and stretched; the front's heading and the player's feet; what is left behind the line and
 /// ahead of it, a streak's length and its wide width across the wind; its narrow width, how far it wanders across the
 /// wind and the span of one wander, metres.
-layout(std430, binding = 15) readonly buffer CxAirWisps { vec4 uWisp[5]; };
+struct CxWisp
+{
+    float floorZ, depth, thick, line;
+    vec2 carried, stretch;
+    vec2 heading, feet;
+    float behind, ahead, streakLen, wideA;
+    float wideB, warp, knot, pad;
+};
+layout(std430, binding = 15) readonly buffer CxAirWisps { CxWisp uWisp; };
 
 /// How far the wisps reach, metres, the share of that out to which they show whole before thinning to none, and the
 /// steps the march takes across the band.
@@ -47,16 +55,16 @@ float CxWispWander(vec2 p)
 /// The streaks at world `xy`, from 0 to 2: bands along the wind that wander across it, each waxing and waning along it.
 float CxWispStreaks(vec2 xy)
 {
-    vec2 stretch = uWisp[1].zw;
+    vec2 stretch = uWisp.stretch;
     float len = length(stretch);
     vec2 dir = len > 0.0 ? stretch / len : vec2(1.0, 0.0);
-    vec2 q = xy - uWisp[1].xy;
-    float along = dot(q, dir) / (uWisp[3].z * max(len, 1.0));
+    vec2 q = xy - uWisp.carried;
+    float along = dot(q, dir) / (uWisp.streakLen * max(len, 1.0));
     float across = q.y * dir.x - q.x * dir.y;
-    float a = across + uWisp[4].y * CxWispWander(vec2(along, across / uWisp[4].z));
-    float b = across + uWisp[4].y * CxWispWander(vec2(along + 7.3, across / uWisp[4].z + 3.1));
-    return 1.0 + 0.6 * sin(CX_TAU * a / uWisp[3].w) * (0.5 + 0.5 * sin(CX_TAU * along + 0.4))
-               + 0.4 * sin(CX_TAU * b / uWisp[4].x + 2.1) * (0.5 + 0.5 * sin(1.7 * CX_TAU * along + 2.9));
+    float a = across + uWisp.warp * CxWispWander(vec2(along, across / uWisp.knot));
+    float b = across + uWisp.warp * CxWispWander(vec2(along + 7.3, across / uWisp.knot + 3.1));
+    return 1.0 + 0.6 * sin(CX_TAU * a / uWisp.wideA) * (0.5 + 0.5 * sin(CX_TAU * along + 0.4))
+               + 0.4 * sin(CX_TAU * b / uWisp.wideB + 2.1) * (0.5 + 0.5 * sin(1.7 * CX_TAU * along + 2.9));
 }
 
 void main()
@@ -75,7 +83,7 @@ void main()
         reach = min(reach, distance(w.xyz / w.w, uEyePos));
     }
     // ponytail: the band lies over the player's floor everywhere; per-column floors off the air's field once a meadow climbs
-    float lo = uWisp[0].x, depth = uWisp[0].y;
+    float lo = uWisp.floorZ, depth = uWisp.depth;
     float t0 = 0.0, t1 = reach;
     if (abs(dir.z) > 1e-4)
     {
@@ -92,9 +100,9 @@ void main()
         float t = t0 + (float(k) + 0.5) * dt;
         vec3 p = uEyePos + dir * t;
         float z = p.z - lo;
-        float left = dot(p.xy - uWisp[2].zw, uWisp[2].xy) > uWisp[0].w ? uWisp[3].y : uWisp[3].x;
+        float left = dot(p.xy - uWisp.feet, uWisp.heading) > uWisp.line ? uWisp.ahead : uWisp.behind;
         float fade = 1.0 - smoothstep(clear, CX_WISP_FAR, t);
-        tau += uWisp[0].z * left * fade * sin(3.14159265 * clamp(z / depth, 0.0, 1.0)) * CxWispStreaks(p.xy) * dt;
+        tau += uWisp.thick * left * fade * sin(0.5 * CX_TAU * clamp(z / depth, 0.0, 1.0)) * CxWispStreaks(p.xy) * dt;
     }
     float keep = exp(-tau);
     vec4 hdr = imageLoad(uHdr, id);

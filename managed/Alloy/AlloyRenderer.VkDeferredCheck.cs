@@ -49,15 +49,12 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(dust.Contains("layout(rgba16f, binding = 0) uniform writeonly image2D uAirOut;")
                   && up.Contains("layout(binding = 8) uniform sampler2D uAirDust;"),
             "the air dust stage stores into an rgba16f block image the lay-over stage samples, the format the pass allocates");
-        foreach (string stage in (ReadOnlySpan<string>)[dust, up])
-            check.Expect(stage.Contains($"const int CX_AIR_DIV = {AirScene.DustDiv};"),
-                $"both air dust stages take a block of {AirScene.DustDiv} pixels a side, the size the pass allocates the block image at");
 
         foreach ((string Ref, string? Define, string Label) s in (ReadOnlySpan<(string, string?, string)>)
                  [(DeferredLights.ShdCs, null, "deferred walk"), (DeferredLights.ShdCs, "CX_FILM_PASS 1", "deferred film"),
                   (DeferredShadows.ShdCs, null, "deferred shadow record"),
                   (MoverDebt.ShdCs, null, "mover debt"), (MoverDebt.ApplyCs, null, "mover debt apply"),
-                  (AirScene.ShdCs, null, "air dust"), (AirScene.DustUpCs, null, "air dust up")])
+                  (AirScene.ShdCs, VkAirDiv, "air dust"), (AirScene.DustUpCs, VkAirDiv, "air dust up")])
         {
             if (VkDefText(s.Ref, s.Define, s.Label, log) is not ({ } t, { } src)) { check.Expect(false, $"{s.Label}: its record contract holds"); continue; }
             if (t.Error != null) { check.Expect(false, $"{s.Label} translates -- {t.Error}"); continue; }
@@ -71,7 +68,7 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(listed != null && Array.IndexOf(listed, o.Binding) >= 0,
                     $"{s.Label}: {o.Name} declares {o.Kind} binding {o.Binding}, which VkDefBindSet has no row for");
             }
-            // the apply and air stages walk no light, so the lighting libraries' loose terms are not theirs to carry
+            // the apply stage walks no light, and the air dust stages read the lamps from their own buffer, so the lighting libraries' loose terms are not theirs to carry
             if (s.Ref is MoverDebt.ApplyCs or AirScene.ShdCs or AirScene.DustUpCs) continue;
             var names = new List<string>(t.Loose.Count);
             foreach (VkLoose u in t.Loose) names.Add(u.Name);

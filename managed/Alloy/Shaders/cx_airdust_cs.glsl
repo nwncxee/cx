@@ -38,8 +38,11 @@ const float CX_AIR_CLIMB = 0.55;
 /// Points along the air a ray crosses where the lamps' light is taken, and lamps of the rig each walks.
 const int CX_AIR_PROBES = 4;
 const int CX_AIR_LAMPS = 32;
-/// The side of the block of the main view one ray stands for, pixels (AirScene.DustDiv, cx_airdustup).
-const int CX_AIR_DIV = 4;
+/// The side of the block of the main view one ray stands for, pixels: AirScene.DustDiv, defined by the build and shared
+/// with cx_airdustup; an override built without it takes 4.
+#ifndef CX_AIR_DIV
+#define CX_AIR_DIV 4
+#endif
 
 /// The group's lamps: where each stands and its reach, and its colour made linear, read once for every ray of the group.
 shared vec4 sLampAt[CX_AIR_LAMPS];

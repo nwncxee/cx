@@ -98,7 +98,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The stage that veils the lit frame with a meadow's wisps, whether it was refused, and the records packed for it.</summary>
         public VkDefStage? Wisps;
         public bool WispsFailed;
-        public readonly Vector4[] WispData = new Vector4[AirScene.WispsPacked];
+        public AirWisp WispData;
     }
 
     private static VkDeferredState _vkdef = new();
@@ -161,10 +161,10 @@ public sealed unsafe partial class AlloyRenderer
         bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
         bool debt = VkDefSlotLights(rig);
         bool dust = AirScene.Lies && VkDefDust(vk, w, h, log);
-        bool motes = AirScene.Floats && VkDefAir(vk, ref d.Motes, ref d.MotesFailed, AirScene.MoteCs, null, AirScene.MotesPacked, "vk air motes", "motes", log);
-        bool pollen = AirScene.Glinting && VkDefAir(vk, ref d.Pollen, ref d.PollenFailed, AirScene.MoteCs, VkAirSky, AirScene.PollenPacked, "vk air pollen", "pollen", log);
-        bool leaves = AirScene.Falling && VkDefAir(vk, ref d.Leaves, ref d.LeavesFailed, AirScene.MoteCs, VkAirSky, AirScene.LeavesPacked, "vk air leaves", "leaves", log);
-        bool wisps = AirScene.Hung && VkDefAir(vk, ref d.Wisps, ref d.WispsFailed, AirScene.WispCs, null, AirScene.WispsPacked, "vk air wisps", "wisps", log);
+        bool motes = AirScene.Floats && VkDefAir(vk, ref d.Motes, ref d.MotesFailed, AirScene.MoteCs, null, AirScene.MotesPacked * sizeof(Vector4), "vk air motes", "motes", log);
+        bool pollen = AirScene.Glinting && VkDefAir(vk, ref d.Pollen, ref d.PollenFailed, AirScene.MoteCs, VkAirSky, AirScene.PollenPacked * sizeof(Vector4), "vk air pollen", "pollen", log);
+        bool leaves = AirScene.Falling && VkDefAir(vk, ref d.Leaves, ref d.LeavesFailed, AirScene.MoteCs, VkAirSky, AirScene.LeavesPacked * sizeof(Vector4), "vk air leaves", "leaves", log);
+        bool wisps = AirScene.Hung && VkDefAir(vk, ref d.Wisps, ref d.WispsFailed, AirScene.WispCs, null, sizeof(AirWisp), "vk air wisps", "wisps", log);
         int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0, looseDust = 0, looseDustUp = 0, looseMotes = 0, loosePollen = 0, looseLeaves = 0, looseWisps = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
@@ -246,10 +246,10 @@ public sealed unsafe partial class AlloyRenderer
             cl.EndLabel();
             cl.EndLabel();
         }
-        if (motes) VkDefAirPass(cl, d.Motes!, d.MoteData, AirScene.PackMotes(d.MoteData), "air motes"u8, s.Hdr, looseMotes, pass, slots, 0, 0);
-        if (pollen) VkDefAirPass(cl, d.Pollen!, d.PollenData, AirScene.PackPollen(d.PollenData), "air pollen"u8, s.Hdr, loosePollen, pass, slots, 0, 0);
-        if (leaves) VkDefAirPass(cl, d.Leaves!, d.LeafData, AirScene.PackLeaves(d.LeafData), "air leaves"u8, s.Hdr, looseLeaves, pass, slots, 0, 0);
-        if (wisps) VkDefAirPass(cl, d.Wisps!, d.WispData, AirScene.PackWisps(d.WispData), "air wisps"u8, s.Hdr, looseWisps, pass, slots,
+        if (motes) VkDefAirPass(cl, d.Motes!, MemoryMarshal.AsBytes(d.MoteData.AsSpan(0, AirScene.PackMotes(d.MoteData))), "air motes"u8, s.Hdr, looseMotes, pass, slots, 0, 0);
+        if (pollen) VkDefAirPass(cl, d.Pollen!, MemoryMarshal.AsBytes(d.PollenData.AsSpan(0, AirScene.PackPollen(d.PollenData))), "air pollen"u8, s.Hdr, loosePollen, pass, slots, 0, 0);
+        if (leaves) VkDefAirPass(cl, d.Leaves!, MemoryMarshal.AsBytes(d.LeafData.AsSpan(0, AirScene.PackLeaves(d.LeafData))), "air leaves"u8, s.Hdr, looseLeaves, pass, slots, 0, 0);
+        if (wisps) VkDefAirPass(cl, d.Wisps!, AirScene.PackWisps(out d.WispData) ? MemoryMarshal.AsBytes(new ReadOnlySpan<AirWisp>(in d.WispData)) : default, "air wisps"u8, s.Hdr, looseWisps, pass, slots,
                                 (w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
         if (sample)
         {
@@ -278,8 +278,8 @@ public sealed unsafe partial class AlloyRenderer
         if (d.DustFailed) return false;
         if (d.Dust == null)
         {
-            d.Dust = VkDefBuild(vk, AirScene.ShdCs, null, "vk air dust", log);
-            d.DustUp = VkDefBuild(vk, AirScene.DustUpCs, null, "vk air dust up", log);
+            d.Dust = VkDefBuild(vk, AirScene.ShdCs, VkAirDiv, "vk air dust", log);
+            d.DustUp = VkDefBuild(vk, AirScene.DustUpCs, VkAirDiv, "vk air dust up", log);
             d.Air = vk.CreateBuffer(new BufferDesc(GroundMist.PackedBytes, BufferUse.Storage, MemoryKind.Device, "vk air field"));
         }
         int lw = (w + AirScene.DustDiv - 1) / AirScene.DustDiv, lh = (h + AirScene.DustDiv - 1) / AirScene.DustDiv;
@@ -297,13 +297,14 @@ public sealed unsafe partial class AlloyRenderer
         return false;
     }
 
-    /// <summary>Send the <paramref name="n"/> records an air stage packed and dispatch it over the frame: <paramref name="gx"/>
+    /// <summary>Send the <paramref name="data"/> an air stage packed and dispatch it over the frame: <paramref name="gx"/>
     /// by <paramref name="gy"/> groups, or with both 0 one invocation a record past the head, none when only the head was packed.</summary>
-    private static void VkDefAirPass(CommandList cl, VkDefStage st, Vector4[] data, int n, ReadOnlySpan<byte> label, ImageId hdr,
+    private static void VkDefAirPass(CommandList cl, VkDefStage st, ReadOnlySpan<byte> data, ReadOnlySpan<byte> label, ImageId hdr,
                                      int loose, int pass, BufferId slots, int gx, int gy)
     {
+        int n = data.Length / sizeof(Vector4);
         if (n <= (gx == 0 ? 1 : 0)) return;
-        cl.UpdateBuffer(st.Own, 0, MemoryMarshal.AsBytes(data.AsSpan(0, n)));
+        cl.UpdateBuffer(st.Own, 0, data);
         cl.BeginLabel(label);
         cl.SetPipeline(st.Pipe);
         VkDefBindSet(cl, st, hdr, default, loose, pass, slots);
@@ -315,15 +316,18 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The define that builds the mote stage lit by the sky rather than the lamps, for a meadow's pollen.</summary>
     private const string VkAirSky = "CX_AIR_SKY 1";
 
-    /// <summary>One air stage and the buffer of <paramref name="records"/> it reads on this device, built the first frame
+    /// <summary>The define that gives both dust stages the block size the pass allocates the dust image at.</summary>
+    private static readonly string VkAirDiv = $"CX_AIR_DIV {AirScene.DustDiv}";
+
+    /// <summary>One air stage and the buffer of <paramref name="bytes"/> it reads on this device, built the first frame
     /// its layer shows. False, logged once, when either was refused: the frame then shows no <paramref name="what"/>.</summary>
     private static bool VkDefAir(VkBackend vk, ref VkDefStage? st, ref bool failed, string resref, string? define,
-                                 int records, string label, string what, ExtenderLog log)
+                                 int bytes, string label, string what, ExtenderLog log)
     {
         if (st != null) return true;
         if (failed) return false;
         st = VkDefBuild(vk, resref, define, label, log);
-        if (st != null) st.Own = vk.CreateBuffer(new BufferDesc(records * 16, BufferUse.Storage, MemoryKind.Device, label));
+        if (st != null) st.Own = vk.CreateBuffer(new BufferDesc(bytes, BufferUse.Storage, MemoryKind.Device, label));
         if (st != null && !st.Own.IsNull) return true;
         st = null;
         failed = true;
@@ -666,7 +670,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (VkDefText(resref, define, label, log, content, out fromContent, pushTail) is not ({ } t, { } src)) return null;
         // a SPIR-V stand-in is for the stage as shipped: the wave define alone leaves its contract as it was
-        VkDefStage? st = VkDefCompile(vk, t, src, label, log, define is null or VkDefWave ? resref : null);
+        VkDefStage? st = VkDefCompile(vk, t, src, label, log, define is null || define == VkDefWave || define == VkAirDiv ? resref : null);
         if (st != null || !fromContent) return st;
         log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
         return VkDefBuild(vk, resref, define, label, log, null, out fromContent, pushTail);

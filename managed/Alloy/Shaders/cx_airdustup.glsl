@@ -11,8 +11,11 @@ layout(binding = 7) uniform sampler2D uGbDepth;
 layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(binding = 8) uniform sampler2D uAirDust;
 
-/// The side of the block of the main view one of cx_airdust_cs's rays stands for, pixels (its CX_AIR_DIV).
-const int CX_AIR_DIV = 4;
+/// The side of the block of the main view one of cx_airdust_cs's rays stands for, pixels: AirScene.DustDiv, defined by
+/// the build; an override built without it takes 4.
+#ifndef CX_AIR_DIV
+#define CX_AIR_DIV 4
+#endif
 /// Depth difference, as a share of the farther of two depths, past which a block has no say over a pixel.
 const float CX_AIR_EDGE = 0.04;
 
