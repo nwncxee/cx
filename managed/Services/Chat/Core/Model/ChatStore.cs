@@ -5,19 +5,26 @@ using CX.Framework;
 namespace CX.Services.Chat.Core;
 
 /// <summary>
-/// Fixed-capacity ring of <see cref="ChatLine"/>s (overwrites oldest). Tab views are materialised at
-/// read by walking the ring backward (newest-first), skipping non-matching lines, stopping when the
-/// caller's buffer fills -- no per-tab buffers, zero allocation in the walk beyond the caller's slice.
+/// The session's chat backlog: a fixed ring of <see cref="ChatLine"/>s that overwrites its oldest, beside a list of
+/// every tell, which is never overwritten. Tab views walk both newest-first in arrival order, skipping non-matching
+/// lines, until the caller's buffer fills -- no per-tab buffers, no allocation in the walk.
 /// </summary>
 public sealed class ChatStore
 {
-    /// <summary>Backlog depth. ponytail: 512 lines is plenty for a chat tab; grow the const if a
-    /// use-case needs deeper history (cost is a bigger flat array, nothing else changes).</summary>
-    public const int Capacity = 512;
+    /// <summary>Backlog depth for every line but a tell; tells are kept on top of it until <see cref="Clear"/>.</summary>
+    public const int Capacity = 2048;
+
+    /// <summary>The tell channel flag: a line carrying it is kept for the whole session.</summary>
+    private const uint TellChannel = 0x002;  // not-an-offset: chat channel flag
 
     private readonly ChatLine[] _ring = new ChatLine[Capacity];
+    private readonly long[] _ringSeq = new long[Capacity];
     private int _next;   // next write slot
     private int _size;   // valid entries, <= Capacity
+    private ChatLine[] _tells = new ChatLine[64];
+    private long[] _tellSeq = new long[64];
+    private int _tellCount;
+    private long _seq;   // arrival order across the ring and the tells
     private volatile int _version;
     private readonly List<Action<ChatLine>> _observers = new();
 
@@ -28,18 +35,43 @@ public sealed class ChatStore
     /// <summary>Register an ingest observer, invoked (in add order) for every <see cref="Append"/>.</summary>
     public void AddObserver(Action<ChatLine> observer) => _observers.Add(observer);
 
-    /// <summary>Store <paramref name="line"/> (overwriting the oldest when full), then notify observers.</summary>
+    /// <summary>Store <paramref name="line"/> (a tell for the session, anything else overwriting the oldest when
+    /// full), then notify observers.</summary>
     public void Append(ChatLine line)
     {
-        _ring[_next] = line;
-        _next = (_next + 1) % Capacity;
-        if (_size < Capacity) _size++;
+        long seq = ++_seq;
+        if ((line.Channel & TellChannel) != 0) KeepTell(line, seq);
+        else
+        {
+            _ring[_next] = line;
+            _ringSeq[_next] = seq;
+            _next = (_next + 1) % Capacity;
+            if (_size < Capacity) _size++;
+        }
         _version++;
         for (int i = 0; i < _observers.Count; i++) _observers[i](line);
     }
 
-    /// <summary>Number of lines currently retained.</summary>
-    public int Count => _size;
+    /// <summary>Append a tell to the session's list, growing it by doubling; the count is published last, so a
+    /// concurrent <see cref="View(uint,uint?,ChatLine[],int,string?)"/> never reads a slot not yet written.</summary>
+    private void KeepTell(ChatLine line, long seq)
+    {
+        ChatLine[] tells = _tells;
+        long[] seqs = _tellSeq;
+        if (_tellCount == tells.Length)
+        {
+            Array.Resize(ref tells, tells.Length * 2);
+            Array.Resize(ref seqs, seqs.Length * 2);
+        }
+        tells[_tellCount] = line;
+        seqs[_tellCount] = seq;
+        _tellSeq = seqs;
+        _tells = tells;
+        _tellCount++;
+    }
+
+    /// <summary>Number of lines currently retained, tells included.</summary>
+    public int Count => _size + _tellCount;
 
     /// <summary>Drop all retained lines (a session boundary). Zero-alloc; drops the ChatLine refs so
     /// the GC can reclaim the prior session's lines.</summary>
@@ -48,6 +80,8 @@ public sealed class ChatStore
         Array.Clear(_ring, 0, _ring.Length);
         _next = 0;
         _size = 0;
+        _tellCount = 0;
+        Array.Clear(_tells, 0, _tells.Length);
         _version++;
     }
 
@@ -70,12 +104,19 @@ public sealed class ChatStore
     {
         int n = 0, skipped = 0;
         bool hasPin = tellPinName != null && tellPinName.Length > 0;
-        for (int seen = 0; seen < _size && n < dest.Length; seen++)
+        ChatLine[] tells = _tells;
+        long[] tellSeq = _tellSeq;
+        int t = Math.Min(_tellCount, Math.Min(tells.Length, tellSeq.Length)) - 1;
+        int seen = 0;
+        while (n < dest.Length)
         {
-            int idx = _next - 1 - seen;
-            idx %= Capacity;
+            int idx = (_next - 1 - seen) % Capacity;
             if (idx < 0) idx += Capacity;
-            ChatLine line = _ring[idx];
+            bool ring = seen < _size;
+            ChatLine line;
+            if (t >= 0 && (!ring || tellSeq[t] > _ringSeq[idx])) line = tells[t--];
+            else if (ring) { line = _ring[idx]; seen++; }
+            else break;
 
             if ((channelMask & line.Channel) == 0) continue;
             if (playerId.HasValue && line.PlayerId != playerId.Value
