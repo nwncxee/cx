@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Chat;
@@ -236,7 +235,7 @@ public sealed unsafe partial class QuickbarService
         if (key == SdlkBackspace || key == SdlkDelete) _cx.Keys.Clear(b);
         else
         {
-            string name = KeyName((int)key);
+            string name = KeyNames.Name((int)key);
             if (name.Length == 0) return true;
             _cx.Keys.Bind(b, (int)key, ModsOf(sdlMods), name);
         }
@@ -249,13 +248,6 @@ public sealed unsafe partial class QuickbarService
 
     private static int ModsOf(int sdlMods) => ((sdlMods & KmodCtrl) != 0 ? QuickbarKeys.Ctrl : 0) | ((sdlMods & KmodShift) != 0 ? QuickbarKeys.Shift : 0)
                                             | ((sdlMods & KmodLAlt) != 0 ? QuickbarKeys.Alt : 0);
-
-    private static string KeyName(int key)
-    {
-        if (EngineFn.SdlGetKeyName == null) return "";
-        byte* p = EngineFn.SdlGetKeyName(key);
-        return p == null ? "" : Marshal.PtrToStringUTF8((IntPtr)p) ?? "";
-    }
 
     /// <summary>The settings row's press: every set back to the game's F1..F12. Cold.</summary>
     internal static void ResetKeys()

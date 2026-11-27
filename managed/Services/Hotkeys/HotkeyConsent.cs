@@ -159,7 +159,7 @@ internal static unsafe class HotkeyConsent
     }
 
     /// <summary>
-    /// Human-readable label. SDLK codes go through SDL_GetKeyName; mouse codes (MouseBase + button)
+    /// Human-readable label. SDLK codes go through KeyNames.Name; mouse codes (MouseBase + button)
     /// and modifier prefixes are ours. The consent prompt is a security surface -- it MUST read
     /// "Ctrl+F", not "key ?", so the player knows what they are allowing.
     /// </summary>
@@ -189,12 +189,7 @@ internal static unsafe class HotkeyConsent
                 _ => $"Mouse {btn}",
             };
         }
-        if (EngineFn.SdlGetKeyName != null)
-        {
-            byte* p = EngineFn.SdlGetKeyName(code);
-            string s = p != null ? Marshal.PtrToStringUTF8((IntPtr)p) ?? "" : "";
-            if (s.Length > 0) return s;
-        }
-        return $"key {code}";
+        string s = KeyNames.Name(code);
+        return s.Length > 0 ? s : $"key {code}";
     }
 }

@@ -172,8 +172,7 @@ internal static class FeedbackApprovedExamples
         }
         finally
         {
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         return check.Ok;
     }

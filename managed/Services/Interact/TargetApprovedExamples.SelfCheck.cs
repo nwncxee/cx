@@ -185,8 +185,7 @@ internal static class TargetApprovedExamples
         finally
         {
             TabTarget.Enabled.Reset();
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         return check.Ok;
     }

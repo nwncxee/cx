@@ -25,14 +25,21 @@ internal static unsafe class KeyNames
         fixed (byte* p = utf8) return fromName(p);
     }
 
+    /// <summary>Whether <paramref name="name"/> is press <paramref name="code"/>: a text key setting's
+    /// <see cref="Knob.BindsKey"/>.</summary>
+    internal static bool Binds(string name, int code) => Code(name) == code;
+
     /// <summary>The name a setting stores for press <paramref name="code"/>, the one <see cref="Code"/> reads back: a
     /// printable key as its upper-case character, Mouse1 to Mouse5 for -1 to -5, else SDL's name. "" when SDL has none.</summary>
     internal static string Name(int code)
     {
         if (code is >= -5 and <= -1) return "Mouse" + (-code).ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (code is > ' ' and < 0x7f) return char.ToUpperInvariant((char)code).ToString();
-        if (code <= 0 || EngineFn.SdlGetKeyName == null) return "";
-        byte* p = EngineFn.SdlGetKeyName(code);
+#pragma warning disable RS0030 // KeyNames.Name is the one writer from SDL's key-name table
+        var toName = EngineFn.SdlGetKeyName;
+#pragma warning restore RS0030
+        if (code <= 0 || toName == null) return "";
+        byte* p = toName(code);
         return p == null ? "" : new string((sbyte*)p);
     }
 }

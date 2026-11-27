@@ -13,6 +13,11 @@ internal static class InteractKnobs
     internal static readonly Knob<bool> FeedbackText, FeedbackSound;
     internal static readonly Knob<string> Sound;
 
+    /// <summary>The reaches as the help text writes them, from the rules' own constants.</summary>
+    private static readonly string Near = Metres(InteractCore.TransitionReach), Far = Metres(InteractCore.Reach);
+
+    private static string Metres(float m) => m.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "m";
+
     static InteractKnobs()
     {
         G = KnobGroup.Declare("interact", "Controls", "Interact", order: 545, master: "Enable the Interact keys",
@@ -20,18 +25,21 @@ internal static class InteractKnobs
                       + "talk to, as clicking it would. Off, every Interact key reaches the game.");
         Enabled = G.Master!;
         G.Section("Keys");
-        Key = G.KeyBind("key", "Interact", help: "Runs every rule below in order and acts on the first thing that qualifies.");
-        TransitionKey = G.KeyBind("transitionkey", "Transition", help: "Takes an area transition within 2m.");
-        LootKey = G.KeyBind("lootkey", "Loot", help: "Opens the nearest corpse or body bag within 10m.");
-        PickUpKey = G.KeyBind("pickupkey", "Pick up", help: "Picks up the nearest item on the ground within 10m.");
-        DoorKey = G.KeyBind("doorkey", "Door", help: "Opens the nearest closed door within 10m.");
-        TalkKey = G.KeyBind("talkkey", "Talk", help: "Talks to the nearest friendly or neutral creature within 10m.");
+        Key = G.KeyBind("key", "Interact", help: "Runs every rule below in order and acts on the first thing that qualifies.",
+                       changed: InteractInput.KeysChanged);
+        TransitionKey = G.KeyBind("transitionkey", "Transition", help: $"Takes an area transition within {Near}.",
+                                  changed: InteractInput.KeysChanged);
+        LootKey = G.KeyBind("lootkey", "Loot", help: $"Opens the nearest corpse or body bag within {Far}.", changed: InteractInput.KeysChanged);
+        PickUpKey = G.KeyBind("pickupkey", "Pick up", help: $"Picks up the nearest item on the ground within {Far}.",
+                              changed: InteractInput.KeysChanged);
+        DoorKey = G.KeyBind("doorkey", "Door", help: $"Opens the nearest closed door within {Far}.");
+        TalkKey = G.KeyBind("talkkey", "Talk", help: $"Talks to the nearest friendly or neutral creature within {Far}.");
         G.Section("The Interact key runs");
-        Transitions = G.Toggle("transition", "Area transitions", true, help: "An exit within 2m comes before everything else.");
-        Loot = G.Toggle("loot", "Loot", true, help: "A corpse or body bag you can loot, within 10m.");
-        PickUp = G.Toggle("pickup", "Pick up", true, help: "An item on the ground, within 10m.");
-        Doors = G.Toggle("door", "Doors", true, help: "A closed door, within 10m.");
-        Talk = G.Toggle("talk", "Talk", true, help: "A friendly or neutral creature outside your party, within 10m.");
+        Transitions = G.Toggle("transition", "Area transitions", true, help: $"An exit within {Near} comes before everything else.");
+        Loot = G.Toggle("loot", "Loot", true, help: $"A corpse or body bag you can loot, within {Far}.");
+        PickUp = G.Toggle("pickup", "Pick up", true, help: $"An item on the ground, within {Far}.");
+        Doors = G.Toggle("door", "Doors", true, help: $"A closed door, within {Far}.");
+        Talk = G.Toggle("talk", "Talk", true, help: $"A friendly or neutral creature outside your party, within {Far}.");
         G.Section("When nothing qualifies");
         FeedbackText = G.Toggle("feedbacktext", "Show a line", true, help: "A short line at the top of the screen says why nothing happened.");
         FeedbackSound = G.Toggle("feedbacksound", "Play a sound", true, help: "A quiet sound plays.");

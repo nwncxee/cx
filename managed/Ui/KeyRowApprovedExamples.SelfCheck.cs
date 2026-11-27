@@ -6,7 +6,7 @@ using CX.Services.Interact;
 namespace CX.Ui;
 
 /// <summary>The press-to-bind key rows' approved examples: the Interact group's real rows in a panel the test drives
-/// as the player would, or in the settings service's own panel pressed through the UI host, then a press in play on a
+/// as the player would, or in a settings window of its own pressed through the UI host, then a press in play on a
 /// world double. Oracle: the key names, codes and Key Mapping names written here.</summary>
 public sealed partial class KnobPanel
 {
@@ -31,14 +31,21 @@ public sealed partial class KnobPanel
             return (p, w);
         }
 
-        KnobPanel Live()
+        (KnobPanel, Window) Live()
         {
             GameGate.InGame = true;
-            KnobPanelService.Open(InteractKnobs.G);
-            KnobPanel p = KnobPanelService.Panel;
-            p.Rebase(1280f, 720f, FacePx, body, small);
+            var p = new KnobPanel { Category = Array.IndexOf(KnobCategories, "Controls") };
+            p.OpenAt(1280f, 720f, FacePx, body, small);
             p.Show(InteractKnobs.G);
-            return p;
+            Window win = KnobPanelService.NewWindow(p);
+            KnobPanelService.Sync(p, win);
+            return (p, win);
+        }
+
+        void Shut(KnobPanel p, Window win)
+        {
+            KnobPanelService.Close(p, win);
+            UiHost.Unregister(win);
         }
         try
         {
@@ -112,14 +119,14 @@ public sealed partial class KnobPanel
             {
                 var w = InteractWorldDouble.Install();
                 uint bag = w.Bag(3f);
-                KnobPanel p = Live();
+                var (p, win) = Live();
                 Row r = Press(p, InteractKnobs.Key, out int x, out int y);
                 bool waited = p.Waiting(r);
                 bool took = UiHost.DispatchMouseButton(true, ThumbButton, x, y);
                 UiHost.DispatchMouseButton(false, ThumbButton, x, y);
                 check.Expect(p.Open && waited && took, $"E4 the waiting row takes the thumb button from the UI host: open {p.Open}, waited {waited}, took {took}");
                 check.Expect(InteractKnobs.Key.V == "Mouse4" && Value(p, InteractKnobs.Key) == "Mouse4", $"E4 the row reads Mouse4 ({Value(p, InteractKnobs.Key)})");
-                KnobPanelService.Close();
+                Shut(p, win);
                 check.Expect(w.PressCode(-4) && w.Did(bag), $"E4 the thumb button runs Interact: {w.Seen}");
             }
 
@@ -216,13 +223,13 @@ public sealed partial class KnobPanel
                 CameraModes.Chase.ActionKey.Set("]");
                 var w = InteractWorldDouble.Install();
                 bool action = MouseLook.Action.V;
-                KnobPanel p = Live();
+                var (p, win) = Live();
                 Row r = Press(p, InteractKnobs.Key, out _, out _);
                 check.Expect(p.Waiting(r), "E71 the row waits for a key");
                 bool took = w.PressUi(']');
                 check.Expect(took && p.KeyWarning != null && w.Acts.Count == 0 && MouseLook.Action.V == action,
                     $"E71 the settings window takes ] (its clash warning shows), nothing runs in play and the action camera stays {action}: took {took}, action {MouseLook.Action.V}, {w.Seen}");
-                KnobPanelService.Close();
+                Shut(p, win);
             }
 
             // Given F is bound to Interact
@@ -302,8 +309,7 @@ public sealed partial class KnobPanel
             GameGate.InGame = inGame;
             CameraModes.Chase.ActionKey.Reset();
             MouseLook.Action.Reset();
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         return check.Ok;
     }

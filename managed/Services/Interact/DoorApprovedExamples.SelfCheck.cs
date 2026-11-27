@@ -182,8 +182,7 @@ internal static class DoorApprovedExamples
         }
         finally
         {
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         return check.Ok;
     }

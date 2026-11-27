@@ -205,8 +205,7 @@ internal static class TalkApprovedExamples
         {
             TabTarget.Enabled.Reset();
             DialogKnobs.Enabled.Reset();
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         return check.Ok;
     }

@@ -224,7 +224,8 @@ public sealed unsafe class TabTargetService : IExtenderService
     }
 
     private static bool Hostile(CNWCObject creature) => new CNWCCreature(creature.Ptr).Attitude is not (AttitudeNeutral or AttitudeFriend);
-    private static bool Dead(CNWCObject creature) => new CNWCCreature(creature.Ptr).AiFlags == 0;
+    /// <summary>Whether <paramref name="creature"/> reads dead: its AI flags are all clear.</summary>
+    internal static bool Dead(CNWCObject creature) => new CNWCCreature(creature.Ptr).AiFlags == 0;
 
     private static void SetLock(uint id, IntPtr area)
     {

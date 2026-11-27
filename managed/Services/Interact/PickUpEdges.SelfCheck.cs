@@ -50,8 +50,7 @@ internal static class PickUpEdges
         }
         finally
         {
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "PickUpEdges.SelfCheck: passed" : "PickUpEdges.SelfCheck: FAILED");
         return check.Ok;

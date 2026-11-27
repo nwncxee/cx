@@ -184,8 +184,8 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   Door and Talk (10m each). Inside a rule the nearest candidate in line of sight wins, and the rule
   ends in the object's default action. A rule never fights.
 - **Feedback line** — the one red line at the top centre of the screen that says an Interact press
-  found nothing it may act on, one wording per key. It holds 2.5s, fades over 0.6s, and a repeat
-  press restarts the hold rather than stacking a line.
+  found nothing it may act on, one wording per key. It holds a moment, then fades; a repeat press
+  restarts the hold rather than stacking a line.
 
 ## Settings
 

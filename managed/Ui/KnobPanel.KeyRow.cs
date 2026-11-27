@@ -1,5 +1,4 @@
 using CX.Framework;
-using CX.Services.Camera;
 using CX.Services.Interact;
 using static CX.Ui.PanelChrome;
 
@@ -114,8 +113,7 @@ public sealed partial class KnobPanel
     {
         int code = KeyNames.Code(name);
         if (code == 0) return null;
-        foreach (CameraModeKnobs m in CameraModes.ByMode)
-            if (KeyNames.Code(m.ActionKey.V) == code) return name + " already toggles the action camera.";
+        if (KnobGroup.KeyHolder(code, row, KeyNames.Code) is { } k) return name + " is already bound to " + k.Label + " in " + k.Group.Title + ".";
         return InteractInput.GameKeyAction(code) is { } action ? name + " already does " + action + " in the game's Key Mapping." : null;
     }
 }

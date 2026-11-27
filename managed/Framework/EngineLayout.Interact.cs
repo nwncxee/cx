@@ -29,7 +29,6 @@ public static unsafe partial class EngineLayout
     /// and <see cref="CreatureAiFlags"/> is 0.</summary>
     public static readonly int CreatureLootable = Field<int>("CNWCCreature", "lootable", Expect.Byte01);
 
-    // ---- area transitions (CX-754) ----
     // Read 2026-11-27 off both programs: CNWCMessage::HandleServerToPlayerTriggerUpdate_Add (Linux nm @0x7b5fb0,
     // Windows rva 0x7b1670), CNWCDoor::SetIsAreaTransition (Linux nm @0x754520, Windows rva 0x86e640),
     // CNWCDoor::GetState (Linux nm @0x754510, Windows rva 0x86df30) and the slot calls in
@@ -54,7 +53,6 @@ public static unsafe partial class EngineLayout
     /// override is an identity <c>return this</c>. Linux <c>vtbl+0x80</c>, Windows <c>vtbl+0x78</c>.</summary>
     public static readonly int GameObjAsNWCTriggerSlot = Field("CGameObject", "vtbl.AsNWCTrigger", Expect.VtblSlot, sig: "IntPtr()");
 
-    // ---- ground items (CX-755) ----
     // Read 2026-11-27 off both programs: CClientExoAppInternal::PerformDefaultActionOnItem (Linux nm @0x65e500,
     // inlined on Windows in PerformDefaultActionOnObject rva 0x6efec0), CNWCItem::SetEquippedBy (Linux nm @0x7cb850)
     // and CNWCItem::GetEquippedBy (Linux nm @0x7cb880, Windows rva 0x83d7e0).

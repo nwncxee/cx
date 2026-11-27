@@ -106,8 +106,7 @@ internal static class TransitionEdges
         finally
         {
             TabTarget.Enabled.Reset();
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "TransitionEdges.SelfCheck: passed" : "TransitionEdges.SelfCheck: FAILED");
         return check.Ok;

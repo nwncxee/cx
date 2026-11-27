@@ -72,6 +72,11 @@ internal sealed class InteractWorldDouble : IInteractWorld
     public void ShowLine(string text) => Lines.Add(text);
     public void PlaySound(string resref) => Sounds.Add(resref);
 
+    /// <summary>The world the first <see cref="Install"/> replaced, which <see cref="Restore"/> puts back.</summary>
+    private sealed class SavedState { public IInteractWorld? World; public bool Held; }
+
+    private static readonly SavedState Saved = new();
+
     /// <summary>A fresh double installed as the world, every Interact setting at its default, the master on and
     /// F bound to the Interact key.</summary>
     internal static InteractWorldDouble Install()
@@ -79,8 +84,19 @@ internal sealed class InteractWorldDouble : IInteractWorld
         Defaults();
         InteractKnobs.Key.Set("F");
         var w = new InteractWorldDouble();
-        InteractInput.Use(w);
+        IInteractWorld? was = InteractInput.Use(w);
+        if (!Saved.Held) { Saved.World = was; Saved.Held = true; }
         return w;
+    }
+
+    /// <summary>Every Interact setting back to its default and the world the first <see cref="Install"/> replaced back
+    /// in: the engine's on the client, none in the stub host. A suite ends here.</summary>
+    internal static void Restore()
+    {
+        Defaults();
+        InteractInput.Use(Saved.World);
+        Saved.World = null;
+        Saved.Held = false;
     }
 
     /// <summary>Every Interact setting back to its default; the examples end here so no binding leaks out.</summary>

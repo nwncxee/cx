@@ -1,3 +1,4 @@
+using System.Numerics;
 using CX.Framework;
 using CX.Services.Camera;
 
@@ -65,6 +66,20 @@ internal static class LootEdges
             }
             {
                 var w = InteractWorldDouble.Install();
+                uint bag = w.Bag(10f);
+                w.Change(bag, t => { t.Pos = w.Player + new Vector3(10f, 0f, 0f); return t; });
+                w.Press('F');
+                check.Expect(w.Did(bag), $"a body bag exactly 10m away is in reach and opens: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
+                uint bag = w.Bag(10.1f);
+                w.Change(bag, t => { t.Pos = w.Player + new Vector3(10.1f, 0f, 0f); return t; });
+                w.Press('F');
+                check.Expect(w.Acts.Count == 0, $"a body bag 10.1m away is out of reach and stays shut: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
                 w.Bag(3f);
                 bool took = w.PressCode(0);
                 check.Expect(!took && w.Acts.Count == 0, $"a key event with no key code is not caught by an unbound Loot key: took {took}, {w.Seen}");
@@ -72,8 +87,7 @@ internal static class LootEdges
         }
         finally
         {
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "LootEdges.SelfCheck: passed" : "LootEdges.SelfCheck: FAILED");
         return check.Ok;

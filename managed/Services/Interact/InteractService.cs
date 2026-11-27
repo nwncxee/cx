@@ -33,14 +33,13 @@ public sealed unsafe class InteractService : IExtenderService
                                SymbolMap.AppManager, SymbolMap.WalkPlayerToPoint)) return;
         S.Next = hooks.ChainWinMessageHandler(&OnWinMessage, ChainPriority);
         if (S.Next == null) { log.Info("Interact: standing down (the WinMessageHandler chain was refused)"); return; }
-        InteractInput.Live(new InteractEngineWorld());
+        InteractInput.Use(new InteractEngineWorld());
         log.Info("Interact: ready; chained on WinMessageHandler");
     }
 
     [UnmanagedCallersOnly]
     private static int OnWinMessage(IntPtr ev)
     {
-        InteractInput.Resume();
         if (ev != IntPtr.Zero && *(uint*)ev == SdlKeyDown
             && InteractInput.KeyDown(((SdlEvent*)ev)->Sym, ((SdlEvent*)ev)->Repeat != 0)) return 0;
         return (*S.Next)(ev);
@@ -51,7 +50,6 @@ public sealed unsafe class InteractService : IExtenderService
 /// sight test and the engine's own default action. Every read is cold, on the input thread.</summary>
 internal sealed unsafe class InteractEngineWorld : IInteractWorld
 {
-    private const byte TypeItem = 6, TypeTrigger = 7;  // not-an-offset: object type bytes, the trigger's from the CNWCTrigger ctor
     /// <summary>The most points a trigger outline holds: the trigger add reads the count from one byte.</summary>
     private const int MaxOutline = 255;
     /// <summary>The height both ends of a sight line are raised by, as the server's
@@ -144,7 +142,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
             CGameObject go = exo.GetGameObject(id);
             if (go.IsNull) continue;
             CNWCObject obj = go.AsNWCObject();
-            if (obj.IsNull || (obj.Visible == 0 && obj.Type != TypeTrigger)) continue;
+            if (obj.IsNull || (obj.Visible == 0 && obj.Type != TabTargetCore.TypeTrigger)) continue;
             if (Read(go, obj, id) is { } t) _things.Add(t);
         }
     }
@@ -175,12 +173,12 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
             {
                 var c = new CNWCCreature(obj.Ptr);
                 t.Kind = ThingKind.Creature;
-                t.Dead = c.AiFlags == 0;
+                t.Dead = TabTargetService.Dead(obj);
                 t.Lootable = c.Lootable == 1;
                 t.Attitude = c.Attitude switch { AttitudeFriend => Attitude.Friend, AttitudeNeutral => Attitude.Neutral, _ => Attitude.Hostile };
                 return t;
             }
-            case TypeItem:
+            case TabTargetCore.TypeItem:
             {
                 IntPtr cast = go.AsNWCItem();
                 if (cast == IntPtr.Zero) return null;
@@ -215,7 +213,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.LeadsAway = d.AreaTransition != 0;
                 return t;
             }
-            case TypeTrigger:
+            case TabTargetCore.TypeTrigger:
                 return ReadTrigger(go, t);
             default:
                 return null;

@@ -120,15 +120,31 @@ public sealed partial class KnobGroup
         => Add(new Knob<uint>(this, key, label, KnobKind.Swatch, tier, effect, _section, help ?? "", false,
                               def, 0, uint.MaxValue, 1, "", null, null, null, null), changed);
 
+    /// <summary>A text row; <paramref name="keys"/> marks it a key setting, saying whether its value binds a press code.</summary>
     public Knob<string> Text(string key, string label, string def, Tier tier = Tier.User, Effect effect = Effect.Live,
-                             string? help = null, Action? changed = null)
+                             string? help = null, Action? changed = null, Func<string, int, bool>? keys = null)
         => Add(new Knob<string>(this, key, label, KnobKind.Text, tier, effect, _section, help ?? "", false,
-                                def, "", "", "", "", null, null, null, null), changed);
+                                def, "", "", "", "", null, null, null, null) { BindsKey = keys }, changed);
 
     /// <summary>A press-to-bind key row: the stored value is the key's SDL name or Mouse4 / Mouse5, "" unbound.</summary>
     public Knob<string> KeyBind(string key, string label, Tier tier = Tier.User, string? help = null, Action? changed = null)
         => Add(new Knob<string>(this, key, label, KnobKind.Key, tier, Effect.Live, _section, help ?? "", false,
                                 "", "", "", "", "", null, null, null, null), changed);
+
+    /// <summary>The key setting other than <paramref name="except"/> whose value binds press <paramref name="code"/>, in a
+    /// group switched on: a press-to-bind row read through <paramref name="keyOf"/>, a text row by its
+    /// <see cref="Knob.BindsKey"/>. Null when none does. Cold: a key row's bind.</summary>
+    internal static Knob? KeyHolder(int code, Knob except, Func<string, int> keyOf)
+    {
+        foreach (KnobGroup g in All)
+        {
+            if (g.Master is { V: false } || g.Parent is { V: false }) continue;
+            foreach (Knob k in g.Knobs)
+                if (k != except && k is Knob<string> s
+                    && (k.Kind == KnobKind.Key ? keyOf(s.V) == code : s.BindsKey is { } binds && binds(s.V, code))) return k;
+        }
+        return null;
+    }
 
     /// <summary>An editable list of text items (<see cref="TextList"/>): the panel shows one text box per item with a
     /// remove button and a trailing empty box, <paramref name="hint"/> its placeholder, that appends one. The cfg key

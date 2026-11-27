@@ -47,13 +47,13 @@ public sealed partial class KnobPanel
                 Wait(p, InteractKnobs.Key);
                 p.Key(']');
                 Row? warned = Find(p, InteractKnobs.Key);
-                check.Expect(warned != null && warned.Warned && string.Join(" ", warned.Help).Contains("action camera") && p.KeyBoxText(warned) == "]",
+                check.Expect(warned != null && warned.Warned && string.Join(" ", warned.Help).Contains("action camera", StringComparison.OrdinalIgnoreCase) && p.KeyBoxText(warned) == "]",
                     $"U2 the warning shows in the row's lines and its box holds ]: '{(warned == null ? "" : string.Join(" ", warned.Help))}'");
                 Row? lootRow = Find(p, InteractKnobs.LootKey);
                 check.Expect(lootRow != null && !lootRow.Warned, "U2 the warning shows on the waiting row alone, not on the Loot row");
                 p.Key(0x0D);
                 Row? after = Find(p, InteractKnobs.Key);
-                check.Expect(InteractKnobs.Key.V == "]" && p.KeyWarning == null && after != null && !after.Warned && !string.Join(" ", after.Help).Contains("action camera"),
+                check.Expect(InteractKnobs.Key.V == "]" && p.KeyWarning == null && after != null && !after.Warned && !string.Join(" ", after.Help).Contains("action camera", StringComparison.OrdinalIgnoreCase),
                     $"U2 Enter binds ] and the row's help is back ({InteractKnobs.Key.V}, '{(after == null ? "" : string.Join(" ", after.Help))}')");
             }
             {
@@ -119,6 +119,29 @@ public sealed partial class KnobPanel
                 check.Expect(clash == null, $"U7 a name with no key code clashes with nothing, not with an unbound camera toggle ('{clash}')");
             }
             {
+                bool tab = TabTarget.Enabled.V;
+                try
+                {
+                    TabTarget.Enabled.Set(true);
+                    KnobPanel p = Fresh();
+                    InteractKnobs.Key.Set("");
+                    Wait(p, InteractKnobs.Key);
+                    p.Key('f');
+                    string? warn = p.KeyWarning;
+                    check.Expect(warn != null && warn.Contains(TabTarget.LockKey.Label) && InteractKnobs.Key.V == "",
+                        $"U9 binding Interact to F, tab-target's lock-on key, warns naming that setting and binds nothing yet: '{warn}', bound '{InteractKnobs.Key.V}'");
+                }
+                finally { TabTarget.Enabled.Set(tab); }
+            }
+            {
+                KnobPanel p = Fresh();
+                Wait(p, InteractKnobs.LootKey);
+                p.Key('f');
+                string? warn = p.KeyWarning;
+                check.Expect(warn != null && warn.Contains(InteractKnobs.Key.Label) && InteractKnobs.LootKey.V == "",
+                    $"U10 binding Loot to F, the Interact key, warns naming the Interact row and binds nothing yet: '{warn}', bound '{InteractKnobs.LootKey.V}'");
+            }
+            {
                 InteractWorldDouble w = InteractWorldDouble.Install();
                 InteractKnobs.Key.Set("F");
                 w.KeysFree = false;
@@ -136,8 +159,7 @@ public sealed partial class KnobPanel
             KnobPanelService.Close();
             CameraModes.Chase.ActionKey.Reset();
             MouseLook.Action.Reset();
-            InteractWorldDouble.Defaults();
-            InteractInput.Use(null);
+            InteractWorldDouble.Restore();
         }
         log.Info(check.Ok ? "KeyRowUnasked.SelfCheck: passed" : "KeyRowUnasked.SelfCheck: FAILED");
         return check.Ok;

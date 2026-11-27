@@ -10,8 +10,10 @@ namespace CX.Services.Interact;
 internal sealed class InteractState
 {
     internal IInteractWorld? World;
-    /// <summary>The engine's world, which <see cref="InteractInput.Resume"/> puts back after a self-check's double.</summary>
-    internal IInteractWorld? Live;
+    /// <summary>The press code each key setting binds, by <see cref="InteractKey"/>, read at a setting's edit; 0 unbound.</summary>
+    internal readonly int[] Codes = new int[Bindable];
+    /// <summary>The keys with a row in <see cref="Codes"/>: Interact, Transition, Loot and Pick up.</summary>
+    internal const int Bindable = (int)InteractKey.PickUp + 1;
     /// <summary>The locked objects and the items an Interact press tried: a locked one is passed over until it reads
     /// unlocked, an item while it lies on the ground.</summary>
     internal readonly HashSet<uint> Tried = new();
@@ -29,26 +31,24 @@ internal static class InteractInput
     internal static readonly IChordConsumer Chord = new InteractChord();
 
     /// <summary>Installs the world presses read and act on, and forgets what the last one tried; null stands down and
-    /// leaves the chord layer.</summary>
-    internal static void Use(IInteractWorld? world)
+    /// leaves the chord layer. Returns the world it replaced.</summary>
+    internal static IInteractWorld? Use(IInteractWorld? world)
     {
+        IInteractWorld? was = S.World;
         S.World = world;
         S.Tried.Clear();
-        if (world != null) UiHost.AddChordConsumer(Chord);
+        if (world != null) { KeysChanged(); UiHost.AddChordConsumer(Chord); }
         else UiHost.RemoveChordConsumer(Chord);
+        return was;
     }
 
-    /// <summary>Installs the engine's world, the one <see cref="Resume"/> returns to.</summary>
-    internal static void Live(IInteractWorld world)
+    /// <summary>Reads each key setting's press code into <see cref="InteractState.Codes"/>. Cold: a setting's edit.</summary>
+    internal static void KeysChanged()
     {
-        S.Live = world;
-        Use(world);
-    }
-
-    /// <summary>Puts the engine's world back once a self-check's double stood down; the pump calls it on every event.</summary>
-    internal static void Resume()
-    {
-        if (S.World == null && S.Live != null) Use(S.Live);
+        S.Codes[(int)InteractKey.Interact] = KeyNames.Code(InteractKnobs.Key.V);
+        S.Codes[(int)InteractKey.Transition] = KeyNames.Code(InteractKnobs.TransitionKey.V);
+        S.Codes[(int)InteractKey.Loot] = KeyNames.Code(InteractKnobs.LootKey.V);
+        S.Codes[(int)InteractKey.PickUp] = KeyNames.Code(InteractKnobs.PickUpKey.V);
     }
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
@@ -75,10 +75,8 @@ internal static class InteractInput
     private static InteractKey? Bound(int code)
     {
         if (S.World == null || !InteractKnobs.Enabled.V || code == 0) return null;
-        if (code == KeyNames.Code(InteractKnobs.Key.V)) return InteractKey.Interact;
-        if (code == KeyNames.Code(InteractKnobs.TransitionKey.V)) return InteractKey.Transition;
-        if (code == KeyNames.Code(InteractKnobs.LootKey.V)) return InteractKey.Loot;
-        if (code == KeyNames.Code(InteractKnobs.PickUpKey.V)) return InteractKey.PickUp;
+        for (int i = 0; i < InteractState.Bindable; i++)
+            if (S.Codes[i] == code) return (InteractKey)i;
         return null;
     }
 
