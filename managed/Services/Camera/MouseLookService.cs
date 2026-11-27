@@ -235,16 +235,19 @@ public sealed unsafe partial class MouseLookService : IExtenderService
     }
 
     /// <summary>A walk CX asks for itself, Interact taking a transition: it passes the action camera's refusal of a
-    /// click's walk and goes straight to the engine. Cold: a key press.</summary>
-    internal static int WalkPastActionCamera(IntPtr app, float x, float y, float z, int flags, uint obj, int extra)
-        => _walkOrig != null ? _walkOrig(app, x, y, z, flags, obj, extra)
-            : new CClientExoApp(app).Internal.WalkPlayerToPoint(x, y, z, flags, obj, extra);
+    /// click's walk and goes straight to the engine, on <paramref name="app"/>'s Internal object, the walk's this.
+    /// Cold: a key press.</summary>
+    internal static int WalkPastActionCamera(CClientExoApp app, float x, float y, float z, int flags, uint obj, int extra)
+    {
+        CClientExoAppInternal self = app.Internal;
+        return _walkOrig != null ? _walkOrig(self.Ptr, x, y, z, flags, obj, extra) : self.WalkPlayerToPoint(x, y, z, flags, obj, extra);
+    }
 
     [UnmanagedCallersOnly]
-    private static int OnWalkPlayerToPoint(IntPtr app, float x, float y, float z, int flags, uint obj, int extra)
+    private static int OnWalkPlayerToPoint(IntPtr appInternal, float x, float y, float z, int flags, uint obj, int extra)
     {
         if (_action) { _walksRefused++; return 0; }   // 0 = the engine's own "not walkable" verdict
-        return _walkOrig(app, x, y, z, flags, obj, extra);
+        return _walkOrig(appInternal, x, y, z, flags, obj, extra);
     }
 
     [UnmanagedCallersOnly]

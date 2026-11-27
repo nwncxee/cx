@@ -150,7 +150,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
     public void WalkTo(uint id, Vector3 point)
     {
         IntPtr app = CameraService.App();
-        if (app != IntPtr.Zero) MouseLookService.WalkPastActionCamera(app, point.X, point.Y, point.Z, WalkByRunSetting, id, ShowRing);
+        if (app != IntPtr.Zero) MouseLookService.WalkPastActionCamera(new CClientExoApp(app), point.X, point.Y, point.Z, WalkByRunSetting, id, ShowRing);
     }
 
     public void ShowLine(string text) => FeedbackLine.Show(text);

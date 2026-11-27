@@ -207,6 +207,10 @@ object MakeExit(location lAt)
     jGeo = JsonArrayInsert(jGeo, Point(1.0, 1.0));
     jGeo = JsonArrayInsert(jGeo, Point(-1.0, 1.0));
     j = JsonObjectSet(j, "Geometry", Field("list", jGeo));
+    vector vAt = GetPositionFromLocation(lAt);   // JsonToObject keeps the points where XPosition puts them, the seed's own spot
+    j = JsonObjectSet(j, "XPosition", Field("float", JsonFloat(vAt.x)));
+    j = JsonObjectSet(j, "YPosition", Field("float", JsonFloat(vAt.y)));
+    j = JsonObjectSet(j, "ZPosition", Field("float", JsonFloat(vAt.z)));
     j = JsonObjectSet(j, "Type", Field("int", JsonInt(1)));
     j = JsonObjectSet(j, "Cursor", Field("byte", JsonInt(1)));
     j = JsonObjectSet(j, "LinkedTo", Field("cexostring", JsonString("WP_Death_Ruins")));
