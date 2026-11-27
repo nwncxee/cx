@@ -162,9 +162,9 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `cx_lightfrag.glsl`, which a GPU golden runs on the device; a second copy compiles fine and answers to nothing.
   `ALLOWED` in `face-normal.py` names that file and the content stand-in `cx_content_f.glsl`, which the GUI twin
   builds without the light library and so cannot reach the function, and `FLIP_CALLERS` names the lit mains.
-- `air-mains.sh`: an air main (`cx_air*_cs.glsl` under `managed/Alloy/Shaders/`) that does not include `cx_air.glsl`
-  or call each look `MAINS` in `air-mains.py` names for it, outside a comment, fails, and so does a main the list does
-  not name or one it names that is gone. The looks are `cx_air.glsl`'s, which the air goldens run on the device; a
+- `air-mains.sh`: an air main (a `cx_air*.glsl` with a `main` under `managed/Alloy/Shaders/`) that does not include
+  `cx_air.glsl` or call each look `MAINS` in `air-mains.py` names for it, outside a comment, fails, and so does one that
+  defines such a look itself (a macro or an overload), a main the list does not name, or one it names that is gone. The looks are `cx_air.glsl`'s, which the air goldens run on the device; a
   main that composes its own compiles fine and answers to nothing. Its approved examples are `air_mains_approved_examples.sh` beside it.
 - `golden-glsl.sh`: a golden under `managed/Alloy/Golden/`, or in any file under `managed/Alloy/` that extends `GpuGolden`, declaring a `CX_*` constant a shipped shader declares (splice it
   with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader

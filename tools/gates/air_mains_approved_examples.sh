@@ -7,12 +7,13 @@ rc=0
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# A fresh tree under $tmp/<case> holding the mote and wisp mains as shipped, then the files given as path=text pairs.
+# A fresh tree under $tmp/<case> holding the mote and wisp mains and the dust's upsample as shipped, then the files given as path=text pairs.
 plant() {
   local root=$tmp/$1; shift
   mkdir -p "$root/managed/Alloy/Shaders"
   printf '%b' '#include "cx_air.glsl"\nvoid main() { vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n' > "$root/managed/Alloy/Shaders/cx_airmote_cs.glsl"
   printf '%b' '#include "cx_air.glsl"\nvoid main() { vec3 c = CxAirSky(vec3(0.5), vec3(1.0)); }\n' > "$root/managed/Alloy/Shaders/cx_airwisp_cs.glsl"
+  printf '%b' '#include "cx_defblk.glsl"\nvoid main() { }\n' > "$root/managed/Alloy/Shaders/cx_airdustup.glsl"
   while [ $# -gt 0 ]; do
     printf '%b' "${1#*=}" > "$root/${1%%=*}"
     shift
@@ -80,6 +81,24 @@ refuses "$r" "a listed main that is gone" "cx_airdust_cs.glsl" "not in the tree"
 # Then the build fails, naming CxAirDust
 r=$(plant block 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n/* CxAirDust(z, top) would lay it */\nvoid main() { vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
 refuses "$r" "a call in a block comment" "CxAirDust"
+
+# Given the dust main defines CxAirDust as a macro of its own and calls that
+# When the build runs its gates
+# Then the build fails, naming that main and CxAirDust
+r=$(plant macro 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\n#define CxAirDust(z, t) (0.5)\nvoid main() { float d = CxAirDust(0.1, 0.3); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
+refuses "$r" "a macro of its own" "cx_airdust_cs.glsl" "CxAirDust"
+
+# Given the dust main defines an overload of CxAirDust of its own and calls that
+# When the build runs its gates
+# Then the build fails, naming that main and CxAirDust
+r=$(plant overload 'managed/Alloy/Shaders/cx_airdust_cs.glsl=#include "cx_air.glsl"\nfloat CxAirDust(float z) { return 0.5; }\nvoid main() { float d = CxAirDust(0.1); vec3 c = CxAirLit(vec3(0.0), vec3(1.0), 1.0, 5.0) + CxAirSky(vec3(0.5), vec3(1.0)); }\n')
+refuses "$r" "an overload of its own" "cx_airdust_cs.glsl" "CxAirDust"
+
+# Given a new air stage with a main, named without the _cs ending, that the gate's list does not name
+# When the build runs its gates
+# Then the build fails, naming that stage
+r=$(plant newup "$dust" 'managed/Alloy/Shaders/cx_airmistup.glsl=void main() { }\n')
+refuses "$r" "an unlisted stage without _cs" "cx_airmistup.glsl"
 
 # Given a tree with no shader folder to read, as from a wrong root
 # When the build runs its gates
