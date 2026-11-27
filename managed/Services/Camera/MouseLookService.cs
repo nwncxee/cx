@@ -14,7 +14,7 @@ namespace CX.Services.Camera;
 /// locks and limits stay engine-owned; a press under <c>threshold</c> is replayed so the radial menu still opens.
 /// The action camera forwards events rewritten to the screen centre. Outermost chain layer, allocates nothing.
 /// </summary>
-public sealed unsafe class MouseLookService : IExtenderService
+public sealed unsafe partial class MouseLookService : IExtenderService
 {
     private static ExtenderLog? _log;
     private static WinMessageHandlerFn* _next;
@@ -238,6 +238,12 @@ public sealed unsafe class MouseLookService : IExtenderService
         }
         return Forward(ev);
     }
+
+    /// <summary>A walk CX asks for itself, Interact taking a transition: it passes the action camera's refusal of a
+    /// click's walk and goes straight to the engine. Cold: a key press.</summary>
+    internal static int WalkPastActionCamera(IntPtr app, float x, float y, float z, int flags, uint obj, int extra)
+        => _walkOrig != null ? _walkOrig(app, x, y, z, flags, obj, extra)
+            : new CClientExoApp(app).Internal.WalkPlayerToPoint(x, y, z, flags, obj, extra);
 
     [UnmanagedCallersOnly]
     private static int OnWalkPlayerToPoint(IntPtr app, float x, float y, float z, int flags, uint obj, int extra)
