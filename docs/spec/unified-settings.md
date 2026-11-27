@@ -146,7 +146,8 @@ rule fails `run-demo.sh` (ADR 0030 §5):
 
 - the three constraints above, over every declared knob;
 - **`MaxUserRows = 14`**: User rows one submenu may hold, every group in it counted (link rows
-  excepted). Past that it is a wall of dials -- merge, or move tuning to Advanced.
+  and `ShowIf` rows excepted: a row shown only while its switch asks for it is that switch's detail).
+  Past that it is a wall of dials -- merge, or move tuning to Advanced.
 - **`DevWords = { "A/B", "debug", "diagnostic", "bisect" }`**: no User or Advanced row's label or
   help may contain one. A knob that needs those words is ChatOnly.
 - the command gate: `/settings` always dispatches; every generated `/<group>` only when
@@ -910,7 +911,7 @@ between Driving and the other one you picked. Each mode keeps its own settings h
 | `<mode>.siderun` | Turn keys run sideways | T | off | A | L | Movement | With *Face where the camera looks* on: the turn keys run you sideways instead of turning you and the camera. Locked on a target this is always so. |
 | `<mode>.rate` | Recenter speed | S | 1–720 °/s step 5 · 360 | A | L | Movement | Fastest swing behind your movement; it eases in near the target. |
 | `<mode>.assist` | Aim assist | T | on | A | L | Action camera | The crosshair snaps its aim to the nearest creature, placeable or door within a few pixels of the centre. The camera never moves; only what you point at changes. |
-| `<mode>.cursorkey` | Cursor key | X | `Alt` (either Alt) | A | L | Action camera | Held under the action camera, frees the cursor for the game's panels; with `alttoggle` on, a tap frees it until the next tap. An SDL key name or Mouse4 / Mouse5; blank binds nothing. Swallowed while the camera's gate is open, except a modifier key, which the game still sees. |
+| `<mode>.cursorkey` | Cursor key | X | `Alt` (either Alt) | U | L | Action camera | Held under the action camera, frees the cursor for the game's panels; with `alttoggle` on, a tap frees it until the next tap. An SDL key name or Mouse4 / Mouse5; blank binds nothing. Swallowed while the camera's gate is open, except a modifier key, which the game still sees. The row shows only while that mode's `action` is on (`Knob.ShowIf`); chat reaches it either way. |
 | `<mode>.autotarget` | Cast at the crosshair | T | on | A | L | Action camera | A spell, feat or item that asks you to pick a target fires straight away on whatever the crosshair is pointing at. A ground-targeted spell still asks you to aim it. |
 | `<mode>.headtrack` | Head follows the crosshair | T | on | A | L | Action camera | Your character turns their head toward whatever you are aiming at. Only you see it. |
 | `<mode>.pinyaw / pinpitch / pindist / pitchref / lagrot / lagzoom / deadzone / idle / grace / idlerate / keyturn / hz / turn / threshold / alttoggle / assistpx / feedback / headyaw / headpitch` | — | T, S | as declared | C | L | — | the view held for a repeatable measurement (-1 = off), the two lag keys *Smoothing* carries, the recenter and heading-send tuning, and the action camera's fine dials |

@@ -76,7 +76,8 @@ public sealed class CameraModeKnobs
     public readonly KnobGroup G;
     public readonly Knob<bool> Enabled, Drive, Face, SideRun, Recenter;
     /// <summary><see cref="Smooth"/> is <see cref="LagPos"/>, the one panel row for the feel; a set carries the rotation
-    /// and zoom lag along. The mode's User rows are exactly <see cref="KnobGroup.MaxUserRows"/>: a new one must replace one.</summary>
+    /// and zoom lag along. The mode's User rows are exactly <see cref="KnobGroup.MaxUserRows"/>: a new one must replace one, or show only
+    /// while its switch is on, as Cursor key does under the action camera.</summary>
     public readonly Knob<float> PinYaw, PinPitch, PinDist, Fov, Smooth, LagPos, LagRot, LagZoom, PitchCurve, PitchRef, OffsetX, OffsetY;
     /// <summary>The Movement tuning for the drive and the recenter, per mode: every mode has its own toggles.</summary>
     public readonly Knob<float> Rate, DeadZone, Idle, Grace, IdleRate, Hz, Turn, KeyTurn;
@@ -155,8 +156,9 @@ public sealed class CameraModeKnobs
                           help: "Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click, so aiming replaces pointing. Left-click acts on it, a right-click opens its menu. Clicking the ground does not walk you there (use the movement keys) and the crosshair never picks your own character. The cursor key (Alt unless you change it) frees the cursor for the game's panels: held, or a tap with the toggle option below. The toggle key switches the camera on and off.");
         ActionKey = G.Text("actionkey", "Action camera toggle key", "]", changed: MouseLookService.ActionKeyChanged, keys: KeyNames.Binds,
                            help: "An SDL key name (F8, Tab, Backspace, Z...) or Mouse4 / Mouse5 for the thumb buttons. Blank binds nothing.");
-        CursorKey = G.KeyBind("cursorkey", "Cursor key", Tier.Advanced, changed: MouseLookService.CursorKeysChanged, def: "Alt",
+        CursorKey = G.KeyBind("cursorkey", "Cursor key", changed: MouseLookService.CursorKeysChanged, def: "Alt",
                               help: "Under the action camera, hold this key to free the cursor for the game's panels. Either Alt by default; press a key or thumb button on the row to change it, or clear it to bind nothing.");
+        CursorKey.ShowIf = () => Action.V;
         AltToggle = G.Toggle("alttoggle", "Cursor key toggles", false, Tier.ChatOnly,
                              help: "Under the action camera, tapping the cursor key frees the cursor until you tap it again, instead of holding it.");
         Assist = G.Toggle("assist", "Aim assist", true, Tier.Advanced,

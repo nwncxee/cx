@@ -17,7 +17,7 @@ public sealed unsafe partial class MouseLookService
         var check = new Checker(log, "CursorKeyApprovedExamples.SelfCheck");
         Knob<string>? chase = KnobGroup.Find("chase.cursorkey") as Knob<string>;
         Knob<string>? topDown = KnobGroup.Find("topdown.cursorkey") as Knob<string>;
-        var rows = new List<Knob> { CameraModes.Chase.AltToggle, CameraModes.TopDown.AltToggle, CameraModes.Chase.ActionKey, CameraModes.Chase.Enabled };
+        var rows = new List<Knob> { CameraModes.Chase.AltToggle, CameraModes.TopDown.AltToggle, CameraModes.Chase.ActionKey, CameraModes.Chase.Enabled, CameraModes.Chase.Action };
         if (chase != null) rows.Add(chase);
         if (topDown != null) rows.Add(topDown);
         Knob[] touched = rows.ToArray();
@@ -130,9 +130,10 @@ public sealed unsafe partial class MouseLookService
             {
                 Fresh();
                 CameraModes.Chase.ActionKey.Set("]");
+                CameraModes.Chase.Action.Set(true);
                 KnobPanel p = Panel();
                 p.Show(CameraModes.Chase.G);
-                p.AdvOpen = true; p.LayoutRows();
+                p.LayoutRows();
                 KnobPanel.Row? r = null;
                 foreach (KnobPanel.Row row in p.Rows) if (row.Kind == KnobPanel.RowKind.Knob && row.K != null && ReferenceEquals(row.K, chase)) r = row;
                 check.Expect(r != null, "E141 the chase camera's panel shows a cursor key row");
