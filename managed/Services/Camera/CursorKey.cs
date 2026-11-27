@@ -15,7 +15,7 @@ internal struct CursorCodes
 internal sealed unsafe class CursorKeyState
 {
     /// <summary>The codes per camera mode, indexed like <see cref="CameraModes.ByMode"/>.</summary>
-    internal readonly CursorCodes[] Codes = new CursorCodes[3];
+    internal readonly CursorCodes[] Codes = new CursorCodes[CameraModes.ByMode.Length];
     /// <summary>The bound keys down now, from their press to their key-up; 0 when none.</summary>
     internal CursorCodes Down;
     /// <summary>The toggle's latch, with the mode's <c>alttoggle</c> on: a tap freed the cursor until the next tap.</summary>
