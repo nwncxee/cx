@@ -1,3 +1,5 @@
+using CX.Framework;
+using CX.Services.Chat.Core;
 using CX.Ui;
 
 namespace CX.Services.Interact;
@@ -29,7 +31,21 @@ internal static class InteractInput
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
     /// took it, so the game never sees it.</summary>
-    internal static bool KeyDown(int code, bool repeat) => false;
+    internal static bool KeyDown(int code, bool repeat)
+    {
+        if (!Bound(code) || S.World is not { KeysFree: true } world) return false;
+        uint id = InteractCore.Pick(InteractKey.Interact, world, S);
+        if (id != TypingSignal.ObjectInvalid) world.DefaultAction(id);
+        return true;
+    }
+
+    /// <summary>A world is in, the master is on and <paramref name="code"/> is the Interact key's press.</summary>
+    private static bool Bound(int code) =>
+        S.World != null && InteractKnobs.Enabled.V && code != 0 && code == KeyNames.Code(InteractKnobs.Key.V);
+
+    /// <summary>The game's Key Mapping action bound to press <paramref name="code"/>, by its Key Mapping name; null
+    /// when none. Cold: a key row's bind.</summary>
+    internal static string? GameKeyAction(int code) => S.World?.GameKeyAction(code);
 
     /// <summary>Every default action the engine runs on an object, a mouse click's as well as Interact's own.</summary>
     internal static void DefaultActionSeen(uint id) { }
@@ -55,8 +71,8 @@ internal static class InteractInput
     private sealed class InteractChord : IChordConsumer
     {
         public int Priority => 2;
-        public bool WantsKey(int key) => false;
-        public void Fire(uint key, int sdlMods) { }
-        public void FireMouse(int button, int sdlMods) { }
+        public bool WantsKey(int key) => Bound(key);
+        public void Fire(uint key, int sdlMods) => KeyDown((int)key, false);
+        public void FireMouse(int button, int sdlMods) => KeyDown(-button, false);
     }
 }

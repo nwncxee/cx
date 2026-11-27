@@ -141,7 +141,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
     private static bool OnMouseButton(bool down, int button, int x, int y)
     {
         if (!_panel.Open || !Visible) return false;
-        if (button != 1) return _panel.Contains(x, y);
+        if (button != 1) return (down && _panel.KeyButton(-button)) || _panel.Contains(x, y);
         if (!down) return _panel.MouseUp();
         Refit();
         bool wasEditing = _panel.Editing;
