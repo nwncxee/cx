@@ -187,6 +187,7 @@ internal static class TargetApprovedExamples
             TabTarget.Enabled.Reset();
             InteractWorldDouble.Restore();
         }
+        log.Info(check.Ok ? "TargetApprovedExamples.SelfCheck: passed" : "TargetApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }

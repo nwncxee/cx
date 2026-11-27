@@ -77,7 +77,18 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
 
     public IReadOnlyList<Thing> Things { get { Refresh(); return _things; } }
 
-    public uint Crosshair => TypingSignal.ObjectInvalid;
+    /// <summary>The object the engine's hover pick last found, which under the action camera is the crosshair's (or the
+    /// aim assist's) point; nothing while the camera is off, when the hover is the free mouse cursor's.</summary>
+    public uint Crosshair
+    {
+        get
+        {
+            IntPtr me = CameraService.PlayerCreature();
+            if (!MouseLookService.ActionHeld || me == IntPtr.Zero) return TypingSignal.ObjectInvalid;
+            uint id = new CNWCCreature(me).HoveredOid;
+            return id == 0 ? TypingSignal.ObjectInvalid : id;
+        }
+    }
 
     public uint Lock => TabTargetService.Lock is var id && id != 0 ? id : TypingSignal.ObjectInvalid;
 

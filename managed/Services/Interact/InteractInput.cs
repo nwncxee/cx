@@ -30,6 +30,9 @@ internal static class InteractInput
     /// <summary>Interact's place in the chord layer, where a key that no window took is offered.</summary>
     internal static readonly IChordConsumer Chord = new InteractChord();
 
+    /// <summary>The line a press shows when its pointed target qualifies under none of the key's rules.</summary>
+    internal const string RefusedLine = "You can't do that with your target.";
+
     /// <summary>Installs the world presses read and act on, and forgets what the last one tried; null stands down and
     /// leaves the chord layer. Returns the world it replaced.</summary>
     internal static IInteractWorld? Use(IInteractWorld? world)
@@ -59,9 +62,11 @@ internal static class InteractInput
     {
         if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
         if (repeat) return true;
-        if (InteractCore.Pick(key, world, S) is not { } picked) return true;
+        Thing? picked = InteractCore.Pick(key, world, S, out bool refused);
+        if (refused) world.ShowLine(RefusedLine);
+        if (picked is not { } t) return true;
         S.Acting = true;
-        try { Act(world, picked); }
+        try { Act(world, t); }
         finally { S.Acting = false; }
         return true;
     }

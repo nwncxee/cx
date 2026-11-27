@@ -76,17 +76,21 @@ internal static class InteractCore
     /// <summary>The rules in the fixed order the Interact key runs them.</summary>
     private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot, InteractKey.PickUp, InteractKey.Door, InteractKey.Talk };
 
-    /// <summary>The rules a pointed target is held to, in order.</summary>
-    private static readonly InteractKey[] PointedRules = { InteractKey.Transition, InteractKey.Loot, InteractKey.Talk };
-
     /// <summary>The object <paramref name="key"/> acts on in <paramref name="world"/>, or null. An object under the
-    /// crosshair, else a tab-target lock, in the area is the only object the press may act on. A tried object no
-    /// longer listed is forgotten.</summary>
-    internal static Thing? Pick(InteractKey key, IInteractWorld world, InteractState state)
+    /// crosshair, else a tab-target lock, in the area is the only object the press may act on, and
+    /// <paramref name="refused"/> says it qualified under no rule. A tried object no longer listed is forgotten.</summary>
+    internal static Thing? Pick(InteractKey key, IInteractWorld world, InteractState state, out bool refused)
     {
         IReadOnlyList<Thing> things = world.Things;
         state.Tried.RemoveWhere(id => Find(things, id) == null);
-        if ((Find(things, world.Crosshair) ?? Find(things, world.Lock)) is { } pointed) return Pointed(key, pointed, world.Player);
+        refused = false;
+        if ((Find(things, world.Crosshair) ?? Find(things, world.Lock)) is { } pointed)
+        {
+            Thing? taken = PassedOver(pointed, state) ? null : Pointed(key, pointed, world.Player);
+            refused = taken == null;
+            if (taken is { } t) Record(t, state);
+            return taken;
+        }
         foreach (InteractKey rule in Rules)
         {
             if (key == InteractKey.Interact ? !InInteract(rule) : key != rule) continue;
@@ -99,7 +103,7 @@ internal static class InteractCore
     /// an area transition's; else nothing.</summary>
     private static Thing? Pointed(InteractKey key, Thing t, Vector3 player)
     {
-        foreach (InteractKey rule in PointedRules)
+        foreach (InteractKey rule in Rules)
         {
             if (key == InteractKey.Interact ? !InInteract(rule) : key != rule) continue;
             if (!Qualifies(rule, t)) continue;
@@ -147,8 +151,14 @@ internal static class InteractCore
             best = i; bestDist = dist;
         }
         if (best < 0) return null;
-        if (things[best].Locked || things[best].Kind is ThingKind.Item or ThingKind.Creature) state.Tried.Add(things[best].Id);
+        Record(things[best], state);
         return things[best];
+    }
+
+    /// <summary>Records <paramref name="t"/>, which a press acts on, as tried when it is locked, an item or a creature.</summary>
+    private static void Record(in Thing t, InteractState state)
+    {
+        if (t.Locked || t.Kind is ThingKind.Item or ThingKind.Creature) state.Tried.Add(t.Id);
     }
 
     /// <summary>Whether a press passes over <paramref name="t"/> as tried: a locked object tried while locked, an item
