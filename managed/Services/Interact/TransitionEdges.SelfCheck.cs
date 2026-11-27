@@ -128,6 +128,28 @@ internal static class TransitionEdges
             }
             {
                 var w = InteractWorldDouble.Install();
+                uint exit = w.Transition(1.5f);
+                w.Press('F');
+                InteractInput.AreaLoaded();
+                w = InteractWorldDouble.Install();
+                uint other = w.Transition(1f);
+                w.Press('F');
+                check.Expect(w.Did(other), $"a new world forgets the key held through the last one's load: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
+                InteractKnobs.Key.Set("Mouse4");
+                InteractInput.KeysChanged();
+                uint exit = w.Transition(1.5f);
+                w.PressCode(-4);
+                w.Clear();
+                uint back = w.Transition(1f);
+                InteractInput.AreaLoaded();
+                w.PressCode(-4);
+                check.Expect(w.Did(exit, back), $"a thumb button, which sends no key-up, is never held through a load: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
                 uint exit = w.Transition(-4f, 1f);
                 w.Press('F');
                 check.Expect(w.Did(exit), $"a player standing inside a 10m trigger, 4m from its nearest edge, is 0m from it and Interact takes it: {w.Seen}");
