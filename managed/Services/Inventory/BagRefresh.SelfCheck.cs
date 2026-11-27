@@ -3,7 +3,7 @@ using CX.Framework;
 
 namespace CX.Services.Inventory;
 
-/// <summary>Found beside CX-770's examples: a bought item that weighs nothing changes only the gold, and it still shows on a
+/// <summary>Found beside the backpack-refresh examples: a bought item that weighs nothing changes only the gold, and it still shows on a
 /// backpack page the server is not streaming.</summary>
 internal sealed partial class InventoryWindow
 {

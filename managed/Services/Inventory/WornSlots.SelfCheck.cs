@@ -4,7 +4,7 @@ using CX.Framework;
 
 namespace CX.Services.Inventory;
 
-/// <summary>Regression partners of the unsent-slot loader (CX-769): they held before the loader and must hold beside it.
+/// <summary>Regression partners of the unsent-slot loader: they held before the loader and must hold beside it.
 /// A slot the server has sent empty draws empty, worn items draw once the chest closes, and a new login waits again.</summary>
 internal sealed partial class InventoryWindow
 {
