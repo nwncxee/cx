@@ -184,6 +184,7 @@ internal static class DoorApprovedExamples
         {
             InteractWorldDouble.Restore();
         }
+        log.Info(check.Ok ? "DoorApprovedExamples.SelfCheck: passed" : "DoorApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }

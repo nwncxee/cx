@@ -19,6 +19,9 @@ internal sealed class InteractState
     internal readonly HashSet<uint> Tried = new();
     /// <summary>An Interact press is running its default action, so the click-to-lock leaves the lock alone.</summary>
     internal bool Acting;
+    /// <summary>Whether the world has the feedback sound's resref, as the last edit or press found it; null until one
+    /// looked.</summary>
+    internal bool? SoundFound;
 }
 
 /// <summary>The entries the engine side calls: the key handler's press, the chord layer's, the default-action detour
@@ -32,6 +35,12 @@ internal static class InteractInput
 
     /// <summary>The line a press shows when its pointed target qualifies under none of the key's rules.</summary>
     internal const string RefusedLine = "You can't do that with your target.";
+    /// <summary>The line a press shows when nothing within reach qualifies, by <see cref="InteractKey"/>.</summary>
+    private static readonly string[] Lines =
+    {
+        "Nothing to interact with here.", "No way out within reach.", "Nothing to loot.", "Nothing to pick up.",
+        "No door to open.", "No one to talk to.",
+    };
 
     /// <summary>Installs the world presses read and act on, and forgets what the last one tried; null stands down and
     /// leaves the chord layer. Returns the world it replaced.</summary>
@@ -56,6 +65,15 @@ internal static class InteractInput
         S.Codes[(int)InteractKey.Talk] = KeyNames.Code(InteractKnobs.TalkKey.V);
     }
 
+    /// <summary>The note the sound row shows when the game has no sound by its resref.</summary>
+    internal const string SoundNotFound = "Not found: the game has no sound by this name, so none plays.";
+
+    /// <summary>Looks the feedback sound's resref up in the world, once per edit. Cold: a setting's edit.</summary>
+    internal static void SoundChanged() => S.SoundFound = S.World?.SoundExists(InteractKnobs.Sound.V);
+
+    /// <summary>The sound row's note: <see cref="SoundNotFound"/> once a lookup missed, else none.</summary>
+    internal static string? SoundNote() => S.SoundFound == false ? SoundNotFound : null;
+
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
     /// took it, so the game never sees it.</summary>
     internal static bool KeyDown(int code, bool repeat)
@@ -63,12 +81,21 @@ internal static class InteractInput
         if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
         if (repeat) return true;
         Thing? picked = InteractCore.Pick(key, world, S, out bool refused);
-        if (refused) world.ShowLine(RefusedLine);
-        if (picked is not { } t) return true;
+        if (picked is not { } t) { Feedback(world, refused ? RefusedLine : Lines[(int)key]); return true; }
         S.Acting = true;
         try { Act(world, t); }
         finally { S.Acting = false; }
         return true;
+    }
+
+    /// <summary>Says a press did nothing: the line, and the feedback sound when the game has it. The sound is looked up
+    /// again here, since a module's haks can add or hide it after the setting's edit.</summary>
+    private static void Feedback(IInteractWorld world, string line)
+    {
+        if (InteractKnobs.FeedbackText.V) world.ShowLine(line);
+        if (!InteractKnobs.FeedbackSound.V) return;
+        S.SoundFound = world.SoundExists(InteractKnobs.Sound.V);
+        if (S.SoundFound == true) world.PlaySound(InteractKnobs.Sound.V);
     }
 
     /// <summary>Runs the act a press picked: a walk into an area transition, else the object's default action.</summary>

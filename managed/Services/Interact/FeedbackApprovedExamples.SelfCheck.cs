@@ -174,6 +174,7 @@ internal static class FeedbackApprovedExamples
         {
             InteractWorldDouble.Restore();
         }
+        log.Info(check.Ok ? "FeedbackApprovedExamples.SelfCheck: passed" : "FeedbackApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }

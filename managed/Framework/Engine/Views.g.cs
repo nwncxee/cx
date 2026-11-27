@@ -177,6 +177,7 @@ global using unsafe C2DAGetINTEntryFn = delegate* unmanaged<nint, int, nint, int
 global using unsafe TwoDimGetCached2DAFn = delegate* unmanaged<nint, nint, int, nint>;
 global using unsafe AreaGetSurfaceMaterialFn = delegate* unmanaged<nint, CX.Engine.VectorArg, int>;
 global using unsafe SoundPlay3DOneShotFn = delegate* unmanaged<nint, CX.Engine.ResRef*, CX.Engine.VectorArg, float, byte, uint, byte, void>;
+global using unsafe SoundPlayOneShotFn = delegate* unmanaged<nint, CX.Engine.ResRef*, byte, uint, byte, void>;
 global using unsafe MaterialInitializeTexturesFn = delegate* unmanaged<nint, nint, nint, nint, nint, void>;
 global using unsafe AurTextureGlImageBasicFn = delegate* unmanaged<nint, byte, int>;
 global using unsafe OperatorNewArrayFn = delegate* unmanaged<nuint, nint>;
@@ -4797,6 +4798,10 @@ public static unsafe class EngineFn
     private static bool _SoundPlay3DOneShotDone;
     /// <inheritdoc cref="SymbolMap.SoundPlay3DOneShot"/>
     public static SoundPlay3DOneShotFn SoundPlay3DOneShot => (SoundPlay3DOneShotFn)(_SoundPlay3DOneShotDone ? _SoundPlay3DOneShot : Resolve(ref _SoundPlay3DOneShot, ref _SoundPlay3DOneShotDone, SymbolMap.SoundPlay3DOneShot));
+    private static IntPtr _SoundPlayOneShot;
+    private static bool _SoundPlayOneShotDone;
+    /// <inheritdoc cref="SymbolMap.SoundPlayOneShot"/>
+    public static SoundPlayOneShotFn SoundPlayOneShot => (SoundPlayOneShotFn)(_SoundPlayOneShotDone ? _SoundPlayOneShot : Resolve(ref _SoundPlayOneShot, ref _SoundPlayOneShotDone, SymbolMap.SoundPlayOneShot));
     private static IntPtr _MaterialInitializeTextures;
     private static bool _MaterialInitializeTexturesDone;
     /// <inheritdoc cref="SymbolMap.MaterialInitializeTextures"/>
@@ -7080,6 +7085,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SoundPlay3DOneShot"/>; returns the slot holding the next layer, or null.</summary>
     public static SoundPlay3DOneShotFn* ChainSoundPlay3DOneShot(this HookService h, SoundPlay3DOneShotFn handler, int priority) =>
         (SoundPlay3DOneShotFn*)h.Chain(SymbolMap.SoundPlay3DOneShot, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SoundPlayOneShot"/>; returns the original, or null.</summary>
+    public static SoundPlayOneShotFn InstallSoundPlayOneShot(this HookService h, SoundPlayOneShotFn handler) =>
+        (SoundPlayOneShotFn)h.Install(SymbolMap.SoundPlayOneShot, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SoundPlayOneShot"/>; returns the slot holding the next layer, or null.</summary>
+    public static SoundPlayOneShotFn* ChainSoundPlayOneShot(this HookService h, SoundPlayOneShotFn handler, int priority) =>
+        (SoundPlayOneShotFn*)h.Chain(SymbolMap.SoundPlayOneShot, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.MaterialInitializeTextures"/>; returns the original, or null.</summary>
     public static MaterialInitializeTexturesFn InstallMaterialInitializeTextures(this HookService h, MaterialInitializeTexturesFn handler) =>
         (MaterialInitializeTexturesFn)h.Install(SymbolMap.MaterialInitializeTextures, (IntPtr)handler);

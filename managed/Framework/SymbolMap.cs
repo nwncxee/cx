@@ -848,6 +848,11 @@ internal static unsafe class SymbolMap
     /// float is added to z (<c>addss xmm1, xmm2</c> before the tail call); volume 0 = the source's default.</summary>
     [Fn("void(IntPtr sound, ResRef* resref, VectorArg pos, float lift, byte group, uint delay, byte volume)")]
     public const string SoundPlay3DOneShot = "_ZN9CExoSound18Play3DOneShotSoundERK7CResRef6Vectorfhjh";
+    /// <summary><c>CExoSound::PlayOneShotSound(CResRef const&amp;, uchar group, uint delayMs, uchar volume)</c> @0x574dd0
+    /// (exported on Windows) -- a flat one-shot, how <c>PlayGuiSound</c> plays the refused-move <c>gui_nowalk</c>: group 9,
+    /// delay 0, volume 0 (the source's default). An empty resref plays nothing.</summary>
+    [Fn("void(IntPtr sound, ResRef* resref, byte group, uint delay, byte volume)")]
+    public const string SoundPlayOneShot = "_ZN9CExoSound16PlayOneShotSoundERK7CResRefhjh";
     /// <summary><c>g_pExoSound</c> @0x18b96b8, the <c>CExoSound*</c> <c>PlayFootstep</c> plays through.</summary>
     public const string ExoSound = "g_pExoSound";
     /// <summary><c>g_pRules</c> @0x18b9680, a <c>CNWRules*</c>. placeables.2da is two hops off it
@@ -2751,6 +2756,7 @@ internal static unsafe class SymbolMap
         [C2DAGetINTEntry]   = Nm("?GetINTEntry@C2DA@@QEAAHHAEBVCExoString@@PEAH@Z"),
         [TwoDimGetCached2DA] = Nm("?GetCached2DA@CTwoDimArrays@@QEAAPEAVC2DA@@VCExoString@@H@Z"),
         [SoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
+        [SoundPlayOneShot]  = Nm("?PlayOneShotSound@CExoSound@@QEAAXAEBVCResRef@@EIE@Z"),
         [ExoSound]          = Nm("?g_pExoSound@@3PEAVCExoSound@@EA"),
         [AreaGetSurfaceMaterial] = At(),
         [Rules]             = Nm("?g_pRules@@3PEAVCNWRules@@EA"),

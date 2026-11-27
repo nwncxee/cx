@@ -33,6 +33,7 @@ public sealed unsafe class InteractService : IExtenderService
                                SymbolMap.AppManager, SymbolMap.WalkPlayerToPoint)) return;
         S.Next = hooks.ChainWinMessageHandler(&OnWinMessage, ChainPriority);
         if (S.Next == null) { log.Info("Interact: standing down (the WinMessageHandler chain was refused)"); return; }
+        FeedbackLine.Register();
         InteractInput.Use(new InteractEngineWorld());
         log.Info("Interact: ready; chained on WinMessageHandler");
     }
@@ -56,6 +57,8 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
     /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
     private const float EyeHeight = 1f;
     private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
+    /// <summary>CExoSound's priority group for interface sounds, the one <c>PlayGuiSound</c> plays in.</summary>
+    private const byte GuiGroup = 9;   // not-an-offset: CExoSound priority group id
     /// <summary>CNWCDoor's state byte past 0, the closed rest: open one way or the other, and destroyed, which a generic
     /// door with no visible model also reads.</summary>
     private const byte DoorOpened1 = 1, DoorOpened2 = 2, DoorDestroyed = 3;
@@ -105,7 +108,14 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         return new CNWCArea(area).ClearLineOfSightOneWay(VectorArg.Of(&a), VectorArg.Of(&b), &hit) == 1;
     }
 
-    public bool SoundExists(string resref) => false;
+    public bool SoundExists(string resref)
+    {
+        IntPtr slot = Native.Sym(SymbolMap.ExoResMan);
+        IntPtr resMan = slot == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)slot;
+        if (resMan == IntPtr.Zero || EngineFn.ResManExists == null || resref.Length == 0) return false;
+        ResRef name = ResRef.Of(resref, lower: true);
+        return EngineFn.ResManExists(resMan, &name, ResTypes.Wav, null) != 0;
+    }
 
     public string? GameKeyAction(int code) => null;
 
@@ -126,9 +136,16 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         if (app != IntPtr.Zero) new CClientExoApp(app).Internal.WalkPlayerToPoint(point.X, point.Y, point.Z, WalkByRunSetting, id, ShowRing);
     }
 
-    public void ShowLine(string text) { }
+    public void ShowLine(string text) => FeedbackLine.Show(text);
 
-    public void PlaySound(string resref) { }
+    public void PlaySound(string resref)
+    {
+        IntPtr slot = Native.Sym(SymbolMap.ExoSound);
+        IntPtr sound = slot == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)slot;
+        if (sound == IntPtr.Zero || EngineFn.SoundPlayOneShot == null) return;
+        ResRef name = ResRef.Of(resref, lower: true);
+        EngineFn.SoundPlayOneShot(sound, &name, GuiGroup, 0, 0);
+    }
 
     private static IntPtr Area()
     {

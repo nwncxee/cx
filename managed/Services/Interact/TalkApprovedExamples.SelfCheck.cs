@@ -207,6 +207,7 @@ internal static class TalkApprovedExamples
             DialogKnobs.Enabled.Reset();
             InteractWorldDouble.Restore();
         }
+        log.Info(check.Ok ? "TalkApprovedExamples.SelfCheck: passed" : "TalkApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }
