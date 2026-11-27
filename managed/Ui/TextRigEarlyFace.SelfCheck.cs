@@ -10,6 +10,8 @@ internal static class TextRigEarlyFace
     private const float Px = 7.5f;
     /// <summary>The default-typeface face asked through the overload that names no typeface, at a size no service asks for.</summary>
     private const float DefaultPx = 8.5f;
+    /// <summary>A default-typeface face asked and let go again before the sheet exists, as the cards' self-check does.</summary>
+    private const float LetGoPx = 6.5f;
     private const string Owner = "cx-earlyfacecheck", Other = "cx-earlyfacecheck2";
 
     /// <summary>Asks for the face before any service has initialized; null, as no sheet exists yet.</summary>
@@ -21,6 +23,8 @@ internal static class TextRigEarlyFace
         check.Expect(TextRig.Face(FontRegistry.DefaultName, Px, Owner) == null && TextRig.Face(FontRegistry.DefaultName, Px, Other) == null,
                      "a face two owners ask for before the sheet exists comes back null to each");
         check.Expect(TextRig.Face(DefaultPx, Owner) == null, "a default-typeface face asked before the sheet exists comes back null");
+        TextRig.Face(LetGoPx, Owner);
+        TextRig.ReleaseFace(LetGoPx, Owner);
         log.Info(check.Ok ? "TextRigEarlyFace.SelfCheck: asked" : "TextRigEarlyFace.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -33,6 +37,7 @@ internal static class TextRigEarlyFace
         var check = new Checker(log, "TextRigEarlyFace.SelfCheck");
         check.Expect(TextRig.Asks(FontRegistry.DefaultName, Px), $"a face asked before the sheet existed is in its first bake at {Px}px");
         check.Expect(TextRig.Asks(FontRegistry.DefaultName, DefaultPx), $"a default-typeface face asked before the sheet existed is in its first bake at {DefaultPx}px");
+        check.Expect(!TextRig.Asks(FontRegistry.DefaultName, LetGoPx), $"a face let go before the sheet existed is not in its first bake at {LetGoPx}px");
         TextRig.ReleaseFace(DefaultPx, Owner);
         check.Expect(!TextRig.Asks(FontRegistry.DefaultName, DefaultPx), "its owner letting go drops the default-typeface face");
         TextRig.ReleaseFace(FontRegistry.DefaultName, Px, Owner);

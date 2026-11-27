@@ -169,13 +169,14 @@ public static unsafe partial class TextRig
         => _sheet != null && _sheet.TryFace(Icons.Name, px, out GlyphAtlas f) ? f : null;
 
     /// <summary><paramref name="owner"/> no longer needs its face of <paramref name="typeface"/> at <paramref name="px"/>. When no
-    /// owner holds it, the sheet stops carrying it from the next re-bake on. Cold; no bake of its own -- the face stays usable
-    /// until then. The default face (index 0) is never dropped.</summary>
+    /// owner holds it, the sheet stops carrying it from the next re-bake on, and one asked ahead of the sheet stays out of its
+    /// first bake. Cold; no bake of its own -- the face stays usable until then. The default face (index 0) is never dropped.</summary>
     public static void ReleaseFace(string typeface, float px, string owner)
     {
         typeface = FontRegistry.Effective(typeface);
         lock (_bakeLock)
         {
+            _early.RemoveAll(e => e.Owner == owner && e.Px == px && FontRegistry.Effective(e.Typeface) == typeface);
             if (_holders.TryGetValue((typeface, px), out HashSet<string>? who))
             {
                 who.Remove(owner);
@@ -188,10 +189,7 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>As <see cref="ReleaseFace(string, float, string)"/> for the default typeface.</summary>
-    public static void ReleaseFace(float px, string owner)
-    {
-        if (_defaultName != null) ReleaseFace(_defaultName, px, owner);
-    }
+    public static void ReleaseFace(float px, string owner) => ReleaseFace(_defaultName ?? DefaultFace, px, owner);
 
     /// <summary>Raised COLD after <see cref="SetFont"/> swaps in a re-baked sheet, so a face derived from the UI size
     /// (the floaty peak face) can re-request itself at the new height. ponytail: that re-request is a second full
