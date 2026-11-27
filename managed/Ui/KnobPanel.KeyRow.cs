@@ -20,14 +20,10 @@ public sealed partial class KnobPanel
     /// <summary>The key row's box text: its key, or while it waits the key held behind a warning, else <see cref="WaitText"/>.</summary>
     internal string KeyBoxText(Row r) => Waiting(r) ? _keyPending ?? WaitText : r.Value;
 
-    /// <summary>The SDL keycodes of the eight modifier keys: alone, they bind nothing.</summary>
-    private const uint ModFirst = 0x400000E0, ModLast = 0x400000E7;  // not-an-offset: SDL key/event code
-
     /// <summary>A key while a key row waits: Escape keeps the old key, Backspace unbinds, any other key binds.</summary>
     private void WaitingKey(uint sdlKey)
     {
         if (sdlKey == KeyEscape) { StopWaiting(); return; }
-        if (sdlKey is >= ModFirst and <= ModLast) return;
         if (_keyWarning != null && sdlKey is KeyReturn or KeyKpEnter) { ConfirmKey(); return; }
         if (sdlKey == KeyBackspace) { Choose(""); return; }
         string name = KeyNames.Name((int)sdlKey);
@@ -113,7 +109,7 @@ public sealed partial class KnobPanel
     {
         int code = KeyNames.Code(name);
         if (code == 0) return null;
-        if (KnobGroup.KeyHolder(code, row, KeyNames.Code) is { } k) return name + " is already bound to " + k.Label + " in " + k.Group.Title + ".";
+        if (KnobGroup.KeyHolder(code, row, KeyNames.Code) is { } k) return name + " is already bound to " + k.Label + " in " + k.Group.Title + (k.Group.SwitchedOff ? " (off)." : ".");
         return InteractInput.GameKeyAction(code) is { } action ? name + " already does " + action + " in the game's Key Mapping." : null;
     }
 }

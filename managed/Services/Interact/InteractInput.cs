@@ -82,18 +82,19 @@ internal static class InteractInput
     internal static string? SoundNote() => S.SoundFound == false ? SoundNotFound : null;
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
-    /// took it, so the game never sees it.</summary>
+    /// took it, so the game never sees it; a modifier key acts and still reaches the game, so shift-click keeps working.</summary>
     internal static bool KeyDown(int code, bool repeat)
     {
         if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
-        if (repeat || code == S.HeldThroughLoad) return true;
+        bool took = !KeyNames.IsModifier(code);
+        if (repeat || code == S.HeldThroughLoad) return took;
         if (code > 0) S.Held = code;
         Thing? picked = InteractCore.Pick(key, world, S, out bool refused);
-        if (picked is not { } t) { Feedback(world, refused ? RefusedLine : Lines[(int)key]); return true; }
+        if (picked is not { } t) { Feedback(world, refused ? RefusedLine : Lines[(int)key]); return took; }
         S.Acting = true;
         try { Act(world, t); }
         finally { S.Acting = false; }
-        return true;
+        return took;
     }
 
     /// <summary>Says a press did nothing: the line, and the feedback sound when the game has it. The sound is looked up

@@ -5,8 +5,8 @@ using CX.Services.Interact;
 
 namespace CX.Ui;
 
-/// <summary>The key row's edges no approved example names: a modifier press, the warning's own keys and lines, and
-/// the camera toggle yielding a thumb button to Interact. Oracle: the key names and codes written here.</summary>
+/// <summary>The key row's edges no approved example names: a key with no name, a modifier bound to Interact, the
+/// warning's own keys and lines, the cursor keys' clashes and the camera toggle yielding a thumb button to Interact. Oracle: the key names and codes written here.</summary>
 public sealed partial class KnobPanel
 {
     [SelfCheckSuite(SuitePhase.AfterServices)]
@@ -21,6 +21,7 @@ public sealed partial class KnobPanel
         {
             InteractWorldDouble.Install();
             InteractKnobs.Key.Set("F");
+            TabTarget.LockKey.Set("");
             var p = new KnobPanel { Category = Array.IndexOf(KnobCategories, "Controls") };
             p.OpenAt(1280f, 720f, FacePx, body, small);
             p._subs = new[] { new SubMenu(InteractKnobs.G) }; p.Sub = 0; p.LayoutRows();
@@ -36,10 +37,8 @@ public sealed partial class KnobPanel
                 check.Expect(loot != null && !p.Waiting(loot) && p.KeyBoxText(loot) == loot.Value, $"U1 the Loot row beside it does not wait and shows its own key ('{(loot == null ? "" : p.KeyBoxText(loot))}')");
                 p.Key(0x40000000);  // not-an-offset: SDL key/event code
                 check.Expect(p.Waiting(r) && InteractKnobs.Key.V == "F", $"U1 a key with no name (SDL's unknown scancode) keeps the row waiting and F bound ({InteractKnobs.Key.V})");
-                p.Key(0x400000E1);
-                check.Expect(p.Waiting(r) && InteractKnobs.Key.V == "F", $"U1 a Shift press alone keeps the row waiting and binds nothing ({InteractKnobs.Key.V})");
                 p.Key('g');
-                check.Expect(!p.Waiting(r) && InteractKnobs.Key.V == "G", $"U1 G after it binds G, no modifier ({InteractKnobs.Key.V})");
+                check.Expect(!p.Waiting(r) && InteractKnobs.Key.V == "G", $"U1 G after it binds G ({InteractKnobs.Key.V})");
             }
             {
                 CameraModes.Chase.ActionKey.Set("]");
@@ -121,6 +120,7 @@ public sealed partial class KnobPanel
             {
                 KnobPanel p = Fresh();
                 TabTarget.Enabled.Set(true);
+                TabTarget.LockKey.Set("F");
                 InteractKnobs.Key.Set("");
                 Wait(p, InteractKnobs.Key);
                 p.Key('f');
@@ -148,6 +148,60 @@ public sealed partial class KnobPanel
                 InteractInput.Use(null);
                 check.Expect(MouseLookService.Flips(']', ']'), "U8 with no world in, Interact takes nothing, so ] still toggles the action camera");
             }
+            {
+                InteractWorldDouble w = InteractWorldDouble.Install();
+                InteractKnobs.Key.Set("Left Shift");
+                uint bag = w.Bag(3f);
+                bool took = w.PressCode(LeftShift);
+                bool repeat = w.PressCode(LeftShift, repeat: true);
+                check.Expect(!took && !repeat && w.Did(bag), $"U11 Interact on Left Shift acts and hands the press and its repeat on to the game: took {took}, repeat {repeat}, {w.Seen}");
+                InteractKnobs.Key.Set("F");
+                check.Expect(w.Press('F'), "U11 a key that is no modifier is still Interact's alone");
+            }
+            {
+                InteractWorldDouble.Install();
+                Knob<string> chase = CameraModes.Chase.CursorKey, topDown = CameraModes.TopDown.CursorKey;
+                string[] was = { chase.FormatStored(), topDown.FormatStored() };
+                string?[] raw = { Settings.Raw(chase.Key), Settings.Raw(topDown.Key) };
+                try
+                {
+                    chase.Set("Space");
+                    TabTarget.LockKey.Set("");
+                    string? peer = KeyClash(topDown, "Space");
+                    string? interact = KeyClash(topDown, "F");
+                    string? back = KeyClash(InteractKnobs.Key, "Space");
+                    check.Expect(peer == null && interact == "F is already bound to Interact in Interact." && back != null && back.Contains("Cursor key"),
+                        $"U12 a cursor key clashes with no other mode's but with every other key, both ways: peer '{peer}', Interact '{interact}', from Interact '{back}'");
+                }
+                finally
+                {
+                    Knob<string>[] rows = { chase, topDown };
+                    for (int i = 0; i < rows.Length; i++)
+                    {
+                        if (rows[i].FormatStored() != was[i]) rows[i].Parse(was[i]);
+                        if (raw[i] is { } v) Settings.Read($"{rows[i].Key}={v}\n");
+                        else Settings.Forget(rows[i].Key);
+                    }
+                }
+            }
+            {
+                InteractWorldDouble.Install();
+                var g = new KnobGroup("cx-keyrow-parent", "Test", "Test", "on", "x", true, Effect.Live, null, "interact.enabled", "", register: false);
+                bool on = g.SwitchedOff;
+                InteractKnobs.Enabled.Set(false);
+                bool parentOff = g.SwitchedOff;
+                InteractKnobs.Enabled.Set(true);
+                g.Master!.Set(false);
+                check.Expect(!on && parentOff && g.SwitchedOff, $"U14 a group reads switched off when its parent's master is off, or its own: on {on}, parent off {parentOff}, own off {g.SwitchedOff}");
+            }
+            {
+                string[] names = { "Left Ctrl", "Left Shift", "Left Alt", "Left GUI", "Right Ctrl", "Right Shift", "Right Alt", "Right GUI" };
+                int round = 0;
+                for (int i = 0; i < names.Length; i++)
+                    if (KeyNames.Name(FirstModifier + i) == names[i] && KeyNames.Code(names[i]) == FirstModifier + i && KeyNames.Code(names[i].ToLowerInvariant()) == FirstModifier + i && KeyNames.IsModifier(FirstModifier + i)) round++;
+                check.Expect(round == 8 && !KeyNames.IsModifier(FirstModifier - 1) && !KeyNames.IsModifier(FirstModifier + 8) && KeyNames.Name(FirstModifier + 8) != "Right GUI",
+                    $"U13 KeyNames names the eight modifiers and reads each back, and no code beside them is one: {round} of 8");
+            }
         }
         finally
         {
@@ -157,4 +211,7 @@ public sealed partial class KnobPanel
         log.Info(check.Ok ? "KeyRowUnasked.SelfCheck: passed" : "KeyRowUnasked.SelfCheck: FAILED");
         return check.Ok;
     }
+
+    /// <summary>SDL's codes for Left Ctrl, the first modifier key, and Left Shift.</summary>
+    private const int FirstModifier = 0x400000E0, LeftShift = 0x400000E1;  // not-an-offset: SDL key code
 }

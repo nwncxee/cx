@@ -25,6 +25,7 @@ public sealed partial class KnobPanel
         {
             var w = InteractWorldDouble.Install();
             InteractWorldDouble.Defaults();
+            TabTarget.LockKey.Set("");
             var p = new KnobPanel { Category = Array.IndexOf(KnobCategories, "Controls") };
             p.OpenAt(1280f, 720f, FacePx, body, small);
             p._subs = new[] { new SubMenu(InteractKnobs.G) }; p.Sub = 0; p.LayoutRows();

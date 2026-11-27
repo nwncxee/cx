@@ -59,6 +59,9 @@ public abstract class Knob
     /// <summary>Whether a text row's value binds a press code: set on every key setting typed as text, so a key row can
     /// name the one already using a key. Null on a knob that binds no key and on a press-to-bind row.</summary>
     internal Func<string, int, bool>? BindsKey;
+    /// <summary>Key rows sharing one non-null name bind one key between them with no clash: each camera mode's cursor
+    /// key, as only the mode in use reads its own.</summary>
+    internal string? KeyPeers;
     /// <summary>A row that exists but cannot be edited yet: the panel
     /// greys it and ignores its presses; chat and the file still read it.</summary>
     public bool Disabled;

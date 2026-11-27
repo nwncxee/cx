@@ -133,16 +133,18 @@ public sealed partial class KnobGroup
         => Add(new Knob<string>(this, key, label, KnobKind.Key, tier, Effect.Live, _section, help ?? "", false,
                                 def, "", "", "", "", null, null, null, null), changed);
 
-    /// <summary>The key setting other than <paramref name="except"/> whose value binds press <paramref name="code"/>, in a
-    /// group switched on: a press-to-bind row read through <paramref name="keyOf"/>, a text row by its
-    /// <see cref="Knob.BindsKey"/>. Null when none does. Cold: a key row's bind.</summary>
+    /// <summary>Whether the group's master, or its parent's, is off.</summary>
+    internal bool SwitchedOff => Master is { V: false } || Parent is { V: false };
+
+    /// <summary>The key setting other than <paramref name="except"/> and its <see cref="Knob.KeyPeers"/> whose value binds
+    /// press <paramref name="code"/>, in a group switched on or off: a press-to-bind row read through
+    /// <paramref name="keyOf"/>, a text row by its <see cref="Knob.BindsKey"/>. Null when none does. Cold: a key row's bind.</summary>
     internal static Knob? KeyHolder(int code, Knob except, Func<string, int> keyOf)
     {
         foreach (KnobGroup g in All)
         {
-            if (g.Master is { V: false } || g.Parent is { V: false }) continue;
             foreach (Knob k in g.Knobs)
-                if (k != except && k is Knob<string> s
+                if (k != except && (except.KeyPeers == null || k.KeyPeers != except.KeyPeers) && k is Knob<string> s
                     && (k.Kind == KnobKind.Key ? keyOf(s.V) == code : s.BindsKey is { } binds && binds(s.V, code))) return k;
         }
         return null;
