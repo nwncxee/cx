@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CX.Framework;
+using static CX.Alloy.AirFixture;
+using static CX.Alloy.MistFixture;
 
 namespace CX.Alloy;
 
@@ -19,6 +23,78 @@ internal static class AirDustMarch
     /// 0.2 at range and a cutoff range multiplier of 2, the defaults both clients bind, as <see cref="AlloyLights.LatchAtten"/> forms it.</summary>
     internal static readonly Vector2 ShippedPair = new(MathF.Pow(1.5f, -AlloyLights.SrgbGamma),
                                                        4f * (MathF.Pow(0.2f, -AlloyLights.SrgbGamma) - MathF.Pow(1.5f, -AlloyLights.SrgbGamma)));
+
+    /// <summary>The crypt's light, and the night's by the water: a dim ambient, under a pale moon outdoors.</summary>
+    private static readonly Shine CryptLight = new(new Vector3(0.03f, 0.03f, 0.04f), Vector3.Zero),
+        NightLight = new(new Vector3(0.02f, 0.02f, 0.03f), new Vector3(0.05f, 0.06f, 0.1f));
+
+    /// <summary>The eye over the floor and its distance across it, the height the air spans, and the turn's headings.</summary>
+    private const float TurnEye = 6f, TurnOff = 8f, TallSlab = 3.5f;
+    private const int Headings = 16;
+
+    /// <summary>The player's feet on a stair up to the raised deck at the room's far side, whose floor lifts the air's top.</summary>
+    private static readonly Vector3 Raised = new(0f, 0f, 1.5f);
+
+    /// <summary>The most the keep of the floor, and the light added over it, may stray from heading to heading.</summary>
+    private const float TurnKeep = 0.005f, TurnLight = 0.02f;
+
+    [SelfCheckSuite(SuitePhase.AfterServices, InSession = false)]
+    internal static bool SelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "AirDustMarch.SelfCheck");
+        using var switches = AirFixture.Switches.Force();
+        CryptTurn(check);
+        QuayTurn(check);
+        log.Info(check.Ok ? "AirDustMarch.SelfCheck: passed" : "AirDustMarch.SelfCheck: FAILED");
+        return check.Ok;
+    }
+
+    // Given dust on a crypt's floor
+    // When the camera turns a full circle in place
+    // Then no stripes or bands show in the dust, and the dust stays where it lies in the world.
+    private static void CryptTurn(Checker check)
+    {
+        List<Tile> hall = Ground(40f, 2f, (_, _) => 0f, (x, y) => MathF.Abs(x) >= 30f || MathF.Abs(y) >= 30f ? Nonwalk : Stone);
+        Deck(hall, 18f, 18f, 26f, 26f, TallSlab - 0.4f, Stone);
+        Lay(hall, Raised, true, 0f);
+        AirScene.Enter(AirFixture.Crypt, false);
+        Go(3f, Vector2.Zero);
+        Turn(check, "E47 the crypt's dust", new Vector3(-10f, 0.3f, 0f), CryptLight);
+    }
+
+    // Given night mist over the water by the quay
+    // When the camera turns a full circle in place
+    // Then no stripes or bands show in the mist, and the mist stays where it lies in the world.
+    private static void QuayTurn(Checker check)
+    {
+        List<Tile> quay = AirFixture.Quay();
+        Deck(quay, 30f, 30f, 38f, 38f, TallSlab - AirScene.MistTop, MistFixture.Water);
+        Lay(quay, Raised, true, 0f);
+        AirScene.Enter(City, true);
+        Go(Gather, Vector2.Zero);
+        Turn(check, "E144 the quay's night mist", new Vector3(12f, 0.3f, 0f), NightLight);
+    }
+
+    /// <summary>March the floor point <paramref name="floor"/> from an eye <see cref="TurnEye"/> up and <see cref="TurnOff"/>
+    /// off at each heading of a full turn, each from its own step offset as the screen block's noise gave it.</summary>
+    private static void Turn(Checker check, string what, Vector3 floor, Shine room)
+    {
+        int gen = int.MinValue;
+        GroundMist.Pack(ref gen, Sent);
+        var f = new Field(Sent);
+        check.Expect(f.Slab.Y - f.Slab.X >= TallSlab - 0.05f, $"{what}: the air spans {f.Slab.Y - f.Slab.X:F2} m (want {TallSlab} m, a tall slab)");
+        float lo = 1f, hi = 0f, dim = float.MaxValue, bright = 0f;
+        for (int n = 0; n < Headings; n++)
+        {
+            float a = MathF.Tau * n / Headings;
+            var eye = floor + new Vector3(TurnOff * MathF.Cos(a), TurnOff * MathF.Sin(a), TurnEye);
+            (float keep, Vector3 added) = f.March(eye, floor, room, ReadOnlySpan<Point>.Empty, (n * 5 % Headings + 0.5f) / Headings);
+            float light = added.X + added.Y + added.Z;
+            (lo, hi, dim, bright) = (MathF.Min(lo, keep), MathF.Max(hi, keep), MathF.Min(dim, light), MathF.Max(bright, light));
+        }
+        check.Expect(hi < 1f && hi - lo <= TurnKeep, $"{what}: over a full turn the eye keeps {lo:P2} to {hi:P2} of the floor (want {TurnKeep:P1} apart at most, some air)");
+        check.Expect(bright > 0f && bright - dim <= TurnLight * bright, $"{what}: over a full turn the air adds {dim:F5} to {bright:F5} (want {TurnLight:P0} apart at most)");
+    }
 
     /// <summary>The shipped stage's text.</summary>
     internal static string Stage => ShaderSource.Get(AirScene.ShdCs + ".glsl");
@@ -124,7 +200,11 @@ internal static class AirDustMarch
             => joined ? (1f - f, f) : (MathF.Max(1f - 2f * f, 0f), MathF.Max(2f * f - 1f, 0f));
 
         /// <summary>The dust and the mist per metre at <paramref name="p"/> on a ray that ends at height <paramref name="end"/>.</summary>
-        internal (float Dust, float Mist) At(Vector3 p, float end)
+        internal (float Dust, float Mist) At(Vector3 p, float end) => At(p, end, p.Z, 0f);
+
+        /// <summary>The mean dust and mist per metre over heights <paramref name="z"/> give or take <paramref name="hz"/>
+        /// at <paramref name="p"/>'s place: a march step's own span of height, <c>CxAirAt</c>.</summary>
+        internal (float Dust, float Mist) At(Vector3 p, float end, float z, float hz)
         {
             float qx = p.X - Head.X - 0.5f, qy = p.Y - Head.Y - 0.5f;
             int x = (int)MathF.Floor(qx), y = (int)MathF.Floor(qy);
@@ -137,21 +217,33 @@ internal static class AirDustMarch
             float w00 = a0 * l0, w10 = b0 * l1, w01 = a1 * u0, w11 = b1 * u1;
             float top = Floored(c00, w00) + Floored(c10, w10) + Floored(c01, w01) + Floored(c11, w11);
             float dust = 0f, mist = 0f, here = Quarter(p.X, p.Y);
-            Add(c00, w00, p.Z, end, top, here, ref dust, ref mist);
-            Add(c10, w10, p.Z, end, top, here, ref dust, ref mist);
-            Add(c01, w01, p.Z, end, top, here, ref dust, ref mist);
-            Add(c11, w11, p.Z, end, top, here, ref dust, ref mist);
+            Add(c00, w00, z, hz, end, top, here, ref dust, ref mist);
+            Add(c10, w10, z, hz, end, top, here, ref dust, ref mist);
+            Add(c01, w01, z, hz, end, top, here, ref dust, ref mist);
+            Add(c11, w11, z, hz, end, top, here, ref dust, ref mist);
             return (dust, mist);
         }
 
         private float Floored(GroundMist.Cell c, float w) => c.Floor < Wall ? 0f : w;
 
-        private void Add(GroundMist.Cell c, float w, float z, float end, float top, float here, ref float dust, ref float mist)
+        private void Add(GroundMist.Cell c, float w, float z, float hz, float end, float top, float here, ref float dust, ref float mist)
         {
             if (w <= 0f || end < c.Floor - Drop) return;
             float h = z - Base(c.Floor, here);
-            dust += w * c.Dust * Profile(h, c.Top);
-            mist += w * c.Mist * Profile(h, Slab.W * top);
+            dust += w * c.Dust * Layer(h, hz, c.Top);
+            mist += w * c.Mist * Layer(h, hz, Slab.W * top);
+        }
+
+        /// <summary><c>CxAirProfile</c>: the profile's mean over heights <paramref name="h"/> give or take
+        /// <paramref name="hz"/>, or its value at <paramref name="h"/> on a level step.</summary>
+        private static float Layer(float h, float hz, float top) => hz > 1e-4f ? DustSpan(h - hz, h + hz, top) : Profile(h, top);
+
+        /// <summary><c>CxAirDustSpan</c>: the profile's exact mean from height <paramref name="a"/> up to <paramref name="b"/>.</summary>
+        private static float DustSpan(float a, float b, float top)
+        {
+            if (top <= 0f) return 0f;
+            float lo = Math.Clamp(a, 0f, top) / top, hi = Math.Clamp(b, 0f, top) / top;
+            return (2f * (hi - lo) - (hi * hi - lo * lo)) / (b - a);
         }
 
         /// <summary><c>CxAirDust</c>: thickest on the floor, nothing at <paramref name="top"/>, integrating to 1.</summary>
@@ -204,8 +296,9 @@ internal static class AirDustMarch
             return MathF.Exp(-tau);
         }
 
-        /// <summary>March the eye's ray from <paramref name="eye"/> to the surface <paramref name="surf"/> at step offset
-        /// <paramref name="jitter"/>: what it keeps of the surface and the light the air adds over it.</summary>
+        /// <summary>March the eye's ray from <paramref name="eye"/> to the surface <paramref name="surf"/>, each step reading
+        /// its columns at offset <paramref name="jitter"/> and laying its own whole span of height: what it keeps of the
+        /// surface and the light the air adds over it.</summary>
         internal (float Keep, Vector3 Added) March(Vector3 eye, Vector3 surf, Shine room, ReadOnlySpan<Point> lamps, float jitter = 0.5f,
                                                    Vector2 pair = default)
         {
@@ -222,12 +315,13 @@ internal static class AirDustMarch
             }
             else if (eye.Z < Slab.X || eye.Z > Slab.Y) return (1f, Vector3.Zero);
             if (t1 <= t0) return (1f, Vector3.Zero);
-            float dl = (t1 - t0) / Steps;
+            float dl = (t1 - t0) / Steps, hz = 0.5f * MathF.Abs(dir.Z) * dl;
             Span<float> rd = stackalloc float[Steps], rm = stackalloc float[Steps];
             int first = -1, last = -1;
             for (int k = 0; k < Steps; k++)
             {
-                (float d, float m) = At(eye + dir * (t0 + dl * (k + jitter)), surf.Z);
+                float zc = eye.Z + dir.Z * (t0 + dl * (k + 0.5f));
+                (float d, float m) = At(eye + dir * (t0 + dl * (k + jitter)), surf.Z, zc, hz);
                 rd[k] = d * Sigma * dl;
                 rm[k] = m * Sigma * dl;
                 if (rd[k] + rm[k] <= 0f) continue;
@@ -238,7 +332,7 @@ internal static class AirDustMarch
             Span<Vector3> probe = stackalloc Vector3[Probes];
             float span = last - first;
             for (int i = 0; i < Probes; i++)
-                probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + jitter)), pair);
+                probe[i] = LampsAt(lamps, eye + dir * (t0 + dl * (first + span * i / (Probes - 1) + 0.5f)), pair);
             Vector3 dusty = room.Ambient, sky = Slab.Z > 0.5f ? dusty : room.Ambient + room.Diffuse, added = Vector3.Zero;
             float keep = 1f;
             for (int k = first; k <= last; k++)

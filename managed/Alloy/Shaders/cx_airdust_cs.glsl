@@ -65,13 +65,19 @@ float CxAirBase(float a, float here)
     return here > CX_AIR_WALL && CxAirJoined(a, here, CX_AIR_STEP) ? here : a;
 }
 
-/// The dust (x) and mist (y) per metre one cell lays at height z by its share w over the quarter floor `here`, its mist
-/// reaching `top` of its height; none on a ray that ends in a drop below it.
-vec2 CxAirLayer(vec4 cell, float w, float z, float end, float top, float here)
+/// The dust profile's mean over heights h give or take hz, or its value at h on a level step.
+float CxAirProfile(float h, float hz, float top)
+{
+    return hz > 1e-4 ? CxAirDustSpan(h - hz, h + hz, top) : CxAirDust(h, top);
+}
+
+/// The dust (x) and mist (y) per metre one cell lays over heights z give or take hz by its share w over the quarter
+/// floor `here`, its mist reaching `top` of its height; none on a ray that ends in a drop below it.
+vec2 CxAirLayer(vec4 cell, float w, float z, float hz, float end, float top, float here)
 {
     if (w <= 0.0 || end < cell.x - CX_AIR_DROP) return vec2(0.0);
     float h = z - CxAirBase(cell.x, here);
-    return w * vec2(cell.z * CxAirDust(h, cell.w), cell.y * CxAirDust(h, uAirSlab.w * top));
+    return w * vec2(cell.z * CxAirProfile(h, hz, cell.w), cell.y * CxAirProfile(h, hz, uAirSlab.w * top));
 }
 
 /// The share w of a cell when it has a floor, nothing when it has none: the mist comes down as it fades off a floor.
@@ -116,8 +122,9 @@ float CxAirQuarter(vec2 p)
     return sum > 0.0 ? dot(w, vec4(a, b, d, e)) / sum : -1e9;
 }
 
-/// The dust (x) and mist (y) per metre at world point p on a ray that ends at height end, from the four nearest columns.
-vec2 CxAirAt(vec3 p, float end)
+/// The dust (x) and mist (y) per metre at world point p, over its heights give or take hz, on a ray that ends at height
+/// end, from the four nearest columns.
+vec2 CxAirAt(vec3 p, float hz, float end)
 {
     vec2 q = p.xy - uAirHead.xy - 0.5;
     ivec2 c = ivec2(floor(q));
@@ -128,8 +135,8 @@ vec2 CxAirAt(vec3 p, float end)
     vec4 w = vec4(x0.x * y0.x, x0.y * y1.x, x1.x * y0.y, x1.y * y1.y);
     float top = CxAirFloored(c00, w.x) + CxAirFloored(c10, w.y) + CxAirFloored(c01, w.z) + CxAirFloored(c11, w.w);
     float here = CxAirQuarter(p.xy);
-    return CxAirLayer(c00, w.x, p.z, end, top, here) + CxAirLayer(c10, w.y, p.z, end, top, here)
-         + CxAirLayer(c01, w.z, p.z, end, top, here) + CxAirLayer(c11, w.w, p.z, end, top, here);
+    return CxAirLayer(c00, w.x, p.z, hz, end, top, here) + CxAirLayer(c10, w.y, p.z, hz, end, top, here)
+         + CxAirLayer(c01, w.z, p.z, hz, end, top, here) + CxAirLayer(c11, w.w, p.z, hz, end, top, here);
 }
 
 /// The share of its light a lamp of reach pr.w lays at world point at: the lit stage's own falloff over the engine's
@@ -182,14 +189,12 @@ vec4 CxAirMarch(ivec2 q)
     }
     else if (uEyePos.z < uAirSlab.x || uEyePos.z > uAirSlab.y) return vec4(0.0, 0.0, 0.0, 1.0);
     if (t1 <= t0) return vec4(0.0, 0.0, 0.0, 1.0);
-    float dl = (t1 - t0) / float(CX_AIR_STEPS);
-    // interleaved gradient noise: each block's steps start at their own offset, so the steps dither instead of banding
-    float jit = fract(52.9829189 * fract(dot(vec2(q), vec2(0.06711056, 0.00583715))));
+    float dl = (t1 - t0) / float(CX_AIR_STEPS), hz = 0.5 * abs(dir.z) * dl;
     vec2 tau[CX_AIR_STEPS];
     int first = -1, last = -1;
     for (int k = 0; k < CX_AIR_STEPS; k++)
     {
-        tau[k] = CxAirAt(uEyePos + dir * (t0 + dl * (float(k) + jit)), surf.z) * (CX_AIR_SIGMA * dl);
+        tau[k] = CxAirAt(uEyePos + dir * (t0 + dl * (float(k) + 0.5)), hz, surf.z) * (CX_AIR_SIGMA * dl);
         if (tau[k].x + tau[k].y <= 0.0) continue;
         if (first < 0) first = k;
         last = k;
@@ -198,7 +203,7 @@ vec4 CxAirMarch(ivec2 q)
     float span = float(last - first);
     vec3 probe[CX_AIR_PROBES];
     for (int i = 0; i < CX_AIR_PROBES; i++)
-        probe[i] = CxAirLamps(uEyePos + dir * (t0 + dl * (float(first) + span * float(i) / float(CX_AIR_PROBES - 1) + jit)));
+        probe[i] = CxAirLamps(uEyePos + dir * (t0 + dl * (float(first) + span * float(i) / float(CX_AIR_PROBES - 1) + 0.5)));
     vec3 dust = CxAirLit(uAreaAmbient, vec3(0.0), 0.0, 0.0), sky = uAirSlab.z > 0.5 ? dust : CxAirSky(uAreaAmbient, uAreaDiffuse), lit = vec3(0.0);
     float mistAlbedo = uAirSlab.z > 0.5 ? CX_AIR_ALBEDO : 1.0;
     float keep = 1.0;

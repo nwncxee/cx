@@ -11,6 +11,15 @@ float CxAirDust(float z, float top)
     return 2.0 * (1.0 - z / top) / top;
 }
 
+// The mean of CxAirDust from height a up to b, exactly: a march step that lays its whole span of height adds the same
+// air wherever along the step it reads its columns, so the steps neither band nor need a dither.
+float CxAirDustSpan(float a, float b, float top)
+{
+    if (top <= 0.0) return 0.0;
+    float lo = clamp(a, 0.0, top) / top, hi = clamp(b, 0.0, top) / top;
+    return (2.0 * (hi - lo) - (hi * hi - lo * lo)) / (b - a);
+}
+
 // Do neighbouring columns with floors `a` and `b` join into one floor, their rise at most `step`? A wall's floor lies
 // far below anything, so a wall never joins.
 bool CxAirJoined(float a, float b, float step)
