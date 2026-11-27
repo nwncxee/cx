@@ -43,6 +43,12 @@ internal static class FeedbackEdges
                 string? note = InteractKnobs.Sound.Note?.Invoke();
                 check.Expect(note == null, $"a world that has the sound drops the note the last world's miss left: '{note}'");
             }
+            {
+                int rows = 0;
+                foreach (Knob k in InteractKnobs.G.Knobs)
+                    if (k.Tier == Tier.User && k.Kind != KnobKind.Link && k.ShowIf == null) rows++;
+                check.Expect(rows <= KnobGroup.MaxUserRows, $"Controls » Interact holds no more User rows than a submenu may: {rows} of {KnobGroup.MaxUserRows}");
+            }
             check.Expect(FeedbackLine.Alpha(0f) == 1f && FeedbackLine.Alpha(2.49f) == 1f && MathF.Abs(FeedbackLine.Alpha(2.8f) - 0.5f) < 1e-4f
                          && FeedbackLine.Alpha(3.1f) == 0f && FeedbackLine.Alpha(60f) == 0f,
                          $"the line holds 2.5s then fades over 0.6s: {FeedbackLine.Alpha(2.49f)} {FeedbackLine.Alpha(2.8f)} {FeedbackLine.Alpha(3.1f)}");
