@@ -19,7 +19,7 @@ third class names no declaration; those reads are listed under `-v` and fail not
 import bisect, os, re, sys, collections
 
 ROOT = os.environ.get('CX_ROOT', '.')
-FACT = re.compile(r'\b(\w++)\s*=\s*\w++\.(?:Toggle|Slider|Dropdown|Swatch|Text|List)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
+FACT = re.compile(r'\b(\w++)\s*=\s*\w++\.(?:Toggle|Slider|Dropdown|Swatch|Text|List|KeyBind)\s*(?:<[^>()]*>)?\s*(\()\s*"([A-Za-z0-9_.\-]+)"')
 READ = re.compile(r'(?:\b(\w++)\s*\.\s*)?\b(\w++)\.(V|Boot)\b')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')
 

@@ -15,7 +15,7 @@ namespace CX.Services.Camera;
 /// the engine work at six seams -- keys, candidates, indicator, camera, fire and click-to-lock, each documented
 /// where it sits. Nothing allocates, and the lock is one id behind <see cref="Volatile"/>.
 /// </summary>
-public sealed unsafe class TabTargetService : IExtenderService
+public sealed unsafe partial class TabTargetService : IExtenderService
 {
     private static ExtenderLog? _log;
     private static bool _ready;
@@ -34,7 +34,7 @@ public sealed unsafe class TabTargetService : IExtenderService
     private const byte LockChannel = 4;
     private const int Glow = 1;
     /// <summary>Attitude byte: 1 friend, 0 neutral, else hostile.</summary>
-    private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
+    internal const byte AttitudeNeutral = 0, AttitudeFriend = 1;
 
     // ---- the lock ----
     private static uint _lock;
@@ -223,7 +223,8 @@ public sealed unsafe class TabTargetService : IExtenderService
     }
 
     private static bool Hostile(CNWCObject creature) => new CNWCCreature(creature.Ptr).Attitude is not (AttitudeNeutral or AttitudeFriend);
-    private static bool Dead(CNWCObject creature) => new CNWCCreature(creature.Ptr).AiFlags == 0;
+    /// <summary>Whether <paramref name="creature"/> reads dead: its AI flags are all clear.</summary>
+    internal static bool Dead(CNWCObject creature) => new CNWCCreature(creature.Ptr).AiFlags == 0;
 
     private static void SetLock(uint id, IntPtr area)
     {
@@ -316,6 +317,12 @@ public sealed unsafe class TabTargetService : IExtenderService
     }
 
     // ---- click-to-lock ----
+
+    /// <summary>The engine's own default action on <paramref name="obj"/>, past click-to-lock: the trampoline once the hook
+    /// is in, else the engine call, nothing when neither resolves. Interact acts through it, so a press never moves the lock.</summary>
+    internal static int VanillaDefaultAction(IntPtr self, IntPtr obj) =>
+        _defaultActionOrig != null ? _defaultActionOrig(self, obj)
+        : EngineFn.PerformDefaultActionOnObject != null ? new CClientExoAppInternal(self).PerformDefaultActionOnObject(obj) : 0;
 
     [UnmanagedCallersOnly]
     private static int OnDefaultAction(IntPtr self, IntPtr obj)
@@ -411,17 +418,11 @@ public sealed unsafe class TabTargetService : IExtenderService
         _lockCode = Code(TabTarget.LockKey.V);
     }
 
+    /// <summary>A key setting's key: no mouse button, which no tab-target key reads.</summary>
     private static int Code(string? name)
     {
-        name = (name ?? "").Trim();
-        if (name.Length == 0 || EngineFn.SdlGetKeyFromName == null) return 0;
-        // SDL_GetKeyFromName answers a one-character name with that character, but a key event's sym is the
-        // LOWER-case letter: "F" would never match the F key.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        int code;
-        fixed (byte* p = utf8) code = EngineFn.SdlGetKeyFromName(p);
-        if (code == 0) _log?.Info($"TabTarget: '{name}' is not an SDL key name; nothing bound");
+        int code = Math.Max(KeyNames.Code(name), 0);
+        if (code == 0 && !string.IsNullOrWhiteSpace(name)) _log?.Info($"TabTarget: '{name}' is not an SDL key name; nothing bound");
         return code;
     }
 

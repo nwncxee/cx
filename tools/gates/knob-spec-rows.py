@@ -30,7 +30,7 @@ Prints one line per key with no row and per row with no key; `-v` prints the who
 import bisect, os, re, sys, collections
 
 ROOT = os.environ.get('CX_ROOT', '.')
-FACTORIES = ('Toggle', 'Slider', 'Dropdown', 'Swatch', 'Text', 'List', 'Button', 'Link', 'Bag')
+FACTORIES = ('Toggle', 'Slider', 'Dropdown', 'Swatch', 'Text', 'List', 'Button', 'Link', 'Bag', 'KeyBind')
 DECL = re.compile(r'(?:\b(\w++)\s*=\s*)?KnobGroup\.Declare\(\s*(?:"([A-Za-z0-9_.\-]+)"|(\w+))')
 FACT = re.compile(r'\b(\w++)\.(' + '|'.join(FACTORIES) + r')\s*(?:<[^>()]*>)?\s*\(')
 TYPE = re.compile(r'\b(?:class|struct|record)\s+(\w+)')

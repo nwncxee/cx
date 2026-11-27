@@ -118,6 +118,15 @@ internal sealed class QuickbarKeys
         return bad;
     }
 
+    /// <summary>Whether a set's row <paramref name="text"/> binds key <paramref name="code"/> in any chord, whatever its
+    /// modifiers.</summary>
+    public static bool Holds(string text, int code, Func<string, int> keyOf)
+    {
+        foreach (string tok in (text ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            if (tok != "-" && Chord(tok, keyOf, out int key, out _, out _) && key == code) return true;
+        return false;
+    }
+
     /// <summary>Bind button <paramref name="b"/> to the chord, taking it off any other button that had it.</summary>
     public void Bind(int b, int key, int mods, string name)
     {

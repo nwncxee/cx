@@ -32,6 +32,8 @@ The `.todo` file at the root holds small items, one per line, too small for a ti
 
 Chart cap: 8
 
+Sketches: docs/sketches/
+
 Found work check: on
 
 Patch-tell hint: on

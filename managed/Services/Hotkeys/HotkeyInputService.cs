@@ -50,7 +50,7 @@ public sealed unsafe class HotkeyInputService : IExtenderService
 
         // the framework input layer owns raw capture. Hotkeys are a chord consumer at tier 2 -- fired only
         // when no window consumed the key and the chord gate is clear (the arbiter's job). No raw hooks here.
-        UiHost.AddChordConsumer(new Consumer());
+        UiHost.AddChordConsumer(Chord);
         log.Info("HotkeyInputService: registered as a chord consumer (framework owns raw capture)");
         // Vanilla-prompt typing observer. With the chatbox up ChatService SKIPS the chat-focus openers
         // (suppressing vanilla) and owns the keyboard through the arbiter, so these must NOT also install
@@ -76,6 +76,9 @@ public sealed unsafe class HotkeyInputService : IExtenderService
         return bits;
     }
 
+    /// <summary>Hotkeys' one chord consumer, registered once the symbols resolve.</summary>
+    internal static readonly IChordConsumer Chord = new Consumer();
+
     /// <summary>The chord-consumer face of hotkeys (the default path). The framework input layer owns raw
     /// capture, precedence, the auto-repeat gate, and every environmental gate; this consumer only maps a
     /// fallen-through key/button to its wire code and does the consent + debounce + send. Tier 2: below a
@@ -84,13 +87,14 @@ public sealed unsafe class HotkeyInputService : IExtenderService
     {
         public int Priority => 2;
 
-        /// <summary>Arbiter query: true when some armed code shares this base key. Off master: nothing is
-        /// wanted, the key reaches the game only.</summary>
+        /// <summary>Arbiter query: true when some armed code shares this base key, a mouse button asked as key -button
+        /// matching its mouse code. Off master: nothing is wanted, the key reaches the game only.</summary>
         public bool WantsKey(int key)
         {
             if (!Hotkeys.Enabled.V) return false;
+            int wire = key < 0 ? HotkeyProtocol.MouseBase - key : key;
             foreach (int code in HotkeyStore.Armed)
-                if ((code & ~HotkeyProtocol.ModMask) == key) return true;
+                if ((code & ~HotkeyProtocol.ModMask) == wire) return true;
             return false;
         }
 

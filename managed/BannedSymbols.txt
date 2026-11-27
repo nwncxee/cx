@@ -61,3 +61,5 @@ P:CX.Engine.CNWCCreature.IsAssociate;Ask CNWCCreature.IsAnyAssociate or IsFamili
 M:CX.Framework.Native.DefaultUserDirectory;CX's own folders come from UserFolders (Logs, Cache), a path in the user directory from Native.ConfigPath
 M:Vortice.Vulkan.Vulkan.vkShutdown;Unloads the Vulkan loader the backend holds entry points into for the session
 T:System.Security.Cryptography.SHA256;.NET hashes through OpenSSL on Linux and aborts where no libssl loads: use CX.Framework.Sha256
+P:CX.Engine.EngineFn.SdlGetKeyFromName;Read a stored key name through CX.Framework.KeyNames.Code, the one key-name parser
+P:CX.Engine.EngineFn.SdlGetKeyName;Name a press code through CX.Framework.KeyNames.Name, the one key-name writer

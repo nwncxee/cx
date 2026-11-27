@@ -146,7 +146,8 @@ rule fails `run-demo.sh` (ADR 0030 §5):
 
 - the three constraints above, over every declared knob;
 - **`MaxUserRows = 14`**: User rows one submenu may hold, every group in it counted (link rows
-  excepted). Past that it is a wall of dials -- merge, or move tuning to Advanced.
+  and `ShowIf` rows excepted: a row shown only while its switch asks for it is that switch's detail).
+  Past that it is a wall of dials -- merge, or move tuning to Advanced.
 - **`DevWords = { "A/B", "debug", "diagnostic", "bisect" }`**: no User or Advanced row's label or
   help may contain one. A knob that needs those words is ChatOnly.
 - the command gate: `/settings` always dispatches; every generated `/<group>` only when
@@ -904,12 +905,13 @@ between Driving and the other one you picked. Each mode keeps its own settings h
 | `<mode>.right` | Right-drag looks around | T | off | U | L | Mouse-look | Hold the right button and drag to orbit; a still right-click still opens the radial menu. |
 | `<mode>.sens` | Sensitivity | S | 0.05–20 × step 0.05 · 1 | U | L | Mouse-look | 1 matches the stock middle-drag. |
 | `<mode>.invert` | Invert vertical | T | off | U | L | Mouse-look | Dragging up tilts the view down. |
-| `<mode>.action` | Action camera | T | off | U | L | Action camera | Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click. Left-click acts on it, a right-click opens its menu. Alt frees the cursor; the toggle key switches the camera on and off. |
+| `<mode>.action` | Action camera | T | off | U | L | Action camera | Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click. Left-click acts on it, a right-click opens its menu. The cursor key frees the cursor; the toggle key switches the camera on and off. |
 | `<mode>.actionkey` | Action camera toggle key | X | `]` | U | L | Action camera | An SDL key name (F8, Tab, Backspace, Z...) or Mouse4 / Mouse5 for the thumb buttons. Blank binds nothing. |
 | `<mode>.pitchcurve` | Tilt down when zoomed out | S | −10–10 °/m step 0.5 · 0 | A | L | View | Degrees of extra tilt per metre of zoom past the reference distance. Negative lowers the angle instead. 0 leaves the tilt where you put it. |
 | `<mode>.siderun` | Turn keys run sideways | T | off | A | L | Movement | With *Face where the camera looks* on: the turn keys run you sideways instead of turning you and the camera. Locked on a target this is always so. |
 | `<mode>.rate` | Recenter speed | S | 1–720 °/s step 5 · 360 | A | L | Movement | Fastest swing behind your movement; it eases in near the target. |
 | `<mode>.assist` | Aim assist | T | on | A | L | Action camera | The crosshair snaps its aim to the nearest creature, placeable or door within a few pixels of the centre. The camera never moves; only what you point at changes. |
+| `<mode>.cursorkey` | Cursor key | X | `Alt` (either Alt) | U | L | Action camera | Held under the action camera, frees the cursor for the game's panels; with `alttoggle` on, a tap frees it until the next tap. An SDL key name or Mouse4 / Mouse5; blank binds nothing. Swallowed while the camera's gate is open, except a modifier key, which the game still sees. The row shows only while that mode's `action` is on (`Knob.ShowIf`); chat reaches it either way. |
 | `<mode>.autotarget` | Cast at the crosshair | T | on | A | L | Action camera | A spell, feat or item that asks you to pick a target fires straight away on whatever the crosshair is pointing at. A ground-targeted spell still asks you to aim it. |
 | `<mode>.headtrack` | Head follows the crosshair | T | on | A | L | Action camera | Your character turns their head toward whatever you are aiming at. Only you see it. |
 | `<mode>.pinyaw / pinpitch / pindist / pitchref / lagrot / lagzoom / deadzone / idle / grace / idlerate / keyturn / hz / turn / threshold / alttoggle / assistpx / feedback / headyaw / headpitch` | — | T, S | as declared | C | L | — | the view held for a repeatable measurement (-1 = off), the two lag keys *Smoothing* carries, the recenter and heading-send tuning, and the action camera's fine dials |
@@ -976,6 +978,27 @@ Master off gates `Fire/Emit`, `Prompt` (an open modal is `Reset`) and capture; n
 `PresentToken`/`ArmSet` keep being consumed so re-enable is instant. *Forget every server* =
 wipe every `[token=…]` section (no packet; #418's fail-closed rule) plus, in session, today's
 Revoke-all. Both revoke rows confirm on a second click within 3 s. `MaxArmed` stays a const.
+
+**Interact** — group `interact` (545), its own submenu beside Hotkeys. Kind K is a press-to-bind
+key row: a press waits for a key or a thumb button, Backspace unbinds, a key in use warns first.
+
+| key | label | kind | range · default | tier | eff | section | help |
+|---|---|---|---|---|---|---|---|
+| interact.enabled | Enable the Interact keys | T | on | U | L | — | One key acts on the nearest thing worth acting on: an exit, loot, an item, a door or someone to talk to, as clicking it would. Off, every Interact key reaches the game. |
+| interact.key | Interact | K | Unbound | U | L | Keys | Runs every rule below in order and acts on the first thing that qualifies. |
+| interact.transitionkey | Transition | K | Unbound | U | L | Keys | Takes an area transition within 2m. |
+| interact.lootkey | Loot | K | Unbound | U | L | Keys | Opens the nearest corpse or body bag within 10m. |
+| interact.pickupkey | Pick up | K | Unbound | U | L | Keys | Picks up the nearest item on the ground within 10m. |
+| interact.doorkey | Door | K | Unbound | U | L | Keys | Opens the nearest closed door within 10m. |
+| interact.talkkey | Talk | K | Unbound | U | L | Keys | Talks to the nearest friendly or neutral creature within 10m. |
+| interact.transition | Area transitions | T | on | U | L | The Interact key runs | An exit within 2m comes before everything else. |
+| interact.loot | Loot | T | on | U | L | The Interact key runs | A corpse or body bag you can loot, within 10m. |
+| interact.pickup | Pick up | T | on | U | L | The Interact key runs | An item on the ground, within 10m. |
+| interact.door | Doors | T | on | U | L | The Interact key runs | A closed door, within 10m. |
+| interact.talk | Talk | T | on | U | L | The Interact key runs | A friendly or neutral creature outside your party, within 10m. |
+| interact.feedbacktext | Show a line | T | on | U | L | When nothing qualifies | A short line at the top of the screen says why nothing happened. |
+| interact.feedbacksound | Play a sound | T | on | U | L | When nothing qualifies | A quiet sound plays. |
+| interact.sound | Sound | X | gui_nowalk | U | L | When nothing qualifies | The sound's resref. The default is the one the game plays when it refuses a move. The row shows only while `interact.feedbacksound` is on (`Knob.ShowIf`); chat reaches it either way. |
 
 ### 4.6 Quality presets
 
@@ -1063,6 +1086,7 @@ is not "the stock one draws", it is "nothing draws". The caveat is what the buil
 | Mouse-look | `<mode>.mouselook` | U · live | `Release()` on the off edge; per mode, not a group. |
 | Tab-target | tabtarget.enabled | U · live | off (the default) = stock Tab and clicks; the lock and a pending preview cast drop on the off edge. |
 | Hotkeys | hotkeys.enabled | U · live | gate the actions, never the hooks or the advertise. |
+| Interact | interact.enabled | U · live | off = every Interact key reaches the game; no line, no sound. |
 | General, About, Preset, Lights, Ambient occlusion, Effects, Image, Free camera | none | — | the header says why. |
 
 Framework facts: the window registry is immutable after frame 1, so every live hide is a

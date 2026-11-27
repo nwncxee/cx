@@ -61,9 +61,13 @@ public sealed unsafe class CombatTextService : IExtenderService
         if (px == _peakPx && face == _peakFace && TextRig.BakedFace(face, px) != null) return;
         if (_peakPx != 0f && (_peakPx != px || face != _peakFace)) TextRig.ReleaseFace(_peakFace, _peakPx, FaceOwner);
         _peakFace = face;
-        _peakPx = TextRig.Face(face, px, FaceOwner) != null ? px : 0f;
+        _peakPx = HeldPeakPx(face, px, FaceOwner);
         _log?.Info($"CombatTextService: peak face {(_peakPx > 0f ? $"{face} @ {_peakPx}px" : "unavailable, drawing from the UI face")}");
     }
+
+    /// <summary>The px the peak face of <paramref name="face"/> at <paramref name="px"/> draws at once <paramref name="owner"/>
+    /// holds it, or 0 when the sheet refuses it and the animation draws from the UI face.</summary>
+    internal static float HeldPeakPx(string face, float px, string owner) => TextRig.Hold(face, px, owner) ? px : 0f;
 
     /// <summary>The window damage numbers and combat text draw in, under the game's panels. It never hit-tests: this is world-anchored text,
     /// and a UI rect here would take the contextual cursor and swallow world clicks.</summary>

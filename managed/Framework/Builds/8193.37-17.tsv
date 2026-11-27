@@ -842,6 +842,7 @@ rva	_ZN10CNWCModule10TiltCameraEfi	0x7cfdb0	# TiltCamera
 rva	_ZN21CClientExoAppInternal15UpdateDriveModeEv	0x6f1e40	# UpdateDriveMode
 rva	_ZN12CNWCCreature18WalkUpdateLocationEv	0x8114d0	# WalkUpdateLocation
 rva	_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi	0x7e6a20	# TestDirectLine
+rva	_ZN8CNWCArea22ClearLineOfSightOneWayE6VectorS0_PS0_	0x7da6d0	# ClearLineOfSightOneWay
 rva	_ZN10CGuiInGame9ToggleOffEv	0x6fc6f0	# GuiInGameToggleOff
 rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
@@ -1159,3 +1160,25 @@ offset	NkUserFont	height	0x8	0x8	# NkFontHeight
 offset	NkUserFont	width	0x10	0x10	# NkFontWidth
 offset	NkCommandImage	color	0x30	0x30	# NkCmdImageColor
 offset	CallBack	seamName	0x0	0x0	# SeamCallBackName
+offset	CNWCPlaceable	bodyBag	0x1dc	0x1bc	# PlaceableBodyBag
+offset	CNWCPlaceable	locked	0x1bc	0x19c	# PlaceableLocked
+offset	CNWCPlaceable	trapShown	0x1c0	0x1a0	# PlaceableTrapShown
+offset	CNWCDoor	locked	0x1a4	0x184	# DoorLocked
+offset	CNWCDoor	trapShown	0x1ac	0x18c	# DoorTrapShown
+offset	CNWCCreature	lootable	0x24c	0x22c	# CreatureLootable
+offset	CGameObject	vtbl.AsNWCDoor	0x30	0x28	# GameObjAsNWCDoorSlot
+offset	CNWCDoor	areaTransition	0x1e0	0x1c0	# DoorAreaTransition
+offset	CNWCDoor	state	0x1bc	0x19c	# DoorState
+offset	CNWCTrigger	isTrap	0x1a8	0x188	# TriggerIsTrap
+offset	CNWCTrigger	areaTransition	0x1ac	0x18c	# TriggerAreaTransition
+offset	CNWCTrigger	vertexCount	0x1c0	0x1a0	# TriggerVertexCount
+offset	CNWCTrigger	vertices	0x1c8	0x1a8	# TriggerVertices
+offset	CNWCItem	equippedBy	0x27c	0x25c	# ItemEquippedBy
+offset	CExoInput	internal	0x8	0x8	# ExoInputInternal
+offset	CExoInputInternal	descLists	0x28	0x28	# ExoInputDescLists
+offset	CExoInputDescLists	keyboard	0x0	0x0	# DescListsKeyboard
+offset	CExoInputInternal	keyScancodes	0x58	0x58	# ExoInputKeyScancodes
+offset	CExoInputEventDesc	action	0x10	0x10	# InputDescAction
+offset	CExoInputEventDesc	key	0x1c	0x1c	# InputDescKey
+offset	CTwoDimArrays	keymap	0x228	0x228	# TwoDimKeymap
+offset	CGameObject	vtbl.AsNWCTrigger	0x80	0x78	# GameObjAsNWCTriggerSlot

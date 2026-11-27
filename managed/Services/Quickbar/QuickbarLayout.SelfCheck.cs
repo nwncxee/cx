@@ -62,6 +62,9 @@ internal sealed partial class QuickbarLayout
         bad += keys.Parse(1, "Shift+F1 1 q", Fake);
         bad += keys.Parse(2, "Ctrl+F1 Ctrl+Shift+F2 Bogus Alt+", Fake);
         check.Expect(bad == 2, $"Bogus and a bare 'Alt+' are refused ({bad})");
+        int minus = KeyNames.Code("-");
+        check.Expect(minus > 0 && !QuickbarKeys.Holds("1 - 3", minus, KeyNames.Code) && QuickbarKeys.Holds("1 Minus 3", minus, KeyNames.Code),
+                     "a row's '-' is an empty button, not the minus key, which 'Minus' binds");
         check.Expect(keys.Match(1001, 0) == 0 && keys.Match(1012, 0) == 11, "plain F1 / F12 are buttons 0 / 11");
         check.Expect(keys.Match(1001, QuickbarKeys.Shift) == 12 && keys.Match(1001, QuickbarKeys.Ctrl) == 24, "Shift+F1 is 12, Ctrl+F1 is 24");
         check.Expect(keys.Match(1002, QuickbarKeys.Ctrl | QuickbarKeys.Shift) == 25, "Ctrl+Shift+F2 is 25");

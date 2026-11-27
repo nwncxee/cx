@@ -66,6 +66,7 @@ internal static class QuickbarKnobs
         string[] keyNames = { "keys", "shiftkeys", "ctrlkeys" }, keyLabels = { "Plain keys", "Shift set keys", "Ctrl set keys" };
         for (int set = 0; set < Keys.Length; set++)
             Keys[set] = G.Text(keyNames[set], keyLabels[set], DefaultKeys[set], Tier.Advanced, changed: QuickbarService.KeysChanged,
+                               keys: (row, code) => QuickbarKeys.Holds(row, code, KeyNames.Code),
                                help: "Twelve keys, left to right, space-separated: SDL key names with Ctrl+, Shift+ or Alt+ in front, - for none. \"Bind keys on the bar\" writes these.");
         G.Button("resetkeys", "Reset keys to F1-F12", QuickbarService.ResetKeys, Tier.Advanced, confirm: true,
                  help: "Plain F1..F12, then the same with Shift and with Ctrl, as the game's bar.");

@@ -76,7 +76,8 @@ public sealed class CameraModeKnobs
     public readonly KnobGroup G;
     public readonly Knob<bool> Enabled, Drive, Face, SideRun, Recenter;
     /// <summary><see cref="Smooth"/> is <see cref="LagPos"/>, the one panel row for the feel; a set carries the rotation
-    /// and zoom lag along. The mode's User rows are exactly <see cref="KnobGroup.MaxUserRows"/>: a new one must replace one.</summary>
+    /// and zoom lag along. The mode's User rows are exactly <see cref="KnobGroup.MaxUserRows"/>: a new one must replace one, or show only
+    /// while its switch is on, as Cursor key does under the action camera.</summary>
     public readonly Knob<float> PinYaw, PinPitch, PinDist, Fov, Smooth, LagPos, LagRot, LagZoom, PitchCurve, PitchRef, OffsetX, OffsetY;
     /// <summary>The Movement tuning for the drive and the recenter, per mode: every mode has its own toggles.</summary>
     public readonly Knob<float> Rate, DeadZone, Idle, Grace, IdleRate, Hz, Turn, KeyTurn;
@@ -84,7 +85,7 @@ public sealed class CameraModeKnobs
     public readonly Knob<bool> Look, Right, Invert, Action, AltToggle, HeadTrack, Assist, AutoTarget, Feedback;
     public readonly Knob<float> Sens, HeadYaw, HeadPitch;
     public readonly Knob<int> Threshold, AssistPx;
-    public readonly Knob<string> ActionKey;
+    public readonly Knob<string> ActionKey, CursorKey;
 
     internal CameraModeKnobs(string name, string submenu, int mode, int order, bool moveDefault, bool faceDefault = false)
     {
@@ -152,11 +153,15 @@ public sealed class CameraModeKnobs
                              help: "Pixels of movement before a right press becomes a look instead of a click.");
         G.Section("Action camera");
         Action = G.Toggle("action", "Action camera", false, changed: MouseLookService.ActionChanged,
-                          help: "Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click, so aiming replaces pointing. Left-click acts on it, a right-click opens its menu. Clicking the ground does not walk you there (use the movement keys) and the crosshair never picks your own character. Alt frees the cursor for the game's panels (held, or a tap with the toggle option below); the toggle key switches the camera on and off.");
-        ActionKey = G.Text("actionkey", "Action camera toggle key", "]", changed: MouseLookService.ActionKeyChanged,
+                          help: "Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click, so aiming replaces pointing. Left-click acts on it, a right-click opens its menu. Clicking the ground does not walk you there (use the movement keys) and the crosshair never picks your own character. The cursor key (Alt unless you change it) frees the cursor for the game's panels: held, or a tap with the toggle option below. The toggle key switches the camera on and off.");
+        ActionKey = G.Text("actionkey", "Action camera toggle key", "]", changed: MouseLookService.ActionKeyChanged, keys: KeyNames.Binds,
                            help: "An SDL key name (F8, Tab, Backspace, Z...) or Mouse4 / Mouse5 for the thumb buttons. Blank binds nothing.");
-        AltToggle = G.Toggle("alttoggle", "Alt toggles the cursor", false, Tier.ChatOnly,
-                             help: "Under the action camera, tapping Alt frees the cursor until you tap it again, instead of holding it.");
+        CursorKey = G.KeyBind("cursorkey", "Cursor key", changed: MouseLookService.CursorKeysChanged, def: "Alt",
+                              help: "Under the action camera, hold this key to free the cursor for the game's panels. Either Alt by default; press a key or thumb button on the row to change it, or clear it to bind nothing.");
+        CursorKey.ShowIf = () => Action.V;
+        CursorKey.KeyPeers = "cursorkey";
+        AltToggle = G.Toggle("alttoggle", "Cursor key toggles", false, Tier.ChatOnly,
+                             help: "Under the action camera, tapping the cursor key frees the cursor until you tap it again, instead of holding it.");
         Assist = G.Toggle("assist", "Aim assist", true, Tier.Advanced,
                           help: "Under the action camera, the crosshair snaps its aim to the nearest creature, placeable or door within a few pixels of the centre, so you hover and click it without pixel-perfect aiming. The camera never moves; only what you point at changes. Brackets appear around the crosshair while a target is picked.");
         AssistPx = G.Slider("assistpx", "Aim assist radius", 0, 200, 5, 80, "px", Tier.ChatOnly,
@@ -256,6 +261,7 @@ internal static class MouseLook
     internal static Knob<bool> Invert => M.Invert;
     internal static Knob<bool> Action => M.Action;
     internal static Knob<bool> AltToggle => M.AltToggle;
+    internal static Knob<string> CursorKey => M.CursorKey;
     internal static Knob<bool> HeadTrack => M.HeadTrack;
     internal static Knob<bool> Assist => M.Assist;
     internal static Knob<bool> AutoTarget => M.AutoTarget;
@@ -289,13 +295,13 @@ internal static class TabTarget
         Enabled = G.Master!;
         Cast = G.Dropdown("cast", "Cast mode", new[] { 0, 1, 2 }, (int)TabTargetCore.CastMode.Quick, new[] { "Normal", "Quick", "Quick with preview" },
                           help: "Normal: press the button, then click a target, as the game always did. Quick: the button fires at once -- at your target, or with none at what the cursor points at; a ground spell lands at the cursor. Quick with preview: hold the button to see the game's own targeting preview, release to fire; right-click or Escape before release cancels.");
-        CycleKey = G.Text("cyclekey", "Cycle key", "Tab", changed: TabTargetService.KeysChanged,
+        CycleKey = G.Text("cyclekey", "Cycle key", "Tab", changed: TabTargetService.KeysChanged, keys: KeyNames.Binds,
                           help: "Locks the candidate nearest the centre of the screen, then steps through the others. Shift with it steps back. An SDL key name (Tab, F8, Z...).");
-        ClearKey = G.Text("clearkey", "Clear key", "Backspace", changed: TabTargetService.KeysChanged,
+        ClearKey = G.Text("clearkey", "Clear key", "Backspace", changed: TabTargetService.KeysChanged, keys: KeyNames.Binds,
                           help: "Drops the lock. Blank binds nothing.");
         Camera = G.Dropdown("camera", "After picking a target", new[] { 0, 1, 2 }, 1, new[] { "Nothing", "Turn the camera to it", "Lock the camera on it" },
                             help: "Turn: the camera swings once to look at the new target (in tilt too, when the target sits off the middle of the view). Lock on: it keeps looking at the target as you both move, until you press the lock key (or pick nothing); the mouse cannot pull it off, and the turn and strafe keys run you sideways around the target instead of orbiting or strafing.");
-        LockKey = G.Text("lockkey", "Lock-on key", "F", changed: TabTargetService.KeysChanged,
+        LockKey = G.Text("lockkey", "Lock-on key", "F", changed: TabTargetService.KeysChanged, keys: KeyNames.Binds,
                          help: "Locks the camera on the creature nearest the middle of the screen (it becomes your target); pressed while locked on, lets go. An SDL key name.");
         Tilt = G.Slider("tilt", "Target within", 0f, 25f, 1f, 12f, "° of the centre", Tier.Advanced,
                         help: "The camera keeps your own tilt while the target sits within this many degrees of the middle of the view; past it the camera tilts just enough to bring it back -- flatter for a far or raised target, steeper for one below. 0 always puts the target dead centre.");

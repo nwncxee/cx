@@ -290,13 +290,15 @@ public static partial class UiHost
 
                 // Chord suppression + fall-through fire.
                 var tc = new TestChord(priority: 5, key: 3); chords.Add(tc); AddChordConsumer(tc);
+                var tm = new TestChord(priority: 5, key: -2); chords.Add(tm); AddChordConsumer(tm);
                 check.Expect(!AnySuppressChords, "no window suppresses chords by default");
                 upper.SuppressChords = true;
                 check.Expect(AnySuppressChords, "a window can withhold chords");
                 upper.SuppressChords = false;
                 FireChords(3, 0); FireMouseChords(2, 0);
-                check.Expect(tc.Fired == 3 && tc.FiredMouse == 2, "fall-through key/mouse fire reaches the chord consumer");
+                check.Expect(tc.Fired == 3 && tc.FiredMouse == -1 && tm.FiredMouse == 2 && tm.Fired == -1, "fall-through key/mouse fire reaches the chord consumer that wants it, a mouse button asked as key -button");
                 RemoveChordConsumer(tc); chords.Remove(tc);
+                RemoveChordConsumer(tm); chords.Remove(tm);
 
                 // HitTestOverride widens the hit-test past the rect (chrome outside the frame).
                 lo.HitTestOverride = (px, py) => px >= 0 && px < 500;   // wider than the 100px rect

@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Chat;
@@ -69,7 +68,7 @@ public sealed unsafe partial class QuickbarService
     /// <summary>SDL_Keymod bits: Ctrl and Shift either side, Alt the left one only (right Alt is AltGr).</summary>
     private const int KmodShift = 0x0003, KmodCtrl = 0x00C0, KmodLAlt = 0x0100;  // not-an-offset: SDL key/event code
     /// <summary>SDL keycodes the bind mode reads: Esc finishes, Backspace / Delete clear; the modifier keys alone bind nothing.</summary>
-    private const int SdlkEscape = 27, SdlkBackspace = 8, SdlkDelete = 127, SdlkLCtrl = 0x400000E0, SdlkRGui = 0x400000E7;  // not-an-offset: SDL key/event code
+    private const int SdlkEscape = 27, SdlkBackspace = 8, SdlkDelete = 127;  // not-an-offset: SDL key/event code
     private const string BindHelp = "Hover a button and press a key to bind it  -  Backspace clears  -  Esc or a click elsewhere finishes";
     /// <summary>The bar's own skin parts, after <see cref="NativeChrome"/>'s common chrome.</summary>
     private const int KSlot = NativeChrome.Count, KGrip = KSlot + 1;
@@ -107,14 +106,8 @@ public sealed unsafe partial class QuickbarService
         if (bad > 0) Notice.Show(_log, $"quickbar: {bad} key(s) in the key rows are not SDL key names and stay unbound");
     }
 
-    private static int KeyOf(string name)
-    {
-        if (EngineFn.SdlGetKeyFromName == null) return 0;
-        // A key event's sym is the LOWER-case letter, while SDL names a one-character key in upper case.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        fixed (byte* p = utf8) return EngineFn.SdlGetKeyFromName(p);
-    }
+    /// <summary>A key row's key: no mouse button, which the bar's chords never fire.</summary>
+    private static int KeyOf(string name) => Math.Max(KeyNames.Code(name), 0);
 
     /// <summary>The CX quickbar's window, registered at the back of the UI host on creation; the self-checks build one
     /// of their own.</summary>
@@ -235,7 +228,7 @@ public sealed unsafe partial class QuickbarService
     {
         if (!_cx.Binding) return false;
         if (key == SdlkEscape) { StopBinding(); return true; }
-        if (key >= SdlkLCtrl && key <= SdlkRGui) return true;
+        if (KeyNames.IsModifier(key)) return true;
         int mx = -1, my = -1;
         if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&mx, &my);
         int b = _cx.Layout.SlotAt(mx, my, 0);
@@ -243,7 +236,7 @@ public sealed unsafe partial class QuickbarService
         if (key == SdlkBackspace || key == SdlkDelete) _cx.Keys.Clear(b);
         else
         {
-            string name = KeyName((int)key);
+            string name = KeyNames.Name((int)key);
             if (name.Length == 0) return true;
             _cx.Keys.Bind(b, (int)key, ModsOf(sdlMods), name);
         }
@@ -256,13 +249,6 @@ public sealed unsafe partial class QuickbarService
 
     private static int ModsOf(int sdlMods) => ((sdlMods & KmodCtrl) != 0 ? QuickbarKeys.Ctrl : 0) | ((sdlMods & KmodShift) != 0 ? QuickbarKeys.Shift : 0)
                                             | ((sdlMods & KmodLAlt) != 0 ? QuickbarKeys.Alt : 0);
-
-    private static string KeyName(int key)
-    {
-        if (EngineFn.SdlGetKeyName == null) return "";
-        byte* p = EngineFn.SdlGetKeyName(key);
-        return p == null ? "" : Marshal.PtrToStringUTF8((IntPtr)p) ?? "";
-    }
 
     /// <summary>The settings row's press: every set back to the game's F1..F12. Cold.</summary>
     internal static void ResetKeys()

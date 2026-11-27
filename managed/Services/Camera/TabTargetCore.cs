@@ -27,7 +27,7 @@ internal static class TabTargetCore
         public byte Type;
     }
 
-    internal const byte TypeCreature = 5, TypePlaceable = 9, TypeDoor = 0xa;  // not-an-offset: an object type enum
+    internal const byte TypeCreature = 5, TypeItem = 6, TypeTrigger = 7, TypePlaceable = 9, TypeDoor = 0xa;  // not-an-offset: an object type enum, the trigger's from the CNWCTrigger ctor
 
     internal enum CastMode { Normal, Quick, Preview }
     internal enum CastEvent { Open, Release, Cancel }

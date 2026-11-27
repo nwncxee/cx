@@ -297,6 +297,10 @@ internal static unsafe class SymbolMap
     public const string SdlGetKeyName   = "SDL_GetKeyName";
     [Fn("int(byte* name)")]
     public const string SdlGetKeyFromName = "SDL_GetKeyFromName";                        // action-camera toggle key by name
+    /// <summary><c>SDL_GetScancodeFromKey(SDL_Keycode)</c>: the physical key a key code sits on in the current layout,
+    /// which is what the engine's key table (<see cref="EngineLayout.ExoInputKeyScancodes"/>) holds.</summary>
+    [Fn("int(int key)")]
+    public const string SdlGetScancodeFromKey = "SDL_GetScancodeFromKey";
     /// <summary><c>CClientExoAppInternal::WalkPlayerToPoint(float, float, float, int, uint, int)</c> @0x663950: the one
     /// seam every left-click walk goes through (the action camera refuses it). Windows: the only function referencing
     /// "gui_nowalk" on both builds (StringRefs).</summary>
@@ -832,6 +836,10 @@ internal static unsafe class SymbolMap
     /// Windows): <c>PlayFootstep</c>'s appearance.2da reads. Nonzero = the cell held an int.</summary>
     [Fn("int(IntPtr twoda, int row, IntPtr column, int* result)")]
     public const string C2DAGetINTEntry = "_ZN4C2DA11GetINTEntryEiRK10CExoStringPi";
+    /// <summary><c>C2DA::GetINTEntry(CExoString const&amp; row, CExoString const&amp; column, int* out)</c> @0x545840 (exported on
+    /// Windows): a cell by its row label, how SetEventDescriptions reads keymap.2da's "ActionN" rows. Nonzero = an int.</summary>
+    [Fn("int(IntPtr twoda, IntPtr row, IntPtr column, int* result)")]
+    public const string C2DAGetINTEntryByLabel = "_ZN4C2DA11GetINTEntryERK10CExoStringS2_Pi";
     /// <summary><c>CTwoDimArrays::GetCached2DA(CExoString name, int cached)</c> @0x11bfe60 (exported on Windows) -- the 2DA
     /// a script's <c>Get2DAString</c> reads, loaded through the resource manager into the engine's own LRU cache (with
     /// <c>cached</c> 0); null when no such 2DA loads. The name is by value: the caller destroys it on Itanium, the callee
@@ -848,6 +856,11 @@ internal static unsafe class SymbolMap
     /// float is added to z (<c>addss xmm1, xmm2</c> before the tail call); volume 0 = the source's default.</summary>
     [Fn("void(IntPtr sound, ResRef* resref, VectorArg pos, float lift, byte group, uint delay, byte volume)")]
     public const string SoundPlay3DOneShot = "_ZN9CExoSound18Play3DOneShotSoundERK7CResRef6Vectorfhjh";
+    /// <summary><c>CExoSound::PlayOneShotSound(CResRef const&amp;, uchar group, uint delayMs, uchar volume)</c> @0x574dd0
+    /// (exported on Windows) -- a flat one-shot, how <c>PlayGuiSound</c> plays the refused-move <c>gui_nowalk</c>: group 9,
+    /// delay 0, volume 0 (the source's default). An empty resref plays nothing.</summary>
+    [Fn("void(IntPtr sound, ResRef* resref, byte group, uint delay, byte volume)")]
+    public const string SoundPlayOneShot = "_ZN9CExoSound16PlayOneShotSoundERK7CResRefhjh";
     /// <summary><c>g_pExoSound</c> @0x18b96b8, the <c>CExoSound*</c> <c>PlayFootstep</c> plays through.</summary>
     public const string ExoSound = "g_pExoSound";
     /// <summary><c>g_pRules</c> @0x18b9680, a <c>CNWRules*</c>. placeables.2da is two hops off it
@@ -1474,6 +1487,12 @@ internal static unsafe class SymbolMap
     /// <see cref="EngineLayout.PathfindSpaceArgs"/>; both Vectors by value, so SysV xmm pairs and Win64 pointers.</summary>
     [Fn("int(CNWCArea this, CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures)")]
     public const string TestDirectLine = "_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi";
+    /// <summary><c>CNWCArea::ClearLineOfSightOneWay(Vector from, Vector to, Vector* hit)</c> @0x704620 -- the area's
+    /// walkmesh sight test, objects never blocking it: 1 = clear, 0 = blocked with the blocking point written to the
+    /// non-null <c>hit</c>. A point off every tile reads clear. Interact's sight test, raised 1m as the server's
+    /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
+    [Fn("int(CNWCArea this, VectorArg from, VectorArg to, Vec3* hit)")]
+    public const string ClearLineOfSightOneWay = "_ZN8CNWCArea22ClearLineOfSightOneWayE6VectorS0_PS0_";
     /// <summary>SDL2 relative mouse mode: hides the cursor and streams deltas. Mouse-look's capture on Windows, where
     /// SDL runs it on raw input.</summary>
     [Fn("int(int enabled)")]
@@ -2743,8 +2762,10 @@ internal static unsafe class SymbolMap
         [ExoStringInit]     = Nm("?InitFromCharArray@CExoString@@AEAAAEAV1@PEBDI@Z"),
         [C2DAGetCExoStringEntry] = Nm("?GetCExoStringEntry@C2DA@@QEAAHHAEBVCExoString@@PEAV2@@Z"),
         [C2DAGetINTEntry]   = Nm("?GetINTEntry@C2DA@@QEAAHHAEBVCExoString@@PEAH@Z"),
+        [C2DAGetINTEntryByLabel] = Nm("?GetINTEntry@C2DA@@QEAAHAEBVCExoString@@0PEAH@Z"),
         [TwoDimGetCached2DA] = Nm("?GetCached2DA@CTwoDimArrays@@QEAAPEAVC2DA@@VCExoString@@H@Z"),
         [SoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
+        [SoundPlayOneShot]  = Nm("?PlayOneShotSound@CExoSound@@QEAAXAEBVCResRef@@EIE@Z"),
         [ExoSound]          = Nm("?g_pExoSound@@3PEAVCExoSound@@EA"),
         [AreaGetSurfaceMaterial] = At(),
         [Rules]             = Nm("?g_pRules@@3PEAVCNWRules@@EA"),
@@ -2806,6 +2827,7 @@ internal static unsafe class SymbolMap
         [GetGuiScale]     = Nm("?GetGUIScale@CAurora@@SAMXZ"),   // CAurora shared-engine class -> name-exported
         [SdlGetKeyName]   = Nm("SDL_GetKeyName"),
         [SdlGetKeyFromName] = Nm("SDL_GetKeyFromName"),
+        [SdlGetScancodeFromKey] = Nm("SDL_GetScancodeFromKey"),
         [WalkPlayerToPoint] = At(),          // action camera: "gui_nowalk" string, unique on both builds
         [FeedbackHitCheckHostile] = At(),    // action camera: the picker with GetHeightTransition (Callees)
         [FeedbackHitCheckNonHostile] = At(), // action camera: the other picker, same caller cluster
@@ -3053,6 +3075,7 @@ internal static unsafe class SymbolMap
         [UpdateDriveMode] = At(),   // the one function carrying both 499999 and 250000 (ScanOffsets)
         [WalkUpdateLocation] = At(),   // the one function with both "RUNDIST" and "WALKDIST" (StringRefs)
         [TestDirectLine] = At(),       // WalkPlayerToPoint's 7-slot line-test callee (docs/windows-symbols.md)
+        [ClearLineOfSightOneWay] = At(),   // the client area's (from*, to*, hit*) sight test; body matched to Linux's
         [SdlSetRelativeMouseMode] = Nm("SDL_SetRelativeMouseMode"),
         [SdlWarpMouseInWindow] = Nm("SDL_WarpMouseInWindow"),
         [SdlShowCursor] = Nm("SDL_ShowCursor"),

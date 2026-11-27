@@ -13,14 +13,14 @@ namespace CX.Services.Camera;
 /// locks and limits stay engine-owned; a press under <c>threshold</c> is replayed so the radial menu still opens.
 /// The action camera forwards events rewritten to the screen centre. Outermost chain layer, allocates nothing.
 /// </summary>
-public sealed unsafe class MouseLookService : IExtenderService
+public sealed unsafe partial class MouseLookService : IExtenderService
 {
     private static ExtenderLog? _log;
     private static WinMessageHandlerFn* _next;
     private static readonly IntPtr _guiMan = Native.Sym(SymbolMap.GuiMan);
 
     // ---- SDL_Event layout (same rows UiInputService reads; motion adds the relative pair) ----
-    private const uint SdlWindowEvent = 0x200, SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402;  // not-an-offset: SDL key/event code
+    internal const uint SdlWindowEvent = 0x200, SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402;  // not-an-offset: SDL key/event code
     private const byte SdlWindowFocusLost = 0xd, SdlButtonMiddle = 2, SdlButtonRight = 3;  // not-an-offset: SDL key/event code
     /// <summary><c>sizeof(SDL_Event)</c> in SDL2: the held press is copied whole for the replay.</summary>
     private const int SdlEventSize = 56;
@@ -44,14 +44,11 @@ public sealed unsafe class MouseLookService : IExtenderService
     /// What <see cref="HeadTrackService"/> turns the head on.</summary>
     internal static bool ActionHeld => _action;
     private static int _cx, _cy;
-    private static SdlGetModStateFn _modState;
-    /// <summary>SDL <c>KMOD_LALT | KMOD_RALT</c>: the hold that frees the cursor.</summary>
-    private const int KmodAlt = 0x300;  // not-an-offset: SDL key/event code
-    private const uint SdlKeyDown = 0x300;  // not-an-offset: SDL key/event code
+    internal const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301;  // not-an-offset: SDL key/event code
     /// <summary>SDL_KeyboardEvent: <c>repeat</c> byte and <c>keysym.sym</c>; the Alt keycodes.</summary>
-    private const uint SdlkLAlt = 0x400000E2, SdlkRAlt = 0x400000E6;  // not-an-offset: SDL key/event code
-    /// <summary>Alt as a toggle (the mode's <c>alttoggle</c>): the cursor is freed until the next Alt press.</summary>
-    private static bool _altFree;
+    internal const uint SdlkLAlt = 0x400000E2, SdlkRAlt = 0x400000E6;  // not-an-offset: SDL key/event code
+    /// <summary>The cursor key that frees the cursor under the action camera.</summary>
+    private static readonly CursorKeyState _cursor = new();
     private static WalkPlayerToPointFn _walkOrig;
     private static FeedbackHitCheckHostileFn _pickHostileOrig;
     private static FeedbackHitCheckNonHostileFn _pickNonHostileOrig;
@@ -65,12 +62,12 @@ public sealed unsafe class MouseLookService : IExtenderService
     {
         _log = log;
         CameraKnobs.Declare();
+        _cursor.KeysChanged();
         if (!EngineLayout.Require(log, "MouseLook", "CGuiMan")) return;
         if (!SymbolMap.Require(log, "MouseLook", SymbolMap.WinMessageHandler, SymbolMap.TurnCamera, SymbolMap.TiltCamera,
                                SymbolMap.SdlSetRelativeMouseMode, SymbolMap.SdlWarpMouseInWindow, SymbolMap.SdlShowCursor,
                                SymbolMap.SdlGetKeyboardFocus, SymbolMap.SdlSetWindowGrab, SymbolMap.SdlGetWindowGrab, SymbolMap.SdlGetWindowSize,
                                SymbolMap.GuiMan, SymbolMap.GuiObjectHitCheck, SymbolMap.GetModule, SymbolMap.AppManager)) return;
-        _modState = EngineFn.SdlGetModState;
         Crosshair.Register();
         ActionKeyChanged();
         UiHost.AddChordConsumer(new ActionToggle());
@@ -103,12 +100,10 @@ public sealed unsafe class MouseLookService : IExtenderService
     {
         if (ev == IntPtr.Zero) return Forward(ev);
         if (!MouseLook.Enabled.V) { if (_state != State.Idle) Release(); return Forward(ev); }
-        // Only while the action camera would otherwise be up: Alt+Tab, an Alt chord in a dialog and any Alt the
-        // GUI or a CX window owns the keyboard for are not the cursor toggle.
-        if (MouseLook.AltToggle.V && ActionGateOpen() && *(uint*)ev == SdlKeyDown && ((SdlEvent*)ev)->Repeat == 0
-            && ((SdlEvent*)ev)->SymU is SdlkLAlt or SdlkRAlt) _altFree = !_altFree;
+        bool took = _cursor.Feed((SdlEvent*)ev, ActionGateOpen(), CameraService.Mode);
         bool want = ActionWanted();
         if (want != _action) SetAction(want);
+        if (took) return 0;
         if (_action) return OnActionEvent(ev);
         if (_state == State.Looking && *(uint*)ev is SdlMouseDown or SdlMouseUp && ((SdlEvent*)ev)->Button != _button)
             return PinToOrigin(ev);
@@ -183,17 +178,17 @@ public sealed unsafe class MouseLookService : IExtenderService
 
     // ---- the action camera ----
 
-    private static bool ActionWanted() => ActionGateOpen() && !AltFreed();
+    private static bool ActionWanted() => ActionGateOpen() && !_cursor.Freed(CameraService.Mode);
 
-    /// <summary>Everything the action camera needs except the Alt release itself -- the gate the Alt toggle is
-    /// allowed to flip in, so an Alt pressed out of game, in a dialog or while anything owns the keyboard is
-    /// just an Alt.</summary>
+    /// <summary>Everything the action camera needs except the cursor key itself -- the gate the cursor key works in, so
+    /// the key pressed out of game, in a dialog or while anything owns the keyboard is just a key.</summary>
     private static bool ActionGateOpen()
         => MouseLook.Action.V && GameGate.InGame && CameraService.Mode >= 0 && !CameraService.GateUp && !FreeCameraService.Active
-           && !UiHost.AnyKeyboardOwner && !UiHost.AnySuppressChords;
+           && KeyboardFree();
 
-    private static bool AltFreed()
-        => MouseLook.AltToggle.V ? _altFree : _modState != null && (_modState() & KmodAlt) != 0;
+    /// <summary>No window owns the keyboard and none is modal: a key typed into chat or a dialog is never the cursor key.</summary>
+    private static bool KeyboardFree() => !UiHost.AnyKeyboardOwner && !UiHost.AnySuppressChords;
+
 
     private static void SetAction(bool on)
     {
@@ -232,17 +227,26 @@ public sealed unsafe class MouseLookService : IExtenderService
                 break;
             case SdlWindowEvent:
                 // The latch too: a toggled-free cursor must not survive the alt-tab that freed it.
-                if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost) { _altFree = false; SetAction(false); }
+                if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost) { _cursor.Reset(); SetAction(false); }
                 break;
         }
         return Forward(ev);
     }
 
+    /// <summary>A walk CX asks for itself, Interact taking a transition: it passes the action camera's refusal of a
+    /// click's walk and goes straight to the engine, on <paramref name="app"/>'s Internal object, the walk's this.
+    /// Cold: a key press.</summary>
+    internal static int WalkPastActionCamera(CClientExoApp app, float x, float y, float z, int flags, uint obj, int extra)
+    {
+        CClientExoAppInternal self = app.Internal;
+        return _walkOrig != null ? _walkOrig(self.Ptr, x, y, z, flags, obj, extra) : self.WalkPlayerToPoint(x, y, z, flags, obj, extra);
+    }
+
     [UnmanagedCallersOnly]
-    private static int OnWalkPlayerToPoint(IntPtr app, float x, float y, float z, int flags, uint obj, int extra)
+    private static int OnWalkPlayerToPoint(IntPtr appInternal, float x, float y, float z, int flags, uint obj, int extra)
     {
         if (_action) { _walksRefused++; return 0; }   // 0 = the engine's own "not walkable" verdict
-        return _walkOrig(app, x, y, z, flags, obj, extra);
+        return _walkOrig(appInternal, x, y, z, flags, obj, extra);
     }
 
     [UnmanagedCallersOnly]
@@ -272,36 +276,33 @@ public sealed unsafe class MouseLookService : IExtenderService
         for (int i = 0; i < _toggleCodes.Length; i++) _toggleCodes[i] = ParseKey(CameraModes.ByMode[i].ActionKey.V);
     }
 
+    /// <summary>Every mode's <c>cursorkey</c>'s <c>changed:</c>.</summary>
+    internal static void CursorKeysChanged() => _cursor.KeysChanged();
+
     private static int ParseKey(string? name)
     {
-        name = (name ?? "").Trim();
-        if (name.Length == 0) return 0;
-        if (name.StartsWith("mouse", StringComparison.OrdinalIgnoreCase) && int.TryParse(name.AsSpan(5), out int btn) && btn is >= 1 and <= 5)
-            return -btn;
-        if (EngineFn.SdlGetKeyFromName == null) return 0;
-        // SDL_GetKeyFromName answers a one-character name with that character; a key event's sym is lower-case.
-        if (name.Length == 1) name = name.ToLowerInvariant();
-        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
-        int code;
-        fixed (byte* p = utf8) code = EngineFn.SdlGetKeyFromName(p);
-        if (code == 0) _log?.Info($"MouseLook: actionkey '{name}' is not an SDL key name; nothing bound");
+        int code = KeyNames.Code(name);
+        if (code == 0 && !string.IsNullOrWhiteSpace(name)) _log?.Info($"MouseLook: actionkey '{name}' is not an SDL key name; nothing bound");
         return code;
     }
 
     /// <summary>The chord that flips the live mode's <c>action</c>: the key or mouse button named by its
-    /// <c>actionkey</c>, fired when no window consumed it.</summary>
+    /// <c>actionkey</c>, fired when no window consumed it and no chord ranked above it (Interact's) wants it.</summary>
     private sealed class ActionToggle : IChordConsumer
     {
         public int Priority => 1;
-        public bool WantsKey(int key) => ToggleCode > 0 && key == ToggleCode;
-        public void Fire(uint key, int sdlMods) { if (ToggleCode > 0 && key == ToggleCode) Flip(); }
-        public void FireMouse(int button, int sdlMods) { if (ToggleCode < 0 && button == -ToggleCode) Flip(); }
+        public bool WantsKey(int key) => Wants(ToggleCode, key);
+        /// <summary>Whether a chord on <paramref name="key"/> is the toggle bound to <paramref name="toggle"/>: a key, or a
+        /// thumb button carried negative; 0 binds none.</summary>
+        internal static bool Wants(int toggle, int key) => toggle != 0 && key == toggle;
+        public void Fire(uint key, int sdlMods) { if (ToggleCode > 0 && (int)key == ToggleCode) Flip(); }
+        public void FireMouse(int button, int sdlMods) { if (ToggleCode < 0 && -button == ToggleCode) Flip(); }
         private static void Flip() => MouseLook.Action.Set(!MouseLook.Action.V);
     }
 
     /// <summary>The action toggle's <c>changed:</c>: the off edge frees the cursor at once (the on edge waits for
     /// the next event, which reads the knob).</summary>
-    internal static void ActionChanged() { _altFree = false; if (!MouseLook.Action.V && _action) SetAction(false); }
+    internal static void ActionChanged() { _cursor.Reset(); if (!MouseLook.Action.V && _action) SetAction(false); }
 
     /// <summary>The master's <c>changed:</c>: the off edge releases a look or a held press at once, so the
     /// cursor is never left captured waiting for the next mouse event. Nothing on the on edge -- the next press

@@ -19,7 +19,7 @@ Prints "<count> <file>" per offending file, for tools/gates/ratchet.sh; `-v` lis
 import os, re, sys
 
 DECL = re.compile(r'KnobGroup\.Declare\(\s*"([A-Za-z0-9_.\-]+)"')
-FACT = re.compile(r'\.(?:Toggle|Slider|Dropdown|Swatch|Text|List|Button|Bag)\s*(?:<[^>()]*>)?\s*\(\s*"([A-Za-z0-9_.\-]+)"')
+FACT = re.compile(r'\.(?:Toggle|Slider|Dropdown|Swatch|Text|List|Button|Bag|KeyBind)\s*(?:<[^>()]*>)?\s*\(\s*"([A-Za-z0-9_.\-]+)"')
 LIT = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 EXT = {'cfg', 'ttf', 'glsl', 'shd', 'cs', 'md', 'log', 'txt', 'tsv', 'json', 'ini', 'png', 'jpg', 'dds',
        'tga', 'mdl', 'lod', 'mtr', 'txi', 'bmf', 'set', 'are', '2da', 'tlk', 'so', 'dll', 'exe', 'zip',
