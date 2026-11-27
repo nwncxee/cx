@@ -35,6 +35,14 @@ internal static class FeedbackEdges
                 check.Expect(took && w.Lines.Count == 1 && w.Sounds.Count == 0 && note == InteractInput.SoundNotFound,
                              $"a sound the game lost after its edit plays nothing at the press and the row says so: '{note}', took {took}, {w.Seen}");
             }
+            {
+                var lost = InteractWorldDouble.Install();
+                lost.Known.Remove("gui_nowalk");
+                lost.Press('F');
+                InteractWorldDouble.Install();
+                string? note = InteractKnobs.Sound.Note?.Invoke();
+                check.Expect(note == null, $"a world that has the sound drops the note the last world's miss left: '{note}'");
+            }
             check.Expect(FeedbackLine.Alpha(0f) == 1f && FeedbackLine.Alpha(2.49f) == 1f && MathF.Abs(FeedbackLine.Alpha(2.8f) - 0.5f) < 1e-4f
                          && FeedbackLine.Alpha(3.1f) == 0f && FeedbackLine.Alpha(60f) == 0f,
                          $"the line holds 2.5s then fades over 0.6s: {FeedbackLine.Alpha(2.49f)} {FeedbackLine.Alpha(2.8f)} {FeedbackLine.Alpha(3.1f)}");

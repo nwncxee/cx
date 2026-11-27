@@ -47,13 +47,14 @@ internal static class InteractInput
         "No door to open.", "No one to talk to.",
     };
 
-    /// <summary>Installs the world presses read and act on, and forgets what the last one tried; null stands down and
-    /// leaves the chord layer. Returns the world it replaced.</summary>
+    /// <summary>Installs the world presses read and act on, and forgets what the last one tried and whether it had the
+    /// feedback sound; null stands down and leaves the chord layer. Returns the world it replaced.</summary>
     internal static IInteractWorld? Use(IInteractWorld? world)
     {
         IInteractWorld? was = S.World;
         S.World = world;
         S.Tried.Clear();
+        S.SoundFound = null;
         S.Held = S.HeldThroughLoad = 0;
         if (world != null) { KeysChanged(); UiHost.AddChordConsumer(Chord); }
         else UiHost.RemoveChordConsumer(Chord);
