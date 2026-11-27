@@ -195,8 +195,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
     internal uint Corpse(float m, bool lootable = true, Attitude attitude = Attitude.Hostile)
         => Add(new Thing { Kind = ThingKind.Creature, Dead = true, Lootable = lootable, Attitude = attitude }, m);
     internal uint Item(float m) => Add(new Thing { Kind = ThingKind.Item }, m);
-    internal uint Chest(float m, bool locked = false) => Add(new Thing { Kind = ThingKind.Placeable, Useable = true, Locked = locked }, m);
-    internal uint Lever(float m) => Add(new Thing { Kind = ThingKind.Placeable, Useable = true }, m);
+    internal uint Chest(float m, bool locked = false) => Add(new Thing { Kind = ThingKind.Placeable, Locked = locked }, m);
+    internal uint Lever(float m) => Add(new Thing { Kind = ThingKind.Placeable }, m);
     internal uint Door(float m, bool locked = false, bool open = false, bool trap = false, bool destroyed = false, bool leadsAway = false)
         => Add(new Thing { Kind = ThingKind.Door, Locked = locked, Open = open, TrapFound = trap, Destroyed = destroyed, LeadsAway = leadsAway }, m);
     internal uint Creature(float m, Attitude attitude = Attitude.Friend, bool talks = true, bool party = false, bool otherPlayer = false)

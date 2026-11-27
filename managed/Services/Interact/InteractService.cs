@@ -254,8 +254,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.Kind = p.BodyBag != 0 ? ThingKind.BodyBag : ThingKind.Placeable;
                 t.Locked = p.Locked != 0;
                 t.TrapFound = p.TrapShown != 0;
-                t.Useable = cast.Highlightable != 0;
-                t.Lootable = t.Kind == ThingKind.BodyBag && t.Useable;
+                t.Lootable = t.Kind == ThingKind.BodyBag && cast.Highlightable != 0;
                 return t;
             }
             case TabTargetCore.TypeDoor:

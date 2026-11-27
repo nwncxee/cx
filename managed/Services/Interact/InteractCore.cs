@@ -24,7 +24,7 @@ internal struct Thing
     public Vector3 Pos;
     /// <summary>A trigger's outline on the ground, measured by its nearest edge; null measures from <see cref="Pos"/>.</summary>
     public Vector3[]? Outline;
-    public bool Locked, TrapFound, Open, Destroyed, Dead, Lootable, Useable;
+    public bool Locked, TrapFound, Open, Destroyed, Dead, Lootable;
     /// <summary>A trap on it the player has not found: what the player cannot know.</summary>
     public bool TrapUnfound;
     /// <summary>A door or trigger that leads to another area.</summary>
