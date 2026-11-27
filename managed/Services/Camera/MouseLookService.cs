@@ -291,7 +291,10 @@ public sealed unsafe partial class MouseLookService : IExtenderService
     private sealed class ActionToggle : IChordConsumer
     {
         public int Priority => 1;
-        public bool WantsKey(int key) => ToggleCode != 0 && key == ToggleCode;
+        public bool WantsKey(int key) => Wants(ToggleCode, key);
+        /// <summary>Whether a chord on <paramref name="key"/> is the toggle bound to <paramref name="toggle"/>: a key, or a
+        /// thumb button carried negative; 0 binds none.</summary>
+        internal static bool Wants(int toggle, int key) => toggle != 0 && key == toggle;
         public void Fire(uint key, int sdlMods) { if (ToggleCode > 0 && (int)key == ToggleCode) Flip(); }
         public void FireMouse(int button, int sdlMods) { if (ToggleCode < 0 && -button == ToggleCode) Flip(); }
         private static void Flip() => MouseLook.Action.Set(!MouseLook.Action.V);
