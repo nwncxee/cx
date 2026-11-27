@@ -29,7 +29,8 @@ internal static class FeedbackLine
     /// <summary>The text size, the box's top and height and the shadow's offset, at GUI scale 1.</summary>
     private const float Px = 24f, Top = 250f, BoxH = 44f, Shadow = 1f;
     private const float Red = 1f, Green = 0x30 / 255f, Blue = 0x30 / 255f;
-    /// <summary>The game's main text face; the default typeface when this install has no such face.</summary>
+    /// <summary>The game's main text face, the family name fnt_maintext.ttf in the base game's data holds; the default
+    /// typeface when this install has no such face.</summary>
     private const string Typeface = "NWN_Main_Text";
 
     /// <summary>Puts the line's window in the UI layer and asks for its face. Cold: service start.</summary>

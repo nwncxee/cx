@@ -44,6 +44,9 @@ public sealed unsafe class InteractService : IExtenderService
                                   : "Interact: ready; chained on WinMessageHandler and the AreaLoaded send");
     }
 
+    /// <summary>A bound key's press, taken ahead of WinMessageHandler's body, which on both builds hands a key-down to
+    /// CExoInput::AddEvent (the game's key bindings) and then HandleWMKeyDownMessage (the chord layer), Linux nm
+    /// @0x42f960, Windows rva 0x45490: returning 0 keeps it from both. Any other key goes on untouched.</summary>
     [UnmanagedCallersOnly]
     private static int OnWinMessage(IntPtr ev)
     {
