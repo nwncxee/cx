@@ -69,7 +69,7 @@ public static unsafe partial class TextRig
     public static GlyphAtlas? Face(float px) => _defaultName == null ? null : Face(_defaultName, px);
 
     /// <summary>As <see cref="Face(float)"/>, held by <paramref name="owner"/> until it calls <see cref="ReleaseFace(float, string)"/>.</summary>
-    public static GlyphAtlas? Face(float px, string owner) => _defaultName == null ? null : Face(_defaultName, px, owner);
+    public static GlyphAtlas? Face(float px, string owner) => Face(_defaultName ?? DefaultFace, px, owner);
 
     /// <summary>Hot, alloc-free lookup of an already-baked default-typeface face; null on a miss (never bakes).</summary>
     public static GlyphAtlas? BakedFace(float px)
@@ -96,6 +96,19 @@ public static unsafe partial class TextRig
             if (!_holders.TryGetValue(key, out HashSet<string>? who)) _holders[key] = who = new HashSet<string>(StringComparer.Ordinal);
             who.Add(owner);
             return f;
+        }
+    }
+
+    /// <summary>Holds <paramref name="typeface"/> at <paramref name="px"/> for <paramref name="owner"/>, as
+    /// <see cref="Face(string, float, string)"/> does: true when the face is baked, or asked ahead of the sheet and so in its
+    /// first bake; false when headless or refused. Cold, a miss bakes.</summary>
+    public static bool Hold(string typeface, float px, string owner)
+    {
+        lock (_bakeLock)
+        {
+            if (_log != null) return Face(typeface, px, owner) != null;
+            _early.Add((typeface, px, owner));
+            return true;
         }
     }
 
