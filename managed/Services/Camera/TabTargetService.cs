@@ -5,6 +5,7 @@ using System.Threading;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Chat.Core;
+using CX.Services.Interact;
 using CX.Ui;
 
 namespace CX.Services.Camera;
@@ -325,7 +326,7 @@ public sealed unsafe class TabTargetService : IExtenderService
         CClientExoAppInternal intern = app != IntPtr.Zero ? new CClientExoApp(app).Internal : default;
         var target = new CNWCObject(obj);
         uint id = target.Id;
-        if (intern.IsNull || id == intern.PlayerCreatureId) return _defaultActionOrig(self, obj);
+        if (intern.IsNull || id == intern.PlayerCreatureId || !InteractInput.ClickLocks(id)) return _defaultActionOrig(self, obj);
         byte kind = target.Type;
         // A corpse is loot, not a target: its click keeps the vanilla UseObject.
         bool lockable = (kind == TabTargetCore.TypeCreature && !Dead(target))

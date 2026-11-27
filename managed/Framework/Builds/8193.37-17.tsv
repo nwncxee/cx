@@ -842,6 +842,7 @@ rva	_ZN10CNWCModule10TiltCameraEfi	0x7cfdb0	# TiltCamera
 rva	_ZN21CClientExoAppInternal15UpdateDriveModeEv	0x6f1e40	# UpdateDriveMode
 rva	_ZN12CNWCCreature18WalkUpdateLocationEv	0x8114d0	# WalkUpdateLocation
 rva	_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi	0x7e6a20	# TestDirectLine
+rva	_ZN8CNWCArea22ClearLineOfSightOneWayE6VectorS0_PS0_	0x7da6d0	# ClearLineOfSightOneWay
 rva	_ZN10CGuiInGame9ToggleOffEv	0x6fc6f0	# GuiInGameToggleOff
 rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
@@ -1159,3 +1160,10 @@ offset	NkUserFont	height	0x8	0x8	# NkFontHeight
 offset	NkUserFont	width	0x10	0x10	# NkFontWidth
 offset	NkCommandImage	color	0x30	0x30	# NkCmdImageColor
 offset	CallBack	seamName	0x0	0x0	# SeamCallBackName
+offset	CNWCPlaceable	bodyBag	0x1dc	0x1bc	# PlaceableBodyBag
+offset	CNWCPlaceable	locked	0x1bc	0x19c	# PlaceableLocked
+offset	CNWCPlaceable	trapShown	0x1c0	0x1a0	# PlaceableTrapShown
+offset	CNWCDoor	locked	0x1a4	0x184	# DoorLocked
+offset	CNWCDoor	trapShown	0x1ac	0x18c	# DoorTrapShown
+offset	CNWCCreature	lootable	0x24c	0x22c	# CreatureLootable
+offset	CGameObject	vtbl.AsNWCDoor	0x30	0x28	# GameObjAsNWCDoorSlot

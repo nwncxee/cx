@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CX.Framework;
 using CX.Services.Chat.Core;
 using CX.Ui;
@@ -9,6 +10,12 @@ namespace CX.Services.Interact;
 internal sealed class InteractState
 {
     internal IInteractWorld? World;
+    /// <summary>The engine's world, which <see cref="InteractInput.Resume"/> puts back after a self-check's double.</summary>
+    internal IInteractWorld? Live;
+    /// <summary>The locked objects an Interact press tried, passed over until they read unlocked.</summary>
+    internal readonly HashSet<uint> Tried = new();
+    /// <summary>An Interact press is running its default action, so the click-to-lock leaves the lock alone.</summary>
+    internal bool Acting;
 }
 
 /// <summary>The entries the engine side calls: the key handler's press, the chord layer's, the default-action detour
@@ -25,23 +32,46 @@ internal static class InteractInput
     internal static void Use(IInteractWorld? world)
     {
         S.World = world;
+        S.Tried.Clear();
         if (world != null) UiHost.AddChordConsumer(Chord);
         else UiHost.RemoveChordConsumer(Chord);
+    }
+
+    /// <summary>Installs the engine's world, the one <see cref="Resume"/> returns to.</summary>
+    internal static void Live(IInteractWorld world)
+    {
+        S.Live = world;
+        Use(world);
+    }
+
+    /// <summary>Puts the engine's world back once a self-check's double stood down; the pump calls it on every event.</summary>
+    internal static void Resume()
+    {
+        if (S.World == null && S.Live != null) Use(S.Live);
     }
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
     /// took it, so the game never sees it.</summary>
     internal static bool KeyDown(int code, bool repeat)
     {
-        if (!Bound(code) || S.World is not { KeysFree: true } world) return false;
-        uint id = InteractCore.Pick(InteractKey.Interact, world, S);
-        if (id != TypingSignal.ObjectInvalid) world.DefaultAction(id);
+        if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
+        if (repeat) return true;
+        uint id = InteractCore.Pick(key, world, S);
+        if (id == TypingSignal.ObjectInvalid) return true;
+        S.Acting = true;
+        try { world.DefaultAction(id); }
+        finally { S.Acting = false; }
         return true;
     }
 
-    /// <summary>A world is in, the master is on and <paramref name="code"/> is the Interact key's press.</summary>
-    private static bool Bound(int code) =>
-        S.World != null && InteractKnobs.Enabled.V && code != 0 && code == KeyNames.Code(InteractKnobs.Key.V);
+    /// <summary>The key <paramref name="code"/> presses, when a world is in and the master is on; null otherwise.</summary>
+    private static InteractKey? Bound(int code)
+    {
+        if (S.World == null || !InteractKnobs.Enabled.V || code == 0) return null;
+        if (code == KeyNames.Code(InteractKnobs.Key.V)) return InteractKey.Interact;
+        if (code == KeyNames.Code(InteractKnobs.LootKey.V)) return InteractKey.Loot;
+        return null;
+    }
 
     /// <summary>The game's Key Mapping action bound to press <paramref name="code"/>, by its Key Mapping name; null
     /// when none. Cold: a key row's bind.</summary>
@@ -52,7 +82,7 @@ internal static class InteractInput
 
     /// <summary>Whether TabTarget's click-to-lock takes the object a default action just ran on: false when the action
     /// was an Interact press, which never moves the lock.</summary>
-    internal static bool ClickLocks(uint id) => true;
+    internal static bool ClickLocks(uint id) => !S.Acting;
 
     /// <summary>A conversation window opened with <paramref name="id"/> in CX's dialog.</summary>
     internal static void ConversationOpened(uint id) { }
@@ -71,7 +101,7 @@ internal static class InteractInput
     private sealed class InteractChord : IChordConsumer
     {
         public int Priority => 2;
-        public bool WantsKey(int key) => Bound(key);
+        public bool WantsKey(int key) => Bound(key) != null;
         public void Fire(uint key, int sdlMods) => KeyDown((int)key, false);
         public void FireMouse(int button, int sdlMods) => KeyDown(-button, false);
     }

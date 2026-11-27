@@ -262,6 +262,7 @@ internal static class LootApprovedExamples
             InteractWorldDouble.Defaults();
             InteractInput.Use(null);
         }
+        log.Info(check.Ok ? "LootApprovedExamples.SelfCheck: passed" : "LootApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }

@@ -1474,6 +1474,12 @@ internal static unsafe class SymbolMap
     /// <see cref="EngineLayout.PathfindSpaceArgs"/>; both Vectors by value, so SysV xmm pairs and Win64 pointers.</summary>
     [Fn("int(CNWCArea this, CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures)")]
     public const string TestDirectLine = "_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi";
+    /// <summary><c>CNWCArea::ClearLineOfSightOneWay(Vector from, Vector to, Vector* hit)</c> @0x704620 -- the area's
+    /// walkmesh sight test, objects never blocking it: 1 = clear, 0 = blocked with the blocking point written to the
+    /// non-null <c>hit</c>. A point off every tile reads clear. Interact's sight test, raised 1m as the server's
+    /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
+    [Fn("int(CNWCArea this, VectorArg from, VectorArg to, Vec3* hit)")]
+    public const string ClearLineOfSightOneWay = "_ZN8CNWCArea22ClearLineOfSightOneWayE6VectorS0_PS0_";
     /// <summary>SDL2 relative mouse mode: hides the cursor and streams deltas. Mouse-look's capture on Windows, where
     /// SDL runs it on raw input.</summary>
     [Fn("int(int enabled)")]
@@ -3053,6 +3059,7 @@ internal static unsafe class SymbolMap
         [UpdateDriveMode] = At(),   // the one function carrying both 499999 and 250000 (ScanOffsets)
         [WalkUpdateLocation] = At(),   // the one function with both "RUNDIST" and "WALKDIST" (StringRefs)
         [TestDirectLine] = At(),       // WalkPlayerToPoint's 7-slot line-test callee (docs/windows-symbols.md)
+        [ClearLineOfSightOneWay] = At(),   // the client area's (from*, to*, hit*) sight test; body matched to Linux's
         [SdlSetRelativeMouseMode] = Nm("SDL_SetRelativeMouseMode"),
         [SdlWarpMouseInWindow] = Nm("SDL_WarpMouseInWindow"),
         [SdlShowCursor] = Nm("SDL_ShowCursor"),

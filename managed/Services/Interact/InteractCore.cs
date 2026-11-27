@@ -61,6 +61,56 @@ internal interface IInteractWorld
 /// <summary>Interact's pure decisions over a world snapshot: which object a key acts on, or none.</summary>
 internal static class InteractCore
 {
+    /// <summary>How far, in metres, a rule reaches from the player.</summary>
+    internal const float Reach = 10f;
+
+    /// <summary>The rules in the fixed order the Interact key runs them.</summary>
+    private static readonly InteractKey[] Rules = { InteractKey.Loot };
+
     /// <summary>The object <paramref name="key"/> acts on in <paramref name="world"/>, or <see cref="TypingSignal.ObjectInvalid"/>.</summary>
-    internal static uint Pick(InteractKey key, IInteractWorld world, InteractState state) => TypingSignal.ObjectInvalid;
+    internal static uint Pick(InteractKey key, IInteractWorld world, InteractState state)
+    {
+        foreach (InteractKey rule in Rules)
+        {
+            if (key == InteractKey.Interact ? !InInteract(rule) : key != rule) continue;
+            uint id = Nearest(rule, world, state);
+            if (id != TypingSignal.ObjectInvalid) return id;
+        }
+        return TypingSignal.ObjectInvalid;
+    }
+
+    /// <summary>Whether the Interact key runs <paramref name="rule"/>.</summary>
+    private static bool InInteract(InteractKey rule) => rule switch
+    {
+        InteractKey.Loot => InteractKnobs.Loot.V,
+        _ => false,
+    };
+
+    /// <summary>The nearest object in reach and in sight that <paramref name="rule"/> takes. A locked winner is
+    /// recorded as tried and passed over after that; an object read unlocked leaves the tried memory.</summary>
+    private static uint Nearest(InteractKey rule, IInteractWorld world, InteractState state)
+    {
+        IReadOnlyList<Thing> things = world.Things;
+        uint best = TypingSignal.ObjectInvalid;
+        float bestDist = float.MaxValue;
+        bool bestLocked = false;
+        for (int i = 0; i < things.Count; i++)
+        {
+            Thing t = things[i];
+            if (!t.Locked) state.Tried.Remove(t.Id);
+            if (t.Locked && state.Tried.Contains(t.Id)) continue;
+            if (!Qualifies(rule, t)) continue;
+            float dist = Vector3.Distance(t.Pos, world.Player);
+            if (dist > Reach || dist >= bestDist || !world.Sees(world.Player, t.Pos)) continue;
+            best = t.Id; bestDist = dist; bestLocked = t.Locked;
+        }
+        if (bestLocked) state.Tried.Add(best);
+        return best;
+    }
+
+    private static bool Qualifies(InteractKey rule, in Thing t) => rule switch
+    {
+        InteractKey.Loot => (t.Kind == ThingKind.BodyBag || (t.Kind == ThingKind.Creature && t.Dead)) && t.Lootable && !t.TrapFound,
+        _ => false,
+    };
 }

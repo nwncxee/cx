@@ -248,6 +248,7 @@ global using unsafe TiltCameraFn = delegate* unmanaged<nint, float, int, void>;
 global using unsafe UpdateDriveModeFn = delegate* unmanaged<nint, void>;
 global using unsafe WalkUpdateLocationFn = delegate* unmanaged<nint, int>;
 global using unsafe TestDirectLineFn = delegate* unmanaged<nint, nint, CX.Engine.VectorArg, CX.Engine.VectorArg, float, float, int, int>;
+global using unsafe ClearLineOfSightOneWayFn = delegate* unmanaged<nint, CX.Engine.VectorArg, CX.Engine.VectorArg, CX.Engine.Vec3*, int>;
 global using unsafe SdlSetRelativeMouseModeFn = delegate* unmanaged<int, int>;
 global using unsafe SdlWarpMouseInWindowFn = delegate* unmanaged<nint, int, int, void>;
 global using unsafe SdlShowCursorFn = delegate* unmanaged<int, int>;
@@ -1323,6 +1324,10 @@ public readonly unsafe partial struct CGameObject(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.GameObjAsNWCDoorSlot"/>
+    public IntPtr AsNWCDoor() => ((delegate* unmanaged<IntPtr, IntPtr>)AsNWCDoorFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.GameObjAsNWCDoorSlot"/>
+    public IntPtr AsNWCDoorFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GameObjAsNWCDoorSlot);
     /// <inheritdoc cref="EngineLayout.GameObjAsNWCItemSlot"/>
     public IntPtr AsNWCItem() => ((delegate* unmanaged<IntPtr, IntPtr>)AsNWCItemFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.GameObjAsNWCItemSlot"/>
@@ -1899,6 +1904,8 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public void AreaUpdate(float dt) => EngineFn.AreaUpdate(Ptr, dt);
     /// <inheritdoc cref="SymbolMap.AreaUpdateDayNightCycle"/>
     public void AreaUpdateDayNightCycle(float dt) => EngineFn.AreaUpdateDayNightCycle(Ptr, dt);
+    /// <inheritdoc cref="SymbolMap.ClearLineOfSightOneWay"/>
+    public int ClearLineOfSightOneWay(VectorArg from, VectorArg to, Vec3* hit) => EngineFn.ClearLineOfSightOneWay(Ptr, from, to, hit);
     /// <inheritdoc cref="EngineLayout.AreaDawnRunning"/>
     public ref int DawnRunning => ref *(int*)(Ptr + EngineLayout.AreaDawnRunning);
     /// <inheritdoc cref="EngineLayout.AreaDayAmbient"/>
@@ -2027,6 +2034,8 @@ public readonly unsafe partial struct CNWCCreature(IntPtr ptr)
     public ref uint LeftHandItem => ref *(uint*)(Ptr + EngineLayout.CreatureLeftHandItem);
     /// <inheritdoc cref="EngineLayout.CreatureLockTarget"/>
     public ref uint LockTarget => ref *(uint*)(Ptr + EngineLayout.CreatureLockTarget);
+    /// <inheritdoc cref="EngineLayout.CreatureLootable"/>
+    public ref int Lootable => ref *(int*)(Ptr + EngineLayout.CreatureLootable);
     /// <inheritdoc cref="EngineLayout.CreatureMasterId"/>
     public ref uint MasterId => ref *(uint*)(Ptr + EngineLayout.CreatureMasterId);
     /// <inheritdoc cref="EngineLayout.CreaturePathFromServer"/>
@@ -2094,6 +2103,19 @@ public readonly unsafe partial struct CNWCCreatureStats(IntPtr ptr)
     public ref IntPtr OverrideName => ref *(IntPtr*)(Ptr + EngineLayout.StatsOverrideName);
     /// <inheritdoc cref="EngineLayout.StatsOverrideNameLen"/>
     public ref uint OverrideNameLen => ref *(uint*)(Ptr + EngineLayout.StatsOverrideNameLen);
+}
+
+/// <summary>Typed view of an engine <c>CNWCDoor*</c>.</summary>
+public readonly unsafe partial struct CNWCDoor(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.DoorLocked"/>
+    public ref int Locked => ref *(int*)(Ptr + EngineLayout.DoorLocked);
+    /// <inheritdoc cref="EngineLayout.DoorTrapShown"/>
+    public ref int TrapShown => ref *(int*)(Ptr + EngineLayout.DoorTrapShown);
 }
 
 /// <summary>Typed view of an engine <c>CNWCItem*</c>.</summary>
@@ -2287,6 +2309,10 @@ public readonly unsafe partial struct CNWCPlaceable(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.PlaceableBodyBag"/>
+    public ref int BodyBag => ref *(int*)(Ptr + EngineLayout.PlaceableBodyBag);
+    /// <inheritdoc cref="EngineLayout.PlaceableLocked"/>
+    public ref int Locked => ref *(int*)(Ptr + EngineLayout.PlaceableLocked);
     /// <inheritdoc cref="EngineLayout.PlaceableName"/>
     public ref IntPtr Name => ref *(IntPtr*)(Ptr + EngineLayout.PlaceableName);
     /// <inheritdoc cref="EngineLayout.PlaceableNameLen"/>
@@ -2295,6 +2321,8 @@ public readonly unsafe partial struct CNWCPlaceable(IntPtr ptr)
     public void PlaceableShowFeedbackBubbleText() => EngineFn.PlaceableShowFeedbackBubbleText(Ptr);
     /// <inheritdoc cref="EngineLayout.PlaceablePlated"/>
     public ref int Plated => ref *(int*)(Ptr + EngineLayout.PlaceablePlated);
+    /// <inheritdoc cref="EngineLayout.PlaceableTrapShown"/>
+    public ref int TrapShown => ref *(int*)(Ptr + EngineLayout.PlaceableTrapShown);
 }
 
 /// <summary>Typed view of an engine <c>CNWCPlayer*</c>.</summary>
@@ -5026,6 +5054,10 @@ public static unsafe class EngineFn
     private static bool _TestDirectLineDone;
     /// <inheritdoc cref="SymbolMap.TestDirectLine"/>
     public static TestDirectLineFn TestDirectLine => (TestDirectLineFn)(_TestDirectLineDone ? _TestDirectLine : Resolve(ref _TestDirectLine, ref _TestDirectLineDone, SymbolMap.TestDirectLine));
+    private static IntPtr _ClearLineOfSightOneWay;
+    private static bool _ClearLineOfSightOneWayDone;
+    /// <inheritdoc cref="SymbolMap.ClearLineOfSightOneWay"/>
+    public static ClearLineOfSightOneWayFn ClearLineOfSightOneWay => (ClearLineOfSightOneWayFn)(_ClearLineOfSightOneWayDone ? _ClearLineOfSightOneWay : Resolve(ref _ClearLineOfSightOneWay, ref _ClearLineOfSightOneWayDone, SymbolMap.ClearLineOfSightOneWay));
     private static IntPtr _SdlSetRelativeMouseMode;
     private static bool _SdlSetRelativeMouseModeDone;
     /// <inheritdoc cref="SymbolMap.SdlSetRelativeMouseMode"/>
@@ -7447,6 +7479,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.TestDirectLine"/>; returns the slot holding the next layer, or null.</summary>
     public static TestDirectLineFn* ChainTestDirectLine(this HookService h, TestDirectLineFn handler, int priority) =>
         (TestDirectLineFn*)h.Chain(SymbolMap.TestDirectLine, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ClearLineOfSightOneWay"/>; returns the original, or null.</summary>
+    public static ClearLineOfSightOneWayFn InstallClearLineOfSightOneWay(this HookService h, ClearLineOfSightOneWayFn handler) =>
+        (ClearLineOfSightOneWayFn)h.Install(SymbolMap.ClearLineOfSightOneWay, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ClearLineOfSightOneWay"/>; returns the slot holding the next layer, or null.</summary>
+    public static ClearLineOfSightOneWayFn* ChainClearLineOfSightOneWay(this HookService h, ClearLineOfSightOneWayFn handler, int priority) =>
+        (ClearLineOfSightOneWayFn*)h.Chain(SymbolMap.ClearLineOfSightOneWay, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SdlSetRelativeMouseMode"/>; returns the original, or null.</summary>
     public static SdlSetRelativeMouseModeFn InstallSdlSetRelativeMouseMode(this HookService h, SdlSetRelativeMouseModeFn handler) =>
         (SdlSetRelativeMouseModeFn)h.Install(SymbolMap.SdlSetRelativeMouseMode, (IntPtr)handler);
