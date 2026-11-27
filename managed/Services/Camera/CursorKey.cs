@@ -73,10 +73,7 @@ internal sealed unsafe class CursorKeyState
     private bool IsDown(int code) => code != 0 && (Down.A == code || Down.B == code);
 
     /// <summary>A modifier key reaches the game whatever it binds: the game reads Alt as it always has.</summary>
-    private static bool Swallowed(int code) => code is not (>= ModFirst and <= ModLast);
-
-    /// <summary>The SDL keycodes of the eight modifier keys.</summary>
-    private const int ModFirst = 0x400000E0, ModLast = 0x400000E7;  // not-an-offset: SDL key/event code
+    private static bool Swallowed(int code) => !KeyNames.IsModifier(code);
 
     internal bool Freed(int mode)
         => (uint)mode < (uint)Codes.Length && CameraModes.ByMode[mode].AltToggle.V ? Free : Down.A != 0 || Down.B != 0;
