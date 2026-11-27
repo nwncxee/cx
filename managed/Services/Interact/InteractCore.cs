@@ -121,7 +121,8 @@ internal static class InteractCore
     }
 
     /// <summary>Where a rule measures <paramref name="t"/> from: a trigger's outline point nearest the player, else its position.</summary>
-    private static Vector3 MeasuredAt(in Thing t, Vector3 player) => t.Outline is { } outline ? NearestOnOutline(outline, player) : t.Pos;
+    private static Vector3 MeasuredAt(in Thing t, Vector3 player) =>
+        t.Outline is not { } outline ? t.Pos : Encloses(outline, player) ? player : NearestOnOutline(outline, player);
 
     /// <summary>Whether the Interact key runs <paramref name="rule"/>.</summary>
     private static bool InInteract(InteractKey rule) => rule switch
@@ -175,11 +176,12 @@ internal static class InteractCore
     /// <summary>How far past a trigger's nearest edge a walk into it heads, in metres.</summary>
     internal const float Inset = 0.5f;
 
-    /// <summary>Where a walk into area transition <paramref name="t"/> heads: just inside a trigger's nearest edge, or
-    /// a door's own position.</summary>
+    /// <summary>Where a walk into area transition <paramref name="t"/> heads: just inside a trigger's nearest edge, where
+    /// the player stands when already inside it, or a door's own position.</summary>
     internal static Vector3 WalkPoint(in Thing t, Vector3 player)
     {
         if (t.Outline is not { } outline) return t.Pos;
+        if (Encloses(outline, player)) return player;
         Vector3 q = NearestOnOutline(outline, player), dir = new(q.X - player.X, q.Y - player.Y, 0f);
         float len = dir.Length();
         return len > 0f ? q + dir * (Inset / len) : q;
@@ -200,6 +202,19 @@ internal static class InteractCore
             if (d < bestDist) { best = q; bestDist = d; }
         }
         return best;
+    }
+
+    /// <summary>Whether <paramref name="p"/> lies inside the closed outline <paramref name="outline"/> on the ground plane, by the
+    /// even-odd crossing rule, so a concave trigger counts too.</summary>
+    internal static bool Encloses(Vector3[] outline, Vector3 p)
+    {
+        bool inside = false;
+        for (int i = 0, j = outline.Length - 1; i < outline.Length; j = i++)
+        {
+            Vector3 a = outline[i], b = outline[j];
+            if ((a.Y > p.Y) != (b.Y > p.Y) && p.X < (b.X - a.X) * (p.Y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
+        }
+        return inside;
     }
 
     private static bool Qualifies(InteractKey rule, in Thing t) => rule switch
