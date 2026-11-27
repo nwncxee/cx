@@ -16,7 +16,7 @@ namespace CX.Services.Camera;
 /// the engine work at six seams -- keys, candidates, indicator, camera, fire and click-to-lock, each documented
 /// where it sits. Nothing allocates, and the lock is one id behind <see cref="Volatile"/>.
 /// </summary>
-public sealed unsafe class TabTargetService : IExtenderService
+public sealed unsafe partial class TabTargetService : IExtenderService
 {
     private static ExtenderLog? _log;
     private static bool _ready;
@@ -318,6 +318,10 @@ public sealed unsafe class TabTargetService : IExtenderService
     }
 
     // ---- click-to-lock ----
+
+    /// <summary>The engine's own default action on <paramref name="obj"/>; nothing when the engine call does not resolve.</summary>
+    internal static int VanillaDefaultAction(IntPtr self, IntPtr obj) =>
+        EngineFn.PerformDefaultActionOnObject != null ? new CClientExoAppInternal(self).PerformDefaultActionOnObject(obj) : 0;
 
     [UnmanagedCallersOnly]
     private static int OnDefaultAction(IntPtr self, IntPtr obj)
