@@ -34,8 +34,8 @@ public sealed partial class KnobPanel
                 check.Expect(p.KeyBoxText(r) == WaitText, $"U1 the waiting row's box reads '{WaitText}': '{p.KeyBoxText(r)}'");
                 Row? loot = Find(p, InteractKnobs.LootKey);
                 check.Expect(loot != null && !p.Waiting(loot) && p.KeyBoxText(loot) == loot.Value, $"U1 the Loot row beside it does not wait and shows its own key ('{(loot == null ? "" : p.KeyBoxText(loot))}')");
-                p.Key(0x4000003A);  // not-an-offset: SDL key/event code
-                check.Expect(p.Waiting(r) && InteractKnobs.Key.V == "F", $"U1 a key with no name (F1 on a host without SDL) keeps the row waiting and F bound ({InteractKnobs.Key.V})");
+                p.Key(0x40000000);  // not-an-offset: SDL key/event code
+                check.Expect(p.Waiting(r) && InteractKnobs.Key.V == "F", $"U1 a key with no name (SDL's unknown scancode) keeps the row waiting and F bound ({InteractKnobs.Key.V})");
                 p.Key(0x400000E1);
                 check.Expect(p.Waiting(r) && InteractKnobs.Key.V == "F", $"U1 a Shift press alone keeps the row waiting and binds nothing ({InteractKnobs.Key.V})");
                 p.Key('g');
