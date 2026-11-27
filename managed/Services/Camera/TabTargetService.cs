@@ -34,7 +34,7 @@ public sealed unsafe partial class TabTargetService : IExtenderService
     private const byte LockChannel = 4;
     private const int Glow = 1;
     /// <summary>Attitude byte: 1 friend, 0 neutral, else hostile.</summary>
-    private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
+    internal const byte AttitudeNeutral = 0, AttitudeFriend = 1;
 
     // ---- the lock ----
     private static uint _lock;

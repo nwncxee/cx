@@ -22,7 +22,6 @@ public sealed unsafe class InteractService : IExtenderService
 
     /// <summary>Above tab-target (50), so a key bound to both runs Interact; below mouse-look (100).</summary>
     private const int ChainPriority = 60;
-    private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301;  // not-an-offset: SDL key/event code
     /// <summary>Above every other layer on the AreaLoaded send (TexStream 100), so Interact sees the engine's own send
     /// even when the lightmap hold keeps it from the layers below.</summary>
     private const int LoadedPriority = 110;
@@ -50,9 +49,9 @@ public sealed unsafe class InteractService : IExtenderService
     [UnmanagedCallersOnly]
     private static int OnWinMessage(IntPtr ev)
     {
-        if (ev != IntPtr.Zero && *(uint*)ev == SdlKeyDown
+        if (ev != IntPtr.Zero && *(uint*)ev == MouseLookService.SdlKeyDown
             && InteractInput.KeyDown(((SdlEvent*)ev)->Sym, ((SdlEvent*)ev)->Repeat != 0)) return 0;
-        if (ev != IntPtr.Zero && *(uint*)ev == SdlKeyUp) InteractInput.KeyUp(((SdlEvent*)ev)->Sym);
+        if (ev != IntPtr.Zero && *(uint*)ev == MouseLookService.SdlKeyUp) InteractInput.KeyUp(((SdlEvent*)ev)->Sym);
         return (*S.Next)(ev);
     }
 
@@ -73,7 +72,6 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
     /// <summary>The height both ends of a sight line are raised by, as the server's
     /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
     private const float EyeHeight = 1f;
-    private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
     /// <summary>CExoSound's priority group for interface sounds, the one <c>PlayGuiSound</c> plays in.</summary>
     private const byte GuiGroup = 9;   // not-an-offset: CExoSound priority group id
     /// <summary>CNWCDoor's state byte past 0, the closed rest: open one way or the other, and destroyed, which a generic
@@ -232,7 +230,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.Kind = ThingKind.Creature;
                 t.Dead = TabTargetService.Dead(obj);
                 t.Lootable = c.Lootable == 1;
-                t.Attitude = c.Attitude switch { AttitudeFriend => Attitude.Friend, AttitudeNeutral => Attitude.Neutral, _ => Attitude.Hostile };
+                t.Attitude = c.Attitude switch { TabTargetService.AttitudeFriend => Attitude.Friend, TabTargetService.AttitudeNeutral => Attitude.Neutral, _ => Attitude.Hostile };
                 t.Party = c.MasterId == playerId;
                 t.OtherPlayer = PlayerIdentity.IsPlayerCreature(id);
                 return t;
