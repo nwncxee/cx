@@ -206,6 +206,56 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
+        internal struct Pool { internal ModelDef Water, Stock, Deck, Pond; internal int WaterPart, StockPart, DeckPart, PondPart; }
+
+        /// <summary>The pool's stock-water diffuse: no render hint names it water, only its bumpy-shiny <c>.txi</c>.</summary>
+        private const string StockWater = "cxpoolstock";
+
+        /// <summary>A walkmesh bed at z 0 under four trimesh surfaces at z 1, each holding a recipe interned and assigned
+        /// as the seam feed does: statics with render hint <c>water</c> at x -3.4, stock water (no hint, a bumpy-shiny
+        /// diffuse) at x 0 and a plain deck at x 3.4, and a placeable's <c>water</c> pond at (0, -3.4).</summary>
+        internal static Pool BuildPool(DbId scene, Vector3 pos)
+        {
+            DbId bed = Obj(scene, Model("poolbed", HitTest.ClassTile, Quad(0f, 0f, 5f, 2), NodeKind.Aabb),
+                           pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            var pool = new Pool
+            {
+                Water = Surface("poolwater", -3.4f, "water", ""), Stock = Surface("poolstock", 0f, "", StockWater),
+                Deck = Surface("pooldeck", 3.4f, "", ""), Pond = Surface("poolpond", 0f, "water", ""),
+            };
+            TexId stock = TexRegistry.Acquire(StockWater);
+            TexRegistry.Land(stock, 0xE7000001u, 64, bumpyShiny: true);
+            pool.WaterPart = Surfaced(scene, pool.Water, pos);
+            pool.StockPart = Surfaced(scene, pool.Stock, pos);
+            pool.DeckPart = Surfaced(scene, pool.Deck, pos);
+            pool.PondPart = Surfaced(scene, pool.Pond, pos + new Vector3(0f, -3.4f, 0f), isStatic: false);
+            TexRegistry.Release(stock);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = bed;
+            return pool;
+        }
+
+        /// <summary>Place <paramref name="model"/>, a static tile part or a placeable, and give its part the recipe the
+        /// seam feed would.</summary>
+        private static int Surfaced(DbId scene, ModelDef model, Vector3 pos, bool isStatic = true)
+        {
+            DbId o = Obj(scene, model, pos, Quaternion.Identity, 1f, isStatic ? HitTest.ClassTile : (byte)0, isStatic);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = o;
+            int p = SceneDb.ObjPartFirst[o.Index];
+            DrawRecipe.Assign(p, DrawRecipe.Intern(model, 0, plan: false));
+            return p;
+        }
+
+        private static ModelDef Surface(string name, float cx, string hint, string diffuse)
+        {
+            MeshDef m = Quad(cx, 1f, 1.5f, 6);
+            m.Indices = new uint[] { 0, 1, 2, 0, 2, 3 };
+            m.RenderHint = hint;
+            if (diffuse.Length > 0) m.Textures = new[] { diffuse, "", "", "" };
+            return Model(name, HitTest.ClassTile, m, NodeKind.TriMesh);
+        }
+
         internal struct Bridge { internal DbId Ramp, Deck, Neighbour, SeamFloor, Seam; }
 
         /// <summary>A walkmesh bridge as content builds one: a tile's ramp at z 9.67 in cell (7, 9), a static
@@ -390,14 +440,17 @@ public static unsafe partial class HitTestCheck
                 if (!SceneDb.Objects.Valid(o)) continue;
                 HitGrid.Remove(o.Index);
                 int first = SceneDb.ObjPartFirst[o.Index];
+                bool drew = false;
                 for (int p = first; p < first + SceneDb.ObjPartCount[o.Index]; p++)
                 {
+                    if (SceneDb.PartRecipe[p] >= 0) { DrawRecipe.Assign(p, -1); drew = true; }
                     // A recycled part slot must not inherit this fixture's geometry: the box is the one hit
                     // column a later tenant reads before anything re-derives it.
                     SceneDb.HitPartBMin[p] = new Vector3(1f); SceneDb.HitPartBMax[p] = new Vector3(-1f);
                     SceneDb.HitPartTrigger[p] = 0;
                     SceneDb.Parts.Free(SceneDb.Parts.IdAt(p));
                 }
+                if (drew && SceneDb.ObjModel[o.Index] is ModelDef m) DrawRecipe.Forget(m);
                 SceneDb.Objects.Free(o);
             }
             foreach (DbId c in _cams) if (SceneDb.Cameras.Valid(c)) SceneDb.Cameras.Free(c);

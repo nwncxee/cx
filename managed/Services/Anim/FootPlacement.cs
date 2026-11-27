@@ -258,8 +258,8 @@ internal static unsafe class FootPlacement
 
     /// <summary>The floor under <paramref name="ankle"/> within <c>refZ +- max</c>, as an offset from
     /// <paramref name="refZ"/>; 0 when there is none. Tiles and static placeables (BSP parts, counted as tile
-    /// hits), tile gobs and placeables are ground; anything else hit -- a creature, a held item, a VFX -- is
-    /// cast past.</summary>
+    /// hits), tile gobs and placeables are ground; a creature, a held item or a VFX is cast past, and the ray goes
+    /// through water to the bed under it.</summary>
     private static bool FloorOffset(IntPtr scene, IntPtr self, Vector3 ankle, float refZ, float max, out float off)
     {
         Vector3 from = new(ankle.X, ankle.Y, refZ + max), to = new(ankle.X, ankle.Y, refZ - max);

@@ -407,6 +407,9 @@ internal static partial class DrawRecipe
     internal static MeshDef? Mesh(int r) => _mesh[r];
     internal static ModelDef? Model(int r) => _model[r];
     internal static int Cls(int r) => _cls[r];
+    /// <summary>Is recipe <paramref name="r"/> water by its content: a declared water mesh or a bumpy-shiny diffuse,
+    /// whether or not <c>g_nEnableBumpyWater</c> has the renderer draw it as water?</summary>
+    internal static bool WaterContent(int r) => _declWater[r] || TexRegistry.BumpyShiny(Tex(r, 0));
     /// <summary>The diffuse measured GRADED alpha (<see cref="TexCoverage.Blended"/>): a soft edge, not a punch-through.</summary>
     internal static bool Graded(int r) => TexRegistry.Coverage(new TexId(_texId[r * TexSlots])) == TexCoverage.Blended;
     /// <summary>The diffuse's coverage is measured, so <see cref="Cls"/> is no longer the conservative guess.</summary>

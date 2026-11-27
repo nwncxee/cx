@@ -4,6 +4,7 @@ using System.Numerics;
 using CX.Alloy.Mdl;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 
 namespace CX.Alloy.Db;
 
@@ -58,6 +59,7 @@ public static unsafe partial class HitTestCheck
         ok &= ReMark(log);
         ok &= Scene(log);
         ok &= MergedHead(log);
+        ok &= ThroughWater(log);
         ok &= OneWalkmeshPerCell(log);
         ok &= Bench(log);
         log.Info(ok ? "HitTest.SelfCheck: passed" : "HitTest.SelfCheck: see failures above");
@@ -486,6 +488,64 @@ public static unsafe partial class HitTestCheck
                          + "0.010 -- the hit test is casting the node's own mesh under the bucket's zeroed pose");
         Fixture.Tear();
         return ok;
+    }
+
+    /// <summary>A foot's floor cast (<see cref="HitQuery.PassWater"/>) through a surface drawn as water lands on the
+    /// bed under it, and still stands on a plain deck; a cast without it stands on both. Oracle: the fixture's
+    /// literal heights, bed z 0 and surfaces z 1.</summary>
+    private static bool ThroughWater(ExtenderLog log)
+    {
+        bool ok = true;
+        var world = Fixture.Build();
+        var at = new Vector3(740f, 700f, 0f);
+        Vector3 water = at + new Vector3(-3.4f, 0f, 0f), deck = at + new Vector3(3.4f, 0f, 0f);
+        int recipes = DrawRecipe.Count, inUse = DrawRecipe.RetiredInUse;
+        Fixture.Pool pool = Fixture.BuildPool(world.Scene, at);
+        if (!HitTest.IsWater(pool.WaterPart) || !HitTest.IsWater(pool.StockPart) || !HitTest.IsWater(pool.PondPart)
+            || HitTest.IsWater(pool.DeckPart))
+            ok = Fail(log, "the hinted water, the stock water and the placeable's pond did not all read as water, or the deck did");
+        ok &= LandsAt(log, world.Scene, water, false, 1f, "a plain cast onto water");
+        ok &= LandsAt(log, world.Scene, water, true, 0f, "a foot cast onto water");
+        ok &= LandsAt(log, world.Scene, at, true, 0f, "a foot cast onto stock water with shiny water off");
+        ok &= LandsAt(log, world.Scene, deck, true, 1f, "a foot cast onto a plain deck");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(0f, -3.4f, 0f), false, 1f, "a plain cast onto a placeable's pond");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(0f, -3.4f, 0f), true, 0f, "a foot cast onto a placeable's pond");
+        ok &= FootCastThroughWater(log, world.Scene, water);
+        Fixture.Tear();
+        if (DrawRecipe.Count != recipes || DrawRecipe.RetiredInUse != inUse)
+            ok = Fail(log, "the pool's recipes outlived the fixture's teardown, or were retired while its parts still drew them");
+        return ok;
+    }
+
+    /// <summary>The foot's own cast, <see cref="SceneRay.DbCast"/> on a minted scene facade, reaches the bed under
+    /// the water. The vtable block is built here only when nothing has built it yet, which is run-demo.</summary>
+    private static bool FootCastThroughWater(ExtenderLog log, DbId scene, Vector3 xy)
+    {
+        bool fresh = !Seam.Facade.Built;
+        if (fresh && Seam.Facade.Build(new Seam.SeamRegistry(), log, census: false) < 0)
+            return Fail(log, "the seam's vtable block could not be built, so the foot's own cast cannot be checked");
+        nint shell = Seam.Facade.Mint(Seam.FacadeKind.Scene, scene);
+        bool ok = shell != 0 || Fail(log, "the pool's scene took no facade");
+        if (shell != 0)
+        {
+            Seam.SeamShell.NoteScene(shell, world: true);
+            if (!SceneRay.DbCast(shell, xy + new Vector3(0f, 0f, 3f), xy + new Vector3(0f, 0f, -1f), IntPtr.Zero,
+                                 out Vector3 hit, out _, statics: true))
+                ok = Fail(log, "the foot's own cast onto water hit nothing");
+            else if (MathF.Abs(hit.Z) > 1e-3f) ok = Fail(log, $"the foot's own cast onto water landed at z {hit.Z:F3}, want 0.000");
+            Seam.Facade.Retire(shell);
+        }
+        if (fresh) Seam.Facade.DropTables();
+        return ok;
+    }
+
+    private static bool LandsAt(ExtenderLog log, DbId scene, Vector3 xy, bool passWater, float want, string what)
+    {
+        HitQuery q = HitQuery.Ray(scene, xy + new Vector3(0f, 0f, 3f), xy + new Vector3(0f, 0f, -1f), statics: true);
+        q.PassWater = passWater;
+        if (!HitTest.Cast(q, out HitResult r)) return Fail(log, $"{what} hit nothing");
+        if (MathF.Abs(r.Point.Z - want) > 1e-3f) return Fail(log, $"{what} landed at z {r.Point.Z:F3}, want {want:F3}");
+        return true;
     }
 
     /// <summary>Build a synthetic scene in the real tables and cast at it: nearest-hit ordering across

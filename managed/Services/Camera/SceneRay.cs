@@ -56,8 +56,8 @@ public static unsafe class SceneRay
 
     /// <summary>Nearest hit on <paramref name="from"/>-&gt;<paramref name="to"/>, skipping <paramref name="ignore"/>
     /// (the followed gob). <paramref name="gob"/> is the gob hit, zero for a tile part or a static placeable.
-    /// <paramref name="statics"/> also tests static placeables (a boardwalk, a rug), as the engine's own
-    /// footstep cast does -- a no-op on a client where the switch did not resolve.</summary>
+    /// <paramref name="statics"/> also tests static placeables (a boardwalk, a rug), as the engine's own footstep cast
+    /// does -- a no-op on a client where the switch did not resolve. Alloy's cast goes through water.</summary>
     public static bool Cast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore, out Vector3 hit, out IntPtr gob, bool statics = false)
     {
         if (CX.Alloy.Renderer.On) return DbCast(scene, from, to, ignore, out hit, out gob, statics);
@@ -86,14 +86,15 @@ public static unsafe class SceneRay
     private static readonly DbId[] _dbIgnore = new DbId[1];
 
     /// <inheritdoc cref="Cast(IntPtr, Vector3, Vector3, IntPtr, out Vector3, out IntPtr, bool)"/>
-    private static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
-                              out Vector3 hit, out IntPtr gob, bool statics)
+    internal static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
+                               out Vector3 hit, out IntPtr gob, bool statics)
     {
         hit = default;
         gob = IntPtr.Zero;
         DbId s = Facade.SceneId(scene), skip = Facade.ObjectId(ignore);
         if (s.IsNull) return false;
         HitQuery q = HitQuery.Ray(s, from, to, statics);
+        q.PassWater = true;
         _dbIgnore[0] = skip;
         if (!skip.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
         if (!HitTest.Cast(q, out HitResult r)) return false;
