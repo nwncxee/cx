@@ -32,6 +32,8 @@ internal static class AirForestApprovedExamples
         ClearingEmpty(check);
         HeldForest(check);
         Unhold();
+        WalkSwirlsLeaves(check);
+        WinterBare(check);
         log.Info(check.Ok ? "AirForestApprovedExamples.SelfCheck: passed" : "AirForestApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
@@ -195,5 +197,51 @@ internal static class AirForestApprovedExamples
         AirLayer layers = look.Layers(false);
         check.Expect(look.Place == AirPlace.Forest && layers.HasFlag(AirLayer.Haze) && layers.HasFlag(AirLayer.Leaves),
             $"E141 an open area held forest takes {look.Place} with {layers} (want Forest, haze and leaves)");
+    }
+
+    // Given a walker in a forest with leaves falling
+    // When they walk through
+    // Then the falling leaves near them swirl aside.
+    private static void WalkSwirlsLeaves(Checker check)
+    {
+        Wood(Vector2.Zero);
+        Vector3 west = new(Trees.X - 12f, 0f, 0f), east = new(Trees.X + 8f, 0f, 0f);
+        DbId world = MistPartingApprovedExamples.World(), who = MistPartingApprovedExamples.Seat(world, west, true);
+        int leg = Pace(20f);
+        float stood = 0f, walked = 0f;
+        for (int n = 0; n < 6 * leg; n++)
+        {
+            Vector3 at = Pacing(west, east, n, leg);
+            Walk(world, who, at, at, true, 1);
+            stood = MathF.Max(stood, Fastest(AirLayer.Leaves, at + new Vector3(0f, 0f, 1f), 1.5f));
+        }
+        for (int n = 0; n < 6 * leg; n++)
+        {
+            Vector3 was = Pacing(west, east, n, leg), at = Pacing(west, east, n + 1, leg);
+            Walk(world, who, was, at, true, 1);
+            walked = MathF.Max(walked, Fastest(AirLayer.Leaves, at + new Vector3(0f, 0f, 1f), 1.5f));
+        }
+        MistPartingApprovedExamples.Drop(world, who);
+        check.Expect(stood > 0f && walked > stood + Slow,
+            $"E173 the leaves beside the walker move at up to {walked:F3} m/s against {stood:F3} m/s beside one standing (want swirled aside)");
+    }
+
+    /// <summary>Frame <paramref name="n"/> of pacing between <paramref name="a"/> and <paramref name="b"/>, <paramref name="leg"/> frames each way.</summary>
+    private static Vector3 Pacing(Vector3 a, Vector3 b, int n, int leg)
+    {
+        int k = n % (2 * leg);
+        return Vector3.Lerp(a, b, k <= leg ? (float)k / leg : (float)(2 * leg - k) / leg);
+    }
+
+    // Given a winter forest in calm air
+    // When the player stands among its trunks for thirty seconds
+    // Then haze hangs there and no leaves fall.
+    private static void WinterBare(Checker check)
+    {
+        EnterWith(Forest with { Winter = true }, Flat(), 0f, false, true, false);
+        int fell = 0;
+        for (int n = (int)(30f / Frame); n > 0; n--) { AirScene.Step(Frame, Vector2.Zero); fell = Math.Max(fell, AirScene.Particles(AirLayer.Leaves).Length); }
+        float haze = Haze(Trees);
+        check.Expect(haze > 0f && fell == 0, $"E174 the winter forest holds haze {haze:F4} and {fell} leaves (want haze, no leaves)");
     }
 }
