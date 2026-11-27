@@ -14,6 +14,11 @@ public sealed unsafe partial class DialogService
         var check = new Checker(log, "DialogService.InteractSelfCheck");
         if (ClientApi.Message() != IntPtr.Zero) return check.Skip("a live session would show the checks' nodes");
         bool was = DialogKnobs.Enabled.V;
+        ShowDialogEntryFn entryOrig = _entryOrig;
+        CloseDialogFn closeOrig = _closeOrig;
+        // In the real client these are the engine's own ShowDialogEntry and CloseDialog, which a null GUI crashes.
+        _entryOrig = null;
+        _closeOrig = null;
         try
         {
             ShowDialogEntryFn entry = &OnShowEntry;
@@ -30,6 +35,8 @@ public sealed unsafe partial class DialogService
         }
         finally
         {
+            _entryOrig = entryOrig;
+            _closeOrig = closeOrig;
             InteractWorldDouble.Restore();
             DialogKnobs.Enabled.Set(was);
             _engineOwns = false;
