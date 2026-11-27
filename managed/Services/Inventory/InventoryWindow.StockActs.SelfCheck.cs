@@ -25,6 +25,12 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.FootprintEdgeSelfCheck", FootprintEdge);
         Suite(log, "InventoryWindow.AimSelfCheck", Aim);
         Suite(log, "InventoryWindow.TakeAllSelfCheck", TakeAll);
+        Suite(log, "InventoryWindow.WornSlotsApprovedExamples.SelfCheck", UnsentSlots);
+        Suite(log, "InventoryWindow.WornSlotsSelfCheck", SentSlots);
+        Suite(log, "InventoryWindow.BagRefreshApprovedExamples.StackOffStream", StackOffStream);
+        Suite(log, "InventoryWindow.BagRefreshApprovedExamples.DragBuyStack", DragBuyStack);
+        Suite(log, "InventoryWindow.BagRefreshApprovedExamples.LoadoutSwap", LoadoutSwap);
+        Suite(log, "InventoryWindow.BagRefreshSelfCheck", WeightlessBuy);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)

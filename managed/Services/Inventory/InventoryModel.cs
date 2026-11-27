@@ -212,6 +212,22 @@ internal sealed class InventoryModel : ItemGrid
         for (int i = 0; i < Equipped.Length; i++) Equipped[i].Oid = Invalid;
     }
 
+    /// <summary>Gold, carried weight and the worn ids as last read, odd once read; zero before the first read.</summary>
+    private long _backpackSig;
+
+    /// <summary>Whether the server changed the backpack since the last call: gold, weight or a worn item moved. It may have
+    /// changed a page it does not stream (a script's stack, a bought item, an item taken off), so the caller stales them.
+    /// The first call only records.</summary>
+    public bool BackpackChanged()
+    {
+        long sig = Gold * 1_000_003L + WeightTenths;
+        for (int i = 0; i < Equipped.Length; i++) sig = sig * 31 + Equipped[i].Oid;
+        sig |= 1L;
+        bool changed = _backpackSig != 0 && sig != _backpackSig;
+        _backpackSig = sig;
+        return changed;
+    }
+
     /// <summary><see cref="ItemGrid.Fits"/> within all six pages.</summary>
     public bool Fits(int x, int y, int w, int h, uint ignore) => Fits(x, y, w, h, ignore, Pages);
 

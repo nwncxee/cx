@@ -323,6 +323,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
 
     private static void Draw()
     {
+        if (!GameGate.InModule) _inv.WornUnsent();
         if (!_inv.Open) return;
         if (!GameGate.InGame) { Close(notify: false); return; }
         if (_masterOff) { _masterOff = false; Close(notify: true); return; }

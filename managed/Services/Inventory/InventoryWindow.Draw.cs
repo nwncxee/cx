@@ -133,7 +133,9 @@ internal sealed partial class InventoryWindow
             if (skin != null) skin.Draw(KSlot, bx0, by0, bx1, by1);
             else { Fill(under, bx0, by0, bx1, by1, ListBg); Outline(under, bx0, by0, bx1, by1, Frame); }
             if (i == Chest && _ac.On) by1 = Math.Min(by1, Sy(_ac.Y0));
-            if (held.Oid == InventoryModel.Invalid)
+            if (held.Oid == InventoryModel.Invalid && !_wornSent)
+                Spinner(under, (bx0 + bx1) / 2f, (by0 + by1) / 2f, 0.3f * Math.Min(bx1 - bx0, by1 - by0), s);
+            else if (held.Oid == InventoryModel.Invalid)
             {
                 if (skin != null) FitDraw(skin, KSil + i, bx0, by0, bx1, by1);
                 else UiText.Draw(under, small, b.Label, bx0 + 3f * s, by0 + 2f * s + small.Ascent, Tx3, bx1 - 2f * s);

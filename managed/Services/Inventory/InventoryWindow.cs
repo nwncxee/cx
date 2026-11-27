@@ -301,6 +301,13 @@ internal sealed partial class InventoryWindow
         if (!Scrolled) Top = _target;
     }
 
+    /// <summary>Whether the server has sent the worn slots this login: it sends them only while the window is open with no
+    /// container, so until then an empty slot is one not sent yet and draws the loader.</summary>
+    private bool _wornSent;
+
+    /// <summary>A new login: the worn slots wait for the server again.</summary>
+    public void WornUnsent() => _wornSent = false;
+
     /// <summary>The backpack pages with a row on screen.</summary>
     public void BagView(out int first, out int last)
     {
@@ -320,6 +327,8 @@ internal sealed partial class InventoryWindow
         float dt = _tickAt == 0 ? 0f : Math.Min(0.1f, (now - _tickAt) / (float)Stopwatch.Frequency);
         _tickAt = now;
         if (!Open) return;
+        if (!Loot.Open) _wornSent = true;
+        if (Model.BackpackChanged()) Model.Stale();
         TakeAllTick(now);
         LootTick(dt);
         if (!Scrolled) return;
