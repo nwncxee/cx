@@ -239,9 +239,11 @@ public sealed unsafe partial class AlloyRenderer
             cl.SetPipeline(d.Dust!.Pipe);
             VkDefBindSet(cl, d.Dust, d.DustLo, default, looseDust, pass, slots);
             cl.Dispatch((d.DustW + VkDefGroup - 1) / VkDefGroup, (d.DustH + VkDefGroup - 1) / VkDefGroup);
+            cl.BeginLabel("air dust up"u8);
             cl.SetPipeline(d.DustUp!.Pipe);
             VkDefBindSet(cl, d.DustUp, s.Hdr, default, looseDustUp, pass, slots);
             cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+            cl.EndLabel();
             cl.EndLabel();
         }
         int packed = motes ? AirScene.PackMotes(d.MoteData) : 0;
