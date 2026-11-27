@@ -1,6 +1,7 @@
 using CX.Framework;
 using CX.Services.Chat.Core;
 using CX.Services.Chat.Core.Model;
+using CX.Ui;
 using static CX.Services.Chat.ChatExamplesKit;
 using static CX.Services.Chat.TellBacklogApprovedExamples;
 
@@ -17,6 +18,7 @@ internal static class TellBacklogWindow
     internal static void Run(ExtenderLog log)
     {
         var check = new Checker(log, "TellBacklogWindow.SelfCheck");
+        UiCategory.Declare();   // a window frame reads the UI rows, and the UI groups declare in their own order first
 
         // Given a window opened on an empty chat, then 100 tells and 2,048 lines of talk
         // When the window shows every channel
