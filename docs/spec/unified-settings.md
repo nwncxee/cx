@@ -777,7 +777,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | grass.density | Density | S | 0–4 step 0.25 · 2 | U | L | Field | Blades per patch relative to the stock game. Ladders on `quality.grass`. |
 | grass.far | Distance | S | 0–1000 m step 10 · 0 | U | L | Field | How far grass draws. 0 follows the game's Grass Distance option (which stops at 173). |
 | grass.push | Parts around characters | S | 0–1 step 0.05 · 0.15 | U | L | Field | Blades bend away from creatures walking through them. 0 is off. |
-| grass.wind | Wind strength | S | 0–4 step 0.1 · 1 | U | L | Wind | How far the blades sway. 0 stands them still. |
+| grass.wind | Wind strength | S | 0–4 step 0.1 · 1 | A | L | Wind | How far the blades sway. 0 stands them still. |
 | grass.bladedensity | Blade density | S | 1–32 · 8 | A | L | Detail | Procedural blades per stock grass tuft, on top of Density. Ladders on `quality.grass`. |
 | grass.lod | Full-density radius | S | 5–200 m · 40 | A | L | Detail | Every blade draws inside this. Ladders on `quality.grass`. |
 | grass.bladelod | Full-detail blade radius | S | 5–200 m · 30 | A | L | Detail | Procedural blades inside this are smooth curves; past it each is a single triangle. Ladders on `quality.grass`. |
@@ -808,7 +808,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | fog.height | Height falloff | S | 0–1 step 0.005 · 0 | A | L | Density | Fog thins with height above the floor; 0 = off. |
 | fog.floor | Layer floor | S | 0–50 m step 1 · 0 | A | L | Density | Offset above your feet where thinning starts. |
 | fog.origin / cull / cullz | — | T, S | as declared | C | L | — | player-origin fog, the fully-fogged geometry cull and its depth |
-| vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. |
+| vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. Off, the same volume still carries far rain while it rains, and nothing else. |
 | vfog.quality | Fog detail | D | Low / Medium / High / Ultra · Medium | A | L | — | How finely the fog volume is divided. Higher shows sharper light shafts and costs more. Ladders on `quality.effects`, a step below it. |
 | vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
 | vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
@@ -823,6 +823,10 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
+| air.enabled | Air | T | on | U | L | — | What hangs in an area's air and how it moves: dust in crypts, mist by night water, motes in lamplight, pollen and leaves outdoors. It drifts on the wind, gusts when the wind changes and parts around walkers and blasts. Draws with Volumetric fog on or off. An area or server hold takes effect at the next area entry; the player's own switch is live. |
+| air.quality | Air detail | D | Low / Medium / High · Medium | A | L | — | How much of the air moves. At Low it drifts slowly, and gusts, blasts and walkers no longer stir it. Ladders on `quality.effects`; the one `air` key an area does not hold unless it names it. |
+| air.dust | Dust | S | 0–2 step 0.05 · 1 | A | L | — | How much dust lies on the floor where an area lays it. 0 lays none. A hold outside 0–2 is refused. |
+| air.place | — | D | auto / none / crypt / city / forest / meadow · auto | C | L | — | which place's air the area takes; `auto` reads its tileset and tiles. Only a hold (`cx.air.place` on an area, or a server's `PolicySet`) picks a place: the player's own value reads the area. |
 | silhouette.enabled | Silhouettes for creatures out of sight | T | **off** | U | L | — | A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off, the default, draws them see-through as the stock client does. |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect | — | T | as declared | C | L | — | |
@@ -1014,7 +1018,8 @@ quarter.
 · `weather.filmlights` off / on / on / on.
 
 **quality.effects** → `particles.soft` off / on / on / on · `particles.lit` off / on / on / on ·
-`particles.shadows` off / off / on / on · `effects.halos` 0 / 1 / 1 / 1.
+`particles.shadows` off / off / on / on · `effects.halos` 0 / 1 / 1 / 1 · `air.quality` low / low / medium /
+high.
 
 The Low/Medium/Ultra rungs are reasoned from the perf notes and owe an `/alloy bench` pass on
 real hardware (ADR 0030).

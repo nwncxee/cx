@@ -1,0 +1,1 @@
+sleep:13500;shot:@SHOTS@/1-day-across.png;sleep:6000;shot:@SHOTS@/2-day-up.png;sleep:12000;shot:@SHOTS@/3-night-across.png;sleep:6000;shot:@SHOTS@/4-night-up.png

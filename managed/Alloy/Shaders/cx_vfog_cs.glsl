@@ -146,11 +146,11 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
     return acc * uDayDim;
 }
 
-/// The light the medium at `world` scatters toward the eye, per unit of extinction.
-vec3 CxVfLight(vec3 world, vec3 V, float depth)
+/// The light the medium at `world` scatters toward the eye, per unit of extinction, from ambient `amb`.
+vec3 CxVfLight(vec3 world, vec3 V, float depth, vec3 amb)
 {
-    vec3 l = uVfAmbient * (1.0 - uVfSun.w);
-    if (uVfSun.w > 0.0) l += uVfAmbient * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
+    vec3 l = amb * (1.0 - uVfSun.w);
+    if (uVfSun.w > 0.0) l += amb * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
     // a rain-only build gathers no lamps at all: uVfLocal.x is 0 there, so the walk folds out here
     vec3 lamps = uVfLocal.x > 0.0 ? uVfLocal.x * CxVfLamps(world, V, depth) : vec3(0.0);
     return CxLitFloor(CxVfScatter(l, lamps, uVfRain.y));
@@ -171,7 +171,8 @@ void main()
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
     // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
     float rain = uVfRain.x * CxVfBank(world);
-    vec4 v = vec4(CxVfLight(world, V, depth) * CxVfSeen(world), CxVfDensity(world, dist, open, rain, uVfRain.y));
+    float haze = CxVfDensity(world, dist, open, rain, uVfRain.y);
+    vec4 v = vec4(CxVfLight(world, V, depth, uVfAmbient) * CxVfSeen(world), haze);
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel

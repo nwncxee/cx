@@ -537,6 +537,8 @@ public static partial class SceneDb
     /// <summary>Last frame's position, for <c>Gob::GetPreviousPosition</c> and the motion vectors;
     /// <see cref="NoPrevPos"/> until the animate step has stamped one.</summary>
     public static readonly Vector3[] ObjSeamPrevPos = new Vector3[MaxObjects];
+    /// <summary>Where a creature stood at its last animate step, for the ground mist it parts; <see cref="NoPrevPos"/> before one.</summary>
+    public static readonly Vector3[] ObjMistPrev = new Vector3[MaxObjects];
     /// <summary>The "never stepped" value <c>Gob::Gob</c> seeds <c>Gob+0xc4</c> with and
     /// <c>Gob::Animate</c>'s gust test compares against.</summary>
     public const float NoPrevPos = -1e7f;

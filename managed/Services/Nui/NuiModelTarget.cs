@@ -131,23 +131,8 @@ internal static unsafe class NuiModelTarget
     /// <summary>A cell of <c>baseitems.2da</c> as text, or null when the row, the column or the tables are not there.</summary>
     internal static string? BaseItemCell(int row, string column) => Cell(TableByName(BaseItemsTable), row, column);
 
-    /// <summary>The engine's own cached 2DA by name, or zero when its tables are not reachable or there is no such table.
-    /// The name goes in as the <c>CExoString</c> the engine takes by value, which the Win64 callee destroys itself.</summary>
-    private static IntPtr TableByName(string name)
-    {
-        if (Tables() is not { } tables || EngineFn.TwoDimGetCached2DA == null || EngineFn.ExoStringInit == null || EngineFn.ExoStringDtor == null)
-            return IntPtr.Zero;
-        ExoStringRec text = default;
-        Span<byte> bytes = stackalloc byte[name.Length + 1];
-        AsciiZ(name, bytes);
-        fixed (byte* n = bytes) EngineFn.ExoStringInit((IntPtr)(&text), n, uint.MaxValue);
-        IntPtr table = EngineFn.TwoDimGetCached2DA(tables.Ptr, (IntPtr)(&text), 0);
-#if WINDOWS
-        text = default;   // the Win64 callee destroyed its by-value CExoString
-#endif
-        EngineFn.ExoStringDtor((IntPtr)(&text));
-        return table;
-    }
+    /// <summary>The engine's own cached 2DA by name, or zero when its tables are not reachable or there is no such table.</summary>
+    private static IntPtr TableByName(string name) => Tables() is { } tables ? tables.Cached(ResRef.Of(name)) : IntPtr.Zero;
 
     /// <summary>A cell of <paramref name="table"/> as text, or null when the row, the column or the table are not there.</summary>
     private static string? Cell(IntPtr table, int row, string column)

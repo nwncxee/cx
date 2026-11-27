@@ -21,8 +21,8 @@ internal static class SsboSlots
     /// draw or dispatch, so a compute pass may take any of them in between.</summary>
     internal const uint Shared = 8;
 
-    /// <summary>The light rig: one program reads all six, so they are distinct.</summary>
-    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Chart = 13;
+    /// <summary>The light rig, the lightmap chart and the air's dust field: a stage reading the rig may read them beside it, so they are distinct.</summary>
+    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Air = 12, Chart = 13;
     /// <summary>Above the rig, for a pass whose program also reads it.</summary>
     internal const uint LightStats = 14, DeferredStats = 14, GrassMats = 14,
                         ParticleRecs = 14, ParticleIdx = 15;
@@ -47,6 +47,8 @@ internal static class SsboSlots
     /// claims it, and every content program's bind -- colour, depth or caster -- rebinds it rather than trusting an
     /// earlier one, which is the rule for every tenant of this point.</summary>
     internal const uint Content = 15;
+    /// <summary>The lamplight's motes, above the rig the mote stage lights them by.</summary>
+    internal const uint AirMotes = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
@@ -61,7 +63,7 @@ internal static class SsboSlots
         ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
-        ["CxChartBuf"] = Chart,
+        ["CxChartBuf"] = Chart, ["CxAirBuf"] = Air, ["CxAirMotes"] = AirMotes, ["CxAirWisps"] = AirMotes,
         ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,

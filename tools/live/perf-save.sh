@@ -58,7 +58,8 @@ half=$(( SOAK * 500 ))
 if [ "$PASSTIME" = 1 ]; then
     "$ROOT/tools/gpu-passtime/build.sh" >/dev/null || { echo "perf-save: the passtime layer did not build" >&2; exit 2; }
     export VK_ADD_LAYER_PATH="$ROOT/build/passtime${VK_ADD_LAYER_PATH:+:$VK_ADD_LAYER_PATH}"
-    export VK_INSTANCE_LAYERS="VK_LAYER_CX_passtime${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}"
+    # the client's layers only: gamescope is a Vulkan app too, and the layer loaded into it crashes it
+    export LIVE_CLIENT_LAYERS="VK_LAYER_CX_passtime${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}"
     export PASSTIME_OUT="$OUT/passtime.txt" DISABLE_GAMESCOPE_WSI=1
 fi
 if [ -n "$OVR" ]; then
@@ -93,38 +94,7 @@ if grep -q 'waitlog TIMED OUT' "$OUT/xtool.log" 2>/dev/null; then
     exit 1
 fi
 
-python3 - "$OUT/cx.log" "$LABEL" "$rc" "$OUT" <<'PY'
-import re, sys, statistics as st
-log, label, rc, out = sys.argv[1:]
-num = lambda s: float(s.replace(',', '.'))
-frames, gpus, zones, over = [], [], [], 0
-try:
-    lines = open(log, encoding='utf-8', errors='replace').read().splitlines()
-except OSError:
-    sys.exit(f"perf-save: no cx.log ({out}); harness exit {rc}")
-for l in lines:
-    if 'UiHostService: [frame]' in l and (m := re.search(r'avg ([\d,]+)ms', l)):
-        frames.append(num(m.group(1)))
-        if (e := re.search(r'OVER BUDGET by (\d+)MiB', l)): over = max(over, int(e.group(1)))
-    elif '[vkgpu]' in l and (m := re.search(r'\[vkgpu\] ([\d,]+) ms GPU per frame', l)):
-        gpus.append(num(m.group(1)))
-    elif 'FrameZones: [zones]' in l:
-        zones.append({k: num(v) for k, v in re.findall(r'(\w+):(-?[\d,]+)', l.split('[zones]')[1].split(' || worst')[0])})
-# The first periods cover the menu and the load; keep only the last periods that follow it.
-steady = lambda xs: xs[-max(1, min(len(xs) - 2, 8)):] if xs else []
-f, g, z = steady(frames), steady(gpus), steady(zones)
-if not f:
-    sys.exit(f"perf-save: no frame periods in {log}; harness exit {rc}")
-fm = st.median(f)
-gpu = f"  gpu {st.median(g):.2f} ms" if g else ""
-print(f"[{label}] frame {fm:.2f} ms ({1000/fm:.0f} fps, spread {min(f):.2f}..{max(f):.2f}, n={len(f)}){gpu}")
-if z:
-    keys = sorted(z[0], key=lambda k: -st.mean(d.get(k, 0) for d in z))
-    print("  zones " + " ".join(f"{k}:{st.mean(d.get(k,0) for d in z):.2f}" for k in keys if st.mean(d.get(k,0) for d in z) >= 0.15))
-if over:
-    print(f"  VRAM OVER BUDGET by up to {over} MiB: the card was oversubscribed (other processes hold VRAM) -- not comparable to a run that fits")
-print(f"  out {out}  (shot.png, cx.log)  harness exit {rc}")
-PY
+python3 -I "$ROOT/tools/live/perf_save_grade.py" "$OUT/cx.log" "$LABEL" "$rc" "$OUT"
 if [ "$PASSTIME" = 1 ]; then
     if [ -f "$OUT/passtime-world.txt" ]; then cat "$OUT/passtime-world.txt"
     elif [ -f "$OUT/passtime.txt" ]; then

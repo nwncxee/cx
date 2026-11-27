@@ -53,16 +53,24 @@ public sealed unsafe class AreaSettingsService : IExtenderService
             else s.Log?.Always($"AreaSettings: {resref}.git is no GFF ({why}) -- it holds nothing");
         }
 
+        string said = Apply(holds);
+        if (holds.Count > 0 || bytes == null)
+            s.Log?.Info(bytes == null
+                ? $"AreaSettings: '{resref}' has no .git this client can read ({readWhy}; a multiplayer client never has one) -- nothing held"
+                : $"AreaSettings: '{resref}' holds {s.Held.Count}/{holds.Count} knob(s):{said}");
+    }
+    /// <summary>Release what the last area held and <paramref name="holds"/> does not, then hold each of
+    /// <paramref name="holds"/>; the held pairs, as the log names them. Cold.</summary>
+    internal static string Apply(List<(string Key, string Value)> holds)
+    {
+        AreaSettingsState s = _s;
         foreach (string key in s.Held)
             if (!holds.Exists(h => h.Key == key)) ServerPolicy.Set(key, "");
         s.Held.Clear();
         var said = new StringBuilder();
         foreach (var (key, value) in holds)
             if (ServerPolicy.Set(key, value)) { s.Held.Add(key); said.Append(' ').Append(key).Append('=').Append(value); }
-        if (holds.Count > 0 || bytes == null)
-            s.Log?.Info(bytes == null
-                ? $"AreaSettings: '{resref}' has no .git this client can read ({readWhy}; a multiplayer client never has one) -- nothing held"
-                : $"AreaSettings: '{resref}' holds {s.Held.Count}/{holds.Count} knob(s):{said}");
+        return said.ToString();
     }
 }
 

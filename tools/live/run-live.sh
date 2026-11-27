@@ -357,6 +357,7 @@ START_EPOCH=$(date +%s.%N)
     fi
     LAUNCH=("$STAGE/cx-launch" ./nwmain-linux)
     [ "$STOCK" = 1 ] && LAUNCH=(./nwmain-linux)
+    [ -n "${LIVE_CLIENT_LAYERS:-}" ] && LAUNCH=(env VK_INSTANCE_LAYERS="$LIVE_CLIENT_LAYERS" "${LAUNCH[@]}")
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
         "${LAUNCH[@]}" -userdirectory "$USER_DIR" \
         +TestNewModule "$MODULE"

@@ -700,15 +700,15 @@ public sealed partial class KnobPanel
         return false;
     }
 
-    /// <summary>A row drawn at <see cref="OffAlpha"/> and ignoring presses: a <see cref="Knob.Disabled"/> row
-    /// always, a button whose own <see cref="KnobButton.Enabled"/> says no, else a value row (never the master,
-    /// an action or a link) while its group's gate is off.</summary>
+    /// <summary>A row drawn at <see cref="OffAlpha"/> and ignoring presses: a <see cref="Knob.Disabled"/> or held row
+    /// always (the master only when held), a button whose own <see cref="KnobButton.Enabled"/> says no, else a value
+    /// row (never an action or a link) while its group's gate is off.</summary>
     public bool Greyed(Row r)
     {
         if (r.Kind == RowKind.Channel) return SlotOff(r.Slot);
         if (r.Kind == RowKind.Item) return r.K is { Disabled: true } or { Enforced: true } || SlotOff(r.Slot);
-        if (r.Kind != RowKind.Knob || r.Master || r.K == null) return false;
-        if (r.K.Disabled || r.K.Enforced) return true;
+        if (r.Kind != RowKind.Knob || r.K == null) return false;
+        if (r.Master || r.K.Disabled || r.K.Enforced) return !r.Master || r.K.Enforced;
         if (r.K.Kind == KnobKind.Button) return r.K is KnobButton { Enabled: { } en } && !en();
         if (r.K.Kind == KnobKind.Link) return false;
         return SlotOff(r.Slot);

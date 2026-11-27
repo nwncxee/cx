@@ -87,6 +87,10 @@ internal static unsafe class AlloyLights
 
     /// <summary>What the shader is running, for the period log and the /light echo.</summary>
     internal static Vector2 Atten => _atten;
+    /// <summary>The latched pair and whether it is real, for a self-check to put back.</summary>
+    internal static (Vector2 Pair, bool Latched) SaveAtten() => (_atten, AttenLatched);
+    /// <summary>Put back a pair <see cref="SaveAtten"/> took.</summary>
+    internal static void RestoreAtten((Vector2 Pair, bool Latched) saved) => (_atten, AttenLatched) = saved;
     /// <summary>Sphere-light wrap: the light is treated as a SPHERE of radius <see cref="_srcRadius"/> times
     /// this, and the diffuse terminator is softened by the half-angle that sphere subtends at the fragment; 0
     /// restores the punctual <c>N.L</c>. At arm's length a punctual light swings N.L across a whole low-poly

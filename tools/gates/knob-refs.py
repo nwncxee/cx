@@ -13,7 +13,8 @@ Three shapes are NOT knob keys and are skipped, or every one of them would read 
   - a key on a line that reaches `ServerPolicy.` or `Routed(` -- the server-policy and action-id namespaces,
     which share the shape and are not knobs;
   - a key `Settings.RetiredKeys` lists: an older CX wrote it, cx.cfg drops it on read, and the self-checks that
-    prove so have to name it. The list is read out of Settings.cs, never restated.
+    prove so have to name it. The list is read out of Settings.cs, never restated; an entry that names a
+    `const string` of Settings.cs counts as that const's value.
 
 Prints "<count> <file>" per offending file, for tools/gates/ratchet.sh; `-v` lists each key instead."""
 import os, re, sys
@@ -41,8 +42,11 @@ for path in paths:
     groups |= set(DECL.findall(text))
     knobs |= set(FACT.findall(text))
 retired = set()
-for m in RETIRED.finditer(open('managed/Framework/Settings.cs', encoding='utf-8').read()):
+settings = open('managed/Framework/Settings.cs', encoding='utf-8').read()
+consts = dict(re.findall(r'const\s+string\s+(\w+)\s*=\s*"([^"]+)"', settings))
+for m in RETIRED.finditer(settings):
     retired |= set(re.findall(r'"([^"]+)"', m.group(1)))
+    retired |= {consts[n] for n in re.findall(r'\b([A-Za-z_]\w*)\b', LIT.sub('', m.group(1))) if n in consts}
 if not retired:
     print('!! knob-refs: no Settings.RetiredKeys found -- the collector is broken', file=sys.stderr)
     sys.exit(2)

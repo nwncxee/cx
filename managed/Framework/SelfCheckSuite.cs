@@ -16,4 +16,8 @@ public sealed class SelfCheckSuiteAttribute(SuitePhase phase) : Attribute
 {
     /// <summary>The phase the suite runs in.</summary>
     public SuitePhase Phase { get; } = phase;
+
+    /// <summary>False for a suite too slow for a player's boot: a live client leaves it out, and the self-check host
+    /// and the stub host still run it.</summary>
+    public bool InSession { get; set; } = true;
 }

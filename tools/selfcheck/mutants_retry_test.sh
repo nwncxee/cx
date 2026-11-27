@@ -68,6 +68,19 @@ boots = Boots((1, flaky, 11.0))
 expect('an unmutated run that fails twice is refused', rc != 0)
 expect('the refusal names the check that failed', 'DbScene.SelfCheck FAIL' in err)
 
+seen = []
+
+
+def dying(t=None):
+    """A second boot the outer time cap stops: it never returns, so whatever the runner said must be said by then."""
+    seen.append(sys.stdout.getvalue())
+    raise SystemExit(143)
+
+
+with contextlib.suppress(SystemExit):
+    said(M.steady, 1, flaky, 10.0, dying)
+expect('the first boot\'s FAIL line is named before the second boot starts', seen and 'DbScene.SelfCheck FAIL' in seen[0])
+
 boots = Boots()
 (rc, _), _, _ = said(M.steady, 0, '', 10.0, boots)
 expect('an unmutated run that passes boots once', rc == 0 and boots.bounds == [])

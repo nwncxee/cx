@@ -348,6 +348,12 @@ AMD takes the device down for, so it is worth an instrumented run on NVIDIA hard
 Run it outside `nix develop`. Inside, the stub host finds no ICD and every golden SKIPs, which the script
 refuses to call a pass -- it counts the `GpuGolden` lines and fails if any stood down.
 
+The goldens alone, without the layer, are `run-demo.sh` outside `nix develop` with the pinned ICU and Vulkan
+loader on `ICU_LIB`, which `run-demo.sh` puts on the library path; a host with neither aborts on ICU or skips
+every golden:
+
+    ICU_LIB="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#icu.out)/lib:$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#vulkan-loader)/lib" ./run-demo.sh
+
 The layer is on no default loader path. It comes from the repository's own pinned nixpkgs
 (`nix build --inputs-from . nixpkgs#vulkan-validation-layers`), so its version moves with `flake.lock` and
 nothing else; `CX_VK_LAYER_DIR` points at another `explicit_layer.d`. `DISABLE_GAMESCOPE_WSI=1` is set because
@@ -525,6 +531,10 @@ between it and the camera. Its keys then middle-drag the camera three times with
 (`bdown:2`, `rel:dx,dy,n,ms`, `btn:1`, `bup:2`: buttons and relative motion where the pointer already is). Run it as
 `--showcase camjerk --camera-mode 0 --cfg chase.offsetx=1.5` (camera mode 0 is chase) and read the `[camera]` lines: `engine pull-ins` counts the engine's own camera
 pull-ins, and `yaw jumps` counts frames that turned the camera more than 30 degrees.
+
+`airdust` is the floor dust and night mist capture. The PC jumps to the module's first crypt, dungeon or cave area (tileset `tdc01`, `tde01` or `tdm01`; the default module's is a crypt) at noon. The camera looks across the floor, then down at it, and the PC walks 8 m. Then the PC jumps to the module's first outdoor area at 23:00. Its keys save `1-across.png` through `7-night.png`. A City Interior area such as the default module's starting inn takes no air look, so the dust never shows there. Run it with `--cfg chat.enabled=0`.
+
+`airsky` is the meadow wisps against the sky. Its policy holds `air.place=meadow`, so the module's first outdoor area takes the meadow look whatever its tileset. The PC jumps there at noon; the camera looks across the ground and then up as far as the camera pitches, and at 23:00 it takes the same two views. Its keys save `1-day-across.png` through `4-night-up.png`. Run it with `--cfg chat.enabled=0`.
 
 `rain` is the fixed rain capture: the PC jumps to the module's first outdoor area, heavy rain at noon there, a snap to one camera angle, then a slow scripted
 pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0.png` to `pan5.png`), so two builds

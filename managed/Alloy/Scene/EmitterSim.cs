@@ -311,7 +311,7 @@ internal static unsafe partial class EmitterSim
                 continue;
             }
             int fade0 = _fadeExit, rate0 = _rate0;
-            if (stepping && animating) Advance(ref slot, ref e, IntPtr.Zero, dt);
+            if (stepping && animating) StepOne(ref slot, ref e, dt);
             else if (stepping) _held++;
             slot.Mut = e.M;
             if (slot.Live <= 0)

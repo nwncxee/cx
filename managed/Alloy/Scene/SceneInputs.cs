@@ -13,7 +13,7 @@ namespace CX.Alloy;
 /// departed-light fade the engine has no edge for, and the engine reads the database has no column for.
 /// </summary>
 /// <remarks>Hot: the shadow slot runs once a frame and allocates nothing.</remarks>
-public sealed unsafe class SceneInputs : IExtenderService
+public sealed unsafe partial class SceneInputs : IExtenderService
 {
     /// <summary>How far ahead of the camera the map centre marches (<c>/shadow focusdist</c>).</summary>
     private static float _focusDist => Shadows.FocusDist.V;
@@ -58,9 +58,7 @@ public sealed unsafe class SceneInputs : IExtenderService
         _appMgr = Native.Sym(SymbolMap.AppManager);
         _getModule = EngineFn.GetModule;
 
-        if (!_enabled) return;
-
-        _getGspF = EngineFn.RiGetGlobalShaderParamf;
+        if (!Arm(_enabled, EngineFn.RiGetGlobalShaderParamf)) return;
 
         // The per-presented-frame edge. Was a zero-size UiHost Window abused as a draw slot (#169); #170 gives
         // it the real thing. Priority 0: it ran inside the window roll-call, i.e. before the #80 context bracket.
@@ -208,6 +206,14 @@ public sealed unsafe class SceneInputs : IExtenderService
     }
     /// <summary>RenderInterface::GetGlobalShaderParamf -- param 0x12 = the engine's light-radius multiplier.</summary>
     private static RiGetGlobalShaderParamfFn _getGspF;
+
+    /// <summary>Take the engine's global-param read the light feed latches through, whatever the shadows say; false
+    /// when the shadows feed stays unarmed.</summary>
+    internal static bool Arm(bool shadows, RiGetGlobalShaderParamfFn gsp)
+    {
+        _getGspF = gsp;
+        return shadows;
+    }
 
     /// <summary>Latch the two constants the engine's point-light attenuation is built from, out of the
     /// global-param array the radius multiplier comes from (<c>GLRender::SetUniforms</c> @0x4cd341 reads

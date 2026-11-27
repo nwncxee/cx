@@ -25,6 +25,9 @@ internal static unsafe partial class Weather
     private const int TileSetPriority = 100;
     private static TileSetGetFn* _tileSetSlot;
     private static string _tileset = "";
+
+    /// <summary>The resref of the tileset the last area load asked for, empty before any.</summary>
+    internal static string Tileset => _tileset;
     /// <summary>The current area's tileset is on the no-cover list: its tiles carry their own snow.</summary>
     internal static bool TilesetSkipsSnow;
 

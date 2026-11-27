@@ -88,6 +88,7 @@ internal static partial class GpuGolden
         DestroyedBufferSelfCheck(vk, check, log);
         IndirectRangeSelfCheck(vk, check, log);
         AlloyRenderer.VkComputeModuleSelfCheck(vk, check, log);
+        AlloyRenderer.VkAirStagesSelfCheck(vk, check, log);
         WhenDoneSelfCheck(vk, check, log);
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);
@@ -98,6 +99,9 @@ internal static partial class GpuGolden
         FsrResolveApprovedSelfCheck(vk, check, log);
         FsrSkyRegressionSelfCheck(vk, check, log);
         WetSelfCheck(vk, check, log);
+        AirApprovedSelfCheck(vk, check, log);
+        AirDustUpSelfCheck(vk, check, log);
+        AirDustWallSelfCheck(vk, check, log);
         WetNearLamp(vk, check, log);
         HaloFadeSelfCheck(vk, check, log);
         PipelineTallySelfCheck(vk, check, log);

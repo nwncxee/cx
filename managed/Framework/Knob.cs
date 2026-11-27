@@ -85,7 +85,8 @@ public abstract class Knob
     /// <summary>Back to the default, as a set.</summary>
     public abstract void Reset();
     /// <summary>Hold the live value at <paramref name="raw"/> for the session's server: the player's value is kept
-    /// underneath, <see cref="Changed"/> runs, the writer is not armed. False when the text is no value of this knob.</summary>
+    /// underneath, <see cref="Changed"/> runs, the writer is not armed. False when the text is no value of this knob,
+    /// a slider's out of its range included.</summary>
     public abstract bool Enforce(string raw);
     /// <summary>Drop the server's hold: the player's value is live again.</summary>
     public abstract void Release();
@@ -210,6 +211,7 @@ public sealed class Knob<T> : Knob
     {
         if (!Persisted || !TryParse(raw, out T v)) return false;
         if (HoldsListedOnly && Array.IndexOf(Values, v) < 0) return false;
+        if (Kind == KnobKind.Slider && !RungFits(_parse(raw.Trim()).V)) return false;
         if (!Enforced) _user = V;
         Enforced = true;
         V = v;
@@ -227,7 +229,9 @@ public sealed class Knob<T> : Knob
         Cascade();
     }
 
-    public override string FormatStored() => _fmt(Enforced ? _user : V);
+    public override string FormatStored() => _fmt(Own);
+    /// <summary>The player's own value: the live one, or under a hold the one kept underneath.</summary>
+    public T Own => Enforced ? _user : V;
     public override bool StoredIsDefault => EqualityComparer<T>.Default.Equals(Enforced ? _user : V, Default);
 
     public override bool Parse(string s)

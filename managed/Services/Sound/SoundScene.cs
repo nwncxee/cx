@@ -104,18 +104,25 @@ internal static unsafe class SoundScene
 
     /// <summary>ARE Flags bits, as the engine's own script commands read them (<c>GetIsAreaAboveGround</c> =
     /// !bit 1, <c>GetIsAreaNatural</c> = bit 2, <c>GetIsAreaInterior</c> = <c>flags &amp; 3</c>).</summary>
-    private const uint FlagInterior = 1, FlagUnderground = 2, FlagNatural = 4;
+    internal const uint FlagInterior = 1, FlagUnderground = 2, FlagNatural = 4;
     /// <summary>cxa_scene's material indices (native/cxaudio.cpp <c>g_acMats</c>), for the log.</summary>
     private static readonly string[] MaterialNames = { "generic", "masonry", "cave rock" };
 
     /// <summary>The area's one acoustic material, from its flags: a natural enclosed area is a cave (bare rock,
     /// a long tail), an artificial underground one masonry (a dungeon, a sewer), anything else generic.
     /// ponytail: one per area; per-surface materials want a texture or walkmesh-material join.</summary>
-    internal static int Material(CNWCArea area)
+    internal static int Material(CNWCArea area) => area.IsNull ? 0 : Material(area.Flags);
+
+    /// <summary>The cave rock material index, the one the air reads a cave by.</summary>
+    internal const int CaveRock = 2;
+
+    /// <summary>Do ARE flags <paramref name="f"/> name an indoor area, as <c>GetIsAreaInterior</c> reads them: interior or underground.</summary>
+    internal static bool Indoor(uint f) => (f & (FlagInterior | FlagUnderground)) != 0;
+
+    /// <summary>The material ARE flags <paramref name="f"/> name, as <see cref="Material(CNWCArea)"/> reads them.</summary>
+    internal static int Material(uint f)
     {
-        if (area.IsNull) return 0;
-        uint f = area.Flags;
-        if ((f & FlagNatural) != 0) return (f & (FlagInterior | FlagUnderground)) != 0 ? 2 : 0;
+        if ((f & FlagNatural) != 0) return Indoor(f) ? CaveRock : 0;
         return (f & FlagUnderground) != 0 ? 1 : 0;
     }
 

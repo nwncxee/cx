@@ -112,7 +112,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Is this part a candidate -- tile geometry of this scene with faces to test? The grass test
     /// itself is per FACE and costs a walk, so it waits for the bake.</summary>
-    private static void MeshDefHas(int p, DbId scene, out bool take)
+    internal static void MeshDefHas(int p, DbId scene, out bool take)
     {
         take = false;
         CX.Alloy.Mdl.MeshDef? m = SceneDb.PartMeshDef[p];
