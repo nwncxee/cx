@@ -58,7 +58,8 @@ half=$(( SOAK * 500 ))
 if [ "$PASSTIME" = 1 ]; then
     "$ROOT/tools/gpu-passtime/build.sh" >/dev/null || { echo "perf-save: the passtime layer did not build" >&2; exit 2; }
     export VK_ADD_LAYER_PATH="$ROOT/build/passtime${VK_ADD_LAYER_PATH:+:$VK_ADD_LAYER_PATH}"
-    export VK_INSTANCE_LAYERS="VK_LAYER_CX_passtime${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}"
+    # the client's layers only: gamescope is a Vulkan app too, and the layer loaded into it crashes it
+    export LIVE_CLIENT_LAYERS="VK_LAYER_CX_passtime${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}"
     export PASSTIME_OUT="$OUT/passtime.txt" DISABLE_GAMESCOPE_WSI=1
 fi
 if [ -n "$OVR" ]; then
@@ -103,10 +104,10 @@ try:
 except OSError:
     sys.exit(f"perf-save: no cx.log ({out}); harness exit {rc}")
 for l in lines:
-    if 'UiHostService: [frame]' in l and (m := re.search(r'avg ([\d,]+)ms', l)):
+    if 'UiHostService: [frame]' in l and (m := re.search(r'avg ([\d.,]+)ms', l)):
         frames.append(num(m.group(1)))
         if (e := re.search(r'OVER BUDGET by (\d+)MiB', l)): over = max(over, int(e.group(1)))
-    elif '[vkgpu]' in l and (m := re.search(r'\[vkgpu\] ([\d,]+) ms GPU per frame', l)):
+    elif '[vkgpu]' in l and (m := re.search(r'\[vkgpu\] ([\d.,]+) ms GPU per frame', l)):
         gpus.append(num(m.group(1)))
     elif 'FrameZones: [zones]' in l:
         zones.append({k: num(v) for k, v in re.findall(r'(\w+):(-?[\d,]+)', l.split('[zones]')[1].split(' || worst')[0])})
