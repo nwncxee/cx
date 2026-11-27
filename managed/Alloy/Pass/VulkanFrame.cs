@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Text;
 using System.Numerics;
@@ -76,7 +77,7 @@ internal static class VulkanFrame
         {
             vk.TakeWaitMs(out double gpu, out double acquire);
             double translate = vk.TakeTranslateMs(out int sets, out int made, out int retired, out int draws, out int lists, out int barriers);
-            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames on the graphics queue (bake, cull, prepass, "
+            log.Always(string.Create(CultureInfo.InvariantCulture, $"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames on the graphics queue (bake, cull, prepass, "
                      + $"hi-Z, AO, decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended; not the async froxel build "
                      + $"and fog); the CPU waited "
                      + $"{gpu / GpuPeriod:F2} ms/frame on the GPU timeline and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire, "
@@ -84,7 +85,7 @@ internal static class VulkanFrame
                      + $"{(float)sets / GpuPeriod:F0} bind sets ({(float)made / GpuPeriod:F1} written, the rest reused; {retired} pool(s) "
                      + $"retired this period) over {(float)lists / GpuPeriod:F1} lists into vkCmd calls, "
                      + $"{(float)barriers / GpuPeriod:F0} of them barriers; upload staging holds {vk.Staging.Blocks} block(s), "
-                     + $"{vk.Staging.Bytes >> 20} MiB");
+                     + $"{vk.Staging.Bytes >> 20} MiB"));
             log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk, n)}; {Updates(vk, n)}");
         }
         if (_s.Frames % GpuPeriod == 0) log.Always($"VulkanFrame: {vk.PipelinePeriod()}");

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -394,8 +395,8 @@ public sealed unsafe class UiHostService : IExtenderService
                 float max = _fsMax * 1000f / System.Diagnostics.Stopwatch.Frequency;
                 int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
                 long alloc = GC.GetTotalAllocatedBytes();
-                _log?.Info($"UiHostService: [frame] avg {avg:F2}ms ({1000f / avg:F0}fps) max {max:F1}ms, >6.9ms {_fsOver7}/{_fsN}, >16.7ms {_fsOver17}/{_fsN}"
-                         + $", gc {gc0 - _gc0}/{gc1 - _gc1}/{gc2 - _gc2} on {(alloc - _alloc) >> 10}KiB allocated" + FrameZones.BoxLine() + CX.Alloy.AlloyRenderer.FrameVram() + FrameZones.ThreadsLine());
+                _log?.Info(string.Create(CultureInfo.InvariantCulture, $"UiHostService: [frame] avg {avg:F2}ms ({1000f / avg:F0}fps) max {max:F1}ms, >6.9ms {_fsOver7}/{_fsN}, >16.7ms {_fsOver17}/{_fsN}"
+                         + $", gc {gc0 - _gc0}/{gc1 - _gc1}/{gc2 - _gc2} on {(alloc - _alloc) >> 10}KiB allocated") + FrameZones.BoxLine() + CX.Alloy.AlloyRenderer.FrameVram() + FrameZones.ThreadsLine());
                 _gc0 = gc0; _gc1 = gc1; _gc2 = gc2; _alloc = alloc;
                 // NOT inside the null-conditional -- Period() carries the period reset, and `?.` skips
                 // argument evaluation, so a null log would desync it from the _fs* counters reset below

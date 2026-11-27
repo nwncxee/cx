@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -608,7 +609,7 @@ public static class FrameZones
         if (_hitchN == 0) sb.Append(" || hitch: none");
         else
         {
-            sb.Append($" || hitch {_hitchN} frames (over {_hitchMs:F1}ms, under {StallMs:F0}ms, rendered) ").Append(Row(_hitch, _dtHitch, _hitchN));
+            sb.Append(CultureInfo.InvariantCulture, $" || hitch {_hitchN} frames (over {_hitchMs:F1}ms, under {StallMs:F0}ms, rendered) ").Append(Row(_hitch, _dtHitch, _hitchN));
         }
         // From the frames under the stall cap: one 1,7s transition frame in a period would otherwise lift the
         // next period's threshold past every hitch in it -- and transitions are where the stutter is looked for.
@@ -620,16 +621,16 @@ public static class FrameZones
         }
         double usAll = _wallAll * 1e6 / Stopwatch.Frequency, usHitch = _wallHitch * 1e6 / Stopwatch.Frequency;
         if (_wallAll > 0)
-            sb.Append($" || sched all|hitch: cpu {100 * _scAll[0] / Math.Max(usAll, 1):F0}%|{100 * _scHitch[0] / Math.Max(usHitch, 1):F0}%")
-              .Append($" (sys {100 * _scAll[5] / Math.Max(usAll, 1):F0}%|{100 * _scHitch[5] / Math.Max(usHitch, 1):F0}%)")
-              .Append($" rqwait {_scAll[6] / 1000.0 / frames:F2}|{(_hitchN > 0 ? _scHitch[6] / 1000.0 / _hitchN : 0):F2}ms")
-              .Append($" invol {(double)_scAll[4] / frames:F2}|{(_hitchN > 0 ? (double)_scHitch[4] / _hitchN : 0):F2}")
-              .Append($" vol {(double)_scAll[3] / frames:F2}|{(_hitchN > 0 ? (double)_scHitch[3] / _hitchN : 0):F2}")
-              .Append($" minflt {(double)_scAll[1] / frames:F1}|{(_hitchN > 0 ? (double)_scHitch[1] / _hitchN : 0):F1}")
-              .Append($" majflt {_scAll[2]}|{_scHitch[2]}");
+            sb.Append(CultureInfo.InvariantCulture, $" || sched all|hitch: cpu {100 * _scAll[0] / Math.Max(usAll, 1):F0}%|{100 * _scHitch[0] / Math.Max(usHitch, 1):F0}%")
+              .Append(CultureInfo.InvariantCulture, $" (sys {100 * _scAll[5] / Math.Max(usAll, 1):F0}%|{100 * _scHitch[5] / Math.Max(usHitch, 1):F0}%)")
+              .Append(CultureInfo.InvariantCulture, $" rqwait {_scAll[6] / 1000.0 / frames:F2}|{(_hitchN > 0 ? _scHitch[6] / 1000.0 / _hitchN : 0):F2}ms")
+              .Append(CultureInfo.InvariantCulture, $" invol {(double)_scAll[4] / frames:F2}|{(_hitchN > 0 ? (double)_scHitch[4] / _hitchN : 0):F2}")
+              .Append(CultureInfo.InvariantCulture, $" vol {(double)_scAll[3] / frames:F2}|{(_hitchN > 0 ? (double)_scHitch[3] / _hitchN : 0):F2}")
+              .Append(CultureInfo.InvariantCulture, $" minflt {(double)_scAll[1] / frames:F1}|{(_hitchN > 0 ? (double)_scHitch[1] / _hitchN : 0):F1}")
+              .Append(CultureInfo.InvariantCulture, $" majflt {_scAll[2]}|{_scHitch[2]}");
         sb.Append(" || events/frame all|hitch:");
         for (int e = 0; e < NE; e++)
-            sb.Append($" {(Ev)e} {(double)_evSum[e] / frames:F1}|{(_hitchN > 0 ? (double)_evHitch[e] / _hitchN : 0):F1}");
+            sb.Append(CultureInfo.InvariantCulture, $" {(Ev)e} {(double)_evSum[e] / frames:F1}|{(_hitchN > 0 ? (double)_evHitch[e] / _hitchN : 0):F1}");
         return sb.ToString();
     }
 
@@ -652,7 +653,7 @@ public static class FrameZones
         Array.Copy(_enrollTicks, s, n);
         Array.Sort(s);
         double k = 1000.0 / Stopwatch.Frequency;
-        return $" || Enroll walks {n}: p99 {s[(int)(n * 0.99)] * k:F1}ms p50 {s[n / 2] * k:F1}ms";
+        return string.Create(CultureInfo.InvariantCulture, $" || Enroll walks {n}: p99 {s[(int)(n * 0.99)] * k:F1}ms p50 {s[n / 2] * k:F1}ms");
     }
 
     /// <summary>The period line, and the reset with it: the average frame's split, the worst frame's, and the worst
@@ -670,9 +671,10 @@ public static class FrameZones
         line += EnrollP99();
         line += HitchLine();
         line += $" || over {_frames} presents";
-        line += $" || creatures {creatures}: Seam:{PerCreatureUs(_sum[(int)Zone.Seam], frames, creatures):F1} "
-              + $"Anim:{PerCreatureUs(_sum[(int)Zone.Anim], frames, creatures):F1} "
-              + $"Alloy:{PerCreatureUs(_sum[(int)Zone.Alloy], frames, creatures):F1} us each";
+        line += string.Create(CultureInfo.InvariantCulture,
+                    $" || creatures {creatures}: Seam:{PerCreatureUs(_sum[(int)Zone.Seam], frames, creatures):F1} "
+                  + $"Anim:{PerCreatureUs(_sum[(int)Zone.Anim], frames, creatures):F1} "
+                  + $"Alloy:{PerCreatureUs(_sum[(int)Zone.Alloy], frames, creatures):F1} us each");
         ResetPeriod();
         return line;
     }
@@ -711,11 +713,11 @@ public static class FrameZones
         for (int i = 0; i < N; i++) if (i != (int)Zone.Nested) any += t[N + i];
         if (any == 0) return "";
         double k = 1000.0 / Stopwatch.Frequency / frames;
-        var sb = new System.Text.StringBuilder($" || render thread {total * k:F1}ms =");
+        var sb = new System.Text.StringBuilder().Append(CultureInfo.InvariantCulture, $" || render thread {total * k:F1}ms =");
         for (int i = 0; i < N; i++)
         {
             if (i == (int)Zone.Nested || t[N + i] == 0) continue;
-            sb.Append($" {(Zone)i}:{t[N + i] * k:F1}");
+            sb.Append(CultureInfo.InvariantCulture, $" {(Zone)i}:{t[N + i] * k:F1}");
         }
         return sb.ToString();
     }
@@ -728,13 +730,13 @@ public static class FrameZones
         long claimed = 0;
         for (int i = 0; i < (int)Zone.Nested; i++) claimed += t[i];
         var sb = new System.Text.StringBuilder();
-        sb.Append($"{dt * k:F1}ms =");
-        for (int i = 0; i < (int)Zone.Nested; i++) sb.Append($" {(Zone)i}:{t[i] * k:F1}");
-        sb.Append($" other:{(dt - claimed) * k:F1}  (");
+        sb.Append(CultureInfo.InvariantCulture, $"{dt * k:F1}ms =");
+        for (int i = 0; i < (int)Zone.Nested; i++) sb.Append(CultureInfo.InvariantCulture, $" {(Zone)i}:{t[i] * k:F1}");
+        sb.Append(CultureInfo.InvariantCulture, $" other:{(dt - claimed) * k:F1}  (");
         for (int i = (int)Zone.Nested + 1; i < N; i++)
         {
             if (i > (int)Zone.Nested + 1) sb.Append(' ');
-            sb.Append($"{(Zone)i}:{t[i] * k:F1}");
+            sb.Append(CultureInfo.InvariantCulture, $"{(Zone)i}:{t[i] * k:F1}");
         }
         sb.Append(')');
         return sb.ToString();
