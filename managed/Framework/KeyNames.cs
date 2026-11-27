@@ -8,7 +8,7 @@ namespace CX.Framework;
 internal static unsafe class KeyNames
 {
     /// <summary>The press code for <paramref name="name"/>: an SDL key code, -1 to -5 for Mouse1 to Mouse5, 0 for blank or
-    /// a name SDL does not know. Off the client a one-character name reads as SDL would read it. Cold: a setting's edit.</summary>
+    /// a name SDL does not know. Off the client a one-character name, and Space, read as SDL would read them. Cold: a setting's edit.</summary>
     internal static int Code(string? name)
     {
         name = (name ?? "").Trim();
@@ -20,7 +20,8 @@ internal static unsafe class KeyNames
 #pragma warning disable RS0030 // KeyNames.Code is the one reader of SDL's key-name table
         var fromName = EngineFn.SdlGetKeyFromName;
 #pragma warning restore RS0030
-        if (fromName == null) return name.Length == 1 && name[0] is > ' ' and < (char)0x7f ? name[0] : 0;
+        if (fromName == null)
+            return name.Length == 1 && name[0] is > ' ' and < (char)0x7f ? name[0] : name.Equals("Space", StringComparison.OrdinalIgnoreCase) ? ' ' : 0;
         byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
         fixed (byte* p = utf8) return fromName(p);
     }
@@ -38,7 +39,8 @@ internal static unsafe class KeyNames
 #pragma warning disable RS0030 // KeyNames.Name is the one writer from SDL's key-name table
         var toName = EngineFn.SdlGetKeyName;
 #pragma warning restore RS0030
-        if (code <= 0 || toName == null) return "";
+        if (code <= 0) return "";
+        if (toName == null) return code == ' ' ? "Space" : "";
         byte* p = toName(code);
         return p == null ? "" : new string((sbyte*)p);
     }

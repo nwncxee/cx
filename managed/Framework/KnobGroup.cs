@@ -126,10 +126,12 @@ public sealed partial class KnobGroup
         => Add(new Knob<string>(this, key, label, KnobKind.Text, tier, effect, _section, help ?? "", false,
                                 def, "", "", "", "", null, null, null, null) { BindsKey = keys }, changed);
 
-    /// <summary>A press-to-bind key row: the stored value is the key's SDL name or Mouse4 / Mouse5, "" unbound.</summary>
-    public Knob<string> KeyBind(string key, string label, Tier tier = Tier.User, string? help = null, Action? changed = null)
+    /// <summary>A press-to-bind key row: the stored value is the key's SDL name or Mouse4 / Mouse5, "" unbound, and
+    /// <paramref name="def"/> the key it starts with.</summary>
+    public Knob<string> KeyBind(string key, string label, Tier tier = Tier.User, string? help = null, Action? changed = null,
+                                string def = "")
         => Add(new Knob<string>(this, key, label, KnobKind.Key, tier, Effect.Live, _section, help ?? "", false,
-                                "", "", "", "", "", null, null, null, null), changed);
+                                def, "", "", "", "", null, null, null, null), changed);
 
     /// <summary>The key setting other than <paramref name="except"/> whose value binds press <paramref name="code"/>, in a
     /// group switched on: a press-to-bind row read through <paramref name="keyOf"/>, a text row by its

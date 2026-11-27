@@ -84,7 +84,7 @@ public sealed class CameraModeKnobs
     public readonly Knob<bool> Look, Right, Invert, Action, AltToggle, HeadTrack, Assist, AutoTarget, Feedback;
     public readonly Knob<float> Sens, HeadYaw, HeadPitch;
     public readonly Knob<int> Threshold, AssistPx;
-    public readonly Knob<string> ActionKey;
+    public readonly Knob<string> ActionKey, CursorKey;
 
     internal CameraModeKnobs(string name, string submenu, int mode, int order, bool moveDefault, bool faceDefault = false)
     {
@@ -152,11 +152,13 @@ public sealed class CameraModeKnobs
                              help: "Pixels of movement before a right press becomes a look instead of a click.");
         G.Section("Action camera");
         Action = G.Toggle("action", "Action camera", false, changed: MouseLookService.ActionChanged,
-                          help: "Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click, so aiming replaces pointing. Left-click acts on it, a right-click opens its menu. Clicking the ground does not walk you there (use the movement keys) and the crosshair never picks your own character. Alt frees the cursor for the game's panels (held, or a tap with the toggle option below); the toggle key switches the camera on and off.");
+                          help: "Hides the cursor and pins it to a crosshair in the centre of the screen. Moving the mouse turns the camera; whatever the crosshair points at is what you hover, tooltip and click, so aiming replaces pointing. Left-click acts on it, a right-click opens its menu. Clicking the ground does not walk you there (use the movement keys) and the crosshair never picks your own character. The cursor key (Alt unless you change it) frees the cursor for the game's panels: held, or a tap with the toggle option below. The toggle key switches the camera on and off.");
         ActionKey = G.Text("actionkey", "Action camera toggle key", "]", changed: MouseLookService.ActionKeyChanged, keys: KeyNames.Binds,
                            help: "An SDL key name (F8, Tab, Backspace, Z...) or Mouse4 / Mouse5 for the thumb buttons. Blank binds nothing.");
-        AltToggle = G.Toggle("alttoggle", "Alt toggles the cursor", false, Tier.ChatOnly,
-                             help: "Under the action camera, tapping Alt frees the cursor until you tap it again, instead of holding it.");
+        CursorKey = G.KeyBind("cursorkey", "Cursor key", Tier.Advanced, changed: MouseLookService.CursorKeysChanged, def: "Alt",
+                              help: "Under the action camera, hold this key to free the cursor for the game's panels. Either Alt by default; press a key or thumb button on the row to change it, or clear it to bind nothing.");
+        AltToggle = G.Toggle("alttoggle", "Cursor key toggles", false, Tier.ChatOnly,
+                             help: "Under the action camera, tapping the cursor key frees the cursor until you tap it again, instead of holding it.");
         Assist = G.Toggle("assist", "Aim assist", true, Tier.Advanced,
                           help: "Under the action camera, the crosshair snaps its aim to the nearest creature, placeable or door within a few pixels of the centre, so you hover and click it without pixel-perfect aiming. The camera never moves; only what you point at changes. Brackets appear around the crosshair while a target is picked.");
         AssistPx = G.Slider("assistpx", "Aim assist radius", 0, 200, 5, 80, "px", Tier.ChatOnly,
@@ -256,6 +258,7 @@ internal static class MouseLook
     internal static Knob<bool> Invert => M.Invert;
     internal static Knob<bool> Action => M.Action;
     internal static Knob<bool> AltToggle => M.AltToggle;
+    internal static Knob<string> CursorKey => M.CursorKey;
     internal static Knob<bool> HeadTrack => M.HeadTrack;
     internal static Knob<bool> Assist => M.Assist;
     internal static Knob<bool> AutoTarget => M.AutoTarget;
