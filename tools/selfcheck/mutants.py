@@ -531,14 +531,15 @@ def steady(rc, output, took, boot):
     if rc == 0:
         return rc, took
     first = fail_lines(output) or output.strip().splitlines()[-1:]
-    print('>> the unmutated run failed; booting it once more to tell a flaky check from a broken tree', flush=True)
+    print('>> the unmutated run failed on: ' + '; '.join(first), flush=True)
+    print('>> booting it once more to tell a flaky check from a broken tree', flush=True)
     rc, again, took = boot()
     if rc != 0:
         print('!! the unmutated tree fails its self-checks on two boots, so no mutant can be judged:', file=sys.stderr)
         for line in fail_lines(again) or again.strip().splitlines()[-20:]:
             print(f'   {line}', file=sys.stderr)
         return rc, took
-    print('>> the unmutated run passed on its second boot; the first failed on: ' + '; '.join(first), flush=True)
+    print('>> the unmutated run passed on its second boot, so the first boot\'s failure was a flaky check', flush=True)
     return rc, took
 
 
