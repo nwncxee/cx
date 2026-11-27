@@ -328,6 +328,7 @@ internal sealed partial class InventoryWindow
         _tickAt = now;
         if (!Open) return;
         if (!Loot.Open) _wornSent = true;
+        if (Model.BackpackChanged()) Model.Stale();
         TakeAllTick(now);
         LootTick(dt);
         if (!Scrolled) return;

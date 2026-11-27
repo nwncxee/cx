@@ -30,6 +30,7 @@ internal sealed partial class InventoryWindow
         Suite(log, "InventoryWindow.BagRefreshApprovedExamples.StackOffStream", StackOffStream);
         Suite(log, "InventoryWindow.BagRefreshApprovedExamples.DragBuyStack", DragBuyStack);
         Suite(log, "InventoryWindow.BagRefreshApprovedExamples.LoadoutSwap", LoadoutSwap);
+        Suite(log, "InventoryWindow.BagRefreshSelfCheck", WeightlessBuy);
     }
 
     private static void Suite(ExtenderLog log, string name, Action<Checker, Bench> run)
