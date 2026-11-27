@@ -99,6 +99,7 @@ internal static partial class GroundMist
             }
         (s.Depth, s.Spare) = (s.Spare, s.Depth);
         s.Gen++;
+        s.Lays++;
     }
 
     /// <summary>Each column's floor: the highest face over its centre at or below the feet plus the headroom, and
@@ -546,10 +547,14 @@ internal static partial class GroundMist
     internal static bool Shows() => On() && _s.Any;
 
     /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
-    internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1 };
+    internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1, Lays = _s.Lays + 1 };
 
     /// <summary>Whether the mist lies still: at the lowest fog detail, or at Low air detail, no wind, walker or blast moves it.</summary>
     private static bool LiesStill() => CX.Alloy.Air.Still || VolumetricFog.Quality.V == VolumetricFog.Levels[0];
+
+    /// <summary>Runs on each time the field's floors are laid afresh: a re-centre, a climb or a new area's walk.</summary>
+    internal static int Lays => _s.Lays;
+
 
 
     /// <summary>The field's corner along one axis for feet at <paramref name="feet"/>: the snap they stand in, less half the side.</summary>
@@ -575,8 +580,9 @@ internal sealed class GroundMistState
     public Vector2 Player;
     public bool Laid, Stale;
 
-    /// <summary>Bumped whenever a floor or a depth changes, so the upload sends the field only when it moved.</summary>
-    public int Gen;
+    /// <summary>Bumped whenever a floor or a depth changes, so the upload sends the field only when it moved; and each
+    /// time the floors are laid afresh, so the air knows to lay its own over them.</summary>
+    public int Gen, Lays;
 
     /// <summary>The scene the live walk reads, how far into its parts table it has looked, and the frame it last stepped.</summary>
     public uint Scene;

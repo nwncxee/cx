@@ -33,6 +33,13 @@ internal static partial class AirScene
     /// thinning over <see cref="Creep"/> to nothing past <see cref="CreepReach"/> onto the land.</summary>
     private static void LayMist(AirSceneState s)
     {
+        LayMistRest(s);
+        Array.Copy(s.MistRest, s.Mist, s.MistRest.Length);
+    }
+
+    /// <summary>The mist each column holds at rest by night, as <see cref="LayMist"/> lays it, leaving what it holds now.</summary>
+    private static void LayMistRest(AirSceneState s)
+    {
         const int n = GroundMist.Side;
         float[] d = s.Spare;
         for (int c = 0; c < d.Length; c++)
@@ -43,7 +50,7 @@ internal static partial class AirScene
             for (int x = n - 1; x >= 0; x--) Reach(s, d, x, y, 1);
         float lay = BaseMist * s.Hold;
         for (int c = 0; c < d.Length; c++)
-            s.MistRest[c] = s.Mist[c] = d[c] <= CreepReach && !float.IsNaN(s.Floor[c]) ? lay * MathF.Exp(-d[c] / Creep) : 0f;
+            s.MistRest[c] = d[c] <= CreepReach && !float.IsNaN(s.Floor[c]) ? lay * MathF.Exp(-d[c] / Creep) : 0f;
     }
 
     /// <summary>One chamfer step of the distance to the water at column (<paramref name="x"/>, <paramref name="y"/>),

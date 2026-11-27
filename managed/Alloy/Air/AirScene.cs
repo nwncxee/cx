@@ -93,26 +93,35 @@ internal static partial class AirScene
         _s = s;
         if (!GroundMist.Corner(out s.Ox, out s.Oy, out s.Feet)) return;
         s.Laid = true;
+        s.Lays = GroundMist.Lays;
         float amount = MathF.Max(GroundMist.FogAmount, 0f);
         s.Hold = 1f + AmountGain * amount;
         AirLayer layers = look.Layers(night);
-        bool dust = (layers & AirLayer.Dust) != 0;
-        s.Columns = dust ? AirLayer.Dust : layers & AirLayer.Haze;
-        float lay = BaseDust * s.Hold;
+        s.Columns = (layers & AirLayer.Dust) != 0 ? AirLayer.Dust : layers & AirLayer.Haze;
         for (int y = 0; y < GroundMist.Side; y++)
             for (int x = 0; x < GroundMist.Side; x++)
                 s.Floor[y * GroundMist.Side + x] = GroundMist.FloorAt(s.Ox + x + 0.5f, s.Oy + y + 0.5f);
+        LayRest(s);
+        Array.Copy(s.Rest, s.Dust, s.Rest.Length);
+        s.Wets = (look.Layers(true) & AirLayer.NightMist) != 0;
+        s.Dusk = night && s.Wets ? 1f : 0f;
+        if (s.Wets) LayMist(s);
+        SeedPollen(s, s.Feet);
+    }
+
+    /// <summary>Lay the dust each column holds at rest at Dust 1: gathered along the walls and thicker as the fog amount
+    /// rises, none off the floor or where the columns hold haze, which each trunk lays.</summary>
+    private static void LayRest(AirSceneState s)
+    {
+        float lay = BaseDust * s.Hold;
+        bool dust = s.Columns == AirLayer.Dust;
         for (int y = 0; y < GroundMist.Side; y++)
             for (int x = 0; x < GroundMist.Side; x++)
             {
                 int c = y * GroundMist.Side + x;
                 bool floor = dust && !float.IsNaN(s.Floor[c]);
-                s.Rest[c] = s.Dust[c] = floor ? lay * (1f + WallGather * MathF.Exp(-ToWall(s, x, y) / GatherFall)) : 0f;
+                s.Rest[c] = floor ? lay * (1f + WallGather * MathF.Exp(-ToWall(s, x, y) / GatherFall)) : 0f;
             }
-        s.Wets = (look.Layers(true) & AirLayer.NightMist) != 0;
-        s.Dusk = night && s.Wets ? 1f : 0f;
-        if (s.Wets) LayMist(s);
-        SeedPollen(s, s.Feet);
     }
 
     /// <summary>How far column (<paramref name="x"/>, <paramref name="y"/>) stands from the nearest column with no floor,
@@ -169,6 +178,14 @@ internal static partial class AirScene
         AirSceneState s = _s;
         if (!s.Laid || s.Columns != AirLayer.Haze) return;
         AddTrunk(s.Leaves, at);
+        Haze(s, at, true);
+        s.Gen++;
+    }
+
+    /// <summary>Lay the haze a trunk at <paramref name="at"/> holds at rest over its columns, and into what they hold
+    /// <paramref name="now"/> as well.</summary>
+    private static void Haze(AirSceneState s, Vector2 at, bool now)
+    {
         float lay = BaseHaze * s.Hold;
         int r = (int)MathF.Ceiling(HazeReach);
         int cx = (int)MathF.Floor(at.X) - s.Ox, cy = (int)MathF.Floor(at.Y) - s.Oy;
@@ -181,9 +198,8 @@ internal static partial class AirScene
                 if (w <= 0f || float.IsNaN(s.Floor[c])) continue;
                 float was = s.Rest[c];
                 s.Rest[c] = MathF.Min(was + lay * w, lay);
-                s.Dust[c] += s.Rest[c] - was;
+                if (now) s.Dust[c] += s.Rest[c] - was;
             }
-        s.Gen++;
     }
 
     /// <summary>Advance the air <paramref name="dt"/> seconds under the area's <paramref name="wind"/>; at Low no front starts, with the air off nothing moves.</summary>
@@ -191,6 +207,7 @@ internal static partial class AirScene
     {
         AirSceneState s = _s;
         if (!s.Laid) return;
+        if (s.Lays != GroundMist.Lays) Recentre(s);
         Dial(s);
         if (!On(s))
         {
@@ -402,6 +419,9 @@ internal sealed class AirSceneState
     public int Ox, Oy;
     public Vector2 Feet;
     public bool Laid;
+
+    /// <summary>The mist field's floor lay the columns were laid over: when it runs on, they follow it.</summary>
+    public int Lays;
 
     /// <summary>Per column, row-major from the corner: its floor (NaN for none), the dust it holds at rest and its dust
     /// now, both at Dust 1, and how high a front threw it.</summary>
