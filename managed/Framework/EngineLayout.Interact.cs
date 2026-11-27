@@ -28,4 +28,29 @@ public static unsafe partial class EngineLayout
     /// <summary>CNWCCreature -&gt; lootable (int): the default action opens a dead creature's inventory when it is 1
     /// and <see cref="CreatureAiFlags"/> is 0.</summary>
     public static readonly int CreatureLootable = Field<int>("CNWCCreature", "lootable", Expect.Byte01);
+
+    // ---- area transitions (CX-754) ----
+    // Read 2026-11-27 off both programs: CNWCMessage::HandleServerToPlayerTriggerUpdate_Add (Linux nm @0x7b5fb0,
+    // Windows rva 0x7b1670), CNWCDoor::SetIsAreaTransition (Linux nm @0x754520, Windows rva 0x86e640),
+    // CNWCDoor::GetState (Linux nm @0x754510, Windows rva 0x86df30) and the slot calls in
+    // CClientExoAppInternal::PerformLButtonDownAction (Linux nm @0x6641f0, Windows rva 0x6f02c0).
+
+    /// <summary>CNWCDoor -&gt; "this door leads to another area" (int), what SetIsAreaTransition writes. A click on a
+    /// closed one walks the player through it; a click on an open one closes it.</summary>
+    public static readonly int DoorAreaTransition = Field<int>("CNWCDoor", "areaTransition", Expect.Byte01);
+    /// <summary>CNWCDoor -&gt; the door's state (ONE byte), what GetState returns: 0 is open.</summary>
+    public static readonly int DoorState = Field<byte>("CNWCDoor", "state");
+    /// <summary>CNWCTrigger -&gt; "this trigger is a trap" (int), set by the trigger add from the server's flag.</summary>
+    public static readonly int TriggerIsTrap = Field<int>("CNWCTrigger", "isTrap", Expect.Byte01);
+    /// <summary>CNWCTrigger -&gt; "this trigger leads to another area" (int); the trigger add sets it on a trigger that is
+    /// not a trap.</summary>
+    public static readonly int TriggerAreaTransition = Field<int>("CNWCTrigger", "areaTransition", Expect.Byte01);
+    /// <summary>CNWCTrigger -&gt; how many points its outline holds (int; the message carries a byte).</summary>
+    public static readonly int TriggerVertexCount = Field<int>("CNWCTrigger", "vertexCount");
+    /// <summary>CNWCTrigger -&gt; its outline, <see cref="TriggerVertexCount"/> world-space points of three floats each
+    /// (<c>Vec3*</c>), every height raised 0.05 over the ground.</summary>
+    public static readonly int TriggerVertices = Field<IntPtr>("CNWCTrigger", "vertices");
+    /// <summary>Virtual slot of <c>CGameObject::AsNWCTrigger()</c>: the base answers null and <c>CNWCTrigger</c>'s
+    /// override is an identity <c>return this</c>. Linux <c>vtbl+0x80</c>, Windows <c>vtbl+0x78</c>.</summary>
+    public static readonly int GameObjAsNWCTriggerSlot = Field("CGameObject", "vtbl.AsNWCTrigger", Expect.VtblSlot, sig: "IntPtr()");
 }

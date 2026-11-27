@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using CX.Services.Chat.Core;
@@ -54,6 +55,9 @@ internal interface IInteractWorld
     string? GameKeyAction(int code);
     /// <summary>The object's own default action, as a click on it runs it.</summary>
     void DefaultAction(uint id);
+    /// <summary>Walks the player to <paramref name="point"/> with <paramref name="id"/> as the walk's target, as a click
+    /// on an area transition does, so the transition fires on arrival.</summary>
+    void WalkTo(uint id, Vector3 point);
     void ShowLine(string text);
     void PlaySound(string resref);
 }
@@ -63,53 +67,119 @@ internal static class InteractCore
 {
     /// <summary>How far, in metres, a rule reaches from the player.</summary>
     internal const float Reach = 10f;
+    /// <summary>How far, in metres, the Transition rule reaches.</summary>
+    internal const float TransitionReach = 2f;
 
     /// <summary>The rules in the fixed order the Interact key runs them.</summary>
-    private static readonly InteractKey[] Rules = { InteractKey.Loot };
+    private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot };
 
-    /// <summary>The object <paramref name="key"/> acts on in <paramref name="world"/>, or <see cref="TypingSignal.ObjectInvalid"/>.</summary>
-    internal static uint Pick(InteractKey key, IInteractWorld world, InteractState state)
+    /// <summary>The rules a pointed target is held to, in order: Talk qualifies a target the player points at, though
+    /// no press searches for the nearest creature to talk to.</summary>
+    private static readonly InteractKey[] PointedRules = { InteractKey.Transition, InteractKey.Loot, InteractKey.Talk };
+
+    /// <summary>The object <paramref name="key"/> acts on in <paramref name="world"/>, or null. An object under the
+    /// crosshair, else a tab-target lock, in the area is the only object the press may act on.</summary>
+    internal static Thing? Pick(InteractKey key, IInteractWorld world, InteractState state)
     {
+        IReadOnlyList<Thing> things = world.Things;
+        if ((Find(things, world.Crosshair) ?? Find(things, world.Lock)) is { } pointed) return Pointed(key, pointed, world.Player);
         foreach (InteractKey rule in Rules)
         {
             if (key == InteractKey.Interact ? !InInteract(rule) : key != rule) continue;
-            uint id = Nearest(rule, world, state);
-            if (id != TypingSignal.ObjectInvalid) return id;
+            if (Nearest(rule, things, world, state) is { } t) return t;
         }
-        return TypingSignal.ObjectInvalid;
+        return null;
     }
+
+    /// <summary>Pointed target <paramref name="t"/> when a rule <paramref name="key"/> runs takes it, at any distance but
+    /// an area transition's; else nothing.</summary>
+    private static Thing? Pointed(InteractKey key, Thing t, Vector3 player)
+    {
+        foreach (InteractKey rule in PointedRules)
+        {
+            if (key == InteractKey.Interact ? !InInteract(rule) : key != rule) continue;
+            if (!Qualifies(rule, t)) continue;
+            if (rule == InteractKey.Transition && Vector3.Distance(MeasuredAt(t, player), player) > TransitionReach) continue;
+            return t;
+        }
+        return null;
+    }
+
+    private static Thing? Find(IReadOnlyList<Thing> things, uint id)
+    {
+        if (id == TypingSignal.ObjectInvalid) return null;
+        for (int i = 0; i < things.Count; i++) if (things[i].Id == id) return things[i];
+        return null;
+    }
+
+    /// <summary>Where a rule measures <paramref name="t"/> from: a trigger's outline point nearest the player, else its position.</summary>
+    private static Vector3 MeasuredAt(in Thing t, Vector3 player) => t.Outline is { } outline ? NearestOnOutline(outline, player) : t.Pos;
 
     /// <summary>Whether the Interact key runs <paramref name="rule"/>.</summary>
     private static bool InInteract(InteractKey rule) => rule switch
     {
+        InteractKey.Transition => InteractKnobs.Transitions.V,
         InteractKey.Loot => InteractKnobs.Loot.V,
+        InteractKey.Talk => InteractKnobs.Talk.V,
         _ => false,
     };
 
-    /// <summary>The nearest object in reach and in sight that <paramref name="rule"/> takes. A locked winner is
+    /// <summary>The nearest object of <paramref name="things"/> in reach and in sight that <paramref name="rule"/> takes. A locked winner is
     /// recorded as tried and passed over after that; an object read unlocked leaves the tried memory.</summary>
-    private static uint Nearest(InteractKey rule, IInteractWorld world, InteractState state)
+    private static Thing? Nearest(InteractKey rule, IReadOnlyList<Thing> things, IInteractWorld world, InteractState state)
     {
-        IReadOnlyList<Thing> things = world.Things;
-        uint best = TypingSignal.ObjectInvalid;
+        int best = -1;
         float bestDist = float.MaxValue;
-        bool bestLocked = false;
         for (int i = 0; i < things.Count; i++)
         {
             Thing t = things[i];
             if (!t.Locked) state.Tried.Remove(t.Id);
             if (t.Locked && state.Tried.Contains(t.Id)) continue;
             if (!Qualifies(rule, t)) continue;
-            float dist = Vector3.Distance(t.Pos, world.Player);
-            if (dist > Reach || dist >= bestDist || !world.Sees(world.Player, t.Pos)) continue;
-            best = t.Id; bestDist = dist; bestLocked = t.Locked;
+            Vector3 at = MeasuredAt(t, world.Player);
+            float dist = Vector3.Distance(at, world.Player);
+            if (dist > (rule == InteractKey.Transition ? TransitionReach : Reach) || dist >= bestDist || !world.Sees(world.Player, at)) continue;
+            best = i; bestDist = dist;
         }
-        if (bestLocked) state.Tried.Add(best);
+        if (best < 0) return null;
+        if (things[best].Locked) state.Tried.Add(things[best].Id);
+        return things[best];
+    }
+
+    /// <summary>How far past a trigger's nearest edge a walk into it heads, in metres.</summary>
+    internal const float Inset = 0.5f;
+
+    /// <summary>Where a walk into area transition <paramref name="t"/> heads: just inside a trigger's nearest edge, or
+    /// a door's own position.</summary>
+    internal static Vector3 WalkPoint(in Thing t, Vector3 player)
+    {
+        if (t.Outline is not { } outline) return t.Pos;
+        Vector3 q = NearestOnOutline(outline, player), dir = new(q.X - player.X, q.Y - player.Y, 0f);
+        float len = dir.Length();
+        return len > 0f ? q + dir * (Inset / len) : q;
+    }
+
+    /// <summary>The point of the closed outline <paramref name="outline"/> nearest <paramref name="from"/>, on the ground
+    /// plane. A repeated point makes a zero-length edge whose NaN distance never wins.</summary>
+    internal static Vector3 NearestOnOutline(Vector3[] outline, Vector3 from)
+    {
+        Vector3 best = outline[0];
+        float bestDist = float.MaxValue;
+        for (int i = 0; i < outline.Length; i++)
+        {
+            Vector3 a = outline[i], ab = outline[(i + 1) % outline.Length] - a;
+            float f = Math.Clamp(((from.X - a.X) * ab.X + (from.Y - a.Y) * ab.Y) / (ab.X * ab.X + ab.Y * ab.Y), 0f, 1f);
+            Vector3 q = a + ab * f;
+            float d = (q.X - from.X) * (q.X - from.X) + (q.Y - from.Y) * (q.Y - from.Y);
+            if (d < bestDist) { best = q; bestDist = d; }
+        }
         return best;
     }
 
     private static bool Qualifies(InteractKey rule, in Thing t) => rule switch
     {
+        InteractKey.Transition => (t.Kind == ThingKind.Transition || t.Kind == ThingKind.Door) && t.LeadsAway && !t.TrapFound,
+        InteractKey.Talk => t.Kind == ThingKind.Creature && !t.Dead && t.Attitude != Attitude.Hostile,
         InteractKey.Loot => (t.Kind == ThingKind.BodyBag || (t.Kind == ThingKind.Creature && t.Dead)) && t.Lootable && !t.TrapFound,
         _ => false,
     };

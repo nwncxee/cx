@@ -56,12 +56,18 @@ internal static class InteractInput
     {
         if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
         if (repeat) return true;
-        uint id = InteractCore.Pick(key, world, S);
-        if (id == TypingSignal.ObjectInvalid) return true;
+        if (InteractCore.Pick(key, world, S) is not { } picked) return true;
         S.Acting = true;
-        try { world.DefaultAction(id); }
+        try { Act(world, picked); }
         finally { S.Acting = false; }
         return true;
+    }
+
+    /// <summary>Runs the act a press picked: a walk into an area transition, else the object's default action.</summary>
+    private static void Act(IInteractWorld world, in Thing t)
+    {
+        if (t.LeadsAway && (t.Kind != ThingKind.Door || t.Open)) world.WalkTo(t.Id, InteractCore.WalkPoint(t, world.Player));
+        else world.DefaultAction(t.Id);
     }
 
     /// <summary>The key <paramref name="code"/> presses, when a world is in and the master is on; null otherwise.</summary>
@@ -69,6 +75,7 @@ internal static class InteractInput
     {
         if (S.World == null || !InteractKnobs.Enabled.V || code == 0) return null;
         if (code == KeyNames.Code(InteractKnobs.Key.V)) return InteractKey.Interact;
+        if (code == KeyNames.Code(InteractKnobs.TransitionKey.V)) return InteractKey.Transition;
         if (code == KeyNames.Code(InteractKnobs.LootKey.V)) return InteractKey.Loot;
         return null;
     }

@@ -26,6 +26,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
 
     internal readonly List<uint> Acts = new();
     internal readonly List<string> Lines = new();
+    /// <summary>Every point a walk into an area transition headed for, in order.</summary>
+    internal readonly List<Vector3> Walks = new();
     internal readonly List<string> Sounds = new();
     internal readonly HashSet<string> Known = new() { "gui_nowalk", "gui_select" };
     internal readonly Dictionary<int, string> GameKeys = new();
@@ -66,6 +68,7 @@ internal sealed class InteractWorldDouble : IInteractWorld
         if (PossessedBarred) ServerRefused.Add(id);
         if (TabTarget.Enabled.V && InteractInput.ClickLocks(id)) { LockChanges.Add(id); Lock = id; }
     }
+    public void WalkTo(uint id, Vector3 point) { Acts.Add(id); Walks.Add(point); }
     public void ShowLine(string text) => Lines.Add(text);
     public void PlaySound(string resref) => Sounds.Add(resref);
 
@@ -180,6 +183,9 @@ internal sealed class InteractWorldDouble : IInteractWorld
         _walls.Add((new Vector2(mid.X - p.X, mid.Y - p.Y), new Vector2(mid.X + p.X, mid.Y + p.Y)));
     }
 
+    /// <summary>An area wall from <paramref name="a"/> to <paramref name="b"/>.</summary>
+    internal void Wall(Vector3 a, Vector3 b) => _walls.Add((new Vector2(a.X, a.Y), new Vector2(b.X, b.Y)));
+
     /// <summary>A closed door on the line from the player to <paramref name="id"/>, <paramref name="m"/> away.</summary>
     internal uint DoorBefore(uint id, float m)
     {
@@ -221,7 +227,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
         throw new InvalidOperationException($"no object {id:x}");
     }
 
-    private Vector3 Nearest(Vector3[] o)
+    /// <summary>The point of outline <paramref name="o"/> nearest the player.</summary>
+    internal Vector3 Nearest(Vector3[] o)
     {
         Vector3 best = o[0];
         for (int i = 0; i < o.Length; i++)

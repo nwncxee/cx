@@ -1340,6 +1340,10 @@ public readonly unsafe partial struct CGameObject(IntPtr ptr)
     public CNWCObject AsNWCPlaceable() => new CNWCObject(((delegate* unmanaged<IntPtr, IntPtr>)AsNWCPlaceableFn)(Ptr));
     /// <inheritdoc cref="EngineLayout.GameObjAsNWCPlaceableSlot"/>
     public IntPtr AsNWCPlaceableFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GameObjAsNWCPlaceableSlot);
+    /// <inheritdoc cref="EngineLayout.GameObjAsNWCTriggerSlot"/>
+    public IntPtr AsNWCTrigger() => ((delegate* unmanaged<IntPtr, IntPtr>)AsNWCTriggerFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.GameObjAsNWCTriggerSlot"/>
+    public IntPtr AsNWCTriggerFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GameObjAsNWCTriggerSlot);
     /// <inheritdoc cref="EngineLayout.GameObjType"/>
     public ref byte Type => ref *(byte*)(Ptr + EngineLayout.GameObjType);
 }
@@ -2112,8 +2116,12 @@ public readonly unsafe partial struct CNWCDoor(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.DoorAreaTransition"/>
+    public ref int AreaTransition => ref *(int*)(Ptr + EngineLayout.DoorAreaTransition);
     /// <inheritdoc cref="EngineLayout.DoorLocked"/>
     public ref int Locked => ref *(int*)(Ptr + EngineLayout.DoorLocked);
+    /// <inheritdoc cref="EngineLayout.DoorState"/>
+    public ref byte State => ref *(byte*)(Ptr + EngineLayout.DoorState);
     /// <inheritdoc cref="EngineLayout.DoorTrapShown"/>
     public ref int TrapShown => ref *(int*)(Ptr + EngineLayout.DoorTrapShown);
 }
@@ -2340,6 +2348,23 @@ public readonly unsafe partial struct CNWCPlayer(IntPtr ptr)
     public ref uint CreatureNameLen => ref *(uint*)(Ptr + EngineLayout.PlayerCreatureNameLen);
     /// <inheritdoc cref="EngineLayout.PlayerId"/>
     public ref uint PlayerId => ref *(uint*)(Ptr + EngineLayout.PlayerId);
+}
+
+/// <summary>Typed view of an engine <c>CNWCTrigger*</c>.</summary>
+public readonly unsafe partial struct CNWCTrigger(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.TriggerAreaTransition"/>
+    public ref int AreaTransition => ref *(int*)(Ptr + EngineLayout.TriggerAreaTransition);
+    /// <inheritdoc cref="EngineLayout.TriggerIsTrap"/>
+    public ref int IsTrap => ref *(int*)(Ptr + EngineLayout.TriggerIsTrap);
+    /// <inheritdoc cref="EngineLayout.TriggerVertexCount"/>
+    public ref int VertexCount => ref *(int*)(Ptr + EngineLayout.TriggerVertexCount);
+    /// <inheritdoc cref="EngineLayout.TriggerVertices"/>
+    public ref IntPtr Vertices => ref *(IntPtr*)(Ptr + EngineLayout.TriggerVertices);
 }
 
 /// <summary>Typed view of an engine <c>CNWCVisualEffectOnObject*</c>.</summary>

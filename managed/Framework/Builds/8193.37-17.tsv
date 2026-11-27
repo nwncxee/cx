@@ -1167,3 +1167,10 @@ offset	CNWCDoor	locked	0x1a4	0x184	# DoorLocked
 offset	CNWCDoor	trapShown	0x1ac	0x18c	# DoorTrapShown
 offset	CNWCCreature	lootable	0x24c	0x22c	# CreatureLootable
 offset	CGameObject	vtbl.AsNWCDoor	0x30	0x28	# GameObjAsNWCDoorSlot
+offset	CNWCDoor	areaTransition	0x1e0	0x1c0	# DoorAreaTransition
+offset	CNWCDoor	state	0x1bc	0x19c	# DoorState
+offset	CNWCTrigger	isTrap	0x1a8	0x188	# TriggerIsTrap
+offset	CNWCTrigger	areaTransition	0x1ac	0x18c	# TriggerAreaTransition
+offset	CNWCTrigger	vertexCount	0x1c0	0x1a0	# TriggerVertexCount
+offset	CNWCTrigger	vertices	0x1c8	0x1a8	# TriggerVertices
+offset	CGameObject	vtbl.AsNWCTrigger	0x80	0x78	# GameObjAsNWCTriggerSlot

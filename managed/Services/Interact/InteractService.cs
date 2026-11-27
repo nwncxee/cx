@@ -27,10 +27,10 @@ public sealed unsafe class InteractService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         if (!EngineLayout.Require(log, "Interact", "CNWCObject", "CNWCArea", "CNWCCreature", "CNWCPlaceable", "CNWCDoor",
-                                  "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp")) return;
+                                  "CNWCTrigger", "CGameObject", "CClientExoAppInternal", "CNWCModule", "CClientExoApp")) return;
         if (!SymbolMap.Require(log, "Interact", SymbolMap.WinMessageHandler, SymbolMap.PerformDefaultActionOnObject,
                                SymbolMap.ClearLineOfSightOneWay, SymbolMap.GetGameObject, SymbolMap.GetModule,
-                               SymbolMap.AppManager)) return;
+                               SymbolMap.AppManager, SymbolMap.WalkPlayerToPoint)) return;
         S.Next = hooks.ChainWinMessageHandler(&OnWinMessage, ChainPriority);
         if (S.Next == null) { log.Info("Interact: standing down (the WinMessageHandler chain was refused)"); return; }
         InteractInput.Live(new InteractEngineWorld());
@@ -51,11 +51,17 @@ public sealed unsafe class InteractService : IExtenderService
 /// sight test and the engine's own default action. Every read is cold, on the input thread.</summary>
 internal sealed unsafe class InteractEngineWorld : IInteractWorld
 {
-    private const byte TypeItem = 6;
+    private const byte TypeItem = 6, TypeTrigger = 7;  // not-an-offset: object type bytes, the trigger's from the CNWCTrigger ctor
+    /// <summary>The most points a trigger outline holds: the trigger add reads the count from one byte.</summary>
+    private const int MaxOutline = 255;
     /// <summary>The height both ends of a sight line are raised by, as the server's
     /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
     private const float EyeHeight = 1f;
     private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
+    /// <summary>WalkPlayerToPoint's flags 0: walk or run by the always-run setting and Shift, as a left click does.</summary>
+    private const int WalkByRunSetting = 0;
+    /// <summary>WalkPlayerToPoint's last argument: show the walk-to ring at the point (ShowWalkToRingVFX).</summary>
+    private const int ShowRing = 1;
 
     private readonly List<Thing> _things = new(256);
 
@@ -102,6 +108,12 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         if (!obj.IsNull) exo.Internal.PerformDefaultActionOnObject(obj.Ptr);
     }
 
+    public void WalkTo(uint id, Vector3 point)
+    {
+        IntPtr app = CameraService.App();
+        if (app != IntPtr.Zero) new CClientExoApp(app).Internal.WalkPlayerToPoint(point.X, point.Y, point.Z, WalkByRunSetting, id, ShowRing);
+    }
+
     public void ShowLine(string text) { }
 
     public void PlaySound(string resref) { }
@@ -112,7 +124,8 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         return module == IntPtr.Zero ? IntPtr.Zero : new CNWCModule(module).CurrentArea.Ptr;
     }
 
-    /// <summary>Reads the current area's objects into <see cref="_things"/>: what is on screen, the player left out.</summary>
+    /// <summary>Reads the current area's objects into <see cref="_things"/>: what is on screen and every trigger, which
+    /// is never drawn, the player left out.</summary>
     private void Refresh()
     {
         _things.Clear();
@@ -131,9 +144,26 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
             CGameObject go = exo.GetGameObject(id);
             if (go.IsNull) continue;
             CNWCObject obj = go.AsNWCObject();
-            if (obj.IsNull || obj.Visible == 0) continue;
+            if (obj.IsNull || (obj.Visible == 0 && obj.Type != TypeTrigger)) continue;
             if (Read(go, obj, id) is { } t) _things.Add(t);
         }
+    }
+
+    /// <summary>A trigger that leads to another area, with its outline; null for a trap or any other trigger.</summary>
+    private static Thing? ReadTrigger(CGameObject go, Thing t)
+    {
+        IntPtr cast = go.AsNWCTrigger();
+        if (cast == IntPtr.Zero) return null;
+        var g = new CNWCTrigger(cast);
+        int n = g.VertexCount;
+        Vec3* v = (Vec3*)g.Vertices;
+        if (g.IsTrap != 0 || g.AreaTransition == 0 || v == null || n < 3 || n > MaxOutline) return null;
+        var outline = new Vector3[n];
+        for (int i = 0; i < n; i++) outline[i] = new Vector3(v[i].X, v[i].Y, v[i].Z);
+        t.Kind = ThingKind.Transition;
+        t.LeadsAway = true;
+        t.Outline = outline;
+        return t;
     }
 
     private static Thing? Read(CGameObject go, CNWCObject obj, uint id)
@@ -174,8 +204,12 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.Kind = ThingKind.Door;
                 t.Locked = d.Locked != 0;
                 t.TrapFound = d.TrapShown != 0;
+                t.Open = d.State == 0;
+                t.LeadsAway = d.AreaTransition != 0;
                 return t;
             }
+            case TypeTrigger:
+                return ReadTrigger(go, t);
             default:
                 return null;
         }

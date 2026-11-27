@@ -170,6 +170,7 @@ internal static class TransitionApprovedExamples
             InteractWorldDouble.Defaults();
             InteractInput.Use(null);
         }
+        log.Info(check.Ok ? "TransitionApprovedExamples.SelfCheck: passed" : "TransitionApprovedExamples.SelfCheck: FAILED");
         return check.Ok;
     }
 }
