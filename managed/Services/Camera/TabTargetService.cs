@@ -413,9 +413,10 @@ public sealed unsafe class TabTargetService : IExtenderService
         _lockCode = Code(TabTarget.LockKey.V);
     }
 
+    /// <summary>A key setting's key: no mouse button, which no tab-target key reads.</summary>
     private static int Code(string? name)
     {
-        int code = KeyNames.Code(name);
+        int code = Math.Max(KeyNames.Code(name), 0);
         if (code == 0 && !string.IsNullOrWhiteSpace(name)) _log?.Info($"TabTarget: '{name}' is not an SDL key name; nothing bound");
         return code;
     }

@@ -68,7 +68,7 @@ public sealed unsafe partial class QuickbarService
     /// <summary>SDL_Keymod bits: Ctrl and Shift either side, Alt the left one only (right Alt is AltGr).</summary>
     private const int KmodShift = 0x0003, KmodCtrl = 0x00C0, KmodLAlt = 0x0100;  // not-an-offset: SDL key/event code
     /// <summary>SDL keycodes the bind mode reads: Esc finishes, Backspace / Delete clear; the modifier keys alone bind nothing.</summary>
-    private const int SdlkEscape = 27, SdlkBackspace = 8, SdlkDelete = 127, SdlkLCtrl = 0x400000E0, SdlkRGui = 0x400000E7;  // not-an-offset: SDL key/event code
+    private const int SdlkEscape = 27, SdlkBackspace = 8, SdlkDelete = 127;  // not-an-offset: SDL key/event code
     private const string BindHelp = "Hover a button and press a key to bind it  -  Backspace clears  -  Esc or a click elsewhere finishes";
     /// <summary>The bar's own skin parts, after <see cref="NativeChrome"/>'s common chrome.</summary>
     private const int KSlot = NativeChrome.Count, KGrip = KSlot + 1;
@@ -106,7 +106,8 @@ public sealed unsafe partial class QuickbarService
         if (bad > 0) Notice.Show(_log, $"quickbar: {bad} key(s) in the key rows are not SDL key names and stay unbound");
     }
 
-    private static int KeyOf(string name) => KeyNames.Code(name);
+    /// <summary>A key row's key: no mouse button, which the bar's chords never fire.</summary>
+    private static int KeyOf(string name) => Math.Max(KeyNames.Code(name), 0);
 
     /// <summary>The CX quickbar's window, registered at the back of the UI host on creation; the self-checks build one
     /// of their own.</summary>
@@ -227,7 +228,7 @@ public sealed unsafe partial class QuickbarService
     {
         if (!_cx.Binding) return false;
         if (key == SdlkEscape) { StopBinding(); return true; }
-        if (key >= SdlkLCtrl && key <= SdlkRGui) return true;
+        if (KeyNames.IsModifier(key)) return true;
         int mx = -1, my = -1;
         if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&mx, &my);
         int b = _cx.Layout.SlotAt(mx, my, 0);
