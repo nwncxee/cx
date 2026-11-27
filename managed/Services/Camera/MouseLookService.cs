@@ -4,7 +4,6 @@ using CX.Engine;
 using CX.Framework;
 using CX.Ui;
 using CX.Graphics;
-using CX.Services.Interact;
 
 namespace CX.Services.Camera;
 
@@ -287,18 +286,14 @@ public sealed unsafe partial class MouseLookService : IExtenderService
         return code;
     }
 
-    /// <summary>Whether press <paramref name="code"/> flips the action camera whose toggle is <paramref name="toggle"/>:
-    /// its own key, unless the Interact key, ranked above it, is that key too.</summary>
-    internal static bool Flips(int code, int toggle) => code == toggle && !InteractInput.Chord.WantsKey(code);
-
     /// <summary>The chord that flips the live mode's <c>action</c>: the key or mouse button named by its
-    /// <c>actionkey</c>, fired when no window consumed it (<see cref="Flips"/>).</summary>
+    /// <c>actionkey</c>, fired when no window consumed it and no chord ranked above it (Interact's) wants it.</summary>
     private sealed class ActionToggle : IChordConsumer
     {
         public int Priority => 1;
-        public bool WantsKey(int key) => ToggleCode > 0 && key == ToggleCode;
-        public void Fire(uint key, int sdlMods) { if (ToggleCode > 0 && Flips((int)key, ToggleCode)) Flip(); }
-        public void FireMouse(int button, int sdlMods) { if (ToggleCode < 0 && Flips(-button, ToggleCode)) Flip(); }
+        public bool WantsKey(int key) => ToggleCode != 0 && key == ToggleCode;
+        public void Fire(uint key, int sdlMods) { if (ToggleCode > 0 && (int)key == ToggleCode) Flip(); }
+        public void FireMouse(int button, int sdlMods) { if (ToggleCode < 0 && -button == ToggleCode) Flip(); }
         private static void Flip() => MouseLook.Action.Set(!MouseLook.Action.V);
     }
 

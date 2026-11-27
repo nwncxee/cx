@@ -361,19 +361,12 @@ public static partial class UiHost
         return false;
     }
 
-    /// <summary>Fire a fallen-through key at every registered chord consumer; each self-gates on its own
-    /// arm/consent/debounce state. ponytail: fire-all (one consumer today); switch to a priority resolve
-    /// (<see cref="ResolveChord"/>) only if two consumers ever contend for the same key.</summary>
-    public static void FireChords(uint key, int sdlMods)
-    {
-        for (int i = 0; i < _chords.Count; i++) _chords[i].Fire(key, sdlMods);
-    }
+    /// <summary>Fire a fallen-through key at the one chord consumer <see cref="ResolveChord"/> ranks first for it; that
+    /// consumer still self-gates on its own arm/consent/debounce state.</summary>
+    public static void FireChords(uint key, int sdlMods) => ResolveChord((int)key)?.Fire(key, sdlMods);
 
-    /// <summary>Fire a fallen-through mouse button at every registered chord consumer (self-gating).</summary>
-    public static void FireMouseChords(int button, int sdlMods)
-    {
-        for (int i = 0; i < _chords.Count; i++) _chords[i].FireMouse(button, sdlMods);
-    }
+    /// <summary>Fire a fallen-through mouse button at the chord consumer ranked first for it, asked as key -button.</summary>
+    public static void FireMouseChords(int button, int sdlMods) => ResolveChord(-button)?.FireMouse(button, sdlMods);
 
     /// <summary>The frame's draw count: every frame's draw starts at <see cref="UiLayer.UnderGui"/>, once.</summary>
     private sealed class DrawFrameState { public int No; }

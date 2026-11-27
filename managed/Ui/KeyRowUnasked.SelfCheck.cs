@@ -84,13 +84,13 @@ public sealed partial class KnobPanel
             {
                 InteractWorldDouble.Install();
                 InteractKnobs.Key.Set("F");
-                bool thumb = MouseLookService.Flips(-4, -4), key = MouseLookService.Flips(']', ']');
+                bool thumb = UiHost.ResolveChord(-4) != InteractInput.Chord, key = UiHost.ResolveChord(']') != InteractInput.Chord;
                 InteractKnobs.Key.Set("Mouse4");
-                bool thumbShared = MouseLookService.Flips(-4, -4);
+                bool thumbShared = UiHost.ResolveChord(-4) == InteractInput.Chord;
                 InteractKnobs.Key.Set("]");
-                bool keyShared = MouseLookService.Flips(']', ']');
-                check.Expect(thumb && key, $"U5 control: with Interact on F the toggle's own key and thumb button flip the action camera (Mouse4 {thumb}, ] {key})");
-                check.Expect(!thumbShared && !keyShared, $"U5 bound to Interact too, they run Interact and leave the action camera (Mouse4 {thumbShared}, ] {keyShared})");
+                bool keyShared = UiHost.ResolveChord(']') == InteractInput.Chord;
+                check.Expect(thumb && key, $"U5 control: with Interact on F, Interact's chord wins neither the thumb button nor ] (Mouse4 {thumb}, ] {key})");
+                check.Expect(thumbShared && keyShared, $"U5 bound to Interact, the thumb button and ] go to Interact's chord, ranked above the action camera's toggle (Mouse4 {thumbShared}, ] {keyShared})");
             }
             {
                 KnobPanel p = Fresh();
@@ -146,7 +146,7 @@ public sealed partial class KnobPanel
                 check.Expect(!InteractInput.Chord.WantsKey(0), "U8 an unbound Interact key wants no press, not code 0");
                 InteractKnobs.Key.Set("]");
                 InteractInput.Use(null);
-                check.Expect(MouseLookService.Flips(']', ']'), "U8 with no world in, Interact takes nothing, so ] still toggles the action camera");
+                check.Expect(UiHost.ResolveChord(']') != InteractInput.Chord, "U8 with no world in, Interact's chord wants nothing, so ] goes to the chord below it");
             }
             {
                 InteractWorldDouble w = InteractWorldDouble.Install();
