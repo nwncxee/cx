@@ -206,6 +206,43 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
+        internal struct Pool { internal ModelDef Water, Deck; internal int WaterPart, DeckPart; }
+
+        /// <summary>A walkmesh bed at z 0 under two static trimesh surfaces at z 1, each holding a recipe interned
+        /// and assigned as the seam feed does: one with render hint <c>water</c> at x -2, a plain deck at x 2.</summary>
+        internal static Pool BuildPool(DbId scene, Vector3 pos)
+        {
+            DbId bed = Obj(scene, Model("poolbed", HitTest.ClassTile, Quad(0f, 0f, 5f, 2), NodeKind.Aabb),
+                           pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            var pool = new Pool { Water = Surface("poolwater", -2f, "water"), Deck = Surface("pooldeck", 2f, "") };
+            DbId water = Obj(scene, pool.Water, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            DbId deck = Obj(scene, pool.Deck, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            pool.WaterPart = SceneDb.ObjPartFirst[water.Index];
+            pool.DeckPart = SceneDb.ObjPartFirst[deck.Index];
+            DrawRecipe.Assign(pool.WaterPart, DrawRecipe.Intern(pool.Water, 0, plan: false));
+            DrawRecipe.Assign(pool.DeckPart, DrawRecipe.Intern(pool.Deck, 0, plan: false));
+            Array.Resize(ref _objs, _objs.Length + 3);
+            _objs[^3] = bed; _objs[^2] = water; _objs[^1] = deck;
+            return pool;
+        }
+
+        /// <summary>Give back what <see cref="BuildPool"/> interned, before <see cref="Tear"/> frees the parts.</summary>
+        internal static void DrainPool(in Pool pool)
+        {
+            DrawRecipe.Assign(pool.WaterPart, -1);
+            DrawRecipe.Assign(pool.DeckPart, -1);
+            DrawRecipe.Forget(pool.Water);
+            DrawRecipe.Forget(pool.Deck);
+        }
+
+        private static ModelDef Surface(string name, float cx, string hint)
+        {
+            MeshDef m = Quad(cx, 1f, 1.5f, 6);
+            m.Indices = new uint[] { 0, 1, 2, 0, 2, 3 };
+            m.RenderHint = hint;
+            return Model(name, HitTest.ClassTile, m, NodeKind.TriMesh);
+        }
+
         internal struct Bridge { internal DbId Ramp, Deck, Neighbour, SeamFloor, Seam; }
 
         /// <summary>A walkmesh bridge as content builds one: a tile's ramp at z 9.67 in cell (7, 9), a static

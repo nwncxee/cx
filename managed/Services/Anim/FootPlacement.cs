@@ -257,9 +257,9 @@ internal static unsafe class FootPlacement
         => MathF.Abs(f) + MathF.Abs(s) < 1e-5f ? Quaternion.Identity : Arc(Vector3.UnitZ, Vector3.UnitZ - f * fwd - s * right);
 
     /// <summary>The floor under <paramref name="ankle"/> within <c>refZ +- max</c>, as an offset from
-    /// <paramref name="refZ"/>; 0 when there is none. Tiles and static placeables (BSP parts, counted as tile
-    /// hits), tile gobs and placeables are ground; anything else hit -- a creature, a held item, a VFX -- is
-    /// cast past.</summary>
+    /// <paramref name="refZ"/>; 0 when there is none. Tiles, static placeables, tile gobs and placeables are
+    /// ground; a creature, a held item or a VFX is cast past, and the ray goes through a surface drawn as water
+    /// to the bed under it.</summary>
     private static bool FloorOffset(IntPtr scene, IntPtr self, Vector3 ankle, float refZ, float max, out float off)
     {
         Vector3 from = new(ankle.X, ankle.Y, refZ + max), to = new(ankle.X, ankle.Y, refZ - max);
@@ -267,7 +267,7 @@ internal static unsafe class FootPlacement
         for (int i = 0; i < MaxCasts && from.Z > to.Z; i++)
         {
             Rays++;
-            if (!SceneRay.Cast(scene, from, to, self, out Vector3 hit, out IntPtr g, statics: true)) break;
+            if (!SceneRay.Cast(scene, from, to, self, out Vector3 hit, out IntPtr g, statics: true, throughWater: true)) break;
             if (g == IntPtr.Zero || SceneRay.IsTile(g)) { Tile++; off = hit.Z - refZ; SceneRay.Release(); return true; }
             if (SceneRay.IsPlaceable(g)) { Placeable++; off = hit.Z - refZ; SceneRay.Release(); return true; }
             from.Z = hit.Z - SceneRay.Nudge;

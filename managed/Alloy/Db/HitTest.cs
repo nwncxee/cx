@@ -63,6 +63,9 @@ public struct HitQuery
     /// <summary>Isotropic box expansion for box-only mode -- the engine's <c>g_HitCheckBoxExpansion</c>
     /// global (<c>AurSetHitcheckBoxExpansion</c>), which widens a creature's pick box.</summary>
     public Vector3 BoxExpand;
+    /// <summary>Cast through every part Alloy draws as water (<see cref="HitTest.DrawnWater"/>): a foot's floor cast
+    /// wants the bed under the surface, not the surface. No engine field: no game cast sets it.</summary>
+    public bool PassWater;
 
     /// <summary>Every surface admitted.</summary>
     public const ulong All = ulong.MaxValue;
@@ -584,6 +587,7 @@ public static class HitTest
         // HitPartOnBSPNode @0x47b790: triggers with no gate, the static trimesh parts behind
         // hitcheck_static_trimesh_parts (0 by default), the tile walkmesh behind hitcheck_static_bsp_parts (1).
         if (statics && !(trigger || (walkmesh ? q.WalkMesh : q.StaticPlaceables))) return false;
+        if (q.PassWater && DrawnWater(p)) return false;
 
         Vector3 from = q.From, end = to;
         if (statics && walkmesh && !WalkCells.Clip(p, ref from, ref end)) return false;
@@ -676,6 +680,10 @@ public static class HitTest
         Accept(p, ref to, ref r, b, nrm, f, surf, 0, localPoint: true);
         return true;
     }
+
+    /// <summary>Is part <paramref name="p"/> drawn as water: its recipe in Alloy's water class, which is what the
+    /// player sees as a water surface?</summary>
+    internal static bool DrawnWater(int p) => SceneDb.PartRecipe[p] is int r and >= 0 && DrawRecipe.Cls(r) == (int)AlloyClass.Water;
 
     /// <summary>The uniform scale a part's world matrix carries -- the engine's accumulated scale argument.
     /// An Aurora transform is restricted to a uniform scale, so one row length is the whole answer.</summary>

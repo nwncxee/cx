@@ -58,6 +58,7 @@ public static unsafe partial class HitTestCheck
         ok &= ReMark(log);
         ok &= Scene(log);
         ok &= MergedHead(log);
+        ok &= ThroughWater(log);
         ok &= OneWalkmeshPerCell(log);
         ok &= Bench(log);
         log.Info(ok ? "HitTest.SelfCheck: passed" : "HitTest.SelfCheck: see failures above");
@@ -486,6 +487,34 @@ public static unsafe partial class HitTestCheck
                          + "0.010 -- the hit test is casting the node's own mesh under the bucket's zeroed pose");
         Fixture.Tear();
         return ok;
+    }
+
+    /// <summary>A foot's floor cast (<see cref="HitQuery.PassWater"/>) through a surface drawn as water lands on the
+    /// bed under it, and still stands on a plain deck; a cast without it stands on both. Oracle: the fixture's
+    /// literal heights, bed z 0 and surfaces z 1.</summary>
+    private static bool ThroughWater(ExtenderLog log)
+    {
+        bool ok = true;
+        var world = Fixture.Build();
+        var at = new Vector3(740f, 700f, 0f);
+        Fixture.Pool pool = Fixture.BuildPool(world.Scene, at);
+        if (!HitTest.DrawnWater(pool.WaterPart) || HitTest.DrawnWater(pool.DeckPart))
+            ok = Fail(log, "the pool's render hints did not class the water surface as water and the deck as not");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(-2f, 0f, 0f), false, 1f, "a plain cast onto water");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(-2f, 0f, 0f), true, 0f, "a foot cast onto water");
+        ok &= LandsAt(log, world.Scene, at + new Vector3(2f, 0f, 0f), true, 1f, "a foot cast onto a plain deck");
+        Fixture.DrainPool(pool);
+        Fixture.Tear();
+        return ok;
+    }
+
+    private static bool LandsAt(ExtenderLog log, DbId scene, Vector3 xy, bool passWater, float want, string what)
+    {
+        HitQuery q = HitQuery.Ray(scene, xy + new Vector3(0f, 0f, 3f), xy + new Vector3(0f, 0f, -1f), statics: true);
+        q.PassWater = passWater;
+        if (!HitTest.Cast(q, out HitResult r)) return Fail(log, $"{what} hit nothing");
+        if (MathF.Abs(r.Point.Z - want) > 1e-3f) return Fail(log, $"{what} landed at z {r.Point.Z:F3}, want {want:F3}");
+        return true;
     }
 
     /// <summary>Build a synthetic scene in the real tables and cast at it: nearest-hit ordering across
