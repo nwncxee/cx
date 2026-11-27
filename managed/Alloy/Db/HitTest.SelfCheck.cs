@@ -4,6 +4,7 @@ using System.Numerics;
 using CX.Alloy.Mdl;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 
 namespace CX.Alloy.Db;
 
@@ -497,14 +498,41 @@ public static unsafe partial class HitTestCheck
         bool ok = true;
         var world = Fixture.Build();
         var at = new Vector3(740f, 700f, 0f);
+        Vector3 water = at + new Vector3(-3.4f, 0f, 0f), deck = at + new Vector3(3.4f, 0f, 0f);
+        int recipes = DrawRecipe.Count, inUse = DrawRecipe.RetiredInUse;
         Fixture.Pool pool = Fixture.BuildPool(world.Scene, at);
-        if (!HitTest.DrawnWater(pool.WaterPart) || HitTest.DrawnWater(pool.DeckPart))
-            ok = Fail(log, "the pool's render hints did not class the water surface as water and the deck as not");
-        ok &= LandsAt(log, world.Scene, at + new Vector3(-2f, 0f, 0f), false, 1f, "a plain cast onto water");
-        ok &= LandsAt(log, world.Scene, at + new Vector3(-2f, 0f, 0f), true, 0f, "a foot cast onto water");
-        ok &= LandsAt(log, world.Scene, at + new Vector3(2f, 0f, 0f), true, 1f, "a foot cast onto a plain deck");
-        Fixture.DrainPool(pool);
+        if (!HitTest.IsWater(pool.WaterPart) || !HitTest.IsWater(pool.StockPart) || HitTest.IsWater(pool.DeckPart))
+            ok = Fail(log, "the hinted water and the stock water did not both read as water, or the deck did");
+        ok &= LandsAt(log, world.Scene, water, false, 1f, "a plain cast onto water");
+        ok &= LandsAt(log, world.Scene, water, true, 0f, "a foot cast onto water");
+        ok &= LandsAt(log, world.Scene, at, true, 0f, "a foot cast onto stock water with shiny water off");
+        ok &= LandsAt(log, world.Scene, deck, true, 1f, "a foot cast onto a plain deck");
+        ok &= FootCastThroughWater(log, world.Scene, water);
         Fixture.Tear();
+        if (DrawRecipe.Count != recipes || DrawRecipe.RetiredInUse != inUse)
+            ok = Fail(log, "the pool's recipes outlived the fixture's teardown, or were retired while its parts still drew them");
+        return ok;
+    }
+
+    /// <summary>The foot's own cast, <see cref="SceneRay.DbCast"/> on a minted scene facade, reaches the bed under
+    /// the water. The vtable block is built here only when nothing has built it yet, which is run-demo.</summary>
+    private static bool FootCastThroughWater(ExtenderLog log, DbId scene, Vector3 xy)
+    {
+        bool fresh = !Seam.Facade.Built;
+        if (fresh && Seam.Facade.Build(new Seam.SeamRegistry(), log, census: false) < 0)
+            return Fail(log, "the seam's vtable block could not be built, so the foot's own cast cannot be checked");
+        nint shell = Seam.Facade.Mint(Seam.FacadeKind.Scene, scene);
+        bool ok = shell != 0 || Fail(log, "the pool's scene took no facade");
+        if (shell != 0)
+        {
+            Seam.SeamShell.NoteScene(shell, world: true);
+            if (!SceneRay.DbCast(shell, xy + new Vector3(0f, 0f, 3f), xy + new Vector3(0f, 0f, -1f), IntPtr.Zero,
+                                 out Vector3 hit, out _, statics: true))
+                ok = Fail(log, "the foot's own cast onto water hit nothing");
+            else if (MathF.Abs(hit.Z) > 1e-3f) ok = Fail(log, $"the foot's own cast onto water landed at z {hit.Z:F3}, want 0.000");
+            Seam.Facade.Retire(shell);
+        }
+        if (fresh) Seam.Facade.DropTables();
         return ok;
     }
 

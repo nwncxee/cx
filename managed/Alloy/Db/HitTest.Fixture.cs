@@ -206,40 +206,51 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
-        internal struct Pool { internal ModelDef Water, Deck; internal int WaterPart, DeckPart; }
+        internal struct Pool { internal ModelDef Water, Stock, Deck; internal int WaterPart, StockPart, DeckPart; }
 
-        /// <summary>A walkmesh bed at z 0 under two static trimesh surfaces at z 1, each holding a recipe interned
-        /// and assigned as the seam feed does: one with render hint <c>water</c> at x -2, a plain deck at x 2.</summary>
+        /// <summary>The pool's stock-water diffuse: no render hint names it water, only its bumpy-shiny <c>.txi</c>.</summary>
+        private const string StockWater = "cxpoolstock";
+
+        /// <summary>A walkmesh bed at z 0 under three static trimesh surfaces at z 1, each holding a recipe interned
+        /// and assigned as the seam feed does: render hint <c>water</c> at x -3.4, stock water (no hint, a
+        /// bumpy-shiny diffuse) at x 0, and a plain deck at x 3.4.</summary>
         internal static Pool BuildPool(DbId scene, Vector3 pos)
         {
             DbId bed = Obj(scene, Model("poolbed", HitTest.ClassTile, Quad(0f, 0f, 5f, 2), NodeKind.Aabb),
                            pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
-            var pool = new Pool { Water = Surface("poolwater", -2f, "water"), Deck = Surface("pooldeck", 2f, "") };
-            DbId water = Obj(scene, pool.Water, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
-            DbId deck = Obj(scene, pool.Deck, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
-            pool.WaterPart = SceneDb.ObjPartFirst[water.Index];
-            pool.DeckPart = SceneDb.ObjPartFirst[deck.Index];
-            DrawRecipe.Assign(pool.WaterPart, DrawRecipe.Intern(pool.Water, 0, plan: false));
-            DrawRecipe.Assign(pool.DeckPart, DrawRecipe.Intern(pool.Deck, 0, plan: false));
-            Array.Resize(ref _objs, _objs.Length + 3);
-            _objs[^3] = bed; _objs[^2] = water; _objs[^1] = deck;
+            var pool = new Pool
+            {
+                Water = Surface("poolwater", -3.4f, "water", ""), Stock = Surface("poolstock", 0f, "", StockWater),
+                Deck = Surface("pooldeck", 3.4f, "", ""),
+            };
+            TexId stock = TexRegistry.Acquire(StockWater);
+            TexRegistry.Land(stock, 0xE7000001u, 64, bumpyShiny: true);
+            pool.WaterPart = Surfaced(scene, pool.Water, pos);
+            pool.StockPart = Surfaced(scene, pool.Stock, pos);
+            pool.DeckPart = Surfaced(scene, pool.Deck, pos);
+            TexRegistry.Release(stock);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = bed;
             return pool;
         }
 
-        /// <summary>Give back what <see cref="BuildPool"/> interned, before <see cref="Tear"/> frees the parts.</summary>
-        internal static void DrainPool(in Pool pool)
+        /// <summary>Place <paramref name="model"/> as a static and give its part the recipe the seam feed would.</summary>
+        private static int Surfaced(DbId scene, ModelDef model, Vector3 pos)
         {
-            DrawRecipe.Assign(pool.WaterPart, -1);
-            DrawRecipe.Assign(pool.DeckPart, -1);
-            DrawRecipe.Forget(pool.Water);
-            DrawRecipe.Forget(pool.Deck);
+            DbId o = Obj(scene, model, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = o;
+            int p = SceneDb.ObjPartFirst[o.Index];
+            DrawRecipe.Assign(p, DrawRecipe.Intern(model, 0, plan: false));
+            return p;
         }
 
-        private static ModelDef Surface(string name, float cx, string hint)
+        private static ModelDef Surface(string name, float cx, string hint, string diffuse)
         {
             MeshDef m = Quad(cx, 1f, 1.5f, 6);
             m.Indices = new uint[] { 0, 1, 2, 0, 2, 3 };
             m.RenderHint = hint;
+            if (diffuse.Length > 0) m.Textures = new[] { diffuse, "", "", "" };
             return Model(name, HitTest.ClassTile, m, NodeKind.TriMesh);
         }
 
@@ -427,14 +438,17 @@ public static unsafe partial class HitTestCheck
                 if (!SceneDb.Objects.Valid(o)) continue;
                 HitGrid.Remove(o.Index);
                 int first = SceneDb.ObjPartFirst[o.Index];
+                bool drew = false;
                 for (int p = first; p < first + SceneDb.ObjPartCount[o.Index]; p++)
                 {
+                    if (SceneDb.PartRecipe[p] >= 0) { DrawRecipe.Assign(p, -1); drew = true; }
                     // A recycled part slot must not inherit this fixture's geometry: the box is the one hit
                     // column a later tenant reads before anything re-derives it.
                     SceneDb.HitPartBMin[p] = new Vector3(1f); SceneDb.HitPartBMax[p] = new Vector3(-1f);
                     SceneDb.HitPartTrigger[p] = 0;
                     SceneDb.Parts.Free(SceneDb.Parts.IdAt(p));
                 }
+                if (drew && SceneDb.ObjModel[o.Index] is ModelDef m) DrawRecipe.Forget(m);
                 SceneDb.Objects.Free(o);
             }
             foreach (DbId c in _cams) if (SceneDb.Cameras.Valid(c)) SceneDb.Cameras.Free(c);

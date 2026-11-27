@@ -55,13 +55,12 @@ public static unsafe class SceneRay
     }
 
     /// <summary>Nearest hit on <paramref name="from"/>-&gt;<paramref name="to"/>, skipping <paramref name="ignore"/>
-    /// (the followed gob); <paramref name="gob"/> is zero for a tile part or a static placeable. <paramref name="statics"/>
-    /// also tests static placeables, as the engine's footstep cast does. <paramref name="throughWater"/> casts through
-    /// what Alloy draws as water; the engine path has no water test.</summary>
-    public static bool Cast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore, out Vector3 hit, out IntPtr gob,
-                            bool statics = false, bool throughWater = false)
+    /// (the followed gob). <paramref name="gob"/> is the gob hit, zero for a tile part or a static placeable.
+    /// <paramref name="statics"/> also tests static placeables (a boardwalk, a rug), as the engine's own footstep cast
+    /// does -- a no-op on a client where the switch did not resolve. Alloy's cast goes through water.</summary>
+    public static bool Cast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore, out Vector3 hit, out IntPtr gob, bool statics = false)
     {
-        if (CX.Alloy.Renderer.On) return DbCast(scene, from, to, ignore, out hit, out gob, statics, throughWater);
+        if (CX.Alloy.Renderer.On) return DbCast(scene, from, to, ignore, out hit, out gob, statics);
         var info = new CHitInfo((IntPtr)_info);
         // hit-test mode 0 = BSP parts then gobs; -0x40000001 and box 0 are the camera's own arguments
         _reset((IntPtr)_info, 0, -0x40000001L, 0);
@@ -86,16 +85,16 @@ public static unsafe class SceneRay
     /// a cast runs per creature per frame.</summary>
     private static readonly DbId[] _dbIgnore = new DbId[1];
 
-    /// <inheritdoc cref="Cast(IntPtr, Vector3, Vector3, IntPtr, out Vector3, out IntPtr, bool, bool)"/>
-    private static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
-                              out Vector3 hit, out IntPtr gob, bool statics, bool throughWater)
+    /// <inheritdoc cref="Cast(IntPtr, Vector3, Vector3, IntPtr, out Vector3, out IntPtr, bool)"/>
+    internal static bool DbCast(IntPtr scene, Vector3 from, Vector3 to, IntPtr ignore,
+                               out Vector3 hit, out IntPtr gob, bool statics)
     {
         hit = default;
         gob = IntPtr.Zero;
         DbId s = Facade.SceneId(scene), skip = Facade.ObjectId(ignore);
         if (s.IsNull) return false;
         HitQuery q = HitQuery.Ray(s, from, to, statics);
-        q.PassWater = throughWater;
+        q.PassWater = true;
         _dbIgnore[0] = skip;
         if (!skip.IsNull) { q.Ignore = _dbIgnore; q.IgnoreCount = 1; }
         if (!HitTest.Cast(q, out HitResult r)) return false;
