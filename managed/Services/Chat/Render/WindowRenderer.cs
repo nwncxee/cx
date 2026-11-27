@@ -27,7 +27,7 @@ public static partial class WindowRenderer
     /// <summary>Per-thread reusable scratch for the backlog walk, grown with room to spare once the session's kept
     /// tells outgrow it, so every line the store holds fits.</summary>
     [System.ThreadStatic] private static ChatLine[]? _ringScratch;
-    private static ChatLine[] RingScratch(int count)
+    internal static ChatLine[] RingScratch(int count)
     {
         ChatLine[]? s = _ringScratch;
         if (s == null || s.Length < count) _ringScratch = s = new ChatLine[System.Math.Max(ChatStore.Capacity, System.Math.Max(count, (s?.Length ?? 0) * 2))];
@@ -253,19 +253,16 @@ public static partial class WindowRenderer
         // text width stays stable, so lines don't reflow the moment history grows past one screen.
         float maxTextW = bw - 2 * ChatWindow.Pad - ChatWindow.ScrollbarW;
 
-        // Snapshot the store version BEFORE the backlog walk: a concurrent Append between View and this read
-        // would pair the new version with stale blockH, giving a persistent false hit. Reading first means
-        // a mid-build Append stores the old version → next build misses → self-heals in one frame.
+        // Version before View: an Append mid-build then misses next frame and heals, never a stale hit.
         int storeVer = store.Version;
         ChatLine[] all = RingScratch(store.Count);
         string? pin = active.PinnedName.Length > 0 ? active.PinnedName : null;
         int nAll = store.View(active.ChannelMask, active.PlayerId, all, pin);
+        System.Array.Clear(all, nAll, all.Length - nAll);  // the shared buffer must not keep a cleared session's lines alive
         List<Rune> runes = _runesScratch ??= new List<Rune>();
         List<uint> cols = _colsScratch ??= new List<uint>();
 
-        // Pass 1: wrap every match to a block height; sum -> contentH (a gap between messages).
-        // Cached per window: the wrap is stable as long as width, content, and text-affecting settings
-        // haven't changed, so a move drag (only X/Y change) skips the entire backlog pass.
+        // Pass 1: wrap heights per match, cached per window so a move drag skips the backlog pass.
         LayoutCache? lc = win.WrapCache;
         float[] blockH;
         float contentH;

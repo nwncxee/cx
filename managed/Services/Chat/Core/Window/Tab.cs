@@ -39,9 +39,9 @@ public sealed class Tab
     { Label = label; ChannelMask = channelMask; PlayerId = playerId; }
 
     /// <summary>Does a line show in this tab? Includes outbound Tell echoes whose recipient matches
-    /// <see cref="PinnedName"/> (two-sided conversation).</summary>
+    /// <see cref="PinnedName"/> (two-sided conversation), and lines its sender sent under an id from before a relog.</summary>
     public bool Matches(ChatLine line)
         => (ChannelMask & line.Channel) != 0
            && (!PlayerId.HasValue || line.PlayerId == PlayerId.Value
-               || (PinnedName.Length > 0 && line.TellRecipient == PinnedName));
+               || (PinnedName.Length > 0 && (line.TellRecipient == PinnedName || line.SenderName == PinnedName)));
 }

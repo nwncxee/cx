@@ -14,17 +14,18 @@ public sealed class ChatStore
     /// <summary>Backlog depth for every line but a tell; tells are kept on top of it until <see cref="Clear"/>.</summary>
     public const int Capacity = 2048;
 
-    /// <summary>The tell channel flag: a line carrying it is kept for the whole session.</summary>
-    private const uint TellChannel = 0x002;  // not-an-offset: chat channel flag
+    /// <summary>Room for tells before the list first doubles.</summary>
+    private const int FirstTellRoom = 64;
+
+    /// <summary>A kept tell, and how many lines the ring had taken when it arrived, which orders it among them.</summary>
+    private readonly record struct Kept(ChatLine Line, long Mark);
 
     private readonly ChatLine[] _ring = new ChatLine[Capacity];
-    private readonly long[] _ringSeq = new long[Capacity];
     private int _next;   // next write slot
     private int _size;   // valid entries, <= Capacity
-    private ChatLine[] _tells = new ChatLine[64];
-    private long[] _tellSeq = new long[64];
+    private long _written;   // lines the ring has ever taken
+    private Kept[] _tells = new Kept[FirstTellRoom];
     private int _tellCount;
-    private long _seq;   // arrival order across the ring and the tells
     private volatile int _version;
     private readonly List<Action<ChatLine>> _observers = new();
 
@@ -39,14 +40,13 @@ public sealed class ChatStore
     /// full), then notify observers.</summary>
     public void Append(ChatLine line)
     {
-        long seq = ++_seq;
-        if ((line.Channel & TellChannel) != 0) KeepTell(line, seq);
+        if ((line.Channel & InboundChannel.Tell) != 0) KeepTell(line);
         else
         {
             _ring[_next] = line;
-            _ringSeq[_next] = seq;
             _next = (_next + 1) % Capacity;
             if (_size < Capacity) _size++;
+            _written++;
         }
         _version++;
         for (int i = 0; i < _observers.Count; i++) _observers[i](line);
@@ -54,18 +54,11 @@ public sealed class ChatStore
 
     /// <summary>Append a tell to the session's list, growing it by doubling; the count is published last, so a
     /// concurrent <see cref="View(uint,uint?,ChatLine[],int,string?)"/> never reads a slot not yet written.</summary>
-    private void KeepTell(ChatLine line, long seq)
+    private void KeepTell(ChatLine line)
     {
-        ChatLine[] tells = _tells;
-        long[] seqs = _tellSeq;
-        if (_tellCount == tells.Length)
-        {
-            Array.Resize(ref tells, tells.Length * 2);
-            Array.Resize(ref seqs, seqs.Length * 2);
-        }
-        tells[_tellCount] = line;
-        seqs[_tellCount] = seq;
-        _tellSeq = seqs;
+        Kept[] tells = _tells;
+        if (_tellCount == tells.Length) Array.Resize(ref tells, tells.Length * 2);
+        tells[_tellCount] = new Kept(line, _written);
         _tells = tells;
         _tellCount++;
     }
@@ -81,7 +74,7 @@ public sealed class ChatStore
         _next = 0;
         _size = 0;
         _tellCount = 0;
-        Array.Clear(_tells, 0, _tells.Length);
+        Array.Clear(_tells, 0, _tells.Length);  // mutant-ok: only lets the GC take the last session's tells
         _version++;
     }
 
@@ -95,18 +88,16 @@ public sealed class ChatStore
         => View(channelMask, playerId, dest, 0, tellPinName);
 
     /// <summary>
-    /// As <see cref="View(uint,uint?,ChatLine[],string?)"/>, but first skips the <paramref name="skip"/>
-    /// newest matching lines -- the scrollback offset. When <paramref name="tellPinName"/> is set, outbound
-    /// Tell echoes whose <see cref="ChatLine.TellRecipient"/> matches are included alongside the playerId
-    /// filter (two-sided conversation).
+    /// As <see cref="View(uint,uint?,ChatLine[],string?)"/>, but first skips the <paramref name="skip"/> newest
+    /// matching lines. A set <paramref name="tellPinName"/> also takes the player's tells to that name and that
+    /// sender's lines from an id before a relog (<see cref="ChatLine.TellRecipient"/>, <see cref="ChatLine.SenderName"/>).
     /// </summary>
     public int View(uint channelMask, uint? playerId, ChatLine[] dest, int skip, string? tellPinName = null)
     {
         int n = 0, skipped = 0;
         bool hasPin = tellPinName != null && tellPinName.Length > 0;
-        ChatLine[] tells = _tells;
-        long[] tellSeq = _tellSeq;
-        int t = Math.Min(_tellCount, Math.Min(tells.Length, tellSeq.Length)) - 1;
+        Kept[] tells = _tells;
+        int t = Math.Min(_tellCount, tells.Length) - 1;  // mutant-ok: a list grown after the read above is longer still
         int seen = 0;
         while (n < dest.Length)
         {
@@ -114,13 +105,14 @@ public sealed class ChatStore
             if (idx < 0) idx += Capacity;
             bool ring = seen < _size;
             ChatLine line;
-            if (t >= 0 && (!ring || tellSeq[t] > _ringSeq[idx])) line = tells[t--];
+            if (t >= 0 && (!ring || tells[t].Mark > _written - 1 - seen)) line = tells[t--].Line;
             else if (ring) { line = _ring[idx]; seen++; }
             else break;
+            if (line is null) continue;  // mutant-ok: only a Clear racing ingest leaves a counted slot empty
 
             if ((channelMask & line.Channel) == 0) continue;
             if (playerId.HasValue && line.PlayerId != playerId.Value
-                && !(hasPin && line.TellRecipient == tellPinName))
+                && !(hasPin && (line.TellRecipient == tellPinName || line.SenderName == tellPinName)))
                 continue;
 
             if (skipped < skip) { skipped++; continue; }

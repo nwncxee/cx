@@ -176,7 +176,7 @@ public sealed unsafe partial class ChatService : IExtenderService
             // anywhere in it (nwserver SendServerToPlayerChatMessage case 4), so the name comes from what we sent.
             string tellRecip = (channel & 0x002) != 0 && _playerResolver?.LocalIngestId() == playerId
                 ? TellTarget.TakeEcho(raw) : "";
-            string speaker = hasPortrait != 0 ? _playerResolver?.NameOf(playerId) ?? "" : "";
+            string speaker = hasPortrait != 0 || (channel & InboundChannel.Tell) != 0 ? _playerResolver?.NameOf(playerId) ?? "" : "";
             var line = new ChatLine(channel, speaker, playerId, portraitRef,
                 ColorRunParser.Parse(raw), DateTime.UtcNow, raw, GameNow(), tellRecip);
             // Tells are rare + this path is cold: log every one unconditionally (throttle covers the rest).
