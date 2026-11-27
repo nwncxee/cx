@@ -29,7 +29,7 @@ internal static class TransitionEdges
                 uint door = w.Door(1.5f, leadsAway: true);
                 w.Press('F');
                 check.Expect(w.Did(door) && w.Walks.Count == 0,
-                    $"a closed transition door gets its default action, which walks through it, not a walk of Interact's own: {w.Walks.Count} walk(s), {w.Seen}");
+                    $"a closed transition door gets its default action, which opens it, not a walk of Interact's own: {w.Walks.Count} walk(s), {w.Seen}");
             }
             {
                 var w = InteractWorldDouble.Install();

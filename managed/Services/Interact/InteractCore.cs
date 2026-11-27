@@ -74,7 +74,7 @@ internal static class InteractCore
     internal const float TransitionReach = 2f;
 
     /// <summary>The rules in the fixed order the Interact key runs them.</summary>
-    private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot, InteractKey.PickUp };
+    private static readonly InteractKey[] Rules = { InteractKey.Transition, InteractKey.Loot, InteractKey.PickUp, InteractKey.Door };
 
     /// <summary>The rules a pointed target is held to, in order: Talk qualifies a target the player points at, though
     /// no press searches for the nearest creature to talk to.</summary>
@@ -126,6 +126,7 @@ internal static class InteractCore
         InteractKey.Transition => InteractKnobs.Transitions.V,
         InteractKey.Loot => InteractKnobs.Loot.V,
         InteractKey.PickUp => InteractKnobs.PickUp.V,
+        InteractKey.Door => InteractKnobs.Doors.V,
         InteractKey.Talk => InteractKnobs.Talk.V,
         _ => false,
     };
@@ -196,6 +197,7 @@ internal static class InteractCore
         InteractKey.Talk => t.Kind == ThingKind.Creature && !t.Dead && t.Attitude != Attitude.Hostile,
         InteractKey.Loot => (t.Kind == ThingKind.BodyBag || (t.Kind == ThingKind.Creature && t.Dead)) && t.Lootable && !t.TrapFound,
         InteractKey.PickUp => t.Kind == ThingKind.Item,
+        InteractKey.Door => t.Kind == ThingKind.Door && !t.LeadsAway && !t.Open && !t.Destroyed && !t.TrapFound,
         _ => false,
     };
 }

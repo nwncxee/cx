@@ -12,8 +12,8 @@ internal sealed class InteractState
     internal IInteractWorld? World;
     /// <summary>The press code each key setting binds, by <see cref="InteractKey"/>, read at a setting's edit; 0 unbound.</summary>
     internal readonly int[] Codes = new int[Bindable];
-    /// <summary>The keys with a row in <see cref="Codes"/>: Interact, Transition, Loot and Pick up.</summary>
-    internal const int Bindable = (int)InteractKey.PickUp + 1;
+    /// <summary>The keys with a row in <see cref="Codes"/>: Interact, Transition, Loot, Pick up and Door.</summary>
+    internal const int Bindable = (int)InteractKey.Door + 1;
     /// <summary>The locked objects and the items an Interact press tried: a locked one is passed over until it reads
     /// unlocked, an item while it lies on the ground.</summary>
     internal readonly HashSet<uint> Tried = new();
@@ -49,6 +49,7 @@ internal static class InteractInput
         S.Codes[(int)InteractKey.Transition] = KeyNames.Code(InteractKnobs.TransitionKey.V);
         S.Codes[(int)InteractKey.Loot] = KeyNames.Code(InteractKnobs.LootKey.V);
         S.Codes[(int)InteractKey.PickUp] = KeyNames.Code(InteractKnobs.PickUpKey.V);
+        S.Codes[(int)InteractKey.Door] = KeyNames.Code(InteractKnobs.DoorKey.V);
     }
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact

@@ -56,6 +56,9 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
     /// <c>CNWSArea::CountVisibleToPlayers</c> raises its own.</summary>
     private const float EyeHeight = 1f;
     private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
+    /// <summary>CNWCDoor's state byte past 0, the closed rest: open one way or the other, and destroyed, which a generic
+    /// door with no visible model also reads.</summary>
+    private const byte DoorOpened1 = 1, DoorOpened2 = 2, DoorDestroyed = 3;
     /// <summary>WalkPlayerToPoint's flags 0: walk or run by the always-run setting and Shift, as a left click does.</summary>
     private const int WalkByRunSetting = 0;
     /// <summary>WalkPlayerToPoint's last argument: show the walk-to ring at the point (ShowWalkToRingVFX).</summary>
@@ -164,6 +167,13 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         return t;
     }
 
+    /// <summary>Fills <paramref name="t"/>'s open and destroyed flags from CNWCDoor's state byte, what GetState returns.</summary>
+    internal static void ReadDoorState(ref Thing t, byte state)
+    {
+        t.Open = state is DoorOpened1 or DoorOpened2;
+        t.Destroyed = state == DoorDestroyed;
+    }
+
     private static Thing? Read(CGameObject go, CNWCObject obj, uint id)
     {
         var t = new Thing { Id = id, Pos = obj.Position };
@@ -209,7 +219,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.Kind = ThingKind.Door;
                 t.Locked = d.Locked != 0;
                 t.TrapFound = d.TrapShown != 0;
-                t.Open = d.State == 0;
+                ReadDoorState(ref t, d.State);
                 t.LeadsAway = d.AreaTransition != 0;
                 return t;
             }
