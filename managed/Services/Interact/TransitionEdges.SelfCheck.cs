@@ -126,6 +126,20 @@ internal static class TransitionEdges
                 w.Press('F');
                 check.Expect(w.Did(exit, back), $"a key let go before the load ended takes the return transition at the next press: {w.Seen}");
             }
+            {
+                var w = InteractWorldDouble.Install();
+                uint exit = w.Transition(-4f, 1f);
+                w.Press('F');
+                check.Expect(w.Did(exit), $"a player standing inside a 10m trigger, 4m from its nearest edge, is 0m from it and Interact takes it: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
+                uint exit = w.Transition(-0.5f, 1f);
+                w.Press('F');
+                Vector3[] o = w.Of(exit).Outline!;
+                check.Expect(w.Did(exit) && w.Walks.Count == 1 && Inside(o, w.Walks[0]),
+                    $"from inside a 3m trigger, 0.5m from its edge, the walk stays inside it: {(w.Walks.Count == 1 ? w.Walks[0].ToString() : "no walk")}, player {w.Player}, {w.Seen}");
+            }
         }
         finally
         {
