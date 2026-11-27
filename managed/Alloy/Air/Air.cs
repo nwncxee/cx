@@ -14,6 +14,9 @@ internal static class Air
 
     /// <summary>The <see cref="Quality"/> values, cheapest first.</summary>
     internal static readonly string[] Levels = { "low", "medium", "high" };
+
+    /// <summary>Does the air lie still at the user's Air detail: at Low no gust, blast or walker stirs it.</summary>
+    internal static bool Still => Quality.V == Levels[0];
     /// <summary>The <see cref="Place"/> values: <c>auto</c> reads the area, the rest name a place's look.</summary>
     internal static readonly string[] Places = { "auto", "none", "crypt", "city", "forest", "meadow" };
 

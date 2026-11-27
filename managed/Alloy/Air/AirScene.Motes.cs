@@ -188,7 +188,7 @@ internal static partial class AirScene
     {
         AirSceneState s = _s;
         AirMotes m = s.Motes;
-        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0] || !(radius > 0f)) return;
+        if (!s.Laid || !On(s) || Air.Still || !(radius > 0f)) return;
         if (m.Lamps > 0 && Hangs(s)) Throw(m, m.Lamps * PerLamp, at, radius, BlastSpeed, false);
         if (Glints(s)) Throw(s.Pollen, MaxPollen, at, radius, BlastSpeed, false);
         if (Falls(s)) Throw(s.Leaves, MaxLeaves, at, radius, BlastSpeed, true);

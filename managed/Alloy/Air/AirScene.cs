@@ -199,7 +199,7 @@ internal static partial class AirScene
             return;
         }
         float speed = wind.Length();
-        bool still = Air.Quality.V == Air.Levels[0];
+        bool still = Air.Still;
         if (!s.Stepped && !s.Fresh) Settle(s, speed);
         else if (s.Stepped && !still && MathF.Abs(speed - s.Speed) > Calm) Launch(s, speed - s.Speed, speed > 0f ? wind / speed : s.Dir);
         s.Stepped = true;
@@ -248,7 +248,7 @@ internal static partial class AirScene
     internal static void Part(Vector3 was, Vector3 now)
     {
         AirSceneState s = _s;
-        if (!s.Laid || !On(s) || Air.Quality.V == Air.Levels[0]) return;
+        if (!s.Laid || !On(s) || Air.Still) return;
         if (Vector2.Distance(new Vector2(was.X, was.Y), new Vector2(now.X, now.Y)) > MaxPartStep) return;
         int x0 = (int)MathF.Floor(now.X - PartRadius) - s.Ox, x1 = (int)MathF.Floor(now.X + PartRadius) - s.Ox;
         int y0 = (int)MathF.Floor(now.Y - PartRadius) - s.Oy, y1 = (int)MathF.Floor(now.Y + PartRadius) - s.Oy;

@@ -548,8 +548,8 @@ internal static partial class GroundMist
     /// <summary>A fresh field: the old area's mist and walkmesh go, and its generation runs on, so the next upload always sends.</summary>
     internal static void Reset() => _s = new GroundMistState { Gen = _s.Gen + 1 };
 
-    /// <summary>Whether the mist lies still at the user's fog detail: at the lowest no wind, walker or blast moves it.</summary>
-    private static bool LiesStill() => VolumetricFog.Quality.V == VolumetricFog.Levels[0];
+    /// <summary>Whether the mist lies still: at the lowest fog detail, or at Low air detail, no wind, walker or blast moves it.</summary>
+    private static bool LiesStill() => CX.Alloy.Air.Still || VolumetricFog.Quality.V == VolumetricFog.Levels[0];
 
 
     /// <summary>The field's corner along one axis for feet at <paramref name="feet"/>: the snap they stand in, less half the side.</summary>

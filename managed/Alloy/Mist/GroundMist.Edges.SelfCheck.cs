@@ -63,11 +63,14 @@ internal static partial class GroundMistSelfCheck
             $"the upload is {sent} bytes, head {head}, ground {ground}, wall {wall}, then {hidden} bytes showing {shows} with the air off (want the whole field, a shown head at the corner, the area's floor at 0 m with no mist the area's fog laid, no floor and no mist on the wall, then the head alone showing 0)");
     }
 
-    /// <summary>At the lowest fog detail the mist lies still: a walker and a blast leave it as it was.</summary>
+    // Given the air at Low
+    // When the player visits the same four places
+    // Then each shows its look as at Medium, and a gust, a blast or a walker leaves it where it lies.
     private static void LowDetail(Checker check)
     {
-        string quality = VolumetricFog.Quality.V;
-        VolumetricFog.Quality.V = VolumetricFog.Levels[0];
+        string air = CX.Alloy.Air.Quality.V, fog = VolumetricFog.Quality.V;
+        CX.Alloy.Air.Quality.V = CX.Alloy.Air.Levels[0];
+        VolumetricFog.Quality.V = VolumetricFog.Levels[^1];
         try
         {
             Fogged(Flat(), Vector3.Zero);
@@ -77,9 +80,9 @@ internal static partial class GroundMistSelfCheck
             GroundMist.Blast(new Vector3(20f, 0.5f, 0f), 5f);
             float blasted = GroundMist.At(20.5f, 0.5f);
             check.Expect(parted == floor && blasted == floor,
-                $"at the lowest detail a walker leaves {parted:F4} m and a blast {blasted:F4} m of the {floor:F4} m floor (want it untouched)");
+                $"E105 with the air at Low and the fog at High a walker leaves {parted:F4} m and a blast {blasted:F4} m of the {floor:F4} m mist (want it untouched)");
         }
-        finally { VolumetricFog.Quality.V = quality; }
+        finally { CX.Alloy.Air.Quality.V = air; VolumetricFog.Quality.V = fog; }
     }
 
     /// <summary>A creature seated in a recycled record parts nothing on its first step, wherever the record's last tenant stood.</summary>
