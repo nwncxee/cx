@@ -169,13 +169,13 @@ public sealed unsafe partial class DialogService : IExtenderService
     [UnmanagedCallersOnly]
     private static long OnShowEntry(IntPtr self, IntPtr text, uint dialogId, uint speakerId)
     {
+        InteractInput.ConversationOpened(dialogId);
         string? blocked = DialogKnobs.Enabled.V ? PaintBlocked(self) : null;
         if (!DialogKnobs.Enabled.V || blocked != null)
         {
             if (blocked != null)
                 _log?.Info($"[dialog] stock panel takes this node -- {blocked} (dlg={dialogId} spk={speakerId})");
             _engineOwns = true;
-            InteractInput.GameConversationOpened(dialogId);
             if (_visible) SoftClose();
             return _entryOrig != null ? _entryOrig(self, text, dialogId, speakerId) : 0;
         }
@@ -184,7 +184,6 @@ public sealed unsafe partial class DialogService : IExtenderService
             _engineOwns = false;
             if (new CGuiInGame(self).Dialog != IntPtr.Zero && _closeOrig != null) _closeOrig(self);
         }
-        InteractInput.ConversationOpened(dialogId);
         try
         {
             _npcText = Native.ReadExo(text);

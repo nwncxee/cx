@@ -85,7 +85,7 @@ internal static class TalkApprovedExamples
             // Then the conversation with the creature 6m away opens
             {
                 var w = InteractWorldDouble.Install();
-                uint barker = w.Creature(3f, talks: false, barks: true); uint friend = w.Creature(6f);
+                uint barker = w.Creature(3f, talks: false); uint friend = w.Creature(6f);
                 w.Press('F');
                 w.Press('F');
                 check.Expect(w.Did(barker, friend) && w.Conversations.Count == 1 && w.Conversations[0].Id == friend,

@@ -27,8 +27,8 @@ internal sealed class InteractState
     internal int HeldThroughLoad;
 }
 
-/// <summary>The entries the engine side calls: the key handler's press, the chord layer's, the default-action detour
-/// and the conversation and area reports. A self-check calls the same entries on a double.</summary>
+/// <summary>The entries the engine side calls: the key handler's press, the chord layer's, and the conversation and
+/// area reports. A self-check calls the same entries on a double.</summary>
 internal static class InteractInput
 {
     private static readonly InteractState S = new();
@@ -123,18 +123,9 @@ internal static class InteractInput
     /// when none. Cold: a key row's bind.</summary>
     internal static string? GameKeyAction(int code) => S.World?.GameKeyAction(code);
 
-    /// <summary>Every default action the engine runs on an object, a mouse click's as well as Interact's own.</summary>
-    internal static void DefaultActionSeen(uint id) { }
-
-    /// <summary>A conversation window opened with <paramref name="id"/> in CX's dialog.</summary>
+    /// <summary>A conversation opened with <paramref name="id"/>, in CX's window or the game's own: it is no longer passed
+    /// over. A creature that only speaks a line over its head opens none, so it stays tried.</summary>
     internal static void ConversationOpened(uint id) => S.Tried.Remove(id);
-
-    /// <summary>A conversation opened with <paramref name="id"/> in the game's own window, CX's dialog being off.</summary>
-    internal static void GameConversationOpened(uint id) => S.Tried.Remove(id);
-
-    /// <summary>A creature's default action spoke a line over its head and opened no conversation: it stays tried. The
-    /// engine sends a one-liner as chat, not a dialog entry, so no live hook calls this.</summary>
-    internal static void Barked(uint id) { }
 
     /// <summary>The player arrived in an area and it finished loading.</summary>
     internal static void AreaLoaded() => S.HeldThroughLoad = S.Held;

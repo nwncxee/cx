@@ -34,8 +34,6 @@ internal sealed class InteractWorldDouble : IInteractWorld
     internal readonly Dictionary<int, string> GameKeys = new();
     /// <summary>Creatures whose default action opens a conversation.</summary>
     internal readonly HashSet<uint> Talks = new();
-    /// <summary>Creatures whose default action only speaks a line over their head.</summary>
-    internal readonly HashSet<uint> Barks = new();
     /// <summary>Every conversation that opened, and whether it opened in the game's own window.</summary>
     internal readonly List<(uint Id, bool GameWindow)> Conversations = new();
     /// <summary>Every lock a default action moved: none, as Interact's goes past click-to-lock (TabTargetVanillaAction
@@ -66,7 +64,6 @@ internal sealed class InteractWorldDouble : IInteractWorld
     public void DefaultAction(uint id)
     {
         Acts.Add(id);
-        InteractInput.DefaultActionSeen(id);
         if (PossessedBarred) ServerRefused.Add(id);
     }
     public void WalkTo(uint id, Vector3 point) { Acts.Add(id); Walks.Add(point); }
@@ -175,10 +172,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
             if (Talks.Contains(id))
             {
                 Conversations.Add((id, GameDialog));
-                if (GameDialog) InteractInput.GameConversationOpened(id);
-                else InteractInput.ConversationOpened(id);
+                InteractInput.ConversationOpened(id);
             }
-            else if (Barks.Contains(id)) InteractInput.Barked(id);
         }
     }
 
@@ -192,8 +187,8 @@ internal sealed class InteractWorldDouble : IInteractWorld
 
     internal string Seen => $"acts [{string.Join(", ", Acts.ConvertAll(a => a.ToString("x")))}], lines [{string.Join(" | ", Lines)}], sounds [{string.Join(", ", Sounds)}]";
 
-    /// <summary>A mouse click on <paramref name="id"/>: the engine runs its default action, Interact sees it pass.</summary>
-    internal void Click(uint id) => InteractInput.DefaultActionSeen(id);
+    /// <summary>A mouse click on <paramref name="id"/>: the engine runs its default action, which Interact never hears of.</summary>
+    internal void Click(uint id) { }
 
     internal uint Bag(float m, bool trap = false, bool locked = false, bool unfoundTrap = false)
         => Add(new Thing { Kind = ThingKind.BodyBag, Lootable = true, TrapFound = trap, Locked = locked, TrapUnfound = unfoundTrap }, m);
@@ -204,11 +199,10 @@ internal sealed class InteractWorldDouble : IInteractWorld
     internal uint Lever(float m) => Add(new Thing { Kind = ThingKind.Placeable, Useable = true }, m);
     internal uint Door(float m, bool locked = false, bool open = false, bool trap = false, bool destroyed = false, bool leadsAway = false)
         => Add(new Thing { Kind = ThingKind.Door, Locked = locked, Open = open, TrapFound = trap, Destroyed = destroyed, LeadsAway = leadsAway }, m);
-    internal uint Creature(float m, Attitude attitude = Attitude.Friend, bool talks = true, bool party = false, bool otherPlayer = false, bool barks = false)
+    internal uint Creature(float m, Attitude attitude = Attitude.Friend, bool talks = true, bool party = false, bool otherPlayer = false)
     {
         uint id = Add(new Thing { Kind = ThingKind.Creature, Attitude = attitude, Party = party, OtherPlayer = otherPlayer }, m);
         if (talks) Talks.Add(id);
-        if (barks) Barks.Add(id);
         return id;
     }
 
