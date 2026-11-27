@@ -91,10 +91,7 @@ public static unsafe partial class TextRig
         {
             if (_log == null) { _early.Add((typeface, px, owner)); return null; }
             GlyphAtlas? f = FaceLocked(typeface, px);
-            if (f == null) return null;
-            var key = (FontRegistry.Effective(typeface), px);
-            if (!_holders.TryGetValue(key, out HashSet<string>? who)) _holders[key] = who = new HashSet<string>(StringComparer.Ordinal);
-            who.Add(owner);
+            if (f != null) AddHolder(FontRegistry.Effective(typeface), px, owner);
             return f;
         }
     }
@@ -104,23 +101,27 @@ public static unsafe partial class TextRig
     /// first bake; false when headless or refused. Cold, a miss bakes.</summary>
     public static bool Hold(string typeface, float px, string owner)
     {
-        lock (_bakeLock)
-        {
-            if (_log != null) return Face(typeface, px, owner) != null;
-            _early.Add((typeface, px, owner));
-            return true;
-        }
+        lock (_bakeLock) return Face(typeface, px, owner) != null || _log == null;
     }
 
     /// <summary>Whether the sheet's bake list carries <paramref name="typeface"/> at <paramref name="px"/>, baked or not.
     /// For the self-checks.</summary>
     internal static bool Asks(string typeface, float px)
     {
-        lock (_bakeLock)
-        {
-            typeface = FontRegistry.Effective(typeface);
-            return _requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px);
-        }
+        lock (_bakeLock) return Requested(FontRegistry.Effective(typeface), px);
+    }
+
+    /// <summary>Whether a text face request carries <paramref name="typeface"/>, already effective, at <paramref name="px"/>;
+    /// under <see cref="_bakeLock"/>.</summary>
+    private static bool Requested(string typeface, float px) =>
+        _requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px);
+
+    /// <summary>Marks <paramref name="owner"/> a holder of the effective <paramref name="typeface"/> at <paramref name="px"/>;
+    /// under <see cref="_bakeLock"/>.</summary>
+    private static void AddHolder(string typeface, float px, string owner)
+    {
+        if (!_holders.TryGetValue((typeface, px), out HashSet<string>? who)) _holders[(typeface, px)] = who = new HashSet<string>(StringComparer.Ordinal);
+        who.Add(owner);
     }
 
     /// <summary>The holder of a face asked for with no owner: it is held for the session.</summary>
@@ -235,10 +236,8 @@ public static unsafe partial class TextRig
         {
             string typeface = FontRegistry.Effective(asked);
             if (FontRegistry.Bytes(typeface) is not byte[] bytes) continue;
-            if (!_requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px))
-                _requests.Add(new FaceRequest(typeface, bytes, px, Index: FontRegistry.Index(typeface)));
-            if (!_holders.TryGetValue((typeface, px), out HashSet<string>? who)) _holders[(typeface, px)] = who = new HashSet<string>(StringComparer.Ordinal);
-            who.Add(owner);
+            if (!Requested(typeface, px)) _requests.Add(new FaceRequest(typeface, bytes, px, Index: FontRegistry.Index(typeface)));
+            AddHolder(typeface, px, owner);
         }
         _early.Clear();
     }
@@ -250,7 +249,7 @@ public static unsafe partial class TextRig
         TextStyle.Wanted(want);
         foreach (var (typeface, px) in want)
         {
-            if (_requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px)) continue;
+            if (Requested(typeface, px)) continue;
             if (FontRegistry.Bytes(typeface) is byte[] bytes) _requests.Add(new FaceRequest(typeface, bytes, px, Index: FontRegistry.Index(typeface)));
         }
     }
@@ -364,15 +363,23 @@ public static unsafe partial class TextRig
         _bakedPx = FontPx;
         _requests.Add(new FaceRequest(DefaultFace, bytes, FontPx, Index: FontRegistry.Index(DefaultFace)));
         lock (_bakeLock) AddEarlyFaces();
-        _sheet = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, log);
-        if (_sheet == null && _requests.Count > 1)
-        {
-            List<FaceRequest> early = _requests.GetRange(1, _requests.Count - 1);
-            _requests.RemoveRange(1, early.Count);   // an early face must not sink the default one
-            _sheet = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, log);
-            if (_sheet == null) _requests.AddRange(early);   // no sheet either way: the faces stay asked for the next bake
-        }
+        _sheet = FirstBake(_requests, r => AtlasSheet.Bake(r, Ranges, Icons, AtlasSize, log));
         log.Info(_sheet != null ? "TextRig: atlas ready" : "TextRig: atlas bake unavailable");
+    }
+
+    /// <summary>The first sheet: <paramref name="bake"/> over <paramref name="reqs"/>, and when that refuses, over the
+    /// default face alone, so an early face cannot sink it. With no sheet either way the early faces stay asked.</summary>
+    internal static T? FirstBake<T>(List<FaceRequest> reqs, Func<List<FaceRequest>, T?> bake) where T : class
+    {
+        T? sheet = bake(reqs);
+        if (sheet == null && reqs.Count > 1)
+        {
+            List<FaceRequest> early = reqs.GetRange(1, reqs.Count - 1);
+            reqs.RemoveRange(1, early.Count);
+            sheet = bake(reqs);
+            if (sheet == null) reqs.AddRange(early);
+        }
+        return sheet;
     }
 
     /// <summary>The <c>ui.font</c> ladder (spec §4.2 Units): 6-32 pt, every point; 1 pt = 1 design px before GUI scale.</summary>
