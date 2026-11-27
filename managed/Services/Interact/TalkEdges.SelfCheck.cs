@@ -29,6 +29,15 @@ internal static class TalkEdges
                 w.Press('K');
                 check.Expect(w.Did(friend), $"the Talk key still talks to it: {w.Seen}");
             }
+            {
+                var w = InteractWorldDouble.Install();
+                InteractKnobs.TalkKey.Set("K");
+                w.Corpse(2f, lootable: false, attitude: Attitude.Friend);
+                w.Press('F');
+                w.Press('K');
+                check.Expect(w.Acts.Count == 0 && w.Lines.Count == 2 && w.Lines[0] == InteractWorldDouble.Nothing,
+                    $"a dead friendly creature that cannot be looted is never talked to, by Interact or the Talk key: {w.Seen}");
+            }
         }
         finally
         {
