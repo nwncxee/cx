@@ -997,7 +997,7 @@ key row: a press waits for a key or a thumb button, Backspace unbinds, a key in 
 | interact.talk | Talk | T | on | U | L | The Interact key runs | A friendly or neutral creature outside your party, within 10m. |
 | interact.feedbacktext | Show a line | T | on | U | L | When nothing qualifies | A short line at the top of the screen says why nothing happened. |
 | interact.feedbacksound | Play a sound | T | on | U | L | When nothing qualifies | A quiet sound plays. |
-| interact.sound | Sound | X | gui_nowalk | U | L | When nothing qualifies | The sound's resref. The default is the one the game plays when it refuses a move. |
+| interact.sound | Sound | X | gui_nowalk | U | L | When nothing qualifies | The sound's resref. The default is the one the game plays when it refuses a move. The row shows only while `interact.feedbacksound` is on (`Knob.ShowIf`); chat reaches it either way. |
 
 ### 4.6 Quality presets
 

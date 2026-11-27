@@ -44,8 +44,9 @@ internal static class InteractKnobs
         G.Section("When nothing qualifies");
         FeedbackText = G.Toggle("feedbacktext", "Show a line", true, help: "A short line at the top of the screen says why nothing happened.");
         FeedbackSound = G.Toggle("feedbacksound", "Play a sound", true, help: "A quiet sound plays.");
-        Sound = G.Text("sound", "Sound", "gui_nowalk", Tier.Advanced, help: "The sound's resref. The default is the one the game plays when it refuses a move.",
+        Sound = G.Text("sound", "Sound", "gui_nowalk", help: "The sound's resref. The default is the one the game plays when it refuses a move.",
                        changed: InteractInput.SoundChanged);
         Sound.Note = InteractInput.SoundNote;
+        Sound.ShowIf = static () => FeedbackSound.V;
     }
 }
