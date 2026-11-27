@@ -102,6 +102,30 @@ internal static class TransitionEdges
                 w.Press('F');
                 check.Expect(w.Did(exit), $"a trigger whose nearest edge is listed last is measured by it: {w.Seen}");
             }
+            {
+                var w = InteractWorldDouble.Install();
+                uint exit = w.Transition(1.5f);
+                w.Press('F');
+                w.Clear();
+                uint back = w.Transition(1f);
+                InteractInput.AreaLoaded();
+                w.Press('F');
+                check.Expect(w.Did(exit), $"a key held through the load does nothing on arrival, even as a fresh key-down the load screen let through: {w.Seen}");
+                w.Release('F');
+                w.Press('F');
+                check.Expect(w.Did(exit, back), $"once it comes up, the next press takes the return transition: {w.Seen}");
+            }
+            {
+                var w = InteractWorldDouble.Install();
+                uint exit = w.Transition(1.5f);
+                w.Press('F');
+                w.Release('F');
+                w.Clear();
+                uint back = w.Transition(1f);
+                InteractInput.AreaLoaded();
+                w.Press('F');
+                check.Expect(w.Did(exit, back), $"a key let go before the load ended takes the return transition at the next press: {w.Seen}");
+            }
         }
         finally
         {

@@ -149,6 +149,9 @@ internal sealed class InteractWorldDouble : IInteractWorld
         return took;
     }
 
+    /// <summary>The key <paramref name="key"/> comes up, as WinMessageHandler reports it.</summary>
+    internal void Release(char key) => InteractInput.KeyUp(char.ToLowerInvariant(key));
+
     /// <summary>One press down the client's key path: CX's windows first, then the chord layer Interact shares with the
     /// action camera's toggle. The chord gate's focus and engine reads are left out, as the stub host has no window.
     /// True when a window took the press.</summary>

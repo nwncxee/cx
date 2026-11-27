@@ -149,6 +149,7 @@ internal static class TransitionApprovedExamples
                 InteractInput.AreaLoaded();
                 for (int i = 0; i < 3; i++) w.Press('F', repeat: true);
                 check.Expect(w.Did(exit), $"E92 the held key does not take the return transition: {w.Seen}");
+                w.Release('F');
                 w.Press('F');
                 check.Expect(w.Did(exit, back), $"E92 a fresh press takes it: {w.Seen}");
             }

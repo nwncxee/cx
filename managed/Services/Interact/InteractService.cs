@@ -16,13 +16,16 @@ namespace CX.Services.Interact;
 public sealed unsafe class InteractService : IExtenderService
 {
     /// <summary>The hook's link to the layer below, set once at install.</summary>
-    private sealed class HookState { public WinMessageHandlerFn* Next; }
+    private sealed class HookState { public WinMessageHandlerFn* Next; public SendAreaLoadedFn* Loaded; }
 
     private static readonly HookState S = new();
 
     /// <summary>Above tab-target (50), so a key bound to both runs Interact; below mouse-look (100).</summary>
     private const int ChainPriority = 60;
-    private const uint SdlKeyDown = 0x300;  // not-an-offset: SDL key/event code
+    private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301;  // not-an-offset: SDL key/event code
+    /// <summary>Above every other layer on the AreaLoaded send (TexStream 100), so Interact sees the engine's own send
+    /// even when the lightmap hold keeps it from the layers below.</summary>
+    private const int LoadedPriority = 110;
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -35,7 +38,9 @@ public sealed unsafe class InteractService : IExtenderService
         if (S.Next == null) { log.Info("Interact: standing down (the WinMessageHandler chain was refused)"); return; }
         FeedbackLine.Register();
         InteractInput.Use(new InteractEngineWorld());
-        log.Info("Interact: ready; chained on WinMessageHandler");
+        S.Loaded = hooks.ChainSendAreaLoaded(&OnAreaLoaded, LoadedPriority);
+        log.Info(S.Loaded == null ? "Interact: ready; chained on WinMessageHandler; the AreaLoaded send is unhooked, so a key held through a load acts on arrival"
+                                  : "Interact: ready; chained on WinMessageHandler and the AreaLoaded send");
     }
 
     [UnmanagedCallersOnly]
@@ -43,7 +48,15 @@ public sealed unsafe class InteractService : IExtenderService
     {
         if (ev != IntPtr.Zero && *(uint*)ev == SdlKeyDown
             && InteractInput.KeyDown(((SdlEvent*)ev)->Sym, ((SdlEvent*)ev)->Repeat != 0)) return 0;
+        if (ev != IntPtr.Zero && *(uint*)ev == SdlKeyUp) InteractInput.KeyUp(((SdlEvent*)ev)->Sym);
         return (*S.Next)(ev);
+    }
+
+    [UnmanagedCallersOnly]
+    private static void OnAreaLoaded(IntPtr msg)
+    {
+        InteractInput.AreaLoaded();
+        (*S.Loaded)(msg);
     }
 }
 

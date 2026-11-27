@@ -22,6 +22,11 @@ internal sealed class InteractState
     /// <summary>Whether the world has the feedback sound's resref, as the last edit or press found it; null until one
     /// looked.</summary>
     internal bool? SoundFound;
+    /// <summary>The bound key down now, from its press to its key-up; 0 when none. A thumb button sends no key-up, so
+    /// only a key is kept.</summary>
+    internal int Held;
+    /// <summary>The key that was down when an area finished loading: its key-downs act on nothing until it comes up.</summary>
+    internal int HeldThroughLoad;
 }
 
 /// <summary>The entries the engine side calls: the key handler's press, the chord layer's, the default-action detour
@@ -49,6 +54,7 @@ internal static class InteractInput
         IInteractWorld? was = S.World;
         S.World = world;
         S.Tried.Clear();
+        S.Held = S.HeldThroughLoad = 0;
         if (world != null) { KeysChanged(); UiHost.AddChordConsumer(Chord); }
         else UiHost.RemoveChordConsumer(Chord);
         return was;
@@ -79,7 +85,8 @@ internal static class InteractInput
     internal static bool KeyDown(int code, bool repeat)
     {
         if (Bound(code) is not { } key || S.World is not { KeysFree: true } world) return false;
-        if (repeat) return true;
+        if (repeat || code == S.HeldThroughLoad) return true;
+        if (code > 0) S.Held = code;
         Thing? picked = InteractCore.Pick(key, world, S, out bool refused);
         if (picked is not { } t) { Feedback(world, refused ? RefusedLine : Lines[(int)key]); return true; }
         S.Acting = true;
@@ -136,7 +143,15 @@ internal static class InteractInput
     internal static void Barked(uint id) { }
 
     /// <summary>The player arrived in an area and it finished loading.</summary>
-    internal static void AreaLoaded() { }
+    internal static void AreaLoaded() => S.HeldThroughLoad = S.Held;
+
+    /// <summary>A key came up: an SDL key code from WinMessageHandler.</summary>
+    internal static void KeyUp(int code)
+    {
+        if (code == 0) return;
+        if (code == S.Held) S.Held = 0;
+        if (code == S.HeldThroughLoad) S.HeldThroughLoad = 0;
+    }
 
     /// <summary>Interact's keys in the chord layer, ranked above the action camera's toggle (priority 1), so a key
     /// bound to both runs Interact.</summary>
