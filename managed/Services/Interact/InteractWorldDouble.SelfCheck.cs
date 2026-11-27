@@ -89,7 +89,7 @@ internal sealed class InteractWorldDouble : IInteractWorld
     /// <summary>The settings the suites change: every Interact one, and the tab-target, camera and dialog ones some set.</summary>
     private static Knob[] Touched()
     {
-        var all = new List<Knob>(InteractKnobs.G.Knobs) { TabTarget.Enabled, CameraModes.Chase.ActionKey, MouseLook.Action, DialogKnobs.Enabled };
+        var all = new List<Knob>(InteractKnobs.G.Knobs) { TabTarget.Enabled, TabTarget.LockKey, CameraModes.Chase.ActionKey, MouseLook.Action, DialogKnobs.Enabled };
         return all.ToArray();
     }
 

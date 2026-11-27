@@ -302,6 +302,61 @@ public sealed partial class KnobPanel
                 check.Expect(keyRowWaits && p.Editing && !p.Waiting(r),
                     $"E75 beside a press-to-bind key row (it waits: {keyRowWaits}), a press on the action camera toggle key row opens it as a text field: editing {p.Editing}, waiting {p.Waiting(r)}");
             }
+            // Given any key row, an Interact row or a Cursor key row
+            // When the player presses a modifier key alone: Shift, Ctrl, Alt or Gui, left or right
+            // Then the row binds that modifier by its key name
+            {
+                string[] names = { "Left Ctrl", "Left Shift", "Left Alt", "Left GUI", "Right Ctrl", "Right Shift", "Right Alt", "Right GUI" };
+                Knob<string> cursor = CameraModes.Chase.CursorKey;
+                string cursorWas = cursor.FormatStored();
+                string? cursorRaw = Settings.Raw(cursor.Key);
+                try
+                {
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        var (p, _) = Fresh();
+                        Row r = Wait(p, InteractKnobs.Key);
+                        p.Key(LeftCtrl + (uint)i);
+                        check.Expect(!p.Waiting(r) && InteractKnobs.Key.V == names[i] && Value(p, InteractKnobs.Key) == names[i],
+                            $"E145 the Interact row binds {names[i]} pressed alone: '{InteractKnobs.Key.V}', waiting {p.Waiting(r)}, warning '{p.KeyWarning}'");
+                    }
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        Fresh();
+                        CameraModes.Chase.Action.Set(true);
+                        var p = new KnobPanel { Category = Array.IndexOf(KnobCategories, cursor.Group.Category) };
+                        p.OpenAt(1280f, 720f, FacePx, body, small);
+                        p.Show(cursor.Group);
+                        p.LayoutRows();
+                        Row r = Wait(p, cursor);
+                        p.Key(LeftCtrl + (uint)i);
+                        check.Expect(!p.Waiting(r) && cursor.V == names[i] && Value(p, cursor) == names[i],
+                            $"E145 the Cursor key row binds {names[i]} pressed alone: '{cursor.V}', waiting {p.Waiting(r)}, warning '{p.KeyWarning}'");
+                    }
+                }
+                finally
+                {
+                    if (cursor.FormatStored() != cursorWas) cursor.Parse(cursorWas);
+                    if (cursorRaw is { } v) Settings.Read($"{cursor.Key}={v}\n");
+                    else Settings.Forget(cursor.Key);
+                }
+            }
+
+            // Given tab-target is off and its Lock-on key is F
+            // When the player binds F to Interact
+            // Then the row warns "F is already bound to Lock-on key in Targeting (off).", naming the group as off, and waits for Enter
+            {
+                var (p, _) = Fresh();
+                TabTarget.Enabled.Set(false);
+                TabTarget.LockKey.Set("F");
+                Row r = Wait(p, InteractKnobs.Key);
+                p.Key('f');
+                string? warn = p.KeyWarning;
+                check.Expect(warn == "F is already bound to Lock-on key in Targeting (off)." && InteractKnobs.Key.V == "" && p.Waiting(r),
+                    $"E147 the row warns that the switched-off Lock-on key has F, and binds nothing yet: '{warn}', bound '{InteractKnobs.Key.V}', waiting {p.Waiting(r)}");
+                p.Key(0x0D);
+                check.Expect(InteractKnobs.Key.V == "F" && p.KeyWarning == null, $"E147 Enter binds F ({InteractKnobs.Key.V})");
+            }
         }
         finally
         {
@@ -324,6 +379,9 @@ public sealed partial class KnobPanel
 
     /// <summary>SDL's number for the first thumb button, X1, which the row names Mouse4.</summary>
     private const int ThumbButton = 4;
+
+    /// <summary>SDL's code for Left Ctrl, the first of the eight modifier keys, Right GUI the last.</summary>
+    private const uint LeftCtrl = 0x400000E0;  // not-an-offset: SDL key code
 
     /// <summary>A left press on <paramref name="k"/>'s box through the UI host, as the pump routes the player's click;
     /// <paramref name="x"/>, <paramref name="y"/> are where it landed.</summary>

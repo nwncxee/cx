@@ -17,7 +17,7 @@ public sealed unsafe partial class MouseLookService
         var check = new Checker(log, "CursorKeyApprovedExamples.SelfCheck");
         Knob<string>? chase = KnobGroup.Find("chase.cursorkey") as Knob<string>;
         Knob<string>? topDown = KnobGroup.Find("topdown.cursorkey") as Knob<string>;
-        var rows = new List<Knob> { CameraModes.Chase.AltToggle, CameraModes.TopDown.AltToggle, CameraModes.Chase.ActionKey, CameraModes.Chase.Enabled, CameraModes.Chase.Action };
+        var rows = new List<Knob> { CameraModes.Chase.AltToggle, CameraModes.TopDown.AltToggle, CameraModes.Chase.ActionKey, CameraModes.Chase.Enabled, CameraModes.Chase.Action, CameraModes.TopDown.Enabled, CameraModes.TopDown.Action };
         if (chase != null) rows.Add(chase);
         if (topDown != null) rows.Add(topDown);
         Knob[] touched = rows.ToArray();
@@ -186,6 +186,33 @@ public sealed unsafe partial class MouseLookService
                 Key(SdlKeyDown, SdlkLAlt, 1);
                 check.Expect(bound && topDown is { V: "Alt" } && _cursor.Freed(1),
                     $"E144 Top Down keeps Alt while Chase Cam has Space: chase '{chase?.V}', top-down '{topDown?.V}', freed {_cursor.Freed(1)}");
+            }
+
+            // Given Chase Cam's cursor key is Space
+            // When the player presses Space on Top Down's Cursor key row
+            // Then the row reads Space with no warning
+            {
+                Fresh();
+                bool bound = Bind(chase, "Space");
+                CameraModes.TopDown.Enabled.Set(true);
+                CameraModes.TopDown.Action.Set(true);
+                KnobPanel p = Panel();
+                p.Show(CameraModes.TopDown.G);
+                p.LayoutRows();
+                KnobPanel.Row? r = null;
+                foreach (KnobPanel.Row row in p.Rows) if (row.Kind == KnobPanel.RowKind.Knob && row.K != null && ReferenceEquals(row.K, topDown)) r = row;
+                string? warn = null;
+                if (r != null)
+                {
+                    p.List.Offset = r.Top - 0.4f * p.Em; p.List.Clamp();
+                    p.BoxRect(r, p.List.ToScreen(r.Top), out float x0, out float x1, out float y0, out float y1);
+                    p.MouseDown((x0 + x1) * 0.5f, (y0 + y1) * 0.5f); p.MouseUp();
+                    p.Key(' ');
+                    warn = p.KeyWarning;
+                    p.Key(0x1B);
+                }
+                check.Expect(bound && r != null && warn == null && topDown is { V: "Space" },
+                    $"E146 Top Down's cursor key takes Space beside Chase Cam's: row {r != null}, warning '{warn}', top-down '{topDown?.V}'");
             }
         }
         finally
