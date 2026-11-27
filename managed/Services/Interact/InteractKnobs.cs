@@ -33,7 +33,8 @@ internal static class InteractKnobs
         PickUpKey = G.KeyBind("pickupkey", "Pick up", help: $"Picks up the nearest item on the ground within {Far}.",
                               changed: InteractInput.KeysChanged);
         DoorKey = G.KeyBind("doorkey", "Door", help: $"Opens the nearest closed door within {Far}.", changed: InteractInput.KeysChanged);
-        TalkKey = G.KeyBind("talkkey", "Talk", help: $"Talks to the nearest friendly or neutral creature within {Far}.");
+        TalkKey = G.KeyBind("talkkey", "Talk", help: $"Talks to the nearest friendly or neutral creature within {Far}.",
+                           changed: InteractInput.KeysChanged);
         G.Section("The Interact key runs");
         Transitions = G.Toggle("transition", "Area transitions", true, help: $"An exit within {Near} comes before everything else.");
         Loot = G.Toggle("loot", "Loot", true, help: $"A corpse or body bag you can loot, within {Far}.");

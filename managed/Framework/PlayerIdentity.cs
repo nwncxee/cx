@@ -71,6 +71,23 @@ public static unsafe class PlayerIdentity
         return IntPtr.Zero;
     }
 
+    /// <summary>True when <paramref name="id"/> is a creature some player in the roster plays, the local one too: what
+    /// the engine's GetPlayerByGameObjectID finds, which the default action on a creature refuses to talk to.</summary>
+    public static bool IsPlayerCreature(uint id)
+    {
+        CClientExoAppInternal intern = Internal();
+        if (intern.IsNull) return false;
+        IntPtr listBase = intern.Players;
+        int count = intern.PlayerCount;
+        if (listBase == IntPtr.Zero || count <= 0 || count > MaxPlayers) return false;
+        for (int i = 0; i < count; i++)
+        {
+            var player = new CNWCPlayer(*(IntPtr*)(listBase + i * 8));
+            if (!player.IsNull && player.CreatureId == id) return true;
+        }
+        return false;
+    }
+
     /// <summary>The local <c>CNWCCreature*</c> when it exists and carries a stats block (what the engine's own
     /// menu ctors gate on), else zero.</summary>
     public static IntPtr Creature()

@@ -146,7 +146,7 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
             if (go.IsNull) continue;
             CNWCObject obj = go.AsNWCObject();
             if (obj.IsNull || (obj.Visible == 0 && obj.Type != TabTargetCore.TypeTrigger)) continue;
-            if (Read(go, obj, id) is { } t) _things.Add(t);
+            if (Read(go, obj, id, playerId) is { } t) _things.Add(t);
         }
     }
 
@@ -174,7 +174,9 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
         t.Destroyed = state == DoorDestroyed;
     }
 
-    private static Thing? Read(CGameObject go, CNWCObject obj, uint id)
+    /// <summary>One area object as a <see cref="Thing"/>, null for one no rule acts on; a creature whose master is
+    /// <paramref name="playerId"/> is the player's party.</summary>
+    private static Thing? Read(CGameObject go, CNWCObject obj, uint id, uint playerId)
     {
         var t = new Thing { Id = id, Pos = obj.Position };
         switch (obj.Type)
@@ -186,6 +188,8 @@ internal sealed unsafe class InteractEngineWorld : IInteractWorld
                 t.Dead = TabTargetService.Dead(obj);
                 t.Lootable = c.Lootable == 1;
                 t.Attitude = c.Attitude switch { AttitudeFriend => Attitude.Friend, AttitudeNeutral => Attitude.Neutral, _ => Attitude.Hostile };
+                t.Party = c.MasterId == playerId;
+                t.OtherPlayer = PlayerIdentity.IsPlayerCreature(id);
                 return t;
             }
             case TabTargetCore.TypeItem:

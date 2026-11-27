@@ -12,10 +12,10 @@ internal sealed class InteractState
     internal IInteractWorld? World;
     /// <summary>The press code each key setting binds, by <see cref="InteractKey"/>, read at a setting's edit; 0 unbound.</summary>
     internal readonly int[] Codes = new int[Bindable];
-    /// <summary>The keys with a row in <see cref="Codes"/>: Interact, Transition, Loot, Pick up and Door.</summary>
-    internal const int Bindable = (int)InteractKey.Door + 1;
-    /// <summary>The locked objects and the items an Interact press tried: a locked one is passed over until it reads
-    /// unlocked, an item while it lies on the ground.</summary>
+    /// <summary>The keys with a row in <see cref="Codes"/>: Interact and each rule's own.</summary>
+    internal const int Bindable = (int)InteractKey.Talk + 1;
+    /// <summary>The locked objects, items and creatures an Interact press tried: a locked one is passed over until it
+    /// reads unlocked, an item while it lies on the ground, a creature until it opens a conversation.</summary>
     internal readonly HashSet<uint> Tried = new();
     /// <summary>An Interact press is running its default action, so the click-to-lock leaves the lock alone.</summary>
     internal bool Acting;
@@ -50,6 +50,7 @@ internal static class InteractInput
         S.Codes[(int)InteractKey.Loot] = KeyNames.Code(InteractKnobs.LootKey.V);
         S.Codes[(int)InteractKey.PickUp] = KeyNames.Code(InteractKnobs.PickUpKey.V);
         S.Codes[(int)InteractKey.Door] = KeyNames.Code(InteractKnobs.DoorKey.V);
+        S.Codes[(int)InteractKey.Talk] = KeyNames.Code(InteractKnobs.TalkKey.V);
     }
 
     /// <summary>A press from WinMessageHandler: an SDL key code, or -4 / -5 for the thumb buttons. True when Interact
@@ -93,12 +94,13 @@ internal static class InteractInput
     internal static bool ClickLocks(uint id) => !S.Acting;
 
     /// <summary>A conversation window opened with <paramref name="id"/> in CX's dialog.</summary>
-    internal static void ConversationOpened(uint id) { }
+    internal static void ConversationOpened(uint id) => S.Tried.Remove(id);
 
     /// <summary>A conversation opened with <paramref name="id"/> in the game's own window, CX's dialog being off.</summary>
-    internal static void GameConversationOpened(uint id) { }
+    internal static void GameConversationOpened(uint id) => S.Tried.Remove(id);
 
-    /// <summary>A creature's default action spoke a line over its head and opened no conversation.</summary>
+    /// <summary>A creature's default action spoke a line over its head and opened no conversation: it stays tried. The
+    /// engine sends a one-liner as chat, not a dialog entry, so no live hook calls this.</summary>
     internal static void Barked(uint id) { }
 
     /// <summary>The player arrived in an area and it finished loading.</summary>

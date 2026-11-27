@@ -9,6 +9,7 @@ using CX.Framework;
 using CX.Services.Chat;
 using CX.Services.Chat.Core;
 using CX.Services.Chat.Render;
+using CX.Services.Interact;
 using CX.Ui;
 
 namespace CX.Services.Dialog;
@@ -164,7 +165,7 @@ public sealed unsafe partial class DialogService : IExtenderService
     /// <summary>The ownership boundary. Off, or CX's window cannot paint this node: the node is the stock panel's
     /// -- CX's window fades if it was up and the engine call runs, making its panel at <c>+0x70</c> if it has none.
     /// On: CX's; a stock panel still up from an off interlude is torn down first through the engine's own
-    /// <c>CloseDialog</c>.</summary>
+    /// <c>CloseDialog</c>. Either way the dialog's owner, <paramref name="dialogId"/>, opened a conversation for Interact.</summary>
     [UnmanagedCallersOnly]
     private static long OnShowEntry(IntPtr self, IntPtr text, uint dialogId, uint speakerId)
     {
@@ -174,6 +175,7 @@ public sealed unsafe partial class DialogService : IExtenderService
             if (blocked != null)
                 _log?.Info($"[dialog] stock panel takes this node -- {blocked} (dlg={dialogId} spk={speakerId})");
             _engineOwns = true;
+            InteractInput.GameConversationOpened(dialogId);
             if (_visible) SoftClose();
             return _entryOrig != null ? _entryOrig(self, text, dialogId, speakerId) : 0;
         }
@@ -182,6 +184,7 @@ public sealed unsafe partial class DialogService : IExtenderService
             _engineOwns = false;
             if (new CGuiInGame(self).Dialog != IntPtr.Zero && _closeOrig != null) _closeOrig(self);
         }
+        InteractInput.ConversationOpened(dialogId);
         try
         {
             _npcText = Native.ReadExo(text);
